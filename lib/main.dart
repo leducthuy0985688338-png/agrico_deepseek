@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'screens/warehouse_screen.dart';
 import 'screens/field_list_screen.dart';
+import 'screens/machine_list_screen.dart';
+import 'screens/employee_list_screen.dart';
+import 'screens/fuel_screen.dart';
+import 'screens/report_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -111,13 +115,17 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
 
-  // Danh sách các trang (đã thêm Warehouse và Field)
+  // Danh sách các trang theo đúng thứ tự
   static const List<Widget> _pages = [
-    HomePage(),
-    FarmPage(),
-    FieldListScreen(), // Lô đất (có Google Maps)
-    WarehouseScreen(), // Kho
-    SettingsPage(),
+    HomePage(), // 0: Tổng quan
+    FarmPage(), // 1: Trang trại
+    FieldListScreen(), // 2: Lô đất
+    WarehouseScreen(), // 3: Kho
+    MachineListScreen(), // 4: Máy móc
+    EmployeeListScreen(), // 5: Nhân sự
+    FuelScreen(), // 6: Nhiên liệu
+    ReportScreen(), // 7: Báo cáo
+    SettingsPage(), // 8: Cài đặt
   ];
 
   @override
@@ -149,6 +157,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Lô đất'),
           BottomNavigationBarItem(icon: Icon(Icons.warehouse), label: 'Kho'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.agriculture),
+            label: 'Máy móc',
+          ),
+          BottomNavigationBarItem(icon: Icon(Icons.people), label: 'Nhân sự'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.local_gas_station),
+            label: 'Nhiên liệu',
+          ),
+          BottomNavigationBarItem(icon: Icon(Icons.receipt), label: 'Báo cáo'),
           BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Cài đặt'),
         ],
       ),
@@ -176,12 +194,12 @@ class HomePage extends StatelessWidget {
           ),
           Card(
             child: Center(
-              child: Text('Máy móc: 8', style: TextStyle(fontSize: 20)),
+              child: Text('Máy móc: 4', style: TextStyle(fontSize: 20)),
             ),
           ),
           Card(
             child: Center(
-              child: Text('Nhân viên: 25', style: TextStyle(fontSize: 20)),
+              child: Text('Nhân viên: 5', style: TextStyle(fontSize: 20)),
             ),
           ),
           Card(

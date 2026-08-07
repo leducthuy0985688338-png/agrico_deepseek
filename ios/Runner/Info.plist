@@ -66,5 +66,13 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+    <string>Agrico cần camera để chụp ảnh lô đất</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Agrico cần quyền truy cập thư viện ảnh để lưu ảnh</string>
+	<key>UIFileSharingEnabled</key>
+    <true/>
+    <key>LSSupportsOpeningDocumentsInPlace</key>
+    <true/>
 </dict>
 </plist>

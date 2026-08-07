@@ -4,10 +4,10 @@ class FieldModel {
   final String id;
   final String name;
   final double area; // m²
-  final String crop; // loại cây trồng
-  final String status; // Đang trồng, Thu hoạch, Bỏ hoang
-  final List<LatLng> polygon; // tọa độ đa giác (để vẽ ranh giới)
-  final List<String> photoUrls; // danh sách ảnh
+  final String crop;
+  final String status;
+  final List<LatLng> polygon;
+  List<String> photoPaths; // <-- ĐÃ THÊM: danh sách đường dẫn ảnh
 
   FieldModel({
     required this.id,
@@ -16,6 +16,19 @@ class FieldModel {
     required this.crop,
     required this.status,
     this.polygon = const [],
-    this.photoUrls = const [],
+    this.photoPaths = const [], // khởi tạo rỗng
   });
+
+  // Hàm copyWith để cập nhật ảnh
+  FieldModel copyWith({List<String>? photoPaths}) {
+    return FieldModel(
+      id: id,
+      name: name,
+      area: area,
+      crop: crop,
+      status: status,
+      polygon: polygon,
+      photoPaths: photoPaths ?? this.photoPaths,
+    );
+  }
 }
