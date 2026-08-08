@@ -11,6 +11,7 @@ import 'screens/fuel_screen.dart';
 import 'screens/finance_screen.dart';
 import 'screens/ai_chat_screen.dart';
 import 'screens/report_screen.dart';
+import 'screens/task_screen.dart';
 
 // ====== IMPORT WIDGETS ======
 import 'widgets/gradient_button.dart';
@@ -223,6 +224,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     EmployeeListScreen(),
     FuelScreen(),
     FinanceScreen(),
+    TaskScreen(),
     AiChatScreen(),
     ReportScreen(),
     SettingsPage(),
@@ -305,6 +307,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             label: 'Nhiên liệu',
           ),
           BottomNavigationBarItem(icon: Icon(Icons.money), label: 'Tài chính'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.calendar_today),
+            label: 'Công việc',
+          ),
           BottomNavigationBarItem(icon: Icon(Icons.smart_toy), label: 'AI'),
           BottomNavigationBarItem(icon: Icon(Icons.receipt), label: 'Báo cáo'),
           BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Cài đặt'),

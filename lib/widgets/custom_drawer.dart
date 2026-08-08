@@ -9,7 +9,9 @@ class CustomDrawer extends StatelessWidget {
     return Drawer(
       child: Column(
         children: [
-          // Header
+          // ==============================
+          // HEADER
+          // ==============================
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(24),
@@ -25,7 +27,9 @@ class CustomDrawer extends StatelessWidget {
                     color: AppTheme.primaryColor,
                   ),
                 ),
+
                 const SizedBox(height: 12),
+
                 const Text(
                   'Agrico ERP',
                   style: TextStyle(
@@ -34,6 +38,7 @@ class CustomDrawer extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+
                 const Text(
                   'admin@agrico.com',
                   style: TextStyle(color: Colors.white70, fontSize: 14),
@@ -41,7 +46,10 @@ class CustomDrawer extends StatelessWidget {
               ],
             ),
           ),
-          // Menu items
+
+          // ==============================
+          // MENU
+          // ==============================
           Expanded(
             child: ListView(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -52,17 +60,18 @@ class CustomDrawer extends StatelessWidget {
                   title: 'Tổng quan',
                   onTap: () {
                     Navigator.pop(context);
-                    // Điều hướng đến Dashboard
                   },
                 ),
+
                 _buildDrawerItem(
                   context,
-                  icon: Icons.farm,
+                  icon: Icons.agriculture,
                   title: 'Trang trại',
                   onTap: () {
                     Navigator.pop(context);
                   },
                 ),
+
                 _buildDrawerItem(
                   context,
                   icon: Icons.map,
@@ -71,6 +80,7 @@ class CustomDrawer extends StatelessWidget {
                     Navigator.pop(context);
                   },
                 ),
+
                 _buildDrawerItem(
                   context,
                   icon: Icons.warehouse,
@@ -79,6 +89,7 @@ class CustomDrawer extends StatelessWidget {
                     Navigator.pop(context);
                   },
                 ),
+
                 _buildDrawerItem(
                   context,
                   icon: Icons.agriculture,
@@ -87,6 +98,7 @@ class CustomDrawer extends StatelessWidget {
                     Navigator.pop(context);
                   },
                 ),
+
                 _buildDrawerItem(
                   context,
                   icon: Icons.people,
@@ -95,6 +107,7 @@ class CustomDrawer extends StatelessWidget {
                     Navigator.pop(context);
                   },
                 ),
+
                 _buildDrawerItem(
                   context,
                   icon: Icons.local_gas_station,
@@ -103,6 +116,7 @@ class CustomDrawer extends StatelessWidget {
                     Navigator.pop(context);
                   },
                 ),
+
                 _buildDrawerItem(
                   context,
                   icon: Icons.money,
@@ -111,7 +125,9 @@ class CustomDrawer extends StatelessWidget {
                     Navigator.pop(context);
                   },
                 ),
+
                 const Divider(),
+
                 _buildDrawerItem(
                   context,
                   icon: Icons.settings,
@@ -120,6 +136,7 @@ class CustomDrawer extends StatelessWidget {
                     Navigator.pop(context);
                   },
                 ),
+
                 _buildDrawerItem(
                   context,
                   icon: Icons.logout,
@@ -127,12 +144,11 @@ class CustomDrawer extends StatelessWidget {
                   color: Colors.red,
                   onTap: () {
                     Navigator.pop(context);
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const LoginScreen(),
-                      ),
-                    );
+
+                    // Tạm thời quay về màn hình trước.
+                    // Sẽ nối LoginScreen sau khi xác định
+                    // file màn hình đăng nhập của project.
+                    Navigator.of(context).maybePop();
                   },
                 ),
               ],
