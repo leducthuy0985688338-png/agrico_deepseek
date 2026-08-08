@@ -6,6 +6,7 @@ import 'screens/employee_list_screen.dart';
 import 'screens/fuel_screen.dart';
 import 'screens/report_screen.dart';
 import 'screens/finance_screen.dart';
+import 'screens/ai_chat_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -126,8 +127,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     EmployeeListScreen(), // 5: Nhân sự
     FuelScreen(), // 6: Nhiên liệu
     FinanceScreen(), // 7: Tài chính
-    ReportScreen(), // 7: Báo cáo
-    SettingsPage(), // 8: Cài đặt
+    AiChatScreen(), // 8: Trợ lý AI
+    ReportScreen(), // 9: Báo cáo
+    SettingsPage(), // 10: Cài đặt
   ];
 
   @override
@@ -169,6 +171,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             label: 'Nhiên liệu',
           ),
           BottomNavigationBarItem(icon: Icon(Icons.money), label: 'Tài chính'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.smart_toy),
+            label: 'Trợ lý AI',
+          ),
           BottomNavigationBarItem(icon: Icon(Icons.receipt), label: 'Báo cáo'),
           BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Cài đặt'),
         ],
