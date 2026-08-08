@@ -4,9 +4,13 @@ import 'screens/field_list_screen.dart';
 import 'screens/machine_list_screen.dart';
 import 'screens/employee_list_screen.dart';
 import 'screens/fuel_screen.dart';
-import 'screens/report_screen.dart';
 import 'screens/finance_screen.dart';
 import 'screens/ai_chat_screen.dart';
+import 'screens/report_screen.dart';
+import 'providers/dashboard_provider.dart';
+import 'widgets/stat_card_widget.dart';
+import 'widgets/bar_chart_widget.dart';
+import 'widgets/pie_chart_widget.dart';
 
 void main() {
   runApp(const MyApp());
@@ -183,70 +187,282 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-// ---------- TRANG TỔNG QUAN ----------
+/// ---------- TRANG TỔNG QUAN (DASHBOARD) ----------
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: GridView.count(
-        crossAxisCount: 2,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 16,
-        children: const [
-          Card(
-            child: Center(
-              child: Text('Lô đất: 2', style: TextStyle(fontSize: 20)),
-            ),
+    final provider = DashboardProvider();
+    final monthlyData = provider.getMonthlyFinanceData();
+    final costData = provider.getCostDistribution();
+    final machineData = provider.getMachineStatusData();
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ====== TIÊU ĐỀ ======
+          const Text(
+            '📊 Tổng quan trang trại',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
-          Card(
-            child: Center(
-              child: Text('Máy móc: 4', style: TextStyle(fontSize: 20)),
-            ),
+          const SizedBox(height: 12),
+
+          // ====== 4 THẺ THỐNG KÊ ======
+          Row(
+            children: [
+              Expanded(
+                child: StatCardWidget(
+                  title: 'Tổng lô đất',
+                  value: provider.totalFields.toString(),
+                  icon: Icons.map,
+                  color: Colors.blue,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: StatCardWidget(
+                  title: 'Máy móc',
+                  value: provider.totalMachines.toString(),
+                  icon: Icons.agriculture,
+                  color: Colors.orange,
+                ),
+              ),
+            ],
           ),
-          Card(
-            child: Center(
-              child: Text('Nhân viên: 5', style: TextStyle(fontSize: 20)),
-            ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: StatCardWidget(
+                  title: 'Nhân sự',
+                  value: provider.totalEmployees.toString(),
+                  icon: Icons.people,
+                  color: Colors.purple,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: StatCardWidget(
+                  title: 'Lợi nhuận',
+                  value:
+                      '${provider.totalProfit >= 0 ? "+" : ""}${provider.totalProfit ~/ 1000000}tr',
+                  icon: Icons.trending_up,
+                  color: provider.totalProfit >= 0 ? Colors.green : Colors.red,
+                  subtitle: provider.totalProfit >= 0 ? '📈 Tăng' : '📉 Giảm',
+                ),
+              ),
+            ],
           ),
+          const SizedBox(height: 16),
+
+          // ====== BIỂU ĐỒ THU CHI ======
+          BarChartWidget(
+            data: monthlyData,
+            title: '📈 Thu - Chi 6 tháng gần đây',
+            barColor: Colors.green,
+          ),
+          const SizedBox(height: 16),
+
+          // ====== BIỂU ĐỒ PHÂN BỔ CHI PHÍ + TRẠNG THÁI MÁY ======
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: PieChartWidget(
+                  data: costData,
+                  title: '💰 Phân bổ chi phí',
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: PieChartWidget(
+                  data: machineData.map((item) {
+                    return {
+                      'category': item['status'],
+                      'amount': item['count'],
+                    };
+                  }).toList(),
+                  title: '🚜 Tình trạng máy móc',
+                  colors: [Colors.green, Colors.orange, Colors.red],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // ====== THỐNG KÊ NHANH ======
           Card(
-            child: Center(
-              child: Text('Doanh thu: 1.2 tỷ', style: TextStyle(fontSize: 20)),
+            elevation: 2,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '📋 Thống kê nhanh',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildQuickStat(
+                          'Tổng thu',
+                          '${provider.totalRevenue ~/ 1000000}tr',
+                          Icons.arrow_upward,
+                          Colors.green,
+                        ),
+                      ),
+                      Expanded(
+                        child: _buildQuickStat(
+                          'Tổng chi',
+                          '${provider.totalCost ~/ 1000000}tr',
+                          Icons.arrow_downward,
+                          Colors.red,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildQuickStat(
+                          'Tồn kho',
+                          '${_getTotalStock(provider)}',
+                          Icons.inventory,
+                          Colors.blue,
+                        ),
+                      ),
+                      Expanded(
+                        child: _buildQuickStat(
+                          'Nhiên liệu',
+                          '${_getTotalFuel(provider)} L',
+                          Icons.local_gas_station,
+                          Colors.orange,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ],
       ),
     );
   }
+
+  Widget _buildQuickStat(
+    String title,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          Text(title, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+        ],
+      ),
+    );
+  }
+
+  String _getTotalStock(DashboardProvider provider) {
+    // Lấy tổng số lượng tồn kho
+    int total = 0;
+    // Cần lấy từ WarehouseProvider, tạm thời hardcode
+    return '200+';
+  }
+
+  String _getTotalFuel(DashboardProvider provider) {
+    // Lấy tổng nhiên liệu
+    // Tạm thời hardcode
+    return '620';
+  }
 }
 
-// ---------- TRANG TRANG TRẠI ----------
+// ============================================================
+// ====== TRANG TRANG TRẠI ======
+// ============================================================
 class FarmPage extends StatelessWidget {
   const FarmPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: Text(
-        'Danh sách Trang trại (sẽ thêm sau)',
-        style: TextStyle(fontSize: 18),
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.green.shade50, Colors.white],
+        ),
+      ),
+      child: const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.agriculture, size: 80, color: Colors.green),
+            SizedBox(height: 16),
+            Text(
+              'Danh sách Trang trại',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Tính năng đang phát triển',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-// ---------- TRANG CÀI ĐẶT ----------
+// ============================================================
+// ====== TRANG CÀI ĐẶT ======
+// ============================================================
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: Text(
-        'Cài đặt ngôn ngữ, đăng xuất (sẽ thêm sau)',
-        style: TextStyle(fontSize: 18),
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.green.shade50, Colors.white],
+        ),
+      ),
+      child: const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.settings, size: 80, color: Colors.green),
+            SizedBox(height: 16),
+            Text(
+              'Cài đặt',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Ngôn ngữ, đăng xuất, ...',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ],
+        ),
       ),
     );
   }
