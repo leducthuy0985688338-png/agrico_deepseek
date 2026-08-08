@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'theme/app_theme.dart';
+
+// ====== IMPORT CÁC MÀN HÌNH ======
 import 'screens/warehouse_screen.dart';
 import 'screens/field_list_screen.dart';
 import 'screens/machine_list_screen.dart';
@@ -7,15 +11,19 @@ import 'screens/fuel_screen.dart';
 import 'screens/finance_screen.dart';
 import 'screens/ai_chat_screen.dart';
 import 'screens/report_screen.dart';
-import 'providers/dashboard_provider.dart';
-import 'widgets/stat_card_widget.dart';
-import 'widgets/bar_chart_widget.dart';
-import 'widgets/pie_chart_widget.dart';
 
+// ====== IMPORT WIDGETS ======
+import 'widgets/gradient_button.dart';
+
+// ====== IMPORT PROVIDER ======
+import 'providers/dashboard_provider.dart';
+
+// ====== ĐIỂM KHỞI ĐẦU ======
 void main() {
   runApp(const MyApp());
 }
 
+// ====== APP CHÍNH ======
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -23,13 +31,16 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Agrico ERP',
-      theme: ThemeData(primarySwatch: Colors.green, useMaterial3: true),
+      theme: AppTheme.lightTheme,
       home: const LoginScreen(),
+      debugShowCheckedModeBanner: false,
     );
   }
 }
 
-// ---------- MÀN HÌNH ĐĂNG NHẬP ----------
+// ============================================================
+// ====== MÀN HÌNH ĐĂNG NHẬP ======
+// ============================================================
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -41,76 +52,158 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   bool _obscure = true;
+  bool _isLoading = false;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.all(30.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.agriculture, size: 80, color: Colors.green),
-            const SizedBox(height: 20),
-            const Text(
-              'AGRICO ERP',
-              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 40),
-            TextField(
-              controller: emailController,
-              decoration: const InputDecoration(
-                labelText: 'Email / Tên đăng nhập',
-                prefixIcon: Icon(Icons.person),
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: passwordController,
-              obscureText: _obscure,
-              decoration: InputDecoration(
-                labelText: 'Mật khẩu',
-                prefixIcon: const Icon(Icons.lock),
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _obscure ? Icons.visibility : Icons.visibility_off,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [AppTheme.primaryColor.withOpacity(0.1), Colors.white],
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(30.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Logo với animation
+                TweenAnimationBuilder(
+                  duration: const Duration(milliseconds: 800),
+                  tween: Tween<double>(begin: 0, end: 1),
+                  builder: (context, value, child) {
+                    return Transform.scale(
+                      scale: value,
+                      child: Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          gradient: AppTheme.primaryGradient,
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppTheme.primaryColor.withOpacity(0.3),
+                              blurRadius: 30,
+                              offset: const Offset(0, 10),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.agriculture,
+                          size: 64,
+                          color: Colors.white,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'AGRICO ERP',
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.primaryColor,
                   ),
-                  onPressed: () => setState(() => _obscure = !_obscure),
                 ),
-                border: const OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 30),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const DashboardScreen(),
+                const Text(
+                  'Quản lý nông nghiệp thông minh',
+                  style: TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+                const SizedBox(height: 40),
+                // Email field
+                TextField(
+                  controller: emailController,
+                  decoration: const InputDecoration(
+                    labelText: 'Email / Tên đăng nhập',
+                    prefixIcon: Icon(
+                      Icons.person,
+                      color: AppTheme.primaryColor,
                     ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                    hintText: 'admin@agrico.com',
+                  ),
                 ),
-                child: const Text('ĐĂNG NHẬP', style: TextStyle(fontSize: 18)),
-              ),
+                const SizedBox(height: 16),
+                // Password field
+                TextField(
+                  controller: passwordController,
+                  obscureText: _obscure,
+                  decoration: InputDecoration(
+                    labelText: 'Mật khẩu',
+                    prefixIcon: const Icon(
+                      Icons.lock,
+                      color: AppTheme.primaryColor,
+                    ),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscure ? Icons.visibility : Icons.visibility_off,
+                        color: Colors.grey,
+                      ),
+                      onPressed: () => setState(() => _obscure = !_obscure),
+                    ),
+                    hintText: '••••••••',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () {},
+                    child: const Text(
+                      'Quên mật khẩu?',
+                      style: TextStyle(color: AppTheme.primaryColor),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                // Nút đăng nhập gradient
+                GradientButton(
+                  label: 'ĐĂNG NHẬP',
+                  onPressed: () {
+                    setState(() => _isLoading = true);
+                    Future.delayed(const Duration(seconds: 1), () {
+                      setState(() => _isLoading = false);
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const DashboardScreen(),
+                        ),
+                      );
+                    });
+                  },
+                  isLoading: _isLoading,
+                  icon: Icons.login,
+                ),
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    '💡 (Nhấn nút để vào Demo, không cần mật khẩu)',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 20),
-            const Text('(Nhấn nút để vào Demo, không cần mật khẩu)'),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-// ---------- MÀN HÌNH CHÍNH (DASHBOARD) ----------
+// ============================================================
+// ====== MÀN HÌNH CHÍNH (DASHBOARD) ======
+// ============================================================
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -121,39 +214,76 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
 
-  // Danh sách các trang theo đúng thứ tự
   static const List<Widget> _pages = [
-    HomePage(), // 0: Tổng quan
-    FarmPage(), // 1: Trang trại
-    FieldListScreen(), // 2: Lô đất
-    WarehouseScreen(), // 3: Kho
-    MachineListScreen(), // 4: Máy móc
-    EmployeeListScreen(), // 5: Nhân sự
-    FuelScreen(), // 6: Nhiên liệu
-    FinanceScreen(), // 7: Tài chính
-    AiChatScreen(), // 8: Trợ lý AI
-    ReportScreen(), // 9: Báo cáo
-    SettingsPage(), // 10: Cài đặt
+    HomePage(),
+    FarmPage(),
+    FieldListScreen(),
+    WarehouseScreen(),
+    MachineListScreen(),
+    EmployeeListScreen(),
+    FuelScreen(),
+    FinanceScreen(),
+    AiChatScreen(),
+    ReportScreen(),
+    SettingsPage(),
   ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Agrico ERP'),
-        backgroundColor: Colors.green,
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.agriculture,
+                color: AppTheme.primaryColor,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Text(
+              'Agrico ERP',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        backgroundColor: AppTheme.primaryColor,
         foregroundColor: Colors.white,
+        elevation: 0,
+        actions: [
+          IconButton(
+            onPressed: () {},
+            icon: const Icon(Icons.notifications_none),
+          ),
+          const CircleAvatar(
+            radius: 16,
+            backgroundColor: Colors.white,
+            child: Text(
+              'A',
+              style: TextStyle(
+                color: AppTheme.primaryColor,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: _pages[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         type: BottomNavigationBarType.fixed,
-        selectedItemColor: Colors.green,
-        onTap: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
+        selectedItemColor: AppTheme.primaryColor,
+        unselectedItemColor: Colors.grey,
+        showUnselectedLabels: true,
+        onTap: (index) => setState(() => _selectedIndex = index),
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.dashboard),
@@ -175,10 +305,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             label: 'Nhiên liệu',
           ),
           BottomNavigationBarItem(icon: Icon(Icons.money), label: 'Tài chính'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.smart_toy),
-            label: 'Trợ lý AI',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.smart_toy), label: 'AI'),
           BottomNavigationBarItem(icon: Icon(Icons.receipt), label: 'Báo cáo'),
           BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Cài đặt'),
         ],
@@ -187,9 +314,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-/// ---------- TRANG TỔNG QUAN (DASHBOARD) ----------
+// ============================================================
+// ====== TRANG TỔNG QUAN (DASHBOARD) ======
+// ============================================================
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
+
+  // ====== MÀU SẮC CHO BIỂU ĐỒ TRÒN (SỬA LỖI) ======
+  static const List<Color> _costColors = [
+    Colors.blue,
+    Colors.green,
+    Colors.orange,
+    Colors.red,
+    Colors.purple,
+  ];
+
+  static const List<Color> _machineColors = [
+    Colors.green,
+    Colors.orange,
+    Colors.red,
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -203,31 +347,76 @@ class HomePage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ====== TIÊU ĐỀ ======
-          const Text(
-            '📊 Tổng quan trang trại',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          // Header chào mừng
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: AppTheme.primaryGradient,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.waving_hand, color: Colors.white, size: 32),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Chào buổi sáng! 👋',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        'Hôm nay là ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.calendar_today,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
 
-          // ====== 4 THẺ THỐNG KÊ ======
+          // 4 thẻ thống kê
           Row(
             children: [
               Expanded(
-                child: StatCardWidget(
-                  title: 'Tổng lô đất',
-                  value: provider.totalFields.toString(),
-                  icon: Icons.map,
-                  color: Colors.blue,
+                child: _buildStatCard(
+                  'Tổng lô đất',
+                  provider.totalFields.toString(),
+                  Icons.map,
+                  Colors.blue,
+                  '${provider.totalFields} lô',
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: StatCardWidget(
-                  title: 'Máy móc',
-                  value: provider.totalMachines.toString(),
-                  icon: Icons.agriculture,
-                  color: Colors.orange,
+                child: _buildStatCard(
+                  'Máy móc',
+                  provider.totalMachines.toString(),
+                  Icons.agriculture,
+                  Colors.orange,
+                  '${provider.totalMachines} máy',
                 ),
               ),
             ],
@@ -236,66 +425,203 @@ class HomePage extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: StatCardWidget(
-                  title: 'Nhân sự',
-                  value: provider.totalEmployees.toString(),
-                  icon: Icons.people,
-                  color: Colors.purple,
+                child: _buildStatCard(
+                  'Nhân sự',
+                  provider.totalEmployees.toString(),
+                  Icons.people,
+                  Colors.purple,
+                  '${provider.totalEmployees} người',
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: StatCardWidget(
-                  title: 'Lợi nhuận',
-                  value:
-                      '${provider.totalProfit >= 0 ? "+" : ""}${provider.totalProfit ~/ 1000000}tr',
-                  icon: Icons.trending_up,
-                  color: provider.totalProfit >= 0 ? Colors.green : Colors.red,
-                  subtitle: provider.totalProfit >= 0 ? '📈 Tăng' : '📉 Giảm',
+                child: _buildStatCard(
+                  'Lợi nhuận',
+                  '${provider.totalProfit >= 0 ? "+" : ""}${provider.totalProfit ~/ 1000000}tr',
+                  Icons.trending_up,
+                  provider.totalProfit >= 0 ? Colors.green : Colors.red,
+                  provider.totalProfit >= 0 ? '📈 Tăng' : '📉 Giảm',
                 ),
               ),
             ],
           ),
           const SizedBox(height: 16),
 
-          // ====== BIỂU ĐỒ THU CHI ======
-          BarChartWidget(
-            data: monthlyData,
-            title: '📈 Thu - Chi 6 tháng gần đây',
-            barColor: Colors.green,
+          // Biểu đồ cột Thu - Chi
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '📈 Thu - Chi 6 tháng gần đây',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 200,
+                    child: BarChart(
+                      BarChartData(
+                        alignment: BarChartAlignment.spaceAround,
+                        maxY: _getMaxY(monthlyData),
+                        barTouchData: BarTouchData(
+                          enabled: true,
+                          touchTooltipData: BarTouchTooltipData(
+                            getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                              final item = monthlyData[groupIndex];
+                              final value = rod.toY;
+                              final label = rodIndex == 0 ? 'Thu' : 'Chi';
+                              return BarTooltipItem(
+                                '${item['month']}\n$label: ${value.toStringAsFixed(1)}tr',
+                                const TextStyle(color: Colors.white),
+                              );
+                            },
+                          ),
+                        ),
+                        titlesData: FlTitlesData(
+                          show: true,
+                          bottomTitles: AxisTitles(
+                            sideTitles: SideTitles(
+                              showTitles: true,
+                              getTitlesWidget: (value, meta) {
+                                final index = value.toInt();
+                                if (index < monthlyData.length) {
+                                  return Text(
+                                    monthlyData[index]['month'] ?? '',
+                                    style: const TextStyle(fontSize: 10),
+                                  );
+                                }
+                                return const Text('');
+                              },
+                            ),
+                          ),
+                          leftTitles: AxisTitles(
+                            sideTitles: SideTitles(showTitles: false),
+                          ),
+                          topTitles: AxisTitles(
+                            sideTitles: SideTitles(showTitles: false),
+                          ),
+                          rightTitles: AxisTitles(
+                            sideTitles: SideTitles(showTitles: false),
+                          ),
+                        ),
+                        gridData: FlGridData(show: true),
+                        borderData: FlBorderData(show: false),
+                        groupsSpace: 20,
+                        barGroups: _getBarGroups(monthlyData),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildLegendItem('Thu', Colors.green),
+                      const SizedBox(width: 20),
+                      _buildLegendItem('Chi', Colors.red),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ),
           const SizedBox(height: 16),
 
-          // ====== BIỂU ĐỒ PHÂN BỔ CHI PHÍ + TRẠNG THÁI MÁY ======
+          // 2 biểu đồ tròn
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: PieChartWidget(
-                  data: costData,
-                  title: '💰 Phân bổ chi phí',
+                child: Card(
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '💰 Phân bổ chi phí',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          height: 140,
+                          child: PieChart(
+                            PieChartData(
+                              sections: _getPieSections(costData, _costColors),
+                              sectionsSpace: 2,
+                              centerSpaceRadius: 30,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        ..._buildPieLegend(costData, _costColors),
+                      ],
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: PieChartWidget(
-                  data: machineData.map((item) {
-                    return {
-                      'category': item['status'],
-                      'amount': item['count'],
-                    };
-                  }).toList(),
-                  title: '🚜 Tình trạng máy móc',
-                  colors: [Colors.green, Colors.orange, Colors.red],
+                child: Card(
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '🚜 Tình trạng máy móc',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          height: 140,
+                          child: PieChart(
+                            PieChartData(
+                              sections: _getPieSections(
+                                machineData,
+                                _machineColors,
+                              ),
+                              sectionsSpace: 2,
+                              centerSpaceRadius: 30,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        ..._buildPieLegend(machineData, _machineColors),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 16),
 
-          // ====== THỐNG KÊ NHANH ======
+          // Thống kê nhanh
           Card(
             elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -332,7 +658,7 @@ class HomePage extends StatelessWidget {
                       Expanded(
                         child: _buildQuickStat(
                           'Tồn kho',
-                          '${_getTotalStock(provider)}',
+                          '200+',
                           Icons.inventory,
                           Colors.blue,
                         ),
@@ -340,7 +666,7 @@ class HomePage extends StatelessWidget {
                       Expanded(
                         child: _buildQuickStat(
                           'Nhiên liệu',
-                          '${_getTotalFuel(provider)} L',
+                          '620 L',
                           Icons.local_gas_station,
                           Colors.orange,
                         ),
@@ -351,11 +677,86 @@ class HomePage extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: 16),
+
+          // Cảnh báo
+          if (provider.totalProfit < 0)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red.shade200),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.warning, color: Colors.red),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '⚠️ Cảnh báo: Lợi nhuận đang âm! Cần kiểm tra lại chi phí.',
+                      style: TextStyle(color: Colors.red.shade700),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 16),
         ],
       ),
     );
   }
 
+  // ====== THẺ THỐNG KÊ ======
+  Widget _buildStatCard(
+    String title,
+    String value,
+    IconData icon,
+    Color color,
+    String subtitle,
+  ) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(icon, color: color, size: 18),
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              value,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              overflow: TextOverflow.ellipsis,
+            ),
+            Text(
+              title,
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ====== THỐNG KÊ NHANH ======
   Widget _buildQuickStat(
     String title,
     String value,
@@ -363,14 +764,14 @@ class HomePage extends StatelessWidget {
     Color color,
   ) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Column(
         children: [
           Icon(icon, color: color, size: 20),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           Text(
             value,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
           ),
           Text(title, style: const TextStyle(fontSize: 10, color: Colors.grey)),
         ],
@@ -378,17 +779,128 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  String _getTotalStock(DashboardProvider provider) {
-    // Lấy tổng số lượng tồn kho
-    int total = 0;
-    // Cần lấy từ WarehouseProvider, tạm thời hardcode
-    return '200+';
+  // ====== CHÚ THÍCH BIỂU ĐỒ ======
+  Widget _buildLegendItem(String label, Color color) {
+    return Row(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(label, style: const TextStyle(fontSize: 11)),
+      ],
+    );
   }
 
-  String _getTotalFuel(DashboardProvider provider) {
-    // Lấy tổng nhiên liệu
-    // Tạm thời hardcode
-    return '620';
+  // ====== TẠO DỮ LIỆU CHO BIỂU ĐỒ CỘT ======
+  List<BarChartGroupData> _getBarGroups(List<Map<String, dynamic>> data) {
+    final groups = <BarChartGroupData>[];
+    for (int i = 0; i < data.length; i++) {
+      final item = data[i];
+      groups.add(
+        BarChartGroupData(
+          x: i,
+          barRods: [
+            BarChartRodData(
+              toY: (item['revenue'] ?? 0).toDouble(),
+              color: Colors.green,
+              width: 10,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(4),
+              ),
+            ),
+            BarChartRodData(
+              toY: (item['cost'] ?? 0).toDouble(),
+              color: Colors.red,
+              width: 10,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(4),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return groups;
+  }
+
+  // ====== LẤY MAX Y CHO BIỂU ĐỒ ======
+  double _getMaxY(List<Map<String, dynamic>> data) {
+    double max = 0;
+    for (var item in data) {
+      final revenue = item['revenue'] ?? 0;
+      final cost = item['cost'] ?? 0;
+      if (revenue > max) max = revenue;
+      if (cost > max) max = cost;
+    }
+    return max + 5;
+  }
+
+  // ====== TẠO DỮ LIỆU CHO BIỂU ĐỒ TRÒN ======
+  List<PieChartSectionData> _getPieSections(
+    List<Map<String, dynamic>> data,
+    List<Color> colors,
+  ) {
+    final total = data.fold(0.0, (sum, item) => sum + (item['amount'] ?? 0));
+    if (total == 0) return [];
+    return data.asMap().entries.map((entry) {
+      final index = entry.key;
+      final item = entry.value;
+      final percentage = (item['amount'] / total * 100);
+      return PieChartSectionData(
+        color: colors[index % colors.length],
+        value: item['amount'],
+        title: '${percentage.toStringAsFixed(0)}%',
+        radius: 40,
+        titleStyle: const TextStyle(
+          fontSize: 9,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+        ),
+      );
+    }).toList();
+  }
+
+  // ====== TẠO CHÚ THÍCH CHO BIỂU ĐỒ TRÒN ======
+  List<Widget> _buildPieLegend(
+    List<Map<String, dynamic>> data,
+    List<Color> colors,
+  ) {
+    final widgets = <Widget>[];
+    for (int i = 0; i < data.length; i++) {
+      final item = data[i];
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 1),
+          child: Row(
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: colors[i % colors.length],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  '${item['category']} (${(item['amount'] ?? 0).toStringAsFixed(1)})',
+                  style: const TextStyle(fontSize: 10),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return widgets;
   }
 }
 
