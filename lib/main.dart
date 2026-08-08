@@ -5,6 +5,7 @@ import 'screens/machine_list_screen.dart';
 import 'screens/employee_list_screen.dart';
 import 'screens/fuel_screen.dart';
 import 'screens/report_screen.dart';
+import 'screens/finance_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -124,6 +125,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     MachineListScreen(), // 4: Máy móc
     EmployeeListScreen(), // 5: Nhân sự
     FuelScreen(), // 6: Nhiên liệu
+    FinanceScreen(), // 7: Tài chính
     ReportScreen(), // 7: Báo cáo
     SettingsPage(), // 8: Cài đặt
   ];
@@ -166,6 +168,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             icon: Icon(Icons.local_gas_station),
             label: 'Nhiên liệu',
           ),
+          BottomNavigationBarItem(icon: Icon(Icons.money), label: 'Tài chính'),
           BottomNavigationBarItem(icon: Icon(Icons.receipt), label: 'Báo cáo'),
           BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Cài đặt'),
         ],
