@@ -38,10 +38,9 @@ class _FieldMapScreenState extends State<FieldMapScreen> {
         animation: _provider,
         builder: (context, _) {
           final fields = _provider.fields.where((f) => f.polygon.length >= 3).toList();
-          final selected = _selectedId == null
-              ? null
-              : _provider.getFieldById(_selectedId!);
+          final selected = _selectedId == null ? null : _provider.getFieldById(_selectedId!);
           final center = _centerFor(fields, selected);
+          final totalArea = _provider.fields.fold<double>(0, (sum, f) => sum + f.area);
 
           return Stack(
             children: [
@@ -90,7 +89,7 @@ class _FieldMapScreenState extends State<FieldMapScreen> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            '${fields.length} thửa có ranh giới • ${_provider.fields.fold<double>(0, (sum, f) => sum + f.area) / 10000 .toStringAsFixed(2)} ha',
+                            '${fields.length} thửa có ranh giới • ${(totalArea / 10000).toStringAsFixed(2)} ha',
                             style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
                         ),
@@ -138,9 +137,7 @@ class _FieldMapScreenState extends State<FieldMapScreen> {
   }
 
   LatLng _centerFor(List<FieldModel> fields, FieldModel? selected) {
-    if (selected != null && selected.polygon.length >= 3) {
-      return _centroid(selected.polygon);
-    }
+    if (selected != null && selected.polygon.length >= 3) return _centroid(selected.polygon);
     if (fields.isNotEmpty) return _centroid(fields.first.polygon);
     return const LatLng(16.55, 104.75);
   }
