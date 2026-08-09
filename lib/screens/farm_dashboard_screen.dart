@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/field_model.dart';
 import '../providers/dashboard_provider.dart';
 import '../providers/field_provider.dart';
 import 'field_list_screen.dart';
