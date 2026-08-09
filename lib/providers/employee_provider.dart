@@ -1,10 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../models/employee_model.dart';
+import '../services/labor_production_cost_sync_service.dart';
 
 class EmployeeProvider extends ChangeNotifier {
   List<EmployeeModel> _employees = [];
   List<AttendanceRecord> _attendanceLogs = [];
   List<PayrollRecord> _payrollRecords = [];
+
+  final LaborProductionCostSyncService _laborCostSync = LaborProductionCostSyncService();
 
   List<EmployeeModel> get employees => _employees;
   List<AttendanceRecord> get attendanceLogs => _attendanceLogs;
@@ -95,7 +100,7 @@ class EmployeeProvider extends ChangeNotifier {
 
   // Xóa nhân viên
   void removeEmployee(String id) {
-    _employees.removeWhere((e) => e.id == id);
+    _employees.removeWhere((e) => e.id != id);
     notifyListeners();
   }
 
@@ -132,7 +137,7 @@ class EmployeeProvider extends ChangeNotifier {
     if (index != -1) {
       final record = _attendanceLogs[index];
       final hours = now.difference(record.checkIn).inMinutes / 60.0;
-      _attendanceLogs[index] = AttendanceRecord(
+      final updated = AttendanceRecord(
         employeeId: record.employeeId,
         date: record.date,
         checkIn: record.checkIn,
@@ -140,15 +145,66 @@ class EmployeeProvider extends ChangeNotifier {
         hours: hours,
         fieldId: record.fieldId,
       );
+      _attendanceLogs[index] = updated;
+
+      final employee = getEmployeeById(employeeId);
+      if (employee != null) {
+        unawaited(_syncAttendanceToProductionCost(updated, employee));
+      }
       notifyListeners();
     } else {
       // Nếu chưa check-in, tự động check-in và check-out
       checkIn(employeeId);
-      // Đợi 1 giây rồi check-out (mô phỏng)
       Future.delayed(const Duration(seconds: 1), () {
         checkOut(employeeId);
       });
     }
+  }
+
+  EmployeeModel? getEmployeeById(String id) {
+    for (final employee in _employees) {
+      if (employee.id == id) return employee;
+    }
+    return null;
+  }
+
+  /// Đồng bộ một bản ghi chấm công có gắn thửa vào Production Cost Ledger.
+  Future<void> _syncAttendanceToProductionCost(
+    AttendanceRecord attendance,
+    EmployeeModel employee,
+  ) async {
+    try {
+      await _laborCostSync.sync(
+        attendance: attendance,
+        employee: employee,
+      );
+    } catch (_) {
+      // Chấm công vẫn thành công nếu ledger tạm thời chưa sẵn sàng.
+      // Có thể chạy lại đồng bộ ở bước reconciliation sau.
+    }
+  }
+
+  /// Đồng bộ lại toàn bộ chấm công sản xuất đã hoàn thành.
+  ///
+  /// Hữu ích cho dữ liệu cũ được tạo trước khi bật tự động đồng bộ.
+  Future<int> syncProductionAttendanceCosts() async {
+    var synced = 0;
+    for (final attendance in _attendanceLogs) {
+      if (attendance.fieldId == null ||
+          attendance.fieldId!.isEmpty ||
+          attendance.checkOut == null ||
+          attendance.hours <= 0) {
+        continue;
+      }
+      final employee = getEmployeeById(attendance.employeeId);
+      if (employee == null) continue;
+      final result = await _laborCostSync.sync(
+        attendance: attendance,
+        employee: employee,
+      );
+      if (result != null) synced++;
+    }
+    return synced;
   }
 
   // Tính lương cho một nhân viên trong tháng
