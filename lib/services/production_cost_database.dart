@@ -79,10 +79,26 @@ class ProductionCostDatabase {
 
   Future<void> upsert(ProductionCostModel record) async {
     final db = await database;
+    var id = record.id;
+
+    // Keep a stable local id when a source transaction is synchronized again.
+    if (record.source != null && record.sourceId != null) {
+      final existing = await db.query(
+        _table,
+        columns: ['id'],
+        where: 'source = ? AND source_id = ?',
+        whereArgs: [record.source, record.sourceId],
+        limit: 1,
+      );
+      if (existing.isNotEmpty) {
+        id = existing.first['id'] as String;
+      }
+    }
+
     await db.insert(
       _table,
       {
-        'id': record.id,
+        'id': id,
         'field_id': record.fieldId,
         'season_id': record.seasonId,
         'category': record.category.key,
