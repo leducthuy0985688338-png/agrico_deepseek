@@ -3,31 +3,38 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 class FieldModel {
   final String id;
   final String name;
-  final double area; // m²
+  final double area;
   final String crop;
   final String status;
   final List<LatLng> polygon;
-  List<String> photoPaths; // <-- ĐÃ THÊM: danh sách đường dẫn ảnh
+  final List<String> photoPaths;
 
-  FieldModel({
+  const FieldModel({
     required this.id,
     required this.name,
     required this.area,
     required this.crop,
     required this.status,
     this.polygon = const [],
-    this.photoPaths = const [], // khởi tạo rỗng
+    this.photoPaths = const [],
   });
 
-  // Hàm copyWith để cập nhật ảnh
-  FieldModel copyWith({List<String>? photoPaths}) {
+  FieldModel copyWith({
+    String? id,
+    String? name,
+    double? area,
+    String? crop,
+    String? status,
+    List<LatLng>? polygon,
+    List<String>? photoPaths,
+  }) {
     return FieldModel(
-      id: id,
-      name: name,
-      area: area,
-      crop: crop,
-      status: status,
-      polygon: polygon,
+      id: id ?? this.id,
+      name: name ?? this.name,
+      area: area ?? this.area,
+      crop: crop ?? this.crop,
+      status: status ?? this.status,
+      polygon: polygon ?? this.polygon,
       photoPaths: photoPaths ?? this.photoPaths,
     );
   }
