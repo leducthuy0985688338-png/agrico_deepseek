@@ -5,6 +5,7 @@ import '../models/field_model.dart';
 import '../providers/field_provider.dart';
 import 'field_detail_screen.dart';
 import 'field_gps_measure_screen.dart';
+import 'field_manual_measure_screen.dart';
 
 class FieldMapScreen extends StatefulWidget {
   const FieldMapScreen({super.key});
@@ -18,6 +19,20 @@ class _FieldMapScreenState extends State<FieldMapScreen> {
   GoogleMapController? _controller;
   String? _selectedId;
 
+  Future<void> _openManualMeasurement() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const FieldManualMeasureScreen()),
+    );
+  }
+
+  Future<void> _openGpsMeasurement() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const FieldGpsMeasureScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -25,11 +40,13 @@ class _FieldMapScreenState extends State<FieldMapScreen> {
         title: const Text('Bản đồ trang trại'),
         actions: [
           IconButton(
-            tooltip: 'Đo thửa mới',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const FieldGpsMeasureScreen()),
-            ),
+            tooltip: 'Đo thủ công trên bản đồ',
+            onPressed: _openManualMeasurement,
+            icon: const Icon(Icons.edit_location_alt),
+          ),
+          IconButton(
+            tooltip: 'Đo thửa bằng GPS',
+            onPressed: _openGpsMeasurement,
             icon: const Icon(Icons.gps_fixed),
           ),
         ],
@@ -55,9 +72,7 @@ class _FieldMapScreenState extends State<FieldMapScreen> {
                       polygonId: PolygonId(field.id),
                       points: field.polygon,
                       strokeWidth: field.id == _selectedId ? 4 : 2,
-                      fillColor: Colors.green.withValues(
-                        alpha: field.id == _selectedId ? 0.30 : 0.16,
-                      ),
+                      fillColor: Colors.green.withValues(alpha: field.id == _selectedId ? 0.30 : 0.16),
                       consumeTapEvents: true,
                       onTap: () => _selectField(field),
                     ),
@@ -98,6 +113,50 @@ class _FieldMapScreenState extends State<FieldMapScreen> {
                   ),
                 ),
               ),
+              Positioned(
+                right: 12,
+                bottom: selected == null ? 18 : 92,
+                child: FloatingActionButton.extended(
+                  heroTag: 'map-tools',
+                  onPressed: () => showModalBottomSheet<void>(
+                    context: context,
+                    showDragHandle: true,
+                    builder: (_) => SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const ListTile(
+                              leading: Icon(Icons.straighten),
+                              title: Text('Công cụ đo'),
+                              subtitle: Text('Đo thửa và khoảng cách trực tiếp trên bản đồ'),
+                            ),
+                            ListTile(
+                              leading: const Icon(Icons.edit_location_alt),
+                              title: const Text('Vẽ thửa thủ công'),
+                              onTap: () {
+                                Navigator.pop(context);
+                                _openManualMeasurement();
+                              },
+                            ),
+                            ListTile(
+                              leading: const Icon(Icons.gps_fixed),
+                              title: const Text('Đo thửa bằng GPS'),
+                              onTap: () {
+                                Navigator.pop(context);
+                                _openGpsMeasurement();
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  icon: const Icon(Icons.straighten),
+                  label: const Text('Công cụ đo'),
+                ),
+              ),
               if (selected != null)
                 Positioned(
                   left: 12,
@@ -108,15 +167,11 @@ class _FieldMapScreenState extends State<FieldMapScreen> {
                       child: ListTile(
                         leading: const CircleAvatar(child: Icon(Icons.grass)),
                         title: Text(selected.name),
-                        subtitle: Text(
-                          '${selected.area.toStringAsFixed(1)} m² • ${selected.crop} • ${selected.status}',
-                        ),
+                        subtitle: Text('${selected.area.toStringAsFixed(1)} m² • ${selected.crop} • ${selected.status}'),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () => Navigator.push(
                           context,
-                          MaterialPageRoute(
-                            builder: (_) => FieldDetailScreen(field: selected),
-                          ),
+                          MaterialPageRoute(builder: (_) => FieldDetailScreen(field: selected)),
                         ),
                       ),
                     ),
@@ -131,9 +186,7 @@ class _FieldMapScreenState extends State<FieldMapScreen> {
 
   void _selectField(FieldModel field) {
     setState(() => _selectedId = field.id);
-    _controller?.animateCamera(
-      CameraUpdate.newLatLngZoom(_centroid(field.polygon), 17),
-    );
+    _controller?.animateCamera(CameraUpdate.newLatLngZoom(_centroid(field.polygon), 17));
   }
 
   LatLng _centerFor(List<FieldModel> fields, FieldModel? selected) {
