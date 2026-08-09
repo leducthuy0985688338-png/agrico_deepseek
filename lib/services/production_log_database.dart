@@ -6,7 +6,7 @@ import '../models/production_log_model.dart';
 
 class ProductionLogDatabase {
   static const _dbName = 'agrico.db';
-  static const _version = 3;
+  static const _version = 4;
   static const _table = 'production_logs';
   Database? _db;
 
@@ -16,10 +16,9 @@ class ProductionLogDatabase {
     _db = await openDatabase(
       p.join(dir.path, _dbName),
       version: _version,
-      onUpgrade: (db, oldVersion, newVersion) async {
-        if (oldVersion < 3) await _createTable(db);
-      },
+      onUpgrade: (db, oldVersion, newVersion) async => _createTable(db),
       onCreate: (db, version) async => _createTable(db),
+      onOpen: (db) async => _createTable(db),
     );
     return _db!;
   }
