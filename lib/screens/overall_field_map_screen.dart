@@ -16,6 +16,8 @@ class OverallFieldMapScreen extends StatefulWidget {
   State<OverallFieldMapScreen> createState() => _OverallFieldMapScreenState();
 }
 
+enum _MapLayer { crop, status, measurement }
+
 class _OverallFieldMapScreenState extends State<OverallFieldMapScreen> {
   final _provider = FieldProvider();
   final _searchController = TextEditingController();
@@ -23,6 +25,7 @@ class _OverallFieldMapScreenState extends State<OverallFieldMapScreen> {
   String? _selectedId;
   String _cropFilter = 'Tất cả';
   String _statusFilter = 'Tất cả';
+  _MapLayer _layer = _MapLayer.crop;
 
   @override
   void dispose() {
@@ -42,12 +45,73 @@ class _OverallFieldMapScreenState extends State<OverallFieldMapScreen> {
     }).toList(growable: false);
   }
 
+  Color _fieldColor(FieldModel field) {
+    if (_selectedId == field.id) return Colors.amber;
+    if (_layer == _MapLayer.measurement) {
+      switch (field.measurementMethod) {
+        case 'gps':
+          return Colors.blue;
+        case 'manual':
+          return Colors.orange;
+        default:
+          return Colors.grey;
+      }
+    }
+    if (_layer == _MapLayer.status) return _statusColor(field.status);
+    return _cropColor(field.crop);
+  }
+
+  Color _statusColor(String status) {
+    final value = status.toLowerCase();
+    if (value.contains('đang') || value.contains('sản xuất') || value.contains('trồng')) return Colors.green;
+    if (value.contains('thu hoạch') || value.contains('hoàn')) return Colors.blue;
+    if (value.contains('nghỉ') || value.contains('trống')) return Colors.orange;
+    return Colors.grey;
+  }
+
+  Color _cropColor(String crop) {
+    final palette = <Color>[
+      Colors.green,
+      Colors.blue,
+      Colors.orange,
+      Colors.purple,
+      Colors.teal,
+      Colors.indigo,
+    ];
+    var hash = 0;
+    for (final code in crop.codeUnits) {
+      hash = (hash * 31 + code) & 0x7fffffff;
+    }
+    return crop.isEmpty ? Colors.grey : palette[hash % palette.length];
+  }
+
+  String get _layerLabel {
+    switch (_layer) {
+      case _MapLayer.crop:
+        return 'Cây trồng';
+      case _MapLayer.status:
+        return 'Trạng thái';
+      case _MapLayer.measurement:
+        return 'Phương pháp đo';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Bản đồ tổng thể AGRICO'),
         actions: [
+          IconButton(
+            tooltip: 'Thống kê trang trại',
+            onPressed: _showStatistics,
+            icon: const Icon(Icons.analytics_outlined),
+          ),
+          IconButton(
+            tooltip: 'Lớp bản đồ',
+            onPressed: _showLayers,
+            icon: const Icon(Icons.layers_outlined),
+          ),
           IconButton(
             tooltip: 'Bộ lọc',
             onPressed: _showFilters,
@@ -86,9 +150,7 @@ class _OverallFieldMapScreenState extends State<OverallFieldMapScreen> {
           final fields = _filtered(allFields)
               .where((field) => field.polygon.length >= 3)
               .toList(growable: false);
-          final selected = _selectedId == null
-              ? null
-              : _provider.getFieldById(_selectedId!);
+          final selected = _selectedId == null ? null : _provider.getFieldById(_selectedId!);
           final totalArea = fields.fold<double>(0, (sum, field) => sum + field.area);
           final center = selected != null
               ? _centroid(selected.polygon)
@@ -111,10 +173,8 @@ class _OverallFieldMapScreenState extends State<OverallFieldMapScreen> {
                       polygonId: PolygonId(field.id),
                       points: field.polygon,
                       strokeWidth: field.id == _selectedId ? 5 : 2,
-                      strokeColor: field.id == _selectedId ? Colors.yellow : Colors.green,
-                      fillColor: field.id == _selectedId
-                          ? Colors.yellow.withValues(alpha: 0.30)
-                          : Colors.green.withValues(alpha: 0.16),
+                      strokeColor: _fieldColor(field),
+                      fillColor: _fieldColor(field).withValues(alpha: field.id == _selectedId ? .32 : .18),
                       consumeTapEvents: true,
                       onTap: () => _selectField(field),
                     ),
@@ -181,6 +241,10 @@ class _OverallFieldMapScreenState extends State<OverallFieldMapScreen> {
                                 style: const TextStyle(fontWeight: FontWeight.w600),
                               ),
                             ),
+                            Chip(
+                              avatar: Icon(Icons.layers, size: 16, color: _fieldColor(fields.isEmpty ? const FieldModel(id: '', name: '', area: 0, crop: '', status: '') : fields.first)),
+                              label: Text(_layerLabel),
+                            ),
                             TextButton.icon(
                               onPressed: fields.isEmpty ? null : () => _fitAll(fields),
                               icon: const Icon(Icons.fit_screen, size: 18),
@@ -221,10 +285,10 @@ class _OverallFieldMapScreenState extends State<OverallFieldMapScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          _LegendDot(color: Colors.green, label: 'Thửa'),
-                          SizedBox(width: 10),
-                          _LegendDot(color: Colors.yellow, label: 'Đang chọn'),
+                        children: [
+                          Icon(Icons.layers, size: 15, color: Colors.green),
+                          const SizedBox(width: 5),
+                          Text('Lớp: $_layerLabel', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                         ],
                       ),
                     ),
@@ -239,7 +303,7 @@ class _OverallFieldMapScreenState extends State<OverallFieldMapScreen> {
                   child: SafeArea(
                     child: Card(
                       child: ListTile(
-                        leading: const CircleAvatar(child: Icon(Icons.grass)),
+                        leading: CircleAvatar(backgroundColor: _fieldColor(selected), child: const Icon(Icons.grass, color: Colors.white)),
                         title: Text(selected.name),
                         subtitle: Text(
                           '${selected.area.toStringAsFixed(1)} m² • ${selected.crop} • ${selected.status}\n${selected.perimeter.toStringAsFixed(1)} m • ${selected.measurementMethod}',
@@ -252,9 +316,7 @@ class _OverallFieldMapScreenState extends State<OverallFieldMapScreen> {
                               tooltip: 'Chỉnh ranh',
                               onPressed: () => Navigator.push(
                                 context,
-                                MaterialPageRoute(
-                                  builder: (_) => FieldPolygonEditScreen(field: selected),
-                                ),
+                                MaterialPageRoute(builder: (_) => FieldPolygonEditScreen(field: selected)),
                               ),
                               icon: const Icon(Icons.edit),
                             ),
@@ -278,8 +340,91 @@ class _OverallFieldMapScreenState extends State<OverallFieldMapScreen> {
 
   void _selectField(FieldModel field) {
     setState(() => _selectedId = field.id);
-    _controller?.animateCamera(
-      CameraUpdate.newLatLngZoom(_centroid(field.polygon), 17),
+    _controller?.animateCamera(CameraUpdate.newLatLngZoom(_centroid(field.polygon), 17));
+  }
+
+  Future<void> _showLayers() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Lớp dữ liệu bản đồ', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              RadioListTile<_MapLayer>(
+                value: _MapLayer.crop,
+                groupValue: _layer,
+                title: const Text('🌱 Cây trồng'),
+                subtitle: const Text('Màu thửa theo loại cây trồng'),
+                onChanged: (value) { if (value != null) { setState(() => _layer = value); Navigator.pop(sheetContext); } },
+              ),
+              RadioListTile<_MapLayer>(
+                value: _MapLayer.status,
+                groupValue: _layer,
+                title: const Text('🚜 Trạng thái sản xuất'),
+                subtitle: const Text('Màu thửa theo tình trạng sản xuất'),
+                onChanged: (value) { if (value != null) { setState(() => _layer = value); Navigator.pop(sheetContext); } },
+              ),
+              RadioListTile<_MapLayer>(
+                value: _MapLayer.measurement,
+                groupValue: _layer,
+                title: const Text('📐 Phương pháp đo'),
+                subtitle: const Text('GPS / thủ công / chưa xác định'),
+                onChanged: (value) { if (value != null) { setState(() => _layer = value); Navigator.pop(sheetContext); } },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showStatistics() async {
+    final fields = _filtered(_provider.fields).where((f) => f.polygon.length >= 3).toList(growable: false);
+    final totalArea = fields.fold<double>(0, (sum, f) => sum + f.area);
+    final cropArea = <String, double>{};
+    final statusArea = <String, double>{};
+    for (final field in fields) {
+      cropArea[field.crop.isEmpty ? 'Chưa xác định' : field.crop] = (cropArea[field.crop.isEmpty ? 'Chưa xác định' : field.crop] ?? 0) + field.area;
+      statusArea[field.status.isEmpty ? 'Chưa xác định' : field.status] = (statusArea[field.status.isEmpty ? 'Chưa xác định' : field.status] ?? 0) + field.area;
+    }
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: .65,
+        maxChildSize: .9,
+        builder: (_, scrollController) => ListView(
+          controller: scrollController,
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 30),
+          children: [
+            const Text('Thống kê trang trại', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(child: _StatBox(icon: Icons.grid_view, label: 'Số thửa', value: '${fields.length}')),
+                const SizedBox(width: 8),
+                Expanded(child: _StatBox(icon: Icons.landscape, label: 'Diện tích', value: '${(totalArea / 10000).toStringAsFixed(2)} ha')),
+              ],
+            ),
+            const SizedBox(height: 18),
+            const Text('Diện tích theo cây trồng', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            ...cropArea.entries.map((entry) => _AreaRow(label: entry.key, area: entry.value, total: totalArea, color: _cropColor(entry.key))),
+            const SizedBox(height: 18),
+            const Text('Diện tích theo trạng thái', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            ...statusArea.entries.map((entry) => _AreaRow(label: entry.key, area: entry.value, total: totalArea, color: _statusColor(entry.key))),
+          ],
+        ),
+      ),
     );
   }
 
@@ -305,11 +450,7 @@ class _OverallFieldMapScreenState extends State<OverallFieldMapScreen> {
                   value: _cropFilter,
                   isExpanded: true,
                   items: crops.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-                  onChanged: (value) {
-                    if (value == null) return;
-                    setSheetState(() => _cropFilter = value);
-                    setState(() {});
-                  },
+                  onChanged: (value) { if (value == null) return; setSheetState(() => _cropFilter = value); setState(() {}); },
                 ),
                 const SizedBox(height: 8),
                 const Text('Trạng thái'),
@@ -317,21 +458,14 @@ class _OverallFieldMapScreenState extends State<OverallFieldMapScreen> {
                   value: _statusFilter,
                   isExpanded: true,
                   items: statuses.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-                  onChanged: (value) {
-                    if (value == null) return;
-                    setSheetState(() => _statusFilter = value);
-                    setState(() {});
-                  },
+                  onChanged: (value) { if (value == null) return; setSheetState(() => _statusFilter = value); setState(() {}); },
                 ),
                 const SizedBox(height: 8),
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
                     onPressed: () {
-                      setState(() {
-                        _cropFilter = 'Tất cả';
-                        _statusFilter = 'Tất cả';
-                      });
+                      setState(() { _cropFilter = 'Tất cả'; _statusFilter = 'Tất cả'; });
                       Navigator.pop(sheetContext);
                     },
                     icon: const Icon(Icons.filter_alt_off),
@@ -364,23 +498,12 @@ class _OverallFieldMapScreenState extends State<OverallFieldMapScreen> {
       if (point.longitude < minLng) minLng = point.longitude;
       if (point.longitude > maxLng) maxLng = point.longitude;
     }
-    if ((maxLat - minLat).abs() < 0.0001) {
-      minLat -= 0.001;
-      maxLat += 0.001;
-    }
-    if ((maxLng - minLng).abs() < 0.0001) {
-      minLng -= 0.001;
-      maxLng += 0.001;
-    }
-    _controller!.animateCamera(
-      CameraUpdate.newLatLngBounds(
-        LatLngBounds(
-          southwest: LatLng(minLat, minLng),
-          northeast: LatLng(maxLat, maxLng),
-        ),
-        70,
-      ),
-    );
+    if ((maxLat - minLat).abs() < 0.0001) { minLat -= 0.001; maxLat += 0.001; }
+    if ((maxLng - minLng).abs() < 0.0001) { minLng -= 0.001; maxLng += 0.001; }
+    _controller!.animateCamera(CameraUpdate.newLatLngBounds(
+      LatLngBounds(southwest: LatLng(minLat, minLng), northeast: LatLng(maxLat, maxLng)),
+      70,
+    ));
   }
 
   LatLng _centroid(List<LatLng> points) {
@@ -391,21 +514,46 @@ class _OverallFieldMapScreenState extends State<OverallFieldMapScreen> {
   }
 }
 
-class _LegendDot extends StatelessWidget {
-  final Color color;
+class _StatBox extends StatelessWidget {
+  final IconData icon;
   final String label;
+  final String value;
+  const _StatBox({required this.icon, required this.label, required this.value});
 
-  const _LegendDot({required this.color, required this.label});
+  @override
+  Widget build(BuildContext context) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              CircleAvatar(child: Icon(icon)),
+              const SizedBox(width: 10),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label), Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))])),
+            ],
+          ),
+        ),
+      );
+}
+
+class _AreaRow extends StatelessWidget {
+  final String label;
+  final double area;
+  final double total;
+  final Color color;
+  const _AreaRow({required this.label, required this.area, required this.total, required this.color});
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(width: 12, height: 12, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-        const SizedBox(width: 5),
-        Text(label, style: const TextStyle(fontSize: 12)),
-      ],
+    final ratio = total <= 0 ? 0.0 : (area / total).clamp(0.0, 1.0);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Column(
+        children: [
+          Row(children: [Container(width: 12, height: 12, decoration: BoxDecoration(color: color, shape: BoxShape.circle)), const SizedBox(width: 8), Expanded(child: Text(label)), Text('${(area / 10000).toStringAsFixed(2)} ha')]),
+          const SizedBox(height: 4),
+          LinearProgressIndicator(value: ratio, minHeight: 5),
+        ],
+      ),
     );
   }
 }
