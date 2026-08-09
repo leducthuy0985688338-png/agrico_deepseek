@@ -77,11 +77,21 @@ class ProductionCostDatabase {
     return rows.map(_fromRow).toList(growable: false);
   }
 
+  Future<ProductionCostModel?> getBySource(String source, String sourceId) async {
+    final db = await database;
+    final rows = await db.query(
+      _table,
+      where: 'source = ? AND source_id = ?',
+      whereArgs: [source, sourceId],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : _fromRow(rows.first);
+  }
+
   Future<void> upsert(ProductionCostModel record) async {
     final db = await database;
     var id = record.id;
 
-    // Keep a stable local id when a source transaction is synchronized again.
     if (record.source != null && record.sourceId != null) {
       final existing = await db.query(
         _table,
