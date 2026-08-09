@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../providers/dashboard_provider.dart';
 import '../providers/field_provider.dart';
+import 'field_list_screen.dart';
+import 'overall_field_map_screen.dart';
+import 'report_screen.dart';
 
 class FarmDashboardScreen extends StatefulWidget {
   const FarmDashboardScreen({super.key});
@@ -26,6 +29,11 @@ class _FarmDashboardScreenState extends State<FarmDashboardScreen> {
     if (amount.abs() >= 1000000) return '${(amount / 1000000).toStringAsFixed(2)} triệu';
     return '${amount.toStringAsFixed(0)} đ';
   }
+
+  void _open(Widget screen) => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => screen),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -53,9 +61,12 @@ class _FarmDashboardScreenState extends State<FarmDashboardScreen> {
             final status = field.status.isEmpty ? 'Chưa xác định' : field.status;
             statuses[status] = (statuses[status] ?? 0) + 1;
           }
+
           final revenue = _dashboard.totalRevenue.toDouble();
           final cost = _dashboard.totalCost.toDouble();
           final profit = _dashboard.totalProfit.toDouble();
+          final margin = revenue > 0 ? profit / revenue : 0.0;
+          final averageCostPerHa = areaHa > 0 ? cost / areaHa : 0.0;
           final topFields = _dashboard.getTopFieldsByProfit(limit: 5);
           final highCost = _dashboard.getHighestCostFields(limit: 5);
 
@@ -67,7 +78,9 @@ class _FarmDashboardScreenState extends State<FarmDashboardScreen> {
               children: [
                 const Text('Tổng quan hôm nay', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
-                const Text('Toàn bộ chỉ số đất, sản xuất và tài chính trên một màn hình.'),
+                const Text('Trung tâm điều hành đất, sản xuất và tài chính của AGRICO.'),
+                const SizedBox(height: 16),
+                _QuickActions(onOpen: _open),
                 const SizedBox(height: 16),
                 GridView.count(
                   crossAxisCount: 2,
@@ -86,6 +99,19 @@ class _FarmDashboardScreenState extends State<FarmDashboardScreen> {
                   ],
                 ),
                 const SizedBox(height: 20),
+                _SectionCard(
+                  title: '💰 Hiệu quả tài chính',
+                  child: Column(
+                    children: [
+                      _FinanceMetric(label: 'Doanh thu', value: _money(revenue), icon: Icons.arrow_upward),
+                      _FinanceMetric(label: 'Tổng chi phí', value: _money(cost), icon: Icons.arrow_downward),
+                      _FinanceMetric(label: 'Lợi nhuận', value: _money(profit), icon: Icons.account_balance_wallet),
+                      _FinanceMetric(label: 'Chi phí bình quân/ha', value: _money(averageCostPerHa), icon: Icons.price_check),
+                      _FinanceMetric(label: 'Biên lợi nhuận', value: '${(margin * 100).toStringAsFixed(1)}%', icon: Icons.percent),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
                 _SectionCard(
                   title: '🌱 Cơ cấu diện tích cây trồng',
                   child: crops.isEmpty
@@ -107,7 +133,7 @@ class _FarmDashboardScreenState extends State<FarmDashboardScreen> {
                 ),
                 const SizedBox(height: 12),
                 _SectionCard(
-                  title: '💰 Hiệu quả theo thửa',
+                  title: '🏆 Top thửa theo lợi nhuận/ha',
                   child: topFields.isEmpty
                       ? const Text('Chưa có báo cáo tài chính theo thửa.')
                       : Column(children: topFields.map((row) => _FieldFinanceRow(row: row)).toList()),
@@ -125,6 +151,45 @@ class _FarmDashboardScreenState extends State<FarmDashboardScreen> {
         },
       ),
     );
+  }
+}
+
+class _QuickActions extends StatelessWidget {
+  final void Function(Widget screen) onOpen;
+  const _QuickActions({required this.onOpen});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('⚡ Trung tâm thao tác', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _ActionButton(icon: Icons.grid_view, label: 'Danh sách thửa', onTap: () => onOpen(const FieldListScreen())),
+              _ActionButton(icon: Icons.map, label: 'Bản đồ tổng thể', onTap: () => onOpen(const OverallFieldMapScreen())),
+              _ActionButton(icon: Icons.assessment, label: 'Báo cáo', onTap: () => onOpen(const ReportScreen())),
+            ],
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const _ActionButton({required this.icon, required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(onPressed: onTap, icon: Icon(icon, size: 18), label: Text(label));
   }
 }
 
@@ -148,6 +213,24 @@ class _KpiCard extends StatelessWidget {
           Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         ]),
       ),
+    );
+  }
+}
+
+class _FinanceMetric extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  const _FinanceMetric({required this.label, required this.value, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      dense: true,
+      leading: CircleAvatar(radius: 17, child: Icon(icon, size: 17)),
+      title: Text(label),
+      trailing: Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
     );
   }
 }
