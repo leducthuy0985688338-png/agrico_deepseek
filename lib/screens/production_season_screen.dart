@@ -8,6 +8,7 @@ import '../widgets/season_economics_card.dart';
 import 'harvest_screen.dart';
 import 'production_cost_screen.dart';
 import 'production_log_screen.dart';
+import 'season_comparison_screen.dart';
 
 class ProductionSeasonScreen extends StatefulWidget {
   final FieldModel field;
@@ -70,6 +71,15 @@ class _ProductionSeasonScreenState extends State<ProductionSeasonScreen> {
         MaterialPageRoute(builder: (_) => ProductionCostScreen(season: season)),
       );
 
+  void _openComparison(List<ProductionSeasonModel> seasons) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SeasonComparisonScreen(field: widget.field, seasons: seasons),
+      ),
+    );
+  }
+
   void _openSeason(ProductionSeasonModel season) {
     showModalBottomSheet<void>(
       context: context,
@@ -118,7 +128,9 @@ class _ProductionSeasonScreenState extends State<ProductionSeasonScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Vụ sản xuất • ${widget.field.name}')),
+      appBar: AppBar(
+        title: Text('Vụ sản xuất • ${widget.field.name}'),
+      ),
       body: AnimatedBuilder(
         animation: _provider,
         builder: (context, _) {
@@ -146,51 +158,75 @@ class _ProductionSeasonScreenState extends State<ProductionSeasonScreen> {
             );
           }
 
-          return ListView.builder(
+          return ListView(
             padding: const EdgeInsets.all(12),
-            itemCount: seasons.length,
-            itemBuilder: (context, index) {
-              final season = seasons[index];
-              return Card(
-                margin: const EdgeInsets.only(bottom: 12),
+            children: [
+              Card(
                 child: Padding(
                   padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
                     children: [
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const CircleAvatar(child: Icon(Icons.grass)),
-                        title: Text(season.name),
-                        subtitle: Text(
-                          '${season.crop} • ${season.variety}\n'
-                          'Bắt đầu: ${_date(season.startDate)} • ${season.status}',
-                        ),
-                        isThreeLine: true,
-                        onTap: () => _openSeason(season),
-                        trailing: PopupMenuButton<String>(
-                          onSelected: (value) {
-                            if (value == 'costs') _openCosts(season);
-                            if (value == 'logs') _openLogs(season);
-                            if (value == 'harvest') _openHarvest(season);
-                            if (value == 'delete') _deleteSeason(season);
-                          },
-                          itemBuilder: (_) => const [
-                            PopupMenuItem(value: 'costs', child: Text('Chi phí sản xuất')),
-                            PopupMenuItem(value: 'logs', child: Text('Nhật ký sản xuất')),
-                            PopupMenuItem(value: 'harvest', child: Text('Thu hoạch')),
-                            PopupMenuItem(value: 'delete', child: Text('Xóa vụ')),
+                      const Icon(Icons.compare_arrows, size: 28),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('So sánh hiệu quả các vụ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            SizedBox(height: 3),
+                            Text('So sánh sản lượng, năng suất, doanh thu, chi phí và lợi nhuận/ha.'),
                           ],
                         ),
                       ),
-                      ProductionDashboardCard(season: season),
-                      const SizedBox(height: 8),
-                      SeasonEconomicsCard(season: season),
+                      FilledButton.tonal(
+                        onPressed: () => _openComparison(seasons),
+                        child: const Text('So sánh'),
+                      ),
                     ],
                   ),
                 ),
-              );
-            },
+              ),
+              const SizedBox(height: 8),
+              ...seasons.map((season) => Card(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: const CircleAvatar(child: Icon(Icons.grass)),
+                            title: Text(season.name),
+                            subtitle: Text(
+                              '${season.crop} • ${season.variety}\n'
+                              'Bắt đầu: ${_date(season.startDate)} • ${season.status}',
+                            ),
+                            isThreeLine: true,
+                            onTap: () => _openSeason(season),
+                            trailing: PopupMenuButton<String>(
+                              onSelected: (value) {
+                                if (value == 'costs') _openCosts(season);
+                                if (value == 'logs') _openLogs(season);
+                                if (value == 'harvest') _openHarvest(season);
+                                if (value == 'delete') _deleteSeason(season);
+                              },
+                              itemBuilder: (_) => const [
+                                PopupMenuItem(value: 'costs', child: Text('Chi phí sản xuất')),
+                                PopupMenuItem(value: 'logs', child: Text('Nhật ký sản xuất')),
+                                PopupMenuItem(value: 'harvest', child: Text('Thu hoạch')),
+                                PopupMenuItem(value: 'delete', child: Text('Xóa vụ')),
+                              ],
+                            ),
+                          ),
+                          ProductionDashboardCard(season: season),
+                          const SizedBox(height: 8),
+                          SeasonEconomicsCard(season: season),
+                        ],
+                      ),
+                    ),
+                  )),
+            ],
           );
         },
       ),
