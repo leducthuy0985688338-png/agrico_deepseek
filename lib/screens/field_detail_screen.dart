@@ -6,6 +6,7 @@ import '../models/field_model.dart';
 import '../providers/field_provider.dart';
 import '../providers/machine_provider.dart';
 import '../widgets/photo_gallery.dart';
+import 'field_edit_screen.dart';
 import 'field_gps_measure_screen.dart';
 import 'machine_assignment_screen.dart';
 
@@ -39,13 +40,11 @@ class _FieldDetailScreenState extends State<FieldDetailScreen> {
       serviceEnabled = await _location.requestService();
       if (!serviceEnabled) return;
     }
-
     var permission = await _location.hasPermission();
     if (permission == PermissionStatus.denied) {
       permission = await _location.requestPermission();
       if (permission != PermissionStatus.granted) return;
     }
-
     final locationData = await _location.getLocation();
     if (!mounted) return;
     setState(() => _currentLocation = locationData);
@@ -73,6 +72,14 @@ class _FieldDetailScreenState extends State<FieldDetailScreen> {
     return const LatLng(16.55, 104.75);
   }
 
+  Future<void> _editField() async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => FieldEditScreen(field: _field)),
+    );
+    if (changed == true && mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final center = _mapCenter();
@@ -85,6 +92,11 @@ class _FieldDetailScreenState extends State<FieldDetailScreen> {
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            tooltip: 'Sửa thông tin',
+            onPressed: _editField,
+            icon: const Icon(Icons.edit),
+          ),
           IconButton(
             tooltip: 'Đo/cập nhật thửa',
             onPressed: () => Navigator.push(
@@ -137,22 +149,13 @@ class _FieldDetailScreenState extends State<FieldDetailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    _field.name,
-                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                  ),
+                  Text(_field.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      _InfoChip(
-                        icon: Icons.square_foot,
-                        label: '${_field.area.toStringAsFixed(1)} m²',
-                      ),
+                      _InfoChip(icon: Icons.square_foot, label: '${_field.area.toStringAsFixed(1)} m²'),
                       const SizedBox(width: 8),
-                      _InfoChip(
-                        icon: Icons.landscape,
-                        label: '${(_field.area / 10000).toStringAsFixed(3)} ha',
-                      ),
+                      _InfoChip(icon: Icons.landscape, label: '${(_field.area / 10000).toStringAsFixed(3)} ha'),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -161,28 +164,18 @@ class _FieldDetailScreenState extends State<FieldDetailScreen> {
                   Text('Số điểm ranh: ${_field.polygon.length}'),
                   const Divider(height: 28),
                   if (machines.isNotEmpty) ...[
-                    const Text(
-                      'Máy móc đang làm trên lô',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
+                    const Text('Máy móc đang làm trên lô', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
-                    ...machines.map(
-                      (machine) => Card(
-                        child: ListTile(
-                          leading: const Icon(Icons.agriculture, color: Colors.green),
-                          title: Text(machine.name),
-                          subtitle: Text(
-                            '${machine.type} • ${machine.status} • ${machine.totalHours}h',
-                          ),
-                        ),
+                    ...machines.map((machine) => Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.agriculture, color: Colors.green),
+                        title: Text(machine.name),
+                        subtitle: Text('${machine.type} • ${machine.status} • ${machine.totalHours}h'),
                       ),
-                    ),
+                    )),
                     const SizedBox(height: 8),
                   ],
-                  PhotoGallery(
-                    photoPaths: _field.photoPaths,
-                    onAddPhoto: _addPhoto,
-                  ),
+                  PhotoGallery(photoPaths: _field.photoPaths, onAddPhoto: _addPhoto),
                   const SizedBox(height: 20),
                   Row(
                     children: [
@@ -190,9 +183,7 @@ class _FieldDetailScreenState extends State<FieldDetailScreen> {
                         child: ElevatedButton.icon(
                           onPressed: () => Navigator.push(
                             context,
-                            MaterialPageRoute(
-                              builder: (_) => const MachineAssignmentScreen(),
-                            ),
+                            MaterialPageRoute(builder: (_) => const MachineAssignmentScreen()),
                           ).then((_) {
                             if (mounted) setState(() {});
                           }),
@@ -240,9 +231,7 @@ class _FieldDetailScreenState extends State<FieldDetailScreen> {
   }
 
   void _comingSoon(String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$feature sẽ được tích hợp vào module sản xuất.')),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$feature sẽ được tích hợp vào module sản xuất.')));
   }
 
   void _showMachineLogDialog() {
@@ -279,18 +268,13 @@ class _FieldDetailScreenState extends State<FieldDetailScreen> {
                     return ListTile(
                       leading: const Icon(Icons.history, color: Colors.orange),
                       title: Text(log['machineName'] as String),
-                      subtitle: Text(
-                        '${log['hoursWorked']}h • ${log['fuelUsed']}L • ${log['operator']}',
-                      ),
+                      subtitle: Text('${log['hoursWorked']}h • ${log['fuelUsed']}L • ${log['operator']}'),
                     );
                   },
                 ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Đóng'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Đóng')),
         ],
       ),
     );
@@ -304,7 +288,5 @@ class _InfoChip extends StatelessWidget {
   const _InfoChip({required this.icon, required this.label});
 
   @override
-  Widget build(BuildContext context) {
-    return Chip(avatar: Icon(icon, size: 18), label: Text(label));
-  }
+  Widget build(BuildContext context) => Chip(avatar: Icon(icon, size: 18), label: Text(label));
 }
