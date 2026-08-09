@@ -4,6 +4,7 @@ import 'package:location/location.dart';
 
 import '../models/field_model.dart';
 import '../models/finance_model.dart';
+import '../models/task_model.dart';
 import '../providers/field_provider.dart';
 import '../providers/machine_provider.dart';
 import '../providers/finance_provider.dart';
