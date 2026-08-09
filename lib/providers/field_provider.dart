@@ -57,6 +57,7 @@ class FieldProvider extends ChangeNotifier {
   void addField(FieldModel field) {
     _fields = [..._fields, field];
     _persistField(field);
+    _recordMeasurement(field);
     notifyListeners();
   }
 
@@ -65,6 +66,7 @@ class FieldProvider extends ChangeNotifier {
     if (index == -1) return;
     _fields[index] = updated;
     _persistField(updated);
+    _recordMeasurement(updated);
     notifyListeners();
   }
 
@@ -74,6 +76,11 @@ class FieldProvider extends ChangeNotifier {
     try { await _storage.deleteField(id); } catch (_) {}
     try { await CloudService.initialize(); await CloudService.deleteField(id); } catch (_) {}
     notifyListeners();
+  }
+
+  Future<void> _recordMeasurement(FieldModel field) async {
+    if (field.polygon.length < 3 || field.measurementMethod == 'unknown') return;
+    try { await _storage.recordMeasurement(field); } catch (_) {}
   }
 
   Future<void> _persistField(FieldModel field) async {
