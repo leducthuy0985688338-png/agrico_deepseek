@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/fuel_model.dart';
+import '../services/fuel_production_cost_sync_service.dart';
 
 class FuelProvider extends ChangeNotifier {
   List<FuelModel> _fuels = [];
@@ -78,6 +79,7 @@ class FuelProvider extends ChangeNotifier {
         date: DateTime.now().subtract(const Duration(hours: 5)),
         type: TransactionType.XUAT,
         quantity: 50,
+        price: 25000,
         machineId: 'M001',
         machineName: 'Máy cày Yanmar',
         fieldId: 'LO0001',
@@ -95,6 +97,7 @@ class FuelProvider extends ChangeNotifier {
         date: DateTime.now().subtract(const Duration(hours: 3)),
         type: TransactionType.XUAT,
         quantity: 30,
+        price: 25000,
         machineId: 'M004',
         machineName: 'Máy kéo John Deere',
         fieldId: 'LO0002',
@@ -108,7 +111,6 @@ class FuelProvider extends ChangeNotifier {
     _updateStockFromTransactions();
   }
 
-  // Cập nhật tồn kho từ các giao dịch
   void _updateStockFromTransactions() {
     for (var fuel in _fuels) {
       double totalIn = 0;
@@ -126,7 +128,6 @@ class FuelProvider extends ChangeNotifier {
     }
   }
 
-  // Nhập nhiên liệu
   void importFuel(
     String fuelId,
     double quantity,
@@ -151,7 +152,10 @@ class FuelProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Xuất nhiên liệu cho máy
+  /// Xuất nhiên liệu cho máy.
+  ///
+  /// `seasonId` là tùy chọn để không phá vỡ các luồng gọi cũ. Nếu không có,
+  /// hệ thống tự lấy vụ sản xuất mới nhất của `fieldId` khi đồng bộ chi phí.
   void exportFuelToMachine({
     required String fuelId,
     required double quantity,
@@ -159,6 +163,7 @@ class FuelProvider extends ChangeNotifier {
     required String machineName,
     String? fieldId,
     String? fieldName,
+    String? seasonId,
     String? operatorName,
     String? note,
   }) {
@@ -175,65 +180,70 @@ class FuelProvider extends ChangeNotifier {
       date: DateTime.now(),
       type: TransactionType.XUAT,
       quantity: quantity,
+      price: fuel.unitPrice,
       machineId: machineId,
       machineName: machineName,
       fieldId: fieldId,
       fieldName: fieldName,
+      seasonId: seasonId,
       operatorName: operatorName,
       note: note,
     );
 
     _allTransactions.add(transaction);
     fuel.stock -= quantity;
+
+    // Không chặn UI; giao dịch đã được ghi nhận cục bộ trước.
+    // Sync service tự bỏ qua nếu chưa có field/vụ phù hợp.
+    _syncProductionCost(transaction);
     notifyListeners();
   }
 
-  // Lấy danh sách giao dịch theo nhiên liệu
+  Future<void> _syncProductionCost(FuelTransaction transaction) async {
+    try {
+      await FuelProductionCostSyncService().sync(transaction);
+    } catch (_) {
+      // Chi phí được đồng bộ lại từ source transaction ở lần sau.
+      // Không để lỗi ledger làm hỏng thao tác xuất nhiên liệu.
+    }
+  }
+
   List<FuelTransaction> getTransactionsByFuel(String fuelId) {
     return _allTransactions.where((t) => t.fuelId == fuelId).toList()
       ..sort((a, b) => b.date.compareTo(a.date));
   }
 
-  // Lấy danh sách giao dịch theo máy
   List<FuelTransaction> getTransactionsByMachine(String machineId) {
     return _allTransactions.where((t) => t.machineId == machineId).toList()
       ..sort((a, b) => b.date.compareTo(a.date));
   }
 
-  // Lấy danh sách giao dịch theo lô đất
   List<FuelTransaction> getTransactionsByField(String fieldId) {
     return _allTransactions.where((t) => t.fieldId == fieldId).toList()
       ..sort((a, b) => b.date.compareTo(a.date));
   }
 
-  // Lấy tổng nhiên liệu tiêu thụ của một máy
   double getTotalFuelByMachine(String machineId) {
     return _allTransactions
-        .where(
-          (t) => t.machineId == machineId && t.type == TransactionType.XUAT,
-        )
+        .where((t) => t.machineId == machineId && t.type == TransactionType.XUAT)
         .fold(0, (sum, t) => sum + t.quantity);
   }
 
-  // Lấy tổng nhiên liệu tiêu thụ trên một lô
   double getTotalFuelByField(String fieldId) {
     return _allTransactions
         .where((t) => t.fieldId == fieldId && t.type == TransactionType.XUAT)
         .fold(0, (sum, t) => sum + t.quantity);
   }
 
-  // Lấy tổng giá trị tồn kho
   double getTotalStockValue() {
     return _fuels.fold(0, (sum, f) => sum + (f.stock * f.unitPrice));
   }
 
-  // Thêm nhiên liệu mới
   void addFuel(FuelModel fuel) {
     _fuels.add(fuel);
     notifyListeners();
   }
 
-  // Xóa nhiên liệu
   void removeFuel(String id) {
     _fuels.removeWhere((f) => f.id == id);
     notifyListeners();
