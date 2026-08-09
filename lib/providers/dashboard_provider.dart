@@ -55,4 +55,30 @@ class DashboardProvider extends ChangeNotifier {
   List<Map<String, dynamic>> getInventoryData() => _warehouseProvider.items.map((item) => {'name': item.name, 'stock': item.stock, 'unit': item.unit}).toList();
 
   List<Map<String, dynamic>> getProfitByFieldData() => _financeProvider.generateProfitReport().map((report) => {'field': report.fieldName, 'profit': report.profit / 1000000, 'profitMargin': report.profitMargin}).toList();
+
+  List<Map<String, dynamic>> getTopFieldsByProfit({int limit = 5}) {
+    final rows = _financeProvider.generateProfitReport().map((report) {
+      final field = _fieldProvider.getFieldById(report.fieldId);
+      final areaHa = (field?.area ?? 0) / 10000;
+      return {
+        'fieldId': report.fieldId,
+        'field': report.fieldName,
+        'profit': report.profit,
+        'revenue': report.totalRevenue,
+        'cost': report.totalCost,
+        'profitMargin': report.profitMargin,
+        'areaHa': areaHa,
+        'profitPerHa': areaHa > 0 ? report.profit / areaHa : 0.0,
+        'costPerHa': areaHa > 0 ? report.totalCost / areaHa : 0.0,
+      };
+    }).toList();
+    rows.sort((a, b) => (b['profitPerHa'] as double).compareTo(a['profitPerHa'] as double));
+    return rows.take(limit).toList();
+  }
+
+  List<Map<String, dynamic>> getHighestCostFields({int limit = 5}) {
+    final rows = getTopFieldsByProfit(limit: 999999);
+    rows.sort((a, b) => (b['costPerHa'] as double).compareTo(a['costPerHa'] as double));
+    return rows.take(limit).toList();
+  }
 }
