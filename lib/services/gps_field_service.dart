@@ -7,56 +7,31 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 /// used by the field measurement workflow.
 class GpsFieldService {
   Future<bool> ensureLocationReady() async {
-    if (!await Geolocator.isLocationServiceEnabled()) {
-      return false;
-    }
-
+    if (!await Geolocator.isLocationServiceEnabled()) return false;
     var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-
-    return permission == LocationPermission.whileInUse ||
-        permission == LocationPermission.always;
+    if (permission == LocationPermission.denied) permission = await Geolocator.requestPermission();
+    return permission == LocationPermission.whileInUse || permission == LocationPermission.always;
   }
 
   Future<Position?> getCurrentPosition() async {
     if (!await ensureLocationReady()) return null;
-
-    return Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 2,
-      ),
-    );
+    return Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
   }
 
-  Stream<Position> positionStream() {
-    return Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 2,
-      ),
-    );
-  }
+  Stream<Position> positionStream() => Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 2),
+      );
 
-  /// Returns polygon area in square metres using a local tangent-plane
-  /// approximation. Suitable for normal farm plots and avoids map projection
-  /// dependencies.
   double calculateAreaSquareMeters(List<LatLng> points) {
     if (points.length < 3) return 0;
-
-    final lat0 = points.map((p) => p.latitude).reduce((a, b) => a + b) /
-        points.length;
+    final lat0 = points.map((p) => p.latitude).reduce((a, b) => a + b) / points.length;
     const earthRadius = 6371000.0;
     final cosLat = math.cos(_toRadians(lat0));
-
     final xy = points.map((p) {
       final x = earthRadius * _toRadians(p.longitude) * cosLat;
       final y = earthRadius * _toRadians(p.latitude);
       return (x, y);
     }).toList();
-
     var sum = 0.0;
     for (var i = 0; i < xy.length; i++) {
       final j = (i + 1) % xy.length;
@@ -67,16 +42,10 @@ class GpsFieldService {
 
   double calculatePerimeterMeters(List<LatLng> points) {
     if (points.length < 2) return 0;
-
     var total = 0.0;
     for (var i = 0; i < points.length; i++) {
       final next = (i + 1) % points.length;
-      total += Geolocator.distanceBetween(
-        points[i].latitude,
-        points[i].longitude,
-        points[next].latitude,
-        points[next].longitude,
-      );
+      total += Geolocator.distanceBetween(points[i].latitude, points[i].longitude, points[next].latitude, points[next].longitude);
     }
     return total;
   }
