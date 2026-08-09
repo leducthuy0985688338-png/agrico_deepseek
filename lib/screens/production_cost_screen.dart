@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/production_cost_model.dart';
 import '../models/production_season_model.dart';
 import '../providers/production_cost_provider.dart';
+import 'production_cost_dashboard_screen.dart';
 
 class ProductionCostScreen extends StatefulWidget {
   final ProductionSeasonModel season;
@@ -53,7 +54,21 @@ class _ProductionCostScreenState extends State<ProductionCostScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Chi phí • ${widget.season.name}')),
+      appBar: AppBar(
+        title: Text('Chi phí • ${widget.season.name}'),
+        actions: [
+          IconButton(
+            tooltip: 'Dashboard giá thành',
+            icon: const Icon(Icons.analytics_outlined),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ProductionCostDashboardScreen(season: widget.season),
+              ),
+            ),
+          ),
+        ],
+      ),
       body: AnimatedBuilder(
         animation: _provider,
         builder: (context, _) {
