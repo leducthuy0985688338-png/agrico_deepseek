@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/distance_measurement.dart';
@@ -13,11 +14,8 @@ class FieldStorageService {
   static const _migrationKey = 'agrico_fields_sqlite_migrated_v1';
 
   final FieldDatabase _database;
-  final FirebaseFirestore _firestore;
 
-  FieldStorageService({FieldDatabase? database, FirebaseFirestore? firestore})
-      : _database = database ?? FieldDatabase(),
-        _firestore = firestore ?? FirebaseFirestore.instance;
+  FieldStorageService({FieldDatabase? database}) : _database = database ?? FieldDatabase();
 
   Future<List<FieldModel>> loadFields() async {
     final prefs = await SharedPreferences.getInstance();
@@ -47,7 +45,8 @@ class FieldStorageService {
 
   Future<void> saveDistanceMeasurement(DistanceMeasurement measurement) async {
     await _database.addDistanceMeasurement(measurement);
-    await _firestore.collection('distance_measurements').doc(measurement.id).set({
+    await _ensureFirebase();
+    await FirebaseFirestore.instance.collection('distance_measurements').doc(measurement.id).set({
       'points': measurement.points.map((p) => {'lat': p.latitude, 'lng': p.longitude}).toList(growable: false),
       'segmentDistances': measurement.segmentDistances,
       'totalDistance': measurement.totalDistance,
@@ -60,7 +59,14 @@ class FieldStorageService {
 
   Future<void> deleteDistanceMeasurement(String id) async {
     await _database.deleteDistanceMeasurement(id);
-    await _firestore.collection('distance_measurements').doc(id).delete();
+    await _ensureFirebase();
+    await FirebaseFirestore.instance.collection('distance_measurements').doc(id).delete();
+  }
+
+  Future<void> _ensureFirebase() async {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp();
+    }
   }
 
   Future<void> _migrateLegacyData(SharedPreferences prefs) async {
