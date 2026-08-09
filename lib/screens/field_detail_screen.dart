@@ -7,11 +7,15 @@ import '../models/finance_model.dart';
 import '../providers/field_provider.dart';
 import '../providers/machine_provider.dart';
 import '../providers/finance_provider.dart';
+import '../providers/fuel_provider.dart';
+import '../providers/task_provider.dart';
 import '../widgets/photo_gallery.dart';
 import 'field_edit_screen.dart';
 import 'field_gps_measure_screen.dart';
+import 'field_measurement_history_screen.dart';
 import 'machine_assignment_screen.dart';
 import 'production_season_screen.dart';
+import 'task_screen.dart';
 
 class FieldDetailScreen extends StatefulWidget {
   final FieldModel field;
@@ -26,6 +30,8 @@ class _FieldDetailScreenState extends State<FieldDetailScreen> {
   final _fieldProvider = FieldProvider();
   final _machineProvider = MachineProvider();
   final _financeProvider = FinanceProvider();
+  final _fuelProvider = FuelProvider();
+  final _taskProvider = TaskProvider();
   LocationData? _currentLocation;
 
   FieldModel get _field => _fieldProvider.getFieldById(widget.field.id) ?? widget.field;
@@ -71,26 +77,17 @@ class _FieldDetailScreenState extends State<FieldDetailScreen> {
   }
 
   Future<void> _editField() async {
-    final changed = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(builder: (_) => FieldEditScreen(field: _field)),
-    );
+    final changed = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => FieldEditScreen(field: _field)));
     if (changed == true && mounted) setState(() {});
   }
 
   Future<void> _openSeasons() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => ProductionSeasonScreen(field: _field)),
-    );
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => ProductionSeasonScreen(field: _field)));
     if (mounted) setState(() {});
   }
 
   Future<void> _assignMachine() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const MachineAssignmentScreen()),
-    );
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => const MachineAssignmentScreen()));
     if (mounted) setState(() {});
   }
 
@@ -99,52 +96,32 @@ class _FieldDetailScreenState extends State<FieldDetailScreen> {
     if (mounted) setState(() {});
   }
 
+  String _money(double value) => '${value.toStringAsFixed(0)} đ';
+
   @override
   Widget build(BuildContext context) {
     final center = _mapCenter();
     final polygon = _field.polygon;
     final report = _report;
     final machines = _machineProvider.getMachinesByField(_field.id);
+    final fuelTransactions = _fuelProvider.getTransactionsByField(_field.id);
+    final fuelLiters = _fuelProvider.getTotalFuelByField(_field.id);
+    final tasks = _taskProvider.getTasksByField(_field.id);
 
     final markers = <Marker>{};
     if (_currentLocation?.latitude != null && _currentLocation?.longitude != null) {
-      markers.add(
-        Marker(
-          markerId: const MarkerId('current'),
-          position: LatLng(_currentLocation!.latitude!, _currentLocation!.longitude!),
-        ),
-      );
+      markers.add(Marker(markerId: const MarkerId('current'), position: LatLng(_currentLocation!.latitude!, _currentLocation!.longitude!)));
     }
 
     final polygons = <Polygon>{};
     if (polygon.length >= 3) {
-      polygons.add(
-        Polygon(
-          polygonId: PolygonId(_field.id),
-          points: polygon,
-          fillColor: Colors.green.withValues(alpha: .22),
-          strokeColor: Colors.green,
-          strokeWidth: 3,
-        ),
-      );
-    }
-
-    final machineCards = <Widget>[];
-    if (machines.isNotEmpty) {
-      machineCards.add(const SizedBox(height: 12));
-      machineCards.add(const Text('Máy móc đang làm trên lô', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)));
-      machineCards.add(const SizedBox(height: 8));
-      for (final machine in machines) {
-        machineCards.add(
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.agriculture, color: Colors.green),
-              title: Text(machine.name),
-              subtitle: Text('${machine.type} • ${machine.status} • ${machine.totalHours}h'),
-            ),
-          ),
-        );
-      }
+      polygons.add(Polygon(
+        polygonId: PolygonId(_field.id),
+        points: polygon,
+        fillColor: Colors.green.withValues(alpha: .22),
+        strokeColor: Colors.green,
+        strokeWidth: 3,
+      ));
     }
 
     return Scaffold(
@@ -184,60 +161,82 @@ class _FieldDetailScreenState extends State<FieldDetailScreen> {
                 children: [
                   Text(_field.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      _InfoChip(icon: Icons.square_foot, label: '${_field.area.toStringAsFixed(1)} m²'),
-                      const SizedBox(width: 8),
-                      _InfoChip(icon: Icons.landscape, label: '${(_field.area / 10000).toStringAsFixed(3)} ha'),
-                    ],
-                  ),
+                  Row(children: [
+                    _InfoChip(icon: Icons.square_foot, label: '${_field.area.toStringAsFixed(1)} m²'),
+                    const SizedBox(width: 8),
+                    _InfoChip(icon: Icons.landscape, label: '${(_field.area / 10000).toStringAsFixed(3)} ha'),
+                  ]),
                   const SizedBox(height: 8),
                   Text('Cây trồng: ${_field.crop}'),
                   Text('Trạng thái: ${_field.status}'),
                   Text('Số điểm ranh: ${_field.polygon.length}'),
+                  Text('Chu vi: ${_field.perimeter.toStringAsFixed(1)} m'),
+                  Text('Phương pháp đo: ${_field.measurementMethod}'),
+                  if (_field.gpsAccuracy != null) Text('Độ chính xác GPS: ±${_field.gpsAccuracy!.toStringAsFixed(1)} m'),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => FieldMeasurementHistoryScreen(field: _field))),
+                    icon: const Icon(Icons.history),
+                    label: const Text('Lịch sử đo đạc'),
+                  ),
                   const Divider(height: 28),
                   const Text('Hiệu quả thửa đất', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        children: [
-                          _metric('Doanh thu', _money(report?.totalRevenue ?? 0)),
-                          _metric('Chi phí', _money(report?.totalCost ?? 0)),
-                          _metric('Lợi nhuận', _money(report?.profit ?? 0), bold: true),
-                          _metric(
-                            'Lợi nhuận/ha',
-                            _money(_field.area > 0 ? (report?.profit ?? 0) / (_field.area / 10000) : 0),
-                            bold: true,
-                          ),
-                          _metric('Biên lợi nhuận', '${(report?.profitMargin ?? 0).toStringAsFixed(1)}%'),
-                        ],
-                      ),
-                    ),
-                  ),
+                  Card(child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(children: [
+                      _metric('Doanh thu', _money(report?.totalRevenue ?? 0)),
+                      _metric('Chi phí', _money(report?.totalCost ?? 0)),
+                      _metric('Lợi nhuận', _money(report?.profit ?? 0), bold: true),
+                      _metric('Lợi nhuận/ha', _money(_field.area > 0 ? (report?.profit ?? 0) / (_field.area / 10000) : 0), bold: true),
+                      _metric('Biên lợi nhuận', '${(report?.profitMargin ?? 0).toStringAsFixed(1)}%'),
+                    ]),
+                  )),
                   const SizedBox(height: 12),
-                  Card(
-                    child: ListTile(
-                      leading: const CircleAvatar(child: Icon(Icons.agriculture)),
-                      title: const Text('Vụ sản xuất'),
-                      subtitle: const Text('Gieo trồng • vật tư • tưới • máy móc • thu hoạch'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: _openSeasons,
-                    ),
+                  _SectionCard(
+                    icon: Icons.eco,
+                    title: 'Sản xuất & vụ mùa',
+                    value: 'Quản lý gieo trồng, nhật ký, vật tư và thu hoạch',
+                    onTap: _openSeasons,
                   ),
-                  ...machineCards,
+                  const SizedBox(height: 8),
+                  _SectionCard(
+                    icon: Icons.assignment,
+                    title: 'Công việc trên thửa',
+                    value: '${tasks.length} công việc',
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TaskScreen())),
+                  ),
+                  const SizedBox(height: 8),
+                  Card(child: ListTile(
+                    leading: const CircleAvatar(child: Icon(Icons.local_gas_station)),
+                    title: const Text('Nhiên liệu'),
+                    subtitle: Text('${fuelLiters.toStringAsFixed(1)} L đã xuất cho thửa • ${fuelTransactions.length} giao dịch'),
+                  )),
+                  const SizedBox(height: 8),
+                  Card(child: ListTile(
+                    leading: const CircleAvatar(child: Icon(Icons.agriculture)),
+                    title: const Text('Máy móc'),
+                    subtitle: Text('${machines.length} máy đang/đã làm việc trên thửa'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: _assignMachine,
+                  )),
+                  if (tasks.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    const Text('Công việc gần đây', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 6),
+                    ...tasks.take(3).map((task) => Card(
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(task.status == TaskStatus.COMPLETED ? Icons.check_circle : Icons.pending_actions),
+                        title: Text(task.title),
+                        subtitle: Text('${task.assignedToName} • Hạn ${task.dueDate.day}/${task.dueDate.month}'),
+                      ),
+                    )),
+                  ],
                   const SizedBox(height: 12),
                   PhotoGallery(photoPaths: _field.photoPaths, onAddPhoto: _addPhoto),
                   const SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _assignMachine,
-                      icon: const Icon(Icons.agriculture),
-                      label: const Text('Gán máy'),
-                    ),
-                  ),
+                  SizedBox(width: double.infinity, child: ElevatedButton.icon(onPressed: _assignMachine, icon: const Icon(Icons.agriculture), label: const Text('Gán máy'))),
                 ],
               ),
             ),
@@ -247,19 +246,29 @@ class _FieldDetailScreenState extends State<FieldDetailScreen> {
     );
   }
 
-  Widget _metric(String label, String value, {bool bold = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Expanded(child: Text(label)),
-          Text(value, style: TextStyle(fontWeight: bold ? FontWeight.bold : FontWeight.w600, fontSize: bold ? 16 : null)),
-        ],
-      ),
-    );
-  }
+  Widget _metric(String label, String value, {bool bold = false}) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(children: [Expanded(child: Text(label)), Text(value, style: TextStyle(fontWeight: bold ? FontWeight.bold : FontWeight.w600, fontSize: bold ? 16 : null))]),
+  );
+}
 
-  String _money(double value) => '${value.toStringAsFixed(0)} đ';
+class _SectionCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String value;
+  final VoidCallback onTap;
+  const _SectionCard({required this.icon, required this.title, required this.value, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: ListTile(
+      leading: CircleAvatar(child: Icon(icon)),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+      subtitle: Text(value),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: onTap,
+    ),
+  );
 }
 
 class _InfoChip extends StatelessWidget {
