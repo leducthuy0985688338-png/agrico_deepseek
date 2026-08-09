@@ -1,3 +1,12 @@
+plugins {
+    id("dev.flutter.flutter-plugin-loader") version "1.0.0"
+    id("com.android.application") version "7.3.0" apply false
+    id("org.jetbrains.kotlin.android") version "1.7.10" apply false
+    
+    // 👇 THÊM DÒNG NÀY ĐỂ CẤU HÌNH FIREBASE
+    id("com.google.gms.google-services") version "4.5.0" apply false
+}
+
 allprojects {
     repositories {
         google()
@@ -5,20 +14,15 @@ allprojects {
     }
 }
 
-val newBuildDir: Directory =
-    rootProject.layout.buildDirectory
-        .dir("../../build")
-        .get()
-rootProject.layout.buildDirectory.value(newBuildDir)
-
+rootProject.buildDir = File(rootProject.projectDir, "../build")
 subprojects {
-    val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
-    project.layout.buildDirectory.value(newSubprojectBuildDir)
+    project.buildDir = File(rootProject.buildDir, "${project.name}")
 }
+
 subprojects {
     project.evaluationDependsOn(":app")
 }
 
-tasks.register<Delete>("clean") {
-    delete(rootProject.layout.buildDirectory)
+tasks.register("clean", Delete::class) {
+    delete(rootProject.buildDir)
 }

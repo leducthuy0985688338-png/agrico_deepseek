@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'theme/app_theme.dart';
 
 // ====== IMPORT CÁC MÀN HÌNH ======
@@ -9,12 +10,9 @@ import 'screens/machine_list_screen.dart';
 import 'screens/employee_list_screen.dart';
 import 'screens/fuel_screen.dart';
 import 'screens/finance_screen.dart';
+import 'screens/task_screen.dart';
 import 'screens/ai_chat_screen.dart';
 import 'screens/report_screen.dart';
-import 'screens/task_screen.dart';
-
-// ====== IMPORT WIDGETS ======
-import 'widgets/gradient_button.dart';
 
 // ====== IMPORT PROVIDER ======
 import 'providers/dashboard_provider.dart';
@@ -72,7 +70,7 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Logo với animation
+                // Logo
                 TweenAnimationBuilder(
                   duration: const Duration(milliseconds: 800),
                   tween: Tween<double>(begin: 0, end: 1),
@@ -115,7 +113,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: TextStyle(fontSize: 14, color: Colors.grey),
                 ),
                 const SizedBox(height: 40),
-                // Email field
                 TextField(
                   controller: emailController,
                   decoration: const InputDecoration(
@@ -128,7 +125,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                // Password field
                 TextField(
                   controller: passwordController,
                   obscureText: _obscure,
@@ -160,23 +156,47 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                // Nút đăng nhập gradient
-                GradientButton(
-                  label: 'ĐĂNG NHẬP',
-                  onPressed: () {
-                    setState(() => _isLoading = true);
-                    Future.delayed(const Duration(seconds: 1), () {
-                      setState(() => _isLoading = false);
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const DashboardScreen(),
-                        ),
-                      );
-                    });
-                  },
-                  isLoading: _isLoading,
-                  icon: Icons.login,
+                // Nút đăng nhập
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      setState(() => _isLoading = true);
+                      Future.delayed(const Duration(seconds: 1), () {
+                        setState(() => _isLoading = false);
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const DashboardScreen(),
+                          ),
+                        );
+                      });
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: _isLoading
+                        ? const SizedBox(
+                            height: 24,
+                            width: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text(
+                            'ĐĂNG NHẬP',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                  ),
                 ),
                 const SizedBox(height: 20),
                 Container(
@@ -216,18 +236,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
 
   static const List<Widget> _pages = [
-    HomePage(),
-    FarmPage(),
-    FieldListScreen(),
-    WarehouseScreen(),
-    MachineListScreen(),
-    EmployeeListScreen(),
-    FuelScreen(),
-    FinanceScreen(),
-    TaskScreen(),
-    AiChatScreen(),
-    ReportScreen(),
-    SettingsPage(),
+    HomePage(), // 0: Tổng quan
+    FarmPage(), // 1: Trang trại
+    FieldListScreen(), // 2: Lô đất
+    WarehouseScreen(), // 3: Kho
+    MachineListScreen(), // 4: Máy móc
+    EmployeeListScreen(), // 5: Nhân sự
+    FuelScreen(), // 6: Nhiên liệu
+    FinanceScreen(), // 7: Tài chính
+    TaskScreen(), // 8: Lịch công việc
+    AiChatScreen(), // 9: AI
+    ReportScreen(), // 10: Báo cáo
+    SettingsPage(), // 11: Cài đặt
   ];
 
   @override
@@ -309,7 +329,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           BottomNavigationBarItem(icon: Icon(Icons.money), label: 'Tài chính'),
           BottomNavigationBarItem(
             icon: Icon(Icons.calendar_today),
-            label: 'Công việc',
+            label: 'Lịch việc',
           ),
           BottomNavigationBarItem(icon: Icon(Icons.smart_toy), label: 'AI'),
           BottomNavigationBarItem(icon: Icon(Icons.receipt), label: 'Báo cáo'),
@@ -325,21 +345,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 // ============================================================
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
-
-  // ====== MÀU SẮC CHO BIỂU ĐỒ TRÒN (SỬA LỖI) ======
-  static const List<Color> _costColors = [
-    Colors.blue,
-    Colors.green,
-    Colors.orange,
-    Colors.red,
-    Colors.purple,
-  ];
-
-  static const List<Color> _machineColors = [
-    Colors.green,
-    Colors.orange,
-    Colors.red,
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -713,7 +718,7 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  // ====== THẺ THỐNG KÊ ======
+  // ====== HÀM HỖ TRỢ ======
   Widget _buildStatCard(
     String title,
     String value,
@@ -762,7 +767,6 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  // ====== THỐNG KÊ NHANH ======
   Widget _buildQuickStat(
     String title,
     String value,
@@ -785,7 +789,6 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  // ====== CHÚ THÍCH BIỂU ĐỒ ======
   Widget _buildLegendItem(String label, Color color) {
     return Row(
       children: [
@@ -803,7 +806,6 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  // ====== TẠO DỮ LIỆU CHO BIỂU ĐỒ CỘT ======
   List<BarChartGroupData> _getBarGroups(List<Map<String, dynamic>> data) {
     final groups = <BarChartGroupData>[];
     for (int i = 0; i < data.length; i++) {
@@ -835,7 +837,6 @@ class HomePage extends StatelessWidget {
     return groups;
   }
 
-  // ====== LẤY MAX Y CHO BIỂU ĐỒ ======
   double _getMaxY(List<Map<String, dynamic>> data) {
     double max = 0;
     for (var item in data) {
@@ -847,7 +848,20 @@ class HomePage extends StatelessWidget {
     return max + 5;
   }
 
-  // ====== TẠO DỮ LIỆU CHO BIỂU ĐỒ TRÒN ======
+  static const List<Color> _costColors = [
+    Colors.blue,
+    Colors.green,
+    Colors.orange,
+    Colors.red,
+    Colors.purple,
+  ];
+
+  static const List<Color> _machineColors = [
+    Colors.green,
+    Colors.orange,
+    Colors.red,
+  ];
+
   List<PieChartSectionData> _getPieSections(
     List<Map<String, dynamic>> data,
     List<Color> colors,
@@ -872,7 +886,6 @@ class HomePage extends StatelessWidget {
     }).toList();
   }
 
-  // ====== TẠO CHÚ THÍCH CHO BIỂU ĐỒ TRÒN ======
   List<Widget> _buildPieLegend(
     List<Map<String, dynamic>> data,
     List<Color> colors,

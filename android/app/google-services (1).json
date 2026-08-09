@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "738377981563",
+    "project_id": "agrico-erp",
+    "storage_bucket": "agrico-erp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:738377981563:android:37b1a90ea6f37133ec0cde",
+        "android_client_info": {
+          "package_name": "com.agrico.erp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA1JVBAnzz1y4OOwjiwertqCvoGIOI13TE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
