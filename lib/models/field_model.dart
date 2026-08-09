@@ -19,6 +19,37 @@ class FieldModel {
     this.photoPaths = const [],
   });
 
+  factory FieldModel.fromJson(Map<String, dynamic> json) {
+    final rawPolygon = (json['polygon'] as List<dynamic>? ?? const []);
+    return FieldModel(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      area: (json['area'] as num).toDouble(),
+      crop: json['crop'] as String,
+      status: json['status'] as String,
+      polygon: rawPolygon.map((point) {
+        final item = point as Map<String, dynamic>;
+        return LatLng(
+          (item['lat'] as num).toDouble(),
+          (item['lng'] as num).toDouble(),
+        );
+      }).toList(growable: false),
+      photoPaths: List<String>.from(json['photoPaths'] as List<dynamic>? ?? const []),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'area': area,
+        'crop': crop,
+        'status': status,
+        'polygon': polygon
+            .map((point) => {'lat': point.latitude, 'lng': point.longitude})
+            .toList(growable: false),
+        'photoPaths': photoPaths,
+      };
+
   FieldModel copyWith({
     String? id,
     String? name,
