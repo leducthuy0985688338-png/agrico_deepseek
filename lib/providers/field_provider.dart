@@ -2,13 +2,12 @@ import 'package:flutter/foundation.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../models/field_model.dart';
+import '../services/cloud_service.dart';
 import '../services/field_storage_service.dart';
 
 class FieldProvider extends ChangeNotifier {
   static final FieldProvider instance = FieldProvider._internal();
-
   factory FieldProvider() => instance;
-
   FieldProvider._internal() {
     _fields = _demoFields;
     _loadPersistedFields();
@@ -23,34 +22,18 @@ class FieldProvider extends ChangeNotifier {
 
   static const _demoFields = [
     FieldModel(
-      id: 'LO0001',
-      name: 'Lô cà phê A1',
-      area: 12500,
-      crop: 'Cà phê',
-      status: 'Đang trồng',
-      polygon: [
-        LatLng(10.8231, 106.6297),
-        LatLng(10.8235, 106.6302),
-        LatLng(10.8229, 106.6305),
-        LatLng(10.8224, 106.6299),
-      ],
+      id: 'LO0001', name: 'Lô cà phê A1', area: 12500, crop: 'Cà phê', status: 'Đang trồng',
+      perimeter: 450, measurementMethod: 'demo',
+      polygon: [LatLng(10.8231, 106.6297), LatLng(10.8235, 106.6302), LatLng(10.8229, 106.6305), LatLng(10.8224, 106.6299)],
     ),
-    FieldModel(
-      id: 'LO0002',
-      name: 'Lô tiêu B2',
-      area: 8200,
-      crop: 'Hồ tiêu',
-      status: 'Chuẩn bị thu hoạch',
-    ),
+    FieldModel(id: 'LO0002', name: 'Lô tiêu B2', area: 8200, crop: 'Hồ tiêu', status: 'Chuẩn bị thu hoạch'),
   ];
 
   Future<void> _loadPersistedFields() async {
     try {
       final saved = await _storage.loadFields();
       if (saved.isNotEmpty) _fields = saved;
-    } catch (_) {
-      // Keep demo data if the local database is unavailable.
-    } finally {
+    } catch (_) {} finally {
       _isLoading = false;
       notifyListeners();
     }
@@ -66,10 +49,8 @@ class FieldProvider extends ChangeNotifier {
   void updateFieldPhotos(String id, List<String> newPhotoPaths) {
     final index = _fields.indexWhere((f) => f.id == id);
     if (index == -1) return;
-    _fields[index] = _fields[index].copyWith(
-      photoPaths: List.unmodifiable(newPhotoPaths),
-    );
-    _persist();
+    _fields[index] = _fields[index].copyWith(photoPaths: List.unmodifiable(newPhotoPaths));
+    _persistField(_fields[index]);
     notifyListeners();
   }
 
@@ -98,25 +79,19 @@ class FieldProvider extends ChangeNotifier {
     _fields = _fields.where((field) => field.id != id).toList(growable: false);
     try {
       await _storage.deleteField(id);
-    } catch (_) {
-      // Keep the UI responsive even if persistence temporarily fails.
-    }
+      try { await CloudService.deleteField(id); } catch (_) {}
+    } catch (_) {}
     notifyListeners();
   }
 
   Future<void> _persistField(FieldModel field) async {
-    try {
-      await _storage.saveField(field);
-    } catch (_) {
-      // Persistence failures are intentionally isolated from UI state.
-    }
+    try { await _storage.saveField(field); } catch (_) {}
+    try { await CloudService.saveField(field); } catch (_) {}
   }
 
   Future<void> _persist() async {
-    try {
-      await _storage.saveFields(_fields);
-    } catch (_) {
-      // Persistence failures are intentionally isolated from UI state.
+    for (final field in _fields) {
+      await _persistField(field);
     }
   }
 }
