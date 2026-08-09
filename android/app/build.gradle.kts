@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.agrico.erp"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
