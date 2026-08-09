@@ -7,6 +7,7 @@ import 'overall_field_map_screen.dart';
 import 'report_screen.dart';
 import 'field_performance_screen.dart';
 import 'field_detail_screen.dart';
+import 'cost_analysis_screen.dart';
 
 class FarmDashboardScreen extends StatefulWidget {
   const FarmDashboardScreen({super.key});
@@ -87,7 +88,7 @@ class _FarmDashboardScreenState extends State<FarmDashboardScreen> {
                 const SizedBox(height: 4),
                 const Text('Trung tâm điều hành đất, sản xuất và tài chính của AGRICO.'),
                 const SizedBox(height: 16),
-                _QuickActions(onOpen: _open),
+                _QuickActions(onOpen: _open, fields: fields),
                 const SizedBox(height: 16),
                 GridView.count(
                   crossAxisCount: 2,
@@ -178,7 +179,8 @@ class _FarmDashboardScreenState extends State<FarmDashboardScreen> {
 
 class _QuickActions extends StatelessWidget {
   final void Function(Widget screen) onOpen;
-  const _QuickActions({required this.onOpen});
+  final List<FieldModel> fields;
+  const _QuickActions({required this.onOpen, required this.fields});
 
   @override
   Widget build(BuildContext context) {
@@ -194,6 +196,7 @@ class _QuickActions extends StatelessWidget {
             children: [
               _ActionButton(icon: Icons.grid_view, label: 'Danh sách thửa', onTap: () => onOpen(const FieldListScreen())),
               _ActionButton(icon: Icons.insights, label: 'Hiệu quả thửa', onTap: () => onOpen(const FieldPerformanceScreen())),
+              _ActionButton(icon: Icons.analytics_outlined, label: 'Phân tích chi phí', onTap: () => onOpen(CostAnalysisScreen(fields: fields))),
               _ActionButton(icon: Icons.map, label: 'Bản đồ tổng thể', onTap: () => onOpen(const OverallFieldMapScreen())),
               _ActionButton(icon: Icons.assessment, label: 'Báo cáo', onTap: () => onOpen(const ReportScreen())),
             ],
