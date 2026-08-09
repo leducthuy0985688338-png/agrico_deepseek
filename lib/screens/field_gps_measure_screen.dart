@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../models/field_model.dart';
+import '../providers/field_provider.dart';
 import '../services/gps_field_service.dart';
 
 class FieldGpsMeasureScreen extends StatefulWidget {
@@ -15,6 +17,7 @@ class FieldGpsMeasureScreen extends StatefulWidget {
 
 class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
   final _gps = GpsFieldService();
+  final _fieldProvider = FieldProvider();
   final List<LatLng> _points = [];
   StreamSubscription<Position>? _subscription;
   GoogleMapController? _mapController;
@@ -86,6 +89,70 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
     setState(() => _points.removeLast());
   }
 
+  Future<void> _saveField() async {
+    if (_points.length < 3 || _area <= 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cần ít nhất 3 điểm GPS để tạo thửa.')),
+      );
+      return;
+    }
+
+    if (_lastPosition != null && _lastPosition!.accuracy > 20) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('GPS đang sai số ${_lastPosition!.accuracy.toStringAsFixed(1)} m. Hãy chờ tín hiệu tốt hơn.')),
+      );
+      return;
+    }
+
+    final nameController = TextEditingController(text: 'Lô mới ${DateTime.now().millisecondsSinceEpoch % 10000}');
+    final cropController = TextEditingController();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Lưu thửa GPS'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(labelText: 'Tên lô'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: cropController,
+              decoration: const InputDecoration(labelText: 'Cây trồng'),
+            ),
+            const SizedBox(height: 16),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text('${_area.toStringAsFixed(1)} m² • ${(_area / 10000).toStringAsFixed(4)} ha'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Hủy')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Lưu thửa')),
+        ],
+      ),
+    );
+
+    if (result != true || !mounted) return;
+
+    final field = FieldModel(
+      id: 'GPS-${DateTime.now().millisecondsSinceEpoch}',
+      name: nameController.text.trim().isEmpty ? 'Lô chưa đặt tên' : nameController.text.trim(),
+      area: _area,
+      crop: cropController.text.trim().isEmpty ? 'Chưa xác định' : cropController.text.trim(),
+      status: 'Mới đo GPS',
+      polygon: List.unmodifiable(_points),
+    );
+
+    _fieldProvider.addField(field);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã lưu thửa GPS vào AGRICO.')));
+    Navigator.pop(context, field);
+  }
+
   Set<Polyline> get _polylines => {
         if (_points.length >= 2)
           Polyline(
@@ -119,6 +186,11 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
             tooltip: 'Xóa điểm cuối',
             onPressed: _points.isEmpty ? null : _undoLastPoint,
             icon: const Icon(Icons.undo),
+          ),
+          IconButton(
+            tooltip: 'Lưu thửa',
+            onPressed: _recording || _points.length < 3 ? null : _saveField,
+            icon: const Icon(Icons.save),
           ),
         ],
       ),
@@ -156,10 +228,7 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            '${_area.toStringAsFixed(1)} m²  •  ${(_area / 10000).toStringAsFixed(4)} ha',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
+                          Text('${_area.toStringAsFixed(1)} m² • ${(_area / 10000).toStringAsFixed(4)} ha', style: const TextStyle(fontWeight: FontWeight.bold)),
                           Text('Chu vi: ${_perimeter.toStringAsFixed(1)} m • ${_points.length} điểm'),
                         ],
                       ),
@@ -176,13 +245,27 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
             right: 16,
             bottom: 20,
             child: SafeArea(
-              child: FilledButton.icon(
-                onPressed: _recording ? _stopMeasurement : _startMeasurement,
-                icon: Icon(_recording ? Icons.stop : Icons.gps_fixed),
-                label: Text(_recording ? 'DỪNG ĐO' : 'BẮT ĐẦU ĐO GPS'),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(54),
-                ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _recording ? _stopMeasurement : _startMeasurement,
+                      icon: Icon(_recording ? Icons.stop : Icons.gps_fixed),
+                      label: Text(_recording ? 'DỪNG ĐO' : 'BẮT ĐẦU ĐO GPS'),
+                      style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(54)),
+                    ),
+                  ),
+                  if (!_recording && _points.length >= 3) ...[
+                    const SizedBox(width: 10),
+                    SizedBox(
+                      height: 54,
+                      child: FilledButton(
+                        onPressed: _saveField,
+                        child: const Icon(Icons.save),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
           ),
