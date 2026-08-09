@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../models/machine_model.dart';
 import '../models/field_model.dart';
+import '../services/machine_production_cost_sync_service.dart';
 
 class MachineProvider extends ChangeNotifier {
   List<MachineModel> _machines = [];
+  final MachineProductionCostSyncService _productionCostSync = MachineProductionCostSyncService();
 
   List<MachineModel> get machines => _machines;
 
@@ -18,7 +20,8 @@ class MachineProvider extends ChangeNotifier {
         status: 'Tốt',
         totalHours: 350,
         fuelConsumption: 8.5,
-        currentFieldId: 'LO0001', // Đang làm ở lô cà phê
+        costPerHour: 0,
+        currentFieldId: 'LO0001',
       ),
       MachineModel(
         id: 'M002',
@@ -29,6 +32,7 @@ class MachineProvider extends ChangeNotifier {
         status: 'Đang bảo trì',
         totalHours: 520,
         fuelConsumption: 12.0,
+        costPerHour: 0,
         currentFieldId: null,
       ),
       MachineModel(
@@ -40,6 +44,7 @@ class MachineProvider extends ChangeNotifier {
         status: 'Tốt',
         totalHours: 180,
         fuelConsumption: 15.5,
+        costPerHour: 0,
         currentFieldId: null,
       ),
       MachineModel(
@@ -51,11 +56,11 @@ class MachineProvider extends ChangeNotifier {
         status: 'Tốt',
         totalHours: 420,
         fuelConsumption: 10.0,
-        currentFieldId: 'LO0002', // Đang làm ở lô tiêu
+        costPerHour: 0,
+        currentFieldId: 'LO0002',
       ),
     ];
 
-    // Thêm lịch sử làm việc mẫu
     _machines[0].fieldHistory = [
       MachineFieldRecord(
         fieldId: 'LO0001',
@@ -80,7 +85,6 @@ class MachineProvider extends ChangeNotifier {
     ];
   }
 
-  // Lấy máy theo ID
   MachineModel? getMachineById(String id) {
     try {
       return _machines.firstWhere((m) => m.id == id);
@@ -89,17 +93,14 @@ class MachineProvider extends ChangeNotifier {
     }
   }
 
-  // Lấy danh sách máy đang làm việc trên một lô
   List<MachineModel> getMachinesByField(String fieldId) {
     return _machines.where((m) => m.currentFieldId == fieldId).toList();
   }
 
-  // Lấy danh sách máy theo trạng thái
   List<MachineModel> getMachinesByStatus(String status) {
     return _machines.where((m) => m.status == status).toList();
   }
 
-  // Gán máy vào lô đất (bắt đầu làm việc)
   void assignMachineToField(
     String machineId,
     String fieldId,
@@ -108,10 +109,8 @@ class MachineProvider extends ChangeNotifier {
   ) {
     final index = _machines.indexWhere((m) => m.id == machineId);
     if (index != -1) {
-      // Cập nhật currentFieldId
       _machines[index] = _machines[index].copyWith(currentFieldId: fieldId);
 
-      // Thêm vào lịch sử
       final newRecord = MachineFieldRecord(
         fieldId: fieldId,
         fieldName: fieldName,
@@ -132,16 +131,17 @@ class MachineProvider extends ChangeNotifier {
     }
   }
 
-  // Cập nhật tiến độ làm việc trên lô (cập nhật giờ và nhiên liệu)
+  /// Cập nhật giờ vận hành trên lô và đồng bộ chi phí máy.
+  ///
+  /// Chi phí chỉ được ghi khi máy đã cấu hình `costPerHour > 0`. Nhiên liệu
+  /// vẫn là nguồn chi phí riêng, không cộng lại vào chi phí máy.
   void updateFieldProgress(String machineId, double hours, double fuel) {
     final index = _machines.indexWhere((m) => m.id == machineId);
     if (index != -1) {
       final history = _machines[index].fieldHistory;
       if (history.isNotEmpty) {
         final lastRecord = history.last;
-        // Kiểm tra nếu bản ghi cuối cùng là đang làm việc (chưa có endDate)
         if (lastRecord.endDate == null) {
-          // Cập nhật bản ghi cuối cùng
           final updatedRecord = MachineFieldRecord(
             fieldId: lastRecord.fieldId,
             fieldName: lastRecord.fieldName,
@@ -156,17 +156,57 @@ class MachineProvider extends ChangeNotifier {
             ..removeLast()
             ..add(updatedRecord);
 
-          _machines[index] = _machines[index].copyWith(
+          final updatedMachine = _machines[index].copyWith(
             fieldHistory: updatedHistory,
             totalHours: _machines[index].totalHours + hours.toInt(),
           );
+          _machines[index] = updatedMachine;
+
+          _syncProductionCost(updatedMachine, updatedRecord);
           notifyListeners();
         }
       }
     }
   }
 
-  // Hoàn thành công việc trên lô (rời lô)
+  Future<void> _syncProductionCost(
+    MachineModel machine,
+    MachineFieldRecord work,
+  ) async {
+    try {
+      await _productionCostSync.sync(
+        machine: machine,
+        work: work,
+        costPerHour: machine.costPerHour,
+      );
+    } catch (_) {
+      // Không để lỗi ledger làm hỏng nhật ký máy.
+    }
+  }
+
+  /// Cấu hình đơn giá vận hành/khấu hao theo giờ cho máy.
+  void updateMachineCostPerHour(String id, double costPerHour) {
+    if (costPerHour < 0) return;
+    final index = _machines.indexWhere((m) => m.id == id);
+    if (index == -1) return;
+    _machines[index] = _machines[index].copyWith(costPerHour: costPerHour);
+    notifyListeners();
+  }
+
+  /// Đồng bộ lại toàn bộ lịch sử làm việc của một máy sau khi đã cấu hình
+  /// đơn giá giờ. Các bản ghi đã có sẽ được upsert, không tạo bản sao.
+  Future<void> syncMachineProductionCosts(String machineId) async {
+    final machine = getMachineById(machineId);
+    if (machine == null || machine.costPerHour <= 0) return;
+    for (final work in machine.fieldHistory) {
+      await _productionCostSync.sync(
+        machine: machine,
+        work: work,
+        costPerHour: machine.costPerHour,
+      );
+    }
+  }
+
   void completeFieldWork(String machineId) {
     final index = _machines.indexWhere((m) => m.id == machineId);
     if (index != -1) {
@@ -174,7 +214,6 @@ class MachineProvider extends ChangeNotifier {
       if (history.isNotEmpty) {
         final lastRecord = history.last;
         if (lastRecord.endDate == null) {
-          // Cập nhật endDate
           final updatedRecord = MachineFieldRecord(
             fieldId: lastRecord.fieldId,
             fieldName: lastRecord.fieldName,
@@ -189,17 +228,18 @@ class MachineProvider extends ChangeNotifier {
             ..removeLast()
             ..add(updatedRecord);
 
-          _machines[index] = _machines[index].copyWith(
+          final updatedMachine = _machines[index].copyWith(
             fieldHistory: updatedHistory,
-            currentFieldId: null, // Không còn làm ở lô nào
+            currentFieldId: null,
           );
+          _machines[index] = updatedMachine;
+          _syncProductionCost(updatedMachine, updatedRecord);
           notifyListeners();
         }
       }
     }
   }
 
-  // Cập nhật trạng thái máy
   void updateMachineStatus(String id, String newStatus) {
     final index = _machines.indexWhere((m) => m.id == id);
     if (index != -1) {
@@ -208,7 +248,6 @@ class MachineProvider extends ChangeNotifier {
     }
   }
 
-  // Cập nhật giờ vận hành
   void updateMachineHours(String id, int hours) {
     final index = _machines.indexWhere((m) => m.id == id);
     if (index != -1) {
@@ -218,13 +257,11 @@ class MachineProvider extends ChangeNotifier {
     }
   }
 
-  // Thêm máy mới
   void addMachine(MachineModel machine) {
     _machines.add(machine);
     notifyListeners();
   }
 
-  // Xóa máy
   void removeMachine(String id) {
     _machines.removeWhere((m) => m.id == id);
     notifyListeners();
