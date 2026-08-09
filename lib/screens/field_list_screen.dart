@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../providers/field_provider.dart';
 import 'field_detail_screen.dart';
 import 'field_gps_measure_screen.dart';
+import 'field_measurement_history_screen.dart';
 
 class FieldListScreen extends StatelessWidget {
   const FieldListScreen({super.key});
@@ -17,6 +18,14 @@ class FieldListScreen extends StatelessWidget {
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            tooltip: 'Lịch sử đo đạc',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const FieldMeasurementHistoryScreen()),
+            ),
+            icon: const Icon(Icons.history),
+          ),
           IconButton(
             tooltip: 'Đo thửa bằng GPS',
             onPressed: () => Navigator.push(
@@ -41,7 +50,19 @@ class FieldListScreen extends StatelessWidget {
                   leading: const Icon(Icons.map, color: Colors.green),
                   title: Text(field.name),
                   subtitle: Text('${field.area.toStringAsFixed(1)} m² - ${field.crop} - ${field.status}'),
-                  trailing: const Icon(Icons.arrow_forward_ios),
+                  trailing: PopupMenuButton<String>(
+                    onSelected: (value) {
+                      if (value == 'history') {
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => FieldMeasurementHistoryScreen(field: field)));
+                      } else if (value == 'detail') {
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => FieldDetailScreen(field: field)));
+                      }
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'detail', child: Text('Chi tiết thửa')),
+                      PopupMenuItem(value: 'history', child: Text('Lịch sử đo đạc')),
+                    ],
+                  ),
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => FieldDetailScreen(field: field)),
