@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../providers/field_provider.dart';
+import 'distance_measure_screen.dart';
 import 'field_detail_screen.dart';
 import 'field_gps_measure_screen.dart';
 import 'field_measurement_history_screen.dart';
@@ -18,6 +19,22 @@ class FieldListScreen extends StatelessWidget {
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            tooltip: 'Đo khoảng cách',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const DistanceMeasureScreen()),
+            ),
+            icon: const Icon(Icons.straighten),
+          ),
+          IconButton(
+            tooltip: 'Lịch sử đo khoảng cách',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const DistanceHistoryScreen()),
+            ),
+            icon: const Icon(Icons.route),
+          ),
           IconButton(
             tooltip: 'Lịch sử đo đạc',
             onPressed: () => Navigator.push(
