@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../models/distance_measurement.dart';
 import '../models/field_model.dart';
 
 class FieldMeasurementHistory {
@@ -35,9 +36,10 @@ class FieldMeasurementHistory {
 
 class FieldDatabase {
   static const _databaseName = 'agrico.db';
-  static const _databaseVersion = 3;
+  static const _databaseVersion = 4;
   static const _table = 'fields';
   static const _historyTable = 'field_measurement_history';
+  static const _distanceTable = 'distance_measurements';
 
   Database? _database;
 
@@ -67,6 +69,7 @@ class FieldDatabase {
         ''');
         await db.execute('CREATE INDEX idx_fields_updated_at ON $_table(updated_at)');
         await _createHistoryTable(db);
+        await _createDistanceTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -76,6 +79,7 @@ class FieldDatabase {
           await db.execute('ALTER TABLE $_table ADD COLUMN measured_at TEXT');
         }
         if (oldVersion < 3) await _createHistoryTable(db);
+        if (oldVersion < 4) await _createDistanceTable(db);
       },
     );
     return _database!;
@@ -97,6 +101,20 @@ class FieldDatabase {
       )
     ''');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_history_field ON $_historyTable(field_id, created_at DESC)');
+  }
+
+  Future<void> _createDistanceTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $_distanceTable (
+        id TEXT PRIMARY KEY,
+        points TEXT NOT NULL,
+        segment_distances TEXT NOT NULL,
+        total_distance REAL NOT NULL,
+        measured_at TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_distance_created ON $_distanceTable(created_at DESC)');
   }
 
   Future<List<FieldModel>> getAll() async {
@@ -159,6 +177,42 @@ class FieldDatabase {
         createdAt: DateTime.parse(row['created_at']! as String),
       );
     }).toList(growable: false);
+  }
+
+  Future<void> addDistanceMeasurement(DistanceMeasurement measurement) async {
+    final db = await database;
+    await db.insert(_distanceTable, {
+      'id': measurement.id,
+      'points': jsonEncode(measurement.points.map((p) => {'lat': p.latitude, 'lng': p.longitude}).toList(growable: false)),
+      'segment_distances': jsonEncode(measurement.segmentDistances),
+      'total_distance': measurement.totalDistance,
+      'measured_at': measurement.measuredAt.toUtc().toIso8601String(),
+      'created_at': DateTime.now().toUtc().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<List<DistanceMeasurement>> getDistanceMeasurements() async {
+    final db = await database;
+    final rows = await db.query(_distanceTable, orderBy: 'created_at DESC');
+    return rows.map((row) {
+      final rawPoints = jsonDecode(row['points']! as String) as List<dynamic>;
+      final rawSegments = jsonDecode(row['segment_distances']! as String) as List<dynamic>;
+      return DistanceMeasurement(
+        id: row['id']! as String,
+        points: rawPoints.map((point) {
+          final item = point as Map<String, dynamic>;
+          return LatLng((item['lat'] as num).toDouble(), (item['lng'] as num).toDouble());
+        }).toList(growable: false),
+        segmentDistances: rawSegments.map((e) => (e as num).toDouble()).toList(growable: false),
+        totalDistance: (row['total_distance']! as num).toDouble(),
+        measuredAt: DateTime.parse(row['measured_at']! as String),
+      );
+    }).toList(growable: false);
+  }
+
+  Future<void> deleteDistanceMeasurement(String id) async {
+    final db = await database;
+    await db.delete(_distanceTable, where: 'id = ?', whereArgs: [id]);
   }
 
   Future<void> close() async {
