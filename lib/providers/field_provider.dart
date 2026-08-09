@@ -21,11 +21,7 @@ class FieldProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
 
   static const _demoFields = [
-    FieldModel(
-      id: 'LO0001', name: 'Lô cà phê A1', area: 12500, crop: 'Cà phê', status: 'Đang trồng',
-      perimeter: 450, measurementMethod: 'demo',
-      polygon: [LatLng(10.8231, 106.6297), LatLng(10.8235, 106.6302), LatLng(10.8229, 106.6305), LatLng(10.8224, 106.6299)],
-    ),
+    FieldModel(id: 'LO0001', name: 'Lô cà phê A1', area: 12500, crop: 'Cà phê', status: 'Đang trồng', perimeter: 450, measurementMethod: 'demo', polygon: [LatLng(10.8231, 106.6297), LatLng(10.8235, 106.6302), LatLng(10.8229, 106.6305), LatLng(10.8224, 106.6299)]),
     FieldModel(id: 'LO0002', name: 'Lô tiêu B2', area: 8200, crop: 'Hồ tiêu', status: 'Chuẩn bị thu hoạch'),
   ];
 
@@ -40,9 +36,7 @@ class FieldProvider extends ChangeNotifier {
   }
 
   FieldModel? getFieldById(String id) {
-    for (final field in _fields) {
-      if (field.id == id) return field;
-    }
+    for (final field in _fields) { if (field.id == id) return field; }
     return null;
   }
 
@@ -77,21 +71,13 @@ class FieldProvider extends ChangeNotifier {
   Future<void> deleteField(String id) async {
     if (_fields.every((field) => field.id != id)) return;
     _fields = _fields.where((field) => field.id != id).toList(growable: false);
-    try {
-      await _storage.deleteField(id);
-      try { await CloudService.deleteField(id); } catch (_) {}
-    } catch (_) {}
+    try { await _storage.deleteField(id); } catch (_) {}
+    try { await CloudService.initialize(); await CloudService.deleteField(id); } catch (_) {}
     notifyListeners();
   }
 
   Future<void> _persistField(FieldModel field) async {
     try { await _storage.saveField(field); } catch (_) {}
-    try { await CloudService.saveField(field); } catch (_) {}
-  }
-
-  Future<void> _persist() async {
-    for (final field in _fields) {
-      await _persistField(field);
-    }
+    try { await CloudService.initialize(); await CloudService.saveField(field); } catch (_) {}
   }
 }
