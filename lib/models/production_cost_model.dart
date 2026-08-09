@@ -38,6 +38,8 @@ class ProductionCostModel {
   final String? employeeId;
   final String? machineId;
   final String notes;
+  final String? source;
+  final String? sourceId;
 
   const ProductionCostModel({
     required this.id,
@@ -53,6 +55,8 @@ class ProductionCostModel {
     this.employeeId,
     this.machineId,
     this.notes = '',
+    this.source,
+    this.sourceId,
   });
 
   factory ProductionCostModel.fromJson(Map<String, dynamic> json) {
@@ -70,6 +74,8 @@ class ProductionCostModel {
       employeeId: json['employeeId'] as String?,
       machineId: json['machineId'] as String?,
       notes: json['notes'] as String? ?? '',
+      source: json['source'] as String?,
+      sourceId: json['sourceId'] as String?,
     );
   }
 
@@ -87,5 +93,7 @@ class ProductionCostModel {
         'employeeId': employeeId,
         'machineId': machineId,
         'notes': notes,
+        'source': source,
+        'sourceId': sourceId,
       };
 }
