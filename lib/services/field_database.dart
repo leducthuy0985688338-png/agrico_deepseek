@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
@@ -74,9 +75,7 @@ class FieldDatabase {
           await db.execute('ALTER TABLE $_table ADD COLUMN gps_accuracy REAL');
           await db.execute('ALTER TABLE $_table ADD COLUMN measured_at TEXT');
         }
-        if (oldVersion < 3) {
-          await _createHistoryTable(db);
-        }
+        if (oldVersion < 3) await _createHistoryTable(db);
       },
     );
     return _database!;
