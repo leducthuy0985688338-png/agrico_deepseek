@@ -47,3 +47,5 @@ jobs:
       - name: Remove Firebase config
         if: always()
         run: rm -f android/app/google-services.json
+
+# CI trigger: build latest main configuration
