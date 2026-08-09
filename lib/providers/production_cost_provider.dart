@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/production_cost_model.dart';
+import '../models/production_cost_summary_model.dart';
 import '../services/production_cost_database.dart';
 
 class ProductionCostProvider extends ChangeNotifier {
@@ -58,5 +59,18 @@ class ProductionCostProvider extends ChangeNotifier {
       result[record.category] = (result[record.category] ?? 0) + record.amount;
     }
     return result;
+  }
+
+  ProductionCostSummaryModel summaryForSeason({
+    required String seasonId,
+    required String fieldId,
+  }) {
+    final categories = byCategory(seasonId);
+    return ProductionCostSummaryModel(
+      seasonId: seasonId,
+      fieldId: fieldId,
+      totalCost: totalCost(seasonId),
+      byCategory: Map.unmodifiable(categories),
+    );
   }
 }
