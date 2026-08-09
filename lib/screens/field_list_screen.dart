@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../providers/field_provider.dart';
 import 'distance_measure_screen.dart';
+import 'farm_dashboard_screen.dart';
 import 'field_detail_screen.dart';
 import 'field_gps_measure_screen.dart';
 import 'field_map_screen.dart';
@@ -20,6 +21,14 @@ class FieldListScreen extends StatelessWidget {
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            tooltip: 'Dashboard quản trị',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const FarmDashboardScreen()),
+            ),
+            icon: const Icon(Icons.analytics_outlined),
+          ),
           IconButton(
             tooltip: 'Bản đồ tổng thể',
             onPressed: () => Navigator.push(
@@ -99,12 +108,18 @@ class FieldListScreen extends StatelessWidget {
                           context,
                           MaterialPageRoute(builder: (_) => const FieldMapScreen()),
                         );
+                      } else if (value == 'dashboard') {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const FarmDashboardScreen()),
+                        );
                       }
                     },
                     itemBuilder: (_) => const [
                       PopupMenuItem(value: 'detail', child: Text('Chi tiết thửa')),
                       PopupMenuItem(value: 'history', child: Text('Lịch sử đo đạc')),
                       PopupMenuItem(value: 'map', child: Text('Mở bản đồ tổng thể')),
+                      PopupMenuItem(value: 'dashboard', child: Text('Dashboard quản trị')),
                     ],
                   ),
                   onTap: () => Navigator.push(
