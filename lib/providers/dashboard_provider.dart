@@ -5,6 +5,7 @@ import 'machine_provider.dart';
 import 'employee_provider.dart';
 import 'finance_provider.dart';
 import 'fuel_provider.dart';
+import '../models/finance_model.dart';
 
 class DashboardProvider extends ChangeNotifier {
   final FieldProvider _fieldProvider = FieldProvider();
@@ -22,31 +23,25 @@ class DashboardProvider extends ChangeNotifier {
   int get totalProfit => _financeProvider.getTotalProfit().toInt();
 
   List<Map<String, dynamic>> getMonthlyFinanceData() {
-    final months = ['Thg 3', 'Thg 4', 'Thg 5', 'Thg 6', 'Thg 7', 'Thg 8'];
-    final revenues = [15, 22, 18, 30, 25, 38];
-    final costs = [10, 12, 14, 16, 18, 20];
-    return List.generate(months.length, (index) => {
-      'month': months[index],
-      'revenue': revenues[index],
-      'cost': costs[index],
-    });
+    final now = DateTime.now();
+    final result = <Map<String, dynamic>>[];
+    for (var offset = 5; offset >= 0; offset--) {
+      final month = DateTime(now.year, now.month - offset, 1);
+      final nextMonth = DateTime(month.year, month.month + 1, 1);
+      double revenue = 0;
+      double cost = 0;
+      for (final record in _financeProvider.records) {
+        if (!record.date.isBefore(month) && record.date.isBefore(nextMonth)) {
+          if (record.type == TransactionType.THU) revenue += record.amount;
+          if (record.type == TransactionType.CHI) cost += record.amount;
+        }
+      }
+      result.add({'month': 'Thg ${month.month}', 'revenue': revenue / 1000000, 'cost': cost / 1000000});
+    }
+    return result;
   }
 
-  List<Map<String, dynamic>> getCostDistribution() {
-    final costByCategory = _financeProvider.getCostByCategory();
-    if (costByCategory.isEmpty) {
-      return [
-        {'category': 'Vật tư', 'amount': 40},
-        {'category': 'Nhân công', 'amount': 30},
-        {'category': 'Nhiên liệu', 'amount': 20},
-        {'category': 'Bảo trì', 'amount': 10},
-      ];
-    }
-    return costByCategory.entries.map((entry) => {
-      'category': entry.key,
-      'amount': entry.value / 1000000,
-    }).toList();
-  }
+  List<Map<String, dynamic>> getCostDistribution() => _financeProvider.getCostByCategory().entries.map((entry) => {'category': entry.key, 'amount': entry.value / 1000000}).toList();
 
   List<Map<String, dynamic>> getMachineStatusData() {
     final machines = _machineProvider.machines;
@@ -57,16 +52,7 @@ class DashboardProvider extends ChangeNotifier {
     ];
   }
 
-  List<Map<String, dynamic>> getInventoryData() => _warehouseProvider.items
-      .map((item) => {'name': item.name, 'stock': item.stock, 'unit': item.unit})
-      .toList();
+  List<Map<String, dynamic>> getInventoryData() => _warehouseProvider.items.map((item) => {'name': item.name, 'stock': item.stock, 'unit': item.unit}).toList();
 
-  List<Map<String, dynamic>> getProfitByFieldData() {
-    final reports = _financeProvider.generateProfitReport();
-    return reports.map((report) => {
-      'field': report.fieldName,
-      'profit': report.profit / 1000000,
-      'profitMargin': report.profitMargin,
-    }).toList();
-  }
+  List<Map<String, dynamic>> getProfitByFieldData() => _financeProvider.generateProfitReport().map((report) => {'field': report.fieldName, 'profit': report.profit / 1000000, 'profitMargin': report.profitMargin}).toList();
 }
