@@ -8,7 +8,7 @@ import '../models/field_model.dart';
 
 class FieldDatabase {
   static const _databaseName = 'agrico.db';
-  static const _databaseVersion = 1;
+  static const _databaseVersion = 2;
   static const _table = 'fields';
 
   Database? _database;
@@ -30,12 +30,22 @@ class FieldDatabase {
             status TEXT NOT NULL,
             polygon TEXT NOT NULL,
             photo_paths TEXT NOT NULL,
+            perimeter REAL NOT NULL DEFAULT 0,
+            measurement_method TEXT NOT NULL DEFAULT 'unknown',
+            gps_accuracy REAL,
+            measured_at TEXT,
             updated_at TEXT NOT NULL
           )
         ''');
-        await db.execute(
-          'CREATE INDEX idx_fields_updated_at ON $_table(updated_at)',
-        );
+        await db.execute('CREATE INDEX idx_fields_updated_at ON $_table(updated_at)');
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute("ALTER TABLE $_table ADD COLUMN perimeter REAL NOT NULL DEFAULT 0");
+          await db.execute("ALTER TABLE $_table ADD COLUMN measurement_method TEXT NOT NULL DEFAULT 'unknown'");
+          await db.execute('ALTER TABLE $_table ADD COLUMN gps_accuracy REAL');
+          await db.execute('ALTER TABLE $_table ADD COLUMN measured_at TEXT');
+        }
       },
     );
     return _database!;
@@ -49,11 +59,7 @@ class FieldDatabase {
 
   Future<void> upsert(FieldModel field) async {
     final db = await database;
-    await db.insert(
-      _table,
-      _toRow(field),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert(_table, _toRow(field), conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<void> delete(String id) async {
@@ -72,10 +78,12 @@ class FieldDatabase {
         'area': field.area,
         'crop': field.crop,
         'status': field.status,
-        'polygon': jsonEncode(field.polygon
-            .map((p) => {'lat': p.latitude, 'lng': p.longitude})
-            .toList(growable: false)),
+        'polygon': jsonEncode(field.polygon.map((point) => {'lat': point.latitude, 'lng': point.longitude}).toList(growable: false)),
         'photo_paths': jsonEncode(field.photoPaths),
+        'perimeter': field.perimeter,
+        'measurement_method': field.measurementMethod,
+        'gps_accuracy': field.gpsAccuracy,
+        'measured_at': field.measuredAt?.toUtc().toIso8601String(),
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       };
 
@@ -90,6 +98,10 @@ class FieldDatabase {
       'status': row['status'],
       'polygon': polygon,
       'photoPaths': photos,
+      'perimeter': row['perimeter'],
+      'measurementMethod': row['measurement_method'],
+      'gpsAccuracy': row['gps_accuracy'],
+      'measuredAt': row['measured_at'],
     });
   }
 }
