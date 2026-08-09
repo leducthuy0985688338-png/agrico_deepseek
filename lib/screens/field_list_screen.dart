@@ -21,36 +21,34 @@ class FieldListScreen extends StatelessWidget {
             tooltip: 'Đo thửa bằng GPS',
             onPressed: () => Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (_) => const FieldGpsMeasureScreen(),
-              ),
+              MaterialPageRoute(builder: (_) => const FieldGpsMeasureScreen()),
             ),
             icon: const Icon(Icons.gps_fixed),
           ),
         ],
       ),
-      body: ListView.builder(
-        itemCount: provider.fields.length,
-        itemBuilder: (ctx, index) {
-          final field = provider.fields[index];
-          return Card(
-            margin: const EdgeInsets.all(8),
-            child: ListTile(
-              leading: const Icon(Icons.map, color: Colors.green),
-              title: Text(field.name),
-              subtitle: Text(
-                '${field.area} m² - ${field.crop} - ${field.status}',
-              ),
-              trailing: const Icon(Icons.arrow_forward_ios),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => FieldDetailScreen(field: field),
+      body: AnimatedBuilder(
+        animation: provider,
+        builder: (context, _) {
+          final fields = provider.fields;
+          return ListView.builder(
+            itemCount: fields.length,
+            itemBuilder: (ctx, index) {
+              final field = fields[index];
+              return Card(
+                margin: const EdgeInsets.all(8),
+                child: ListTile(
+                  leading: const Icon(Icons.map, color: Colors.green),
+                  title: Text(field.name),
+                  subtitle: Text('${field.area.toStringAsFixed(1)} m² - ${field.crop} - ${field.status}'),
+                  trailing: const Icon(Icons.arrow_forward_ios),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => FieldDetailScreen(field: field)),
                   ),
-                );
-              },
-            ),
+                ),
+              );
+            },
           );
         },
       ),
