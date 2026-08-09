@@ -7,9 +7,12 @@ class MachineModel {
   String status;
   int totalHours;
   double fuelConsumption;
-  String? currentFieldId; // Lô đất đang làm việc (null nếu không làm)
+  /// Direct operating/depreciation rate used for production costing.
+  /// Zero means the rate has not been configured yet.
+  double costPerHour;
+  String? currentFieldId;
   List<MaintenanceRecord> maintenanceHistory;
-  List<MachineFieldRecord> fieldHistory; // Lịch sử làm việc trên các lô
+  List<MachineFieldRecord> fieldHistory;
 
   MachineModel({
     required this.id,
@@ -20,16 +23,17 @@ class MachineModel {
     required this.status,
     this.totalHours = 0,
     this.fuelConsumption = 0,
+    this.costPerHour = 0,
     this.currentFieldId,
     this.maintenanceHistory = const [],
     this.fieldHistory = const [],
   });
 
-  // Hàm copyWith để tạo bản sao mới
   MachineModel copyWith({
     String? status,
     int? totalHours,
     double? fuelConsumption,
+    double? costPerHour,
     String? currentFieldId,
     List<MaintenanceRecord>? maintenanceHistory,
     List<MachineFieldRecord>? fieldHistory,
@@ -43,6 +47,7 @@ class MachineModel {
       status: status ?? this.status,
       totalHours: totalHours ?? this.totalHours,
       fuelConsumption: fuelConsumption ?? this.fuelConsumption,
+      costPerHour: costPerHour ?? this.costPerHour,
       currentFieldId: currentFieldId ?? this.currentFieldId,
       maintenanceHistory: maintenanceHistory ?? this.maintenanceHistory,
       fieldHistory: fieldHistory ?? this.fieldHistory,
@@ -50,7 +55,6 @@ class MachineModel {
   }
 }
 
-// Model cho bảo trì
 class MaintenanceRecord {
   final DateTime date;
   final String content;
@@ -65,7 +69,6 @@ class MaintenanceRecord {
   });
 }
 
-// Model cho lịch sử làm việc trên lô đất
 class MachineFieldRecord {
   final String fieldId;
   final String fieldName;
