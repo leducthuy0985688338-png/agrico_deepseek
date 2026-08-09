@@ -1,7 +1,9 @@
 import 'dart:convert';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/distance_measurement.dart';
 import '../models/field_model.dart';
 import 'field_database.dart';
 
@@ -11,8 +13,11 @@ class FieldStorageService {
   static const _migrationKey = 'agrico_fields_sqlite_migrated_v1';
 
   final FieldDatabase _database;
+  final FirebaseFirestore _firestore;
 
-  FieldStorageService({FieldDatabase? database}) : _database = database ?? FieldDatabase();
+  FieldStorageService({FieldDatabase? database, FirebaseFirestore? firestore})
+      : _database = database ?? FieldDatabase(),
+        _firestore = firestore ?? FirebaseFirestore.instance;
 
   Future<List<FieldModel>> loadFields() async {
     final prefs = await SharedPreferences.getInstance();
@@ -39,6 +44,24 @@ class FieldStorageService {
   }
 
   Future<void> deleteField(String id) => _database.delete(id);
+
+  Future<void> saveDistanceMeasurement(DistanceMeasurement measurement) async {
+    await _database.addDistanceMeasurement(measurement);
+    await _firestore.collection('distance_measurements').doc(measurement.id).set({
+      'points': measurement.points.map((p) => {'lat': p.latitude, 'lng': p.longitude}).toList(growable: false),
+      'segmentDistances': measurement.segmentDistances,
+      'totalDistance': measurement.totalDistance,
+      'measuredAt': Timestamp.fromDate(measurement.measuredAt.toUtc()),
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<List<DistanceMeasurement>> loadDistanceMeasurements() => _database.getDistanceMeasurements();
+
+  Future<void> deleteDistanceMeasurement(String id) async {
+    await _database.deleteDistanceMeasurement(id);
+    await _firestore.collection('distance_measurements').doc(id).delete();
+  }
 
   Future<void> _migrateLegacyData(SharedPreferences prefs) async {
     final raw = prefs.getStringList(_legacyKey) ?? const [];
