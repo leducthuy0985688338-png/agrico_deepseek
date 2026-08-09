@@ -19,7 +19,6 @@ class FuelModel {
     this.transactions = const [],
   });
 
-  // Copy with method
   FuelModel copyWith({double? stock, List<FuelTransaction>? transactions}) {
     return FuelModel(
       id: id,
@@ -33,19 +32,19 @@ class FuelModel {
   }
 }
 
-// Model cho giao dịch nhiên liệu
 class FuelTransaction {
   final String id;
   final String fuelId;
   final String fuelName;
   final DateTime date;
-  final TransactionType type; // NHAP hoặc XUAT
+  final TransactionType type;
   final double quantity;
-  final double? price; // Giá tại thời điểm giao dịch
-  final String? machineId; // Máy tiêu thụ (nếu xuất)
+  final double? price;
+  final String? machineId;
   final String? machineName;
-  final String? fieldId; // Lô đất (nếu xuất)
+  final String? fieldId;
   final String? fieldName;
+  final String? seasonId;
   final String? operatorName;
   final String? note;
 
@@ -61,6 +60,7 @@ class FuelTransaction {
     this.machineName,
     this.fieldId,
     this.fieldName,
+    this.seasonId,
     this.operatorName,
     this.note,
   });
