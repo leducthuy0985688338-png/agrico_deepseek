@@ -8,7 +8,6 @@ class ProductionSeasonDatabase {
   static const _databaseName = 'agrico.db';
   static const _databaseVersion = 4;
   static const _table = 'production_seasons';
-
   Database? _database;
 
   Future<Database> get database async {
@@ -47,25 +46,49 @@ class ProductionSeasonDatabase {
 
   Future<List<ProductionSeasonModel>> getByField(String fieldId) async {
     final db = await database;
-    final rows = await db.query(_table, where: 'field_id = ?', whereArgs: [fieldId], orderBy: 'start_date DESC');
+    final rows = await db.query(
+      _table,
+      where: 'field_id = ?',
+      whereArgs: [fieldId],
+      orderBy: 'start_date DESC',
+    );
     return rows.map(_fromRow).toList(growable: false);
+  }
+
+  /// Returns the newest season for a field. Used by automatic integrations
+  /// (fuel, machine, labor, material) when a source record has no explicit
+  /// seasonId yet.
+  Future<ProductionSeasonModel?> getLatestByField(String fieldId) async {
+    final db = await database;
+    final rows = await db.query(
+      _table,
+      where: 'field_id = ?',
+      whereArgs: [fieldId],
+      orderBy: 'start_date DESC',
+      limit: 1,
+    );
+    return rows.isEmpty ? null : _fromRow(rows.first);
   }
 
   Future<void> upsert(ProductionSeasonModel season) async {
     final db = await database;
-    await db.insert(_table, {
-      'id': season.id,
-      'field_id': season.fieldId,
-      'name': season.name,
-      'crop': season.crop,
-      'variety': season.variety,
-      'start_date': season.startDate.toIso8601String(),
-      'expected_harvest_date': season.expectedHarvestDate?.toIso8601String(),
-      'status': season.status,
-      'planned_area': season.plannedArea,
-      'notes': season.notes,
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert(
+      _table,
+      {
+        'id': season.id,
+        'field_id': season.fieldId,
+        'name': season.name,
+        'crop': season.crop,
+        'variety': season.variety,
+        'start_date': season.startDate.toIso8601String(),
+        'expected_harvest_date': season.expectedHarvestDate?.toIso8601String(),
+        'status': season.status,
+        'planned_area': season.plannedArea,
+        'notes': season.notes,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 
   Future<void> delete(String id) async {
@@ -73,16 +96,17 @@ class ProductionSeasonDatabase {
     await db.delete(_table, where: 'id = ?', whereArgs: [id]);
   }
 
-  ProductionSeasonModel _fromRow(Map<String, Object?> row) => ProductionSeasonModel.fromJson({
-    'id': row['id'],
-    'fieldId': row['field_id'],
-    'name': row['name'],
-    'crop': row['crop'],
-    'variety': row['variety'],
-    'startDate': row['start_date'],
-    'expectedHarvestDate': row['expected_harvest_date'],
-    'status': row['status'],
-    'plannedArea': row['planned_area'],
-    'notes': row['notes'],
-  });
+  ProductionSeasonModel _fromRow(Map<String, Object?> row) =>
+      ProductionSeasonModel.fromJson({
+        'id': row['id'],
+        'fieldId': row['field_id'],
+        'name': row['name'],
+        'crop': row['crop'],
+        'variety': row['variety'],
+        'startDate': row['start_date'],
+        'expectedHarvestDate': row['expected_harvest_date'],
+        'status': row['status'],
+        'plannedArea': row['planned_area'],
+        'notes': row['notes'],
+      });
 }
