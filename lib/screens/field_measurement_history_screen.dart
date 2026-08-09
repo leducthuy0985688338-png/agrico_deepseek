@@ -8,7 +8,6 @@ import 'field_polygon_edit_screen.dart';
 
 class FieldMeasurementHistoryScreen extends StatefulWidget {
   final FieldModel? field;
-
   const FieldMeasurementHistoryScreen({super.key, this.field});
 
   @override
@@ -67,7 +66,7 @@ class _FieldMeasurementHistoryScreenState extends State<FieldMeasurementHistoryS
                     ? {Polygon(polygonId: const PolygonId('history'), points: item.polygon, strokeWidth: 3, fillColor: Colors.green.withValues(alpha: .20))}
                     : {},
                 polylines: item.polygon.length >= 2
-                    ? {Polyline(polygonId: const PolygonId('history-line'), points: [...item.polygon, item.polygon.first], width: 3)}
+                    ? {Polyline(polylineId: const PolylineId('history-line'), points: [...item.polygon, item.polygon.first], width: 3)}
                     : {},
               ),
             ),
