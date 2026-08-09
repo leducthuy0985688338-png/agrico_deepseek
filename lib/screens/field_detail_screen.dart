@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart';
+
 import '../models/field_model.dart';
+import '../models/finance_model.dart';
 import '../providers/field_provider.dart';
 import '../providers/machine_provider.dart';
+import '../providers/finance_provider.dart';
 import '../widgets/photo_gallery.dart';
+import 'field_edit_screen.dart';
+import 'field_gps_measure_screen.dart';
 import 'machine_assignment_screen.dart';
+import 'production_season_screen.dart';
 
 class FieldDetailScreen extends StatefulWidget {
   final FieldModel field;
@@ -16,274 +22,222 @@ class FieldDetailScreen extends StatefulWidget {
 }
 
 class _FieldDetailScreenState extends State<FieldDetailScreen> {
-  GoogleMapController? mapController;
-  LocationData? currentLocation;
   final Location _location = Location();
+  final _fieldProvider = FieldProvider();
+  final _machineProvider = MachineProvider();
+  final _financeProvider = FinanceProvider();
+  LocationData? _currentLocation;
 
-  // Provider để cập nhật dữ liệu
-  late FieldProvider _fieldProvider;
-  late MachineProvider _machineProvider;
+  FieldModel get _field => _fieldProvider.getFieldById(widget.field.id) ?? widget.field;
 
   @override
   void initState() {
     super.initState();
-    _fieldProvider = FieldProvider();
-    _machineProvider = MachineProvider();
     _getLocation();
   }
 
   Future<void> _getLocation() async {
-    bool serviceEnabled = await _location.serviceEnabled();
-    if (!serviceEnabled) {
-      serviceEnabled = await _location.requestService();
-      if (!serviceEnabled) return;
+    var enabled = await _location.serviceEnabled();
+    if (!enabled) {
+      enabled = await _location.requestService();
+      if (!enabled) return;
     }
-
-    PermissionStatus permission = await _location.hasPermission();
+    var permission = await _location.hasPermission();
     if (permission == PermissionStatus.denied) {
       permission = await _location.requestPermission();
       if (permission != PermissionStatus.granted) return;
     }
-
-    final locationData = await _location.getLocation();
-    setState(() {
-      currentLocation = locationData;
-    });
+    final data = await _location.getLocation();
+    if (mounted) setState(() => _currentLocation = data);
   }
 
-  // Hàm thêm ảnh mới
-  void _addPhoto(String photoPath) {
-    _fieldProvider.addPhotoToField(widget.field.id, photoPath);
-    final updatedField = _fieldProvider.getFieldById(widget.field.id);
-    if (updatedField != null) {
-      setState(() {
-        widget.field.photoPaths.clear();
-        widget.field.photoPaths.addAll(updatedField.photoPaths);
-      });
+  LatLng _mapCenter() {
+    if (_field.polygon.isNotEmpty) {
+      final lat = _field.polygon.fold<double>(0, (sum, p) => sum + p.latitude) / _field.polygon.length;
+      final lng = _field.polygon.fold<double>(0, (sum, p) => sum + p.longitude) / _field.polygon.length;
+      return LatLng(lat, lng);
     }
+    if (_currentLocation?.latitude != null && _currentLocation?.longitude != null) {
+      return LatLng(_currentLocation!.latitude!, _currentLocation!.longitude!);
+    }
+    return const LatLng(16.55, 104.75);
   }
 
-  // Lấy danh sách máy đang làm trên lô này
-  List<dynamic> getMachinesOnField() {
-    return _machineProvider.getMachinesByField(widget.field.id);
+  ProfitReport? get _report {
+    for (final report in _financeProvider.generateProfitReport()) {
+      if (report.fieldId == _field.id) return report;
+    }
+    return null;
+  }
+
+  Future<void> _editField() async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => FieldEditScreen(field: _field)),
+    );
+    if (changed == true && mounted) setState(() {});
+  }
+
+  Future<void> _openSeasons() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => ProductionSeasonScreen(field: _field)),
+    );
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _assignMachine() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const MachineAssignmentScreen()),
+    );
+    if (mounted) setState(() {});
+  }
+
+  void _addPhoto(String path) {
+    _fieldProvider.addPhotoToField(_field.id, path);
+    if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    if (currentLocation == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
+    final center = _mapCenter();
+    final polygon = _field.polygon;
+    final report = _report;
+    final machines = _machineProvider.getMachinesByField(_field.id);
 
-    final cameraPosition = CameraPosition(
-      target: LatLng(currentLocation!.latitude!, currentLocation!.longitude!),
-      zoom: 16,
-    );
-
-    Set<Polygon> polygons = {};
-    if (widget.field.polygon.isNotEmpty) {
-      polygons.add(
-        Polygon(
-          polygonId: PolygonId(widget.field.id),
-          points: widget.field.polygon,
-          fillColor: Colors.green.withOpacity(0.3),
-          strokeColor: Colors.green,
-          strokeWidth: 2,
+    final markers = <Marker>{};
+    if (_currentLocation?.latitude != null && _currentLocation?.longitude != null) {
+      markers.add(
+        Marker(
+          markerId: const MarkerId('current'),
+          position: LatLng(_currentLocation!.latitude!, _currentLocation!.longitude!),
         ),
       );
     }
 
-    // Lấy danh sách máy trên lô
-    final machinesOnField = getMachinesOnField();
+    final polygons = <Polygon>{};
+    if (polygon.length >= 3) {
+      polygons.add(
+        Polygon(
+          polygonId: PolygonId(_field.id),
+          points: polygon,
+          fillColor: Colors.green.withValues(alpha: .22),
+          strokeColor: Colors.green,
+          strokeWidth: 3,
+        ),
+      );
+    }
+
+    final machineCards = <Widget>[];
+    if (machines.isNotEmpty) {
+      machineCards.add(const SizedBox(height: 12));
+      machineCards.add(const Text('Máy móc đang làm trên lô', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)));
+      machineCards.add(const SizedBox(height: 8));
+      for (final machine in machines) {
+        machineCards.add(
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.agriculture, color: Colors.green),
+              title: Text(machine.name),
+              subtitle: Text('${machine.type} • ${machine.status} • ${machine.totalHours}h'),
+            ),
+          ),
+        );
+      }
+    }
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.field.name),
+        title: Text(_field.name),
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(tooltip: 'Sửa thông tin', onPressed: _editField, icon: const Icon(Icons.edit)),
+          IconButton(
+            tooltip: 'Đo/cập nhật thửa',
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FieldGpsMeasureScreen())),
+            icon: const Icon(Icons.gps_fixed),
+          ),
+        ],
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      body: RefreshIndicator(
+        onRefresh: _getLocation,
+        child: ListView(
+          padding: const EdgeInsets.only(bottom: 24),
           children: [
-            // Bản đồ
             SizedBox(
-              height: 250,
+              height: 300,
               child: GoogleMap(
-                initialCameraPosition: cameraPosition,
-                myLocationEnabled: true,
+                initialCameraPosition: CameraPosition(target: center, zoom: 17),
+                mapType: MapType.satellite,
+                myLocationEnabled: _currentLocation != null,
                 myLocationButtonEnabled: true,
                 polygons: polygons,
-                onMapCreated: (controller) {
-                  mapController = controller;
-                },
-                markers: {
-                  Marker(
-                    markerId: const MarkerId('current'),
-                    position: LatLng(
-                      currentLocation!.latitude!,
-                      currentLocation!.longitude!,
-                    ),
-                    infoWindow: const InfoWindow(title: 'Vị trí hiện tại'),
-                  ),
-                },
+                markers: markers,
               ),
             ),
-            // Thông tin lô
             Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    widget.field.name,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  Text(_field.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      _InfoChip(icon: Icons.square_foot, label: '${_field.area.toStringAsFixed(1)} m²'),
+                      const SizedBox(width: 8),
+                      _InfoChip(icon: Icons.landscape, label: '${(_field.area / 10000).toStringAsFixed(3)} ha'),
+                    ],
                   ),
                   const SizedBox(height: 8),
-                  Text('Diện tích: ${widget.field.area} m²'),
-                  Text('Cây trồng: ${widget.field.crop}'),
-                  Text('Trạng thái: ${widget.field.status}'),
-                  const Divider(height: 24),
-
-                  // ----- DANH SÁCH MÁY TRÊN LÔ -----
-                  if (machinesOnField.isNotEmpty) ...[
-                    const Text(
-                      'Máy móc đang làm trên lô:',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+                  Text('Cây trồng: ${_field.crop}'),
+                  Text('Trạng thái: ${_field.status}'),
+                  Text('Số điểm ranh: ${_field.polygon.length}'),
+                  const Divider(height: 28),
+                  const Text('Hiệu quả thửa đất', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        children: [
+                          _metric('Doanh thu', _money(report?.totalRevenue ?? 0)),
+                          _metric('Chi phí', _money(report?.totalCost ?? 0)),
+                          _metric('Lợi nhuận', _money(report?.profit ?? 0), bold: true),
+                          _metric(
+                            'Lợi nhuận/ha',
+                            _money(_field.area > 0 ? (report?.profit ?? 0) / (_field.area / 10000) : 0),
+                            bold: true,
+                          ),
+                          _metric('Biên lợi nhuận', '${(report?.profitMargin ?? 0).toStringAsFixed(1)}%'),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    ...machinesOnField.map((machine) {
-                      return Card(
-                        color: Colors.green.shade50,
-                        child: ListTile(
-                          leading: const Icon(
-                            Icons.agriculture,
-                            color: Colors.green,
-                          ),
-                          title: Text(machine.name),
-                          subtitle: Text(
-                            '${machine.type} - ${machine.status} | Giờ: ${machine.totalHours}h',
-                          ),
-                          trailing: const Icon(
-                            Icons.check_circle,
-                            color: Colors.green,
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // ----- PHẦN ẢNH -----
-                  PhotoGallery(
-                    photoPaths: widget.field.photoPaths,
-                    onAddPhoto: _addPhoto,
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ================================================
-                  // ==== PHẦN NÚT CHỨC NĂNG (QUAN TRỌNG NHẤT) ====
-                  // ================================================
-                  Row(
-                    children: [
-                      // Nút GÁN MÁY
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            // Mở màn hình gán máy
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const MachineAssignmentScreen(),
-                              ),
-                            ).then((_) {
-                              // Refresh lại khi quay về
-                              setState(() {});
-                            });
-                          },
-                          icon: const Icon(Icons.agriculture),
-                          label: const Text('Gán máy'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-
-                      // Nút NHẬT KÝ MÁY
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            // Mở nhật ký máy trên lô này
-                            _showMachineLogDialog();
-                          },
-                          icon: const Icon(Icons.history),
-                          label: const Text('Nhật ký máy'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.orange,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                        ),
-                      ),
-                    ],
                   ),
                   const SizedBox(height: 12),
-
-                  // Nút CHI PHÍ (tùy chọn)
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            // Thêm chi phí (sẽ thêm sau)
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Tính năng đang phát triển'),
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.money),
-                          label: const Text('Chi phí'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            // Thu hoạch (sẽ thêm sau)
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Tính năng đang phát triển'),
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.assignment),
-                          label: const Text('Thu hoạch'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.purple,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                        ),
-                      ),
-                    ],
+                  Card(
+                    child: ListTile(
+                      leading: const CircleAvatar(child: Icon(Icons.agriculture)),
+                      title: const Text('Vụ sản xuất'),
+                      subtitle: const Text('Gieo trồng • vật tư • tưới • máy móc • thu hoạch'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: _openSeasons,
+                    ),
                   ),
-                  // ================================================
-                  // ==== KẾT THÚC PHẦN NÚT CHỨC NĂNG ============
-                  // ================================================
+                  ...machineCards,
+                  const SizedBox(height: 12),
+                  PhotoGallery(photoPaths: _field.photoPaths, onAddPhoto: _addPhoto),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _assignMachine,
+                      icon: const Icon(Icons.agriculture),
+                      label: const Text('Gán máy'),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -293,81 +247,26 @@ class _FieldDetailScreenState extends State<FieldDetailScreen> {
     );
   }
 
-  // Hàm hiển thị hộp thoại nhật ký máy
-  void _showMachineLogDialog() {
-    // Lấy tất cả máy có lịch sử trên lô này
-    final allMachines = _machineProvider.machines;
-    final logs = <Map<String, dynamic>>[];
-
-    for (var machine in allMachines) {
-      for (var record in machine.fieldHistory) {
-        if (record.fieldId == widget.field.id) {
-          logs.add({
-            'machineName': machine.name,
-            'startDate': record.startDate,
-            'endDate': record.endDate,
-            'hoursWorked': record.hoursWorked,
-            'fuelUsed': record.fuelUsed,
-            'operator': record.operatorName ?? 'Chưa có',
-          });
-        }
-      }
-    }
-
-    // Sắp xếp theo ngày mới nhất
-    logs.sort((a, b) => b['startDate'].compareTo(a['startDate']));
-
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: Text('Nhật ký máy - ${widget.field.name}'),
-          content: SizedBox(
-            width: double.maxFinite,
-            height: 400,
-            child: logs.isEmpty
-                ? const Center(
-                    child: Text('Chưa có máy nào làm việc trên lô này'),
-                  )
-                : ListView.builder(
-                    itemCount: logs.length,
-                    itemBuilder: (ctx, index) {
-                      final log = logs[index];
-                      return Card(
-                        child: ListTile(
-                          title: Text(log['machineName']),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Ngày bắt đầu: ${log['startDate'].day}/${log['startDate'].month}/${log['startDate'].year}',
-                              ),
-                              if (log['endDate'] != null)
-                                Text(
-                                  'Ngày kết thúc: ${log['endDate'].day}/${log['endDate'].month}/${log['endDate'].year}',
-                                ),
-                              Text('Giờ làm: ${log['hoursWorked']}h'),
-                              Text('Nhiên liệu: ${log['fuelUsed']}L'),
-                              Text('Người vận hành: ${log['operator']}'),
-                            ],
-                          ),
-                          leading: const Icon(
-                            Icons.history,
-                            color: Colors.orange,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Đóng'),
-            ),
-          ],
-        );
-      },
+  Widget _metric(String label, String value, {bool bold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(child: Text(label)),
+          Text(value, style: TextStyle(fontWeight: bold ? FontWeight.bold : FontWeight.w600, fontSize: bold ? 16 : null)),
+        ],
+      ),
     );
   }
+
+  String _money(double value) => '${value.toStringAsFixed(0)} đ';
+}
+
+class _InfoChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  const _InfoChip({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) => Chip(avatar: Icon(icon, size: 18), label: Text(label));
 }

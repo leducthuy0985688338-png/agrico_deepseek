@@ -1,93 +1,84 @@
 import 'package:flutter/material.dart';
+import 'field_provider.dart';
 import 'warehouse_provider.dart';
 import 'machine_provider.dart';
 import 'employee_provider.dart';
 import 'finance_provider.dart';
 import 'fuel_provider.dart';
+import '../models/finance_model.dart';
 
 class DashboardProvider extends ChangeNotifier {
+  final FieldProvider _fieldProvider = FieldProvider();
   final WarehouseProvider _warehouseProvider = WarehouseProvider();
   final MachineProvider _machineProvider = MachineProvider();
   final EmployeeProvider _employeeProvider = EmployeeProvider();
   final FinanceProvider _financeProvider = FinanceProvider();
   final FuelProvider _fuelProvider = FuelProvider();
 
-  // ====== THỐNG KÊ TỔNG QUAN ======
-  int get totalFields => 2; // Tạm thời hardcode, sau này lấy từ FieldProvider
+  int get totalFields => _fieldProvider.fields.length;
   int get totalMachines => _machineProvider.machines.length;
   int get totalEmployees => _employeeProvider.employees.length;
   int get totalRevenue => _financeProvider.getTotalRevenue().toInt();
   int get totalCost => _financeProvider.getTotalCost().toInt();
   int get totalProfit => _financeProvider.getTotalProfit().toInt();
 
-  // ====== DỮ LIỆU CHO BIỂU ĐỒ THU CHI THEO THÁNG ======
   List<Map<String, dynamic>> getMonthlyFinanceData() {
-    // Dữ liệu mô phỏng 6 tháng gần đây
-    final months = ['Thg 3', 'Thg 4', 'Thg 5', 'Thg 6', 'Thg 7', 'Thg 8'];
-    final revenues = [15, 22, 18, 30, 25, 38]; // Triệu VND
-    final costs = [10, 12, 14, 16, 18, 20]; // Triệu VND
-
-    return List.generate(months.length, (index) {
-      return {
-        'month': months[index],
-        'revenue': revenues[index],
-        'cost': costs[index],
-      };
-    });
-  }
-
-  // ====== DỮ LIỆU CHO BIỂU ĐỒ PHÂN BỔ CHI PHÍ ======
-  List<Map<String, dynamic>> getCostDistribution() {
-    // Lấy từ FinanceProvider
-    final costByCategory = _financeProvider.getCostByCategory();
-    if (costByCategory.isEmpty) {
-      return [
-        {'category': 'Vật tư', 'amount': 40},
-        {'category': 'Nhân công', 'amount': 30},
-        {'category': 'Nhiên liệu', 'amount': 20},
-        {'category': 'Bảo trì', 'amount': 10},
-      ];
+    final now = DateTime.now();
+    final result = <Map<String, dynamic>>[];
+    for (var offset = 5; offset >= 0; offset--) {
+      final month = DateTime(now.year, now.month - offset, 1);
+      final nextMonth = DateTime(month.year, month.month + 1, 1);
+      double revenue = 0;
+      double cost = 0;
+      for (final record in _financeProvider.records) {
+        if (!record.date.isBefore(month) && record.date.isBefore(nextMonth)) {
+          if (record.type == TransactionType.THU) revenue += record.amount;
+          if (record.type == TransactionType.CHI) cost += record.amount;
+        }
+      }
+      result.add({'month': 'Thg ${month.month}', 'revenue': revenue / 1000000, 'cost': cost / 1000000});
     }
-    return costByCategory.entries.map((entry) {
-      return {
-        'category': entry.key,
-        'amount': entry.value / 1000000, // Chuyển sang triệu
-      };
-    }).toList();
+    return result;
   }
 
-  // ====== DỮ LIỆU CHO BIỂU ĐỒ TRẠNG THÁI MÁY MÓC ======
+  List<Map<String, dynamic>> getCostDistribution() => _financeProvider.getCostByCategory().entries.map((entry) => {'category': entry.key, 'amount': entry.value / 1000000}).toList();
+
   List<Map<String, dynamic>> getMachineStatusData() {
     final machines = _machineProvider.machines;
-    final good = machines.where((m) => m.status == 'Tốt').length;
-    final maintenance = machines
-        .where((m) => m.status == 'Đang bảo trì')
-        .length;
-    final broken = machines.where((m) => m.status == 'Hỏng').length;
-
     return [
-      {'status': 'Tốt', 'count': good},
-      {'status': 'Bảo trì', 'count': maintenance},
-      {'status': 'Hỏng', 'count': broken},
+      {'status': 'Tốt', 'count': machines.where((m) => m.status == 'Tốt').length},
+      {'status': 'Bảo trì', 'count': machines.where((m) => m.status == 'Đang bảo trì').length},
+      {'status': 'Hỏng', 'count': machines.where((m) => m.status == 'Hỏng').length},
     ];
   }
 
-  // ====== DỮ LIỆU CHO BIỂU ĐỒ TỒN KHO ======
-  List<Map<String, dynamic>> getInventoryData() {
-    return _warehouseProvider.items.map((item) {
-      return {'name': item.name, 'stock': item.stock, 'unit': item.unit};
-    }).toList();
-  }
+  List<Map<String, dynamic>> getInventoryData() => _warehouseProvider.items.map((item) => {'name': item.name, 'stock': item.stock, 'unit': item.unit}).toList();
 
-  // ====== DỮ LIỆU CHO BIỂU ĐỒ LỢI NHUẬN THEO LÔ ======
-  List<Map<String, dynamic>> getProfitByFieldData() {
-    final reports = _financeProvider.generateProfitReport();
-    return reports.map((report) {
+  List<Map<String, dynamic>> getProfitByFieldData() => _financeProvider.generateProfitReport().map((report) => {'field': report.fieldName, 'profit': report.profit / 1000000, 'profitMargin': report.profitMargin}).toList();
+
+  List<Map<String, dynamic>> getTopFieldsByProfit({int limit = 5}) {
+    final rows = _financeProvider.generateProfitReport().map((report) {
+      final field = _fieldProvider.getFieldById(report.fieldId);
+      final areaHa = (field?.area ?? 0) / 10000;
       return {
+        'fieldId': report.fieldId,
         'field': report.fieldName,
-        'profit': report.profit / 1000000, // Chuyển sang triệu
+        'profit': report.profit,
+        'revenue': report.totalRevenue,
+        'cost': report.totalCost,
         'profitMargin': report.profitMargin,
+        'areaHa': areaHa,
+        'profitPerHa': areaHa > 0 ? report.profit / areaHa : 0.0,
+        'costPerHa': areaHa > 0 ? report.totalCost / areaHa : 0.0,
       };
     }).toList();
+    rows.sort((a, b) => (b['profitPerHa'] as double).compareTo(a['profitPerHa'] as double));
+    return rows.take(limit).toList();
+  }
+
+  List<Map<String, dynamic>> getHighestCostFields({int limit = 5}) {
+    final rows = getTopFieldsByProfit(limit: 999999);
+    rows.sort((a, b) => (b['costPerHa'] as double).compareTo(a['costPerHa'] as double));
+    return rows.take(limit).toList();
   }
 }
