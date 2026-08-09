@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../models/field_model.dart';
+import '../services/field_storage_service.dart';
 
 class FieldProvider extends ChangeNotifier {
   static final FieldProvider instance = FieldProvider._internal();
@@ -31,11 +32,24 @@ class FieldProvider extends ChangeNotifier {
         status: 'Chuẩn bị thu hoạch',
       ),
     ];
+    _loadPersistedFields();
   }
 
+  final FieldStorageService _storage = FieldStorageService();
   late List<FieldModel> _fields;
 
   List<FieldModel> get fields => List.unmodifiable(_fields);
+
+  Future<void> _loadPersistedFields() async {
+    try {
+      final saved = await _storage.loadFields();
+      if (saved.isEmpty) return;
+      _fields = saved;
+      notifyListeners();
+    } catch (_) {
+      // Keep the built-in demo data if local storage is unavailable/corrupt.
+    }
+  }
 
   FieldModel? getFieldById(String id) {
     for (final field in _fields) {
@@ -47,7 +61,10 @@ class FieldProvider extends ChangeNotifier {
   void updateFieldPhotos(String id, List<String> newPhotoPaths) {
     final index = _fields.indexWhere((f) => f.id == id);
     if (index == -1) return;
-    _fields[index] = _fields[index].copyWith(photoPaths: List.unmodifiable(newPhotoPaths));
+    _fields[index] = _fields[index].copyWith(
+      photoPaths: List.unmodifiable(newPhotoPaths),
+    );
+    _persist();
     notifyListeners();
   }
 
@@ -59,6 +76,7 @@ class FieldProvider extends ChangeNotifier {
 
   void addField(FieldModel field) {
     _fields = [..._fields, field];
+    _persist();
     notifyListeners();
   }
 
@@ -66,6 +84,15 @@ class FieldProvider extends ChangeNotifier {
     final index = _fields.indexWhere((f) => f.id == updated.id);
     if (index == -1) return;
     _fields[index] = updated;
+    _persist();
     notifyListeners();
+  }
+
+  Future<void> _persist() async {
+    try {
+      await _storage.saveFields(_fields);
+    } catch (_) {
+      // Persistence must not break field editing when storage fails.
+    }
   }
 }
