@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../models/warehouse_item.dart';
 import '../models/machine_model.dart';
 import '../models/employee_model.dart';
@@ -56,9 +55,7 @@ class CloudService {
     });
   }
 
-  static Stream<QuerySnapshot<Map<String, dynamic>>> getFields() =>
-      db.collection('fields').orderBy('name').snapshots();
-
+  static Stream<QuerySnapshot<Map<String, dynamic>>> getFields() => db.collection('fields').orderBy('name').snapshots();
   static Future<void> deleteField(String id) => db.collection('fields').doc(id).delete();
 
   static Future<void> saveDistanceMeasurement(DistanceMeasurementModel measurement) async {
@@ -73,53 +70,38 @@ class CloudService {
     });
   }
 
-  static Stream<QuerySnapshot<Map<String, dynamic>>> getDistanceMeasurements() =>
-      db.collection('distance_measurements').orderBy('measuredAt', descending: true).snapshots();
-
-  static Future<void> deleteDistanceMeasurement(String id) =>
-      db.collection('distance_measurements').doc(id).delete();
+  static Stream<QuerySnapshot<Map<String, dynamic>>> getDistanceMeasurements() => db.collection('distance_measurements').orderBy('measuredAt', descending: true).snapshots();
+  static Future<void> deleteDistanceMeasurement(String id) => db.collection('distance_measurements').doc(id).delete();
 
   // ====== VẬT TƯ ======
   static Future<void> saveWarehouseItem(WarehouseItem item) async {
-    try {
-      await db.collection('warehouse').doc(item.id).set({'id': item.id, 'name': item.name, 'unit': item.unit, 'importPrice': item.importPrice, 'supplier': item.supplier, 'stock': item.stock, 'updatedAt': FieldValue.serverTimestamp()});
-    } catch (e) { rethrow; }
+    try { await db.collection('warehouse').doc(item.id).set({'id': item.id, 'name': item.name, 'unit': item.unit, 'importPrice': item.importPrice, 'supplier': item.supplier, 'stock': item.stock, 'updatedAt': FieldValue.serverTimestamp()}); } catch (e) { rethrow; }
   }
   static Stream<QuerySnapshot> getWarehouseItems() => db.collection('warehouse').orderBy('name').snapshots();
   static Future<void> deleteWarehouseItem(String id) => db.collection('warehouse').doc(id).delete();
 
   // ====== MÁY MÓC ======
-  static Future<void> saveMachine(MachineModel machine) async {
-    await db.collection('machines').doc(machine.id).set({'id': machine.id, 'name': machine.name, 'type': machine.type, 'manufacturer': machine.manufacturer, 'year': machine.year, 'status': machine.status, 'totalHours': machine.totalHours, 'fuelConsumption': machine.fuelConsumption, 'currentFieldId': machine.currentFieldId, 'updatedAt': FieldValue.serverTimestamp()});
-  }
+  static Future<void> saveMachine(MachineModel machine) async { await db.collection('machines').doc(machine.id).set({'id': machine.id, 'name': machine.name, 'type': machine.type, 'manufacturer': machine.manufacturer, 'year': machine.year, 'status': machine.status, 'totalHours': machine.totalHours, 'fuelConsumption': machine.fuelConsumption, 'currentFieldId': machine.currentFieldId, 'updatedAt': FieldValue.serverTimestamp()}); }
   static Stream<QuerySnapshot> getMachines() => db.collection('machines').orderBy('name').snapshots();
   static Future<void> deleteMachine(String id) => db.collection('machines').doc(id).delete();
 
   // ====== NHÂN VIÊN ======
-  static Future<void> saveEmployee(EmployeeModel employee) async {
-    await db.collection('employees').doc(employee.id).set({'id': employee.id, 'name': employee.name, 'position': employee.position, 'department': employee.department, 'dailyRate': employee.dailyRate, 'phone': employee.phone, 'address': employee.address, 'isActive': employee.isActive, 'updatedAt': FieldValue.serverTimestamp()});
-  }
+  static Future<void> saveEmployee(EmployeeModel employee) async { await db.collection('employees').doc(employee.id).set({'id': employee.id, 'name': employee.name, 'position': employee.position, 'department': employee.department, 'dailyRate': employee.dailyRate, 'phone': employee.phone, 'address': employee.address, 'isActive': employee.isActive, 'updatedAt': FieldValue.serverTimestamp()}); }
   static Stream<QuerySnapshot> getEmployees() => db.collection('employees').orderBy('name').snapshots();
   static Future<void> deleteEmployee(String id) => db.collection('employees').doc(id).delete();
 
   // ====== CÔNG VIỆC ======
-  static Future<void> saveTask(TaskModel task) async {
-    await db.collection('tasks').doc(task.id).set({'id': task.id, 'title': task.title, 'description': task.description, 'priority': task.priority.index, 'status': task.status.index, 'dueDate': task.dueDate.toIso8601String(), 'completedDate': task.completedDate?.toIso8601String(), 'assignedTo': task.assignedTo, 'assignedToName': task.assignedToName, 'fieldId': task.fieldId, 'fieldName': task.fieldName, 'machineId': task.machineId, 'machineName': task.machineName, 'tags': task.tags, 'createdAt': task.createdAt.toIso8601String(), 'updatedAt': FieldValue.serverTimestamp()});
-  }
+  static Future<void> saveTask(TaskModel task) async { await db.collection('tasks').doc(task.id).set({'id': task.id, 'title': task.title, 'description': task.description, 'priority': task.priority.index, 'status': task.status.index, 'dueDate': task.dueDate.toIso8601String(), 'completedDate': task.completedDate?.toIso8601String(), 'assignedTo': task.assignedTo, 'assignedToName': task.assignedToName, 'fieldId': task.fieldId, 'fieldName': task.fieldName, 'machineId': task.machineId, 'machineName': task.machineName, 'tags': task.tags, 'createdAt': task.createdAt.toIso8601String(), 'updatedAt': FieldValue.serverTimestamp()}); }
   static Stream<QuerySnapshot> getTasks() => db.collection('tasks').orderBy('dueDate').snapshots();
   static Future<void> deleteTask(String id) => db.collection('tasks').doc(id).delete();
 
   // ====== TÀI CHÍNH ======
-  static Future<void> saveFinanceRecord(FinanceRecord record) async {
-    await db.collection('finance').doc(record.id).set({'id': record.id, 'fieldId': record.fieldId, 'fieldName': record.fieldName, 'date': record.date.toIso8601String(), 'type': record.type.index, 'category': record.category, 'amount': record.amount, 'description': record.description, 'machineId': record.machineId, 'machineName': record.machineName, 'updatedAt': FieldValue.serverTimestamp()});
-  }
+  static Future<void> saveFinanceRecord(FinanceRecord record) async { await db.collection('finance').doc(record.id).set({'id': record.id, 'fieldId': record.fieldId, 'fieldName': record.fieldName, 'date': record.date.toIso8601String(), 'type': record.type.index, 'category': record.category, 'amount': record.amount, 'description': record.description, 'machineId': record.machineId, 'machineName': record.machineName, 'updatedAt': FieldValue.serverTimestamp()}); }
   static Stream<QuerySnapshot> getFinanceRecords() => db.collection('finance').orderBy('date', descending: true).snapshots();
   static Future<void> deleteFinanceRecord(String id) => db.collection('finance').doc(id).delete();
 
   // ====== NHIÊN LIỆU ======
-  static Future<void> saveFuel(FuelModel fuel) async {
-    await db.collection('fuel').doc(fuel.id).set({'id': fuel.id, 'name': fuel.name, 'unit': fuel.unit, 'stock': fuel.stock, 'unitPrice': fuel.unitPrice, 'supplier': fuel.supplier, 'updatedAt': FieldValue.serverTimestamp()});
-  }
+  static Future<void> saveFuel(FuelModel fuel) async { await db.collection('fuel').doc(fuel.id).set({'id': fuel.id, 'name': fuel.name, 'unit': fuel.unit, 'stock': fuel.stock, 'unitPrice': fuel.unitPrice, 'supplier': fuel.supplier, 'updatedAt': FieldValue.serverTimestamp()}); }
   static Stream<QuerySnapshot> getFuels() => db.collection('fuel').orderBy('name').snapshots();
   static Future<void> deleteFuel(String id) => db.collection('fuel').doc(id).delete();
 
@@ -135,10 +117,6 @@ class CloudService {
   }
 
   static Future<bool> checkConnection() async {
-    try {
-      await db.collection('_test').doc('test').set({'test': true});
-      await db.collection('_test').doc('test').delete();
-      return true;
-    } catch (_) { return false; }
+    try { await db.collection('_test').doc('test').set({'test': true}); await db.collection('_test').doc('test').delete(); return true; } catch (_) { return false; }
   }
 }
