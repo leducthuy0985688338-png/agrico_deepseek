@@ -10,44 +10,49 @@ class FieldProvider extends ChangeNotifier {
   factory FieldProvider() => instance;
 
   FieldProvider._internal() {
-    _fields = [
-      const FieldModel(
-        id: 'LO0001',
-        name: 'Lô cà phê A1',
-        area: 12500,
-        crop: 'Cà phê',
-        status: 'Đang trồng',
-        polygon: [
-          LatLng(10.8231, 106.6297),
-          LatLng(10.8235, 106.6302),
-          LatLng(10.8229, 106.6305),
-          LatLng(10.8224, 106.6299),
-        ],
-      ),
-      const FieldModel(
-        id: 'LO0002',
-        name: 'Lô tiêu B2',
-        area: 8200,
-        crop: 'Hồ tiêu',
-        status: 'Chuẩn bị thu hoạch',
-      ),
-    ];
+    _fields = _demoFields;
     _loadPersistedFields();
   }
 
   final FieldStorageService _storage = FieldStorageService();
   late List<FieldModel> _fields;
+  bool _isLoading = true;
 
   List<FieldModel> get fields => List.unmodifiable(_fields);
+  bool get isLoading => _isLoading;
+
+  static const _demoFields = [
+    FieldModel(
+      id: 'LO0001',
+      name: 'Lô cà phê A1',
+      area: 12500,
+      crop: 'Cà phê',
+      status: 'Đang trồng',
+      polygon: [
+        LatLng(10.8231, 106.6297),
+        LatLng(10.8235, 106.6302),
+        LatLng(10.8229, 106.6305),
+        LatLng(10.8224, 106.6299),
+      ],
+    ),
+    FieldModel(
+      id: 'LO0002',
+      name: 'Lô tiêu B2',
+      area: 8200,
+      crop: 'Hồ tiêu',
+      status: 'Chuẩn bị thu hoạch',
+    ),
+  ];
 
   Future<void> _loadPersistedFields() async {
     try {
       final saved = await _storage.loadFields();
-      if (saved.isEmpty) return;
-      _fields = saved;
-      notifyListeners();
+      if (saved.isNotEmpty) _fields = saved;
     } catch (_) {
-      // Keep the built-in demo data if local storage is unavailable/corrupt.
+      // Keep demo data if the local database is unavailable.
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
   }
 
@@ -76,7 +81,7 @@ class FieldProvider extends ChangeNotifier {
 
   void addField(FieldModel field) {
     _fields = [..._fields, field];
-    _persist();
+    _persistField(field);
     notifyListeners();
   }
 
@@ -84,15 +89,34 @@ class FieldProvider extends ChangeNotifier {
     final index = _fields.indexWhere((f) => f.id == updated.id);
     if (index == -1) return;
     _fields[index] = updated;
-    _persist();
+    _persistField(updated);
     notifyListeners();
+  }
+
+  Future<void> deleteField(String id) async {
+    if (_fields.every((field) => field.id != id)) return;
+    _fields = _fields.where((field) => field.id != id).toList(growable: false);
+    try {
+      await _storage.deleteField(id);
+    } catch (_) {
+      // Keep the UI responsive even if persistence temporarily fails.
+    }
+    notifyListeners();
+  }
+
+  Future<void> _persistField(FieldModel field) async {
+    try {
+      await _storage.saveField(field);
+    } catch (_) {
+      // Persistence failures are intentionally isolated from UI state.
+    }
   }
 
   Future<void> _persist() async {
     try {
       await _storage.saveFields(_fields);
     } catch (_) {
-      // Persistence must not break field editing when storage fails.
+      // Persistence failures are intentionally isolated from UI state.
     }
   }
 }
