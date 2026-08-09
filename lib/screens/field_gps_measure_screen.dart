@@ -23,6 +23,7 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
   GoogleMapController? _mapController;
   Position? _lastPosition;
   bool _recording = false;
+  bool _saving = false;
 
   double get _area => _gps.calculateAreaSquareMeters(_points);
   double get _perimeter => _gps.calculatePerimeterMeters(_points);
@@ -43,7 +44,7 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
     }
 
     final current = await _gps.getCurrentPosition();
-    if (current == null) return;
+    if (current == null || !mounted) return;
 
     setState(() {
       _recording = true;
@@ -57,6 +58,7 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
   }
 
   void _addPosition(Position position) {
+    if (!mounted) return;
     _lastPosition = position;
     final point = LatLng(position.latitude, position.longitude);
 
@@ -81,15 +83,16 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
   Future<void> _stopMeasurement() async {
     await _subscription?.cancel();
     _subscription = null;
-    setState(() => _recording = false);
+    if (mounted) setState(() => _recording = false);
   }
 
   void _undoLastPoint() {
-    if (_points.isEmpty) return;
+    if (_points.isEmpty || _saving) return;
     setState(() => _points.removeLast());
   }
 
   Future<void> _saveField() async {
+    if (_saving) return;
     if (_points.length < 3 || _area <= 1) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Cần ít nhất 3 điểm GPS để tạo thửa.')),
@@ -97,14 +100,17 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
       return;
     }
 
-    if (_lastPosition != null && _lastPosition!.accuracy > 20) {
+    final accuracy = _lastPosition?.accuracy;
+    if (accuracy != null && accuracy > 20) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('GPS đang sai số ${_lastPosition!.accuracy.toStringAsFixed(1)} m. Hãy chờ tín hiệu tốt hơn.')),
+        SnackBar(content: Text('GPS đang sai số ${accuracy.toStringAsFixed(1)} m. Hãy chờ tín hiệu tốt hơn.')),
       );
       return;
     }
 
-    final nameController = TextEditingController(text: 'Lô mới ${DateTime.now().millisecondsSinceEpoch % 10000}');
+    final nameController = TextEditingController(
+      text: 'Lô mới ${DateTime.now().millisecondsSinceEpoch % 10000}',
+    );
     final cropController = TextEditingController();
 
     final result = await showDialog<bool>(
@@ -137,19 +143,29 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
       ),
     );
 
+    final name = nameController.text.trim();
+    final crop = cropController.text.trim();
+    nameController.dispose();
+    cropController.dispose();
+
     if (result != true || !mounted) return;
 
+    setState(() => _saving = true);
     final field = FieldModel(
       id: 'GPS-${DateTime.now().millisecondsSinceEpoch}',
-      name: nameController.text.trim().isEmpty ? 'Lô chưa đặt tên' : nameController.text.trim(),
+      name: name.isEmpty ? 'Lô chưa đặt tên' : name,
       area: _area,
-      crop: cropController.text.trim().isEmpty ? 'Chưa xác định' : cropController.text.trim(),
+      crop: crop.isEmpty ? 'Chưa xác định' : crop,
       status: 'Mới đo GPS',
       polygon: List.unmodifiable(_points),
     );
 
     _fieldProvider.addField(field);
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã lưu thửa GPS vào AGRICO.')));
+    if (!mounted) return;
+    setState(() => _saving = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Đã lưu thửa GPS vào AGRICO.')),
+    );
     Navigator.pop(context, field);
   }
 
@@ -184,13 +200,15 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
         actions: [
           IconButton(
             tooltip: 'Xóa điểm cuối',
-            onPressed: _points.isEmpty ? null : _undoLastPoint,
+            onPressed: _points.isEmpty || _saving ? null : _undoLastPoint,
             icon: const Icon(Icons.undo),
           ),
           IconButton(
             tooltip: 'Lưu thửa',
-            onPressed: _recording || _points.length < 3 ? null : _saveField,
-            icon: const Icon(Icons.save),
+            onPressed: _recording || _saving || _points.length < 3 ? null : _saveField,
+            icon: _saving
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.save),
           ),
         ],
       ),
@@ -260,7 +278,7 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
                     SizedBox(
                       height: 54,
                       child: FilledButton(
-                        onPressed: _saveField,
+                        onPressed: _saving ? null : _saveField,
                         child: const Icon(Icons.save),
                       ),
                     ),
