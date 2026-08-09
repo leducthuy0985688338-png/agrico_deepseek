@@ -1,4 +1,4 @@
-import com.android.build.gradle.BaseExtension
+import com.android.build.api.dsl.LibraryExtension
 
 allprojects {
     repositories {
@@ -11,13 +11,11 @@ rootProject.buildDir = File(rootProject.projectDir, "../build")
 
 subprojects {
     project.buildDir = File(rootProject.buildDir, "${project.name}")
-}
 
-subprojects {
-    project.evaluationDependsOn(":app")
-
-    afterEvaluate {
-        extensions.findByType(BaseExtension::class.java)?.compileSdkVersion(36)
+    plugins.withId("com.android.library") {
+        extensions.configure<LibraryExtension> {
+            compileSdk = 36
+        }
     }
 }
 
