@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import '../models/field_model.dart';
 import '../models/production_season_model.dart';
 import '../providers/production_season_provider.dart';
+import 'production_log_screen.dart';
 
 class ProductionSeasonScreen extends StatefulWidget {
   final FieldModel field;
-
   const ProductionSeasonScreen({super.key, required this.field});
 
   @override
@@ -51,6 +51,13 @@ class _ProductionSeasonScreenState extends State<ProductionSeasonScreen> {
     if (confirmed == true) await _provider.delete(season);
   }
 
+  Future<void> _openLogs(ProductionSeasonModel season) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => ProductionLogScreen(season: season)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -88,7 +95,17 @@ class _ProductionSeasonScreenState extends State<ProductionSeasonScreen> {
                   title: Text(season.name),
                   subtitle: Text('${season.crop} • ${season.variety}\nBắt đầu: ${_date(season.startDate)} • ${season.status}'),
                   isThreeLine: true,
-                  trailing: IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _deleteSeason(season)),
+                  onTap: () => _openLogs(season),
+                  trailing: PopupMenuButton<String>(
+                    onSelected: (value) {
+                      if (value == 'logs') _openLogs(season);
+                      if (value == 'delete') _deleteSeason(season);
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'logs', child: Text('Nhật ký sản xuất')),
+                      PopupMenuItem(value: 'delete', child: Text('Xóa vụ')),
+                    ],
+                  ),
                 ),
               );
             },
@@ -105,7 +122,6 @@ class _ProductionSeasonScreenState extends State<ProductionSeasonScreen> {
 class _SeasonFormDialog extends StatefulWidget {
   final FieldModel field;
   const _SeasonFormDialog({required this.field});
-
   @override
   State<_SeasonFormDialog> createState() => _SeasonFormDialogState();
 }
