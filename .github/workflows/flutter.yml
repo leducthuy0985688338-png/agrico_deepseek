@@ -19,6 +19,13 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Create Firebase config
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          test -n "$GOOGLE_SERVICES_JSON"
+          printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+
       - name: Install dependencies
         run: flutter pub get
 
@@ -36,3 +43,7 @@ jobs:
         with:
           name: agrico-debug-apk
           path: build/app/outputs/flutter-apk/app-debug.apk
+
+      - name: Remove Firebase config
+        if: always()
+        run: rm -f android/app/google-services.json
