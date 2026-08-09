@@ -5,18 +5,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/field_model.dart';
 import 'field_database.dart';
 
-/// Local persistence facade for field data.
-///
-/// SQLite is the source of truth. Existing SharedPreferences data is migrated
-/// once so users do not lose fields created by earlier builds.
+/// Local persistence facade for field data and measurement history.
 class FieldStorageService {
   static const _legacyKey = 'agrico_fields_v1';
   static const _migrationKey = 'agrico_fields_sqlite_migrated_v1';
 
   final FieldDatabase _database;
 
-  FieldStorageService({FieldDatabase? database})
-      : _database = database ?? FieldDatabase();
+  FieldStorageService({FieldDatabase? database}) : _database = database ?? FieldDatabase();
 
   Future<List<FieldModel>> loadFields() async {
     final prefs = await SharedPreferences.getInstance();
@@ -31,6 +27,10 @@ class FieldStorageService {
   }
 
   Future<void> saveField(FieldModel field) => _database.upsert(field);
+
+  Future<void> recordMeasurement(FieldModel field) => _database.addMeasurementHistory(field);
+
+  Future<List<FieldMeasurementHistory>> loadMeasurementHistory({String? fieldId}) => _database.getMeasurementHistory(fieldId: fieldId);
 
   Future<void> saveFields(List<FieldModel> fields) async {
     for (final field in fields) {
