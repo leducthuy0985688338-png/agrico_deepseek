@@ -5,6 +5,8 @@ import '../providers/field_provider.dart';
 import 'field_list_screen.dart';
 import 'overall_field_map_screen.dart';
 import 'report_screen.dart';
+import 'field_performance_screen.dart';
+import 'field_detail_screen.dart';
 
 class FarmDashboardScreen extends StatefulWidget {
   const FarmDashboardScreen({super.key});
@@ -34,6 +36,11 @@ class _FarmDashboardScreenState extends State<FarmDashboardScreen> {
         context,
         MaterialPageRoute(builder: (_) => screen),
       );
+
+  void _openField(String fieldId) {
+    final field = _fields.getFieldById(fieldId);
+    if (field != null) _open(FieldDetailScreen(field: field));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -134,16 +141,31 @@ class _FarmDashboardScreenState extends State<FarmDashboardScreen> {
                 const SizedBox(height: 12),
                 _SectionCard(
                   title: '🏆 Top thửa theo lợi nhuận/ha',
+                  trailing: TextButton.icon(
+                    onPressed: () => _open(const FieldPerformanceScreen()),
+                    icon: const Icon(Icons.open_in_new, size: 16),
+                    label: const Text('Xem tất cả'),
+                  ),
                   child: topFields.isEmpty
                       ? const Text('Chưa có báo cáo tài chính theo thửa.')
-                      : Column(children: topFields.map((row) => _FieldFinanceRow(row: row)).toList()),
+                      : Column(
+                          children: topFields.map((row) => _FieldFinanceRow(
+                            row: row,
+                            onTap: () => _openField(row['fieldId'] as String),
+                          )).toList(),
+                        ),
                 ),
                 const SizedBox(height: 12),
                 _SectionCard(
                   title: '⚠️ Thửa có chi phí/ha cao',
                   child: highCost.isEmpty
                       ? const Text('Chưa có dữ liệu chi phí.')
-                      : Column(children: highCost.map((row) => _FieldCostRow(row: row)).toList()),
+                      : Column(
+                          children: highCost.map((row) => _FieldCostRow(
+                            row: row,
+                            onTap: () => _openField(row['fieldId'] as String),
+                          )).toList(),
+                        ),
                 ),
               ],
             ),
@@ -171,6 +193,7 @@ class _QuickActions extends StatelessWidget {
             runSpacing: 8,
             children: [
               _ActionButton(icon: Icons.grid_view, label: 'Danh sách thửa', onTap: () => onOpen(const FieldListScreen())),
+              _ActionButton(icon: Icons.insights, label: 'Hiệu quả thửa', onTap: () => onOpen(const FieldPerformanceScreen())),
               _ActionButton(icon: Icons.map, label: 'Bản đồ tổng thể', onTap: () => onOpen(const OverallFieldMapScreen())),
               _ActionButton(icon: Icons.assessment, label: 'Báo cáo', onTap: () => onOpen(const ReportScreen())),
             ],
@@ -238,7 +261,8 @@ class _FinanceMetric extends StatelessWidget {
 class _SectionCard extends StatelessWidget {
   final String title;
   final Widget child;
-  const _SectionCard({required this.title, required this.child});
+  final Widget? trailing;
+  const _SectionCard({required this.title, required this.child, this.trailing});
 
   @override
   Widget build(BuildContext context) {
@@ -246,7 +270,12 @@ class _SectionCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+          Row(
+            children: [
+              Expanded(child: Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold))),
+              if (trailing != null) trailing!,
+            ],
+          ),
           const SizedBox(height: 12),
           child,
         ]),
@@ -277,7 +306,8 @@ class _ProgressRow extends StatelessWidget {
 
 class _FieldFinanceRow extends StatelessWidget {
   final Map<String, dynamic> row;
-  const _FieldFinanceRow({required this.row});
+  final VoidCallback onTap;
+  const _FieldFinanceRow({required this.row, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -288,14 +318,23 @@ class _FieldFinanceRow extends StatelessWidget {
       leading: CircleAvatar(child: Text('${(row['field'] as String).isNotEmpty ? (row['field'] as String)[0] : '?'}')),
       title: Text(row['field'] as String),
       subtitle: Text('${(row['areaHa'] as num).toStringAsFixed(2)} ha • LN/ha: ${perHa.toStringAsFixed(0)} đ'),
-      trailing: Text('${profit.toStringAsFixed(0)} đ', style: TextStyle(fontWeight: FontWeight.bold, color: profit >= 0 ? Colors.green : Colors.red)),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('${profit.toStringAsFixed(0)} đ', style: TextStyle(fontWeight: FontWeight.bold, color: profit >= 0 ? Colors.green : Colors.red)),
+          const SizedBox(width: 4),
+          const Icon(Icons.chevron_right, size: 18),
+        ],
+      ),
+      onTap: onTap,
     );
   }
 }
 
 class _FieldCostRow extends StatelessWidget {
   final Map<String, dynamic> row;
-  const _FieldCostRow({required this.row});
+  final VoidCallback onTap;
+  const _FieldCostRow({required this.row, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -305,7 +344,15 @@ class _FieldCostRow extends StatelessWidget {
       leading: const Icon(Icons.warning_amber_rounded, color: Colors.orange),
       title: Text(row['field'] as String),
       subtitle: Text('${(row['areaHa'] as num).toStringAsFixed(2)} ha'),
-      trailing: Text('${cost.toStringAsFixed(0)} đ/ha', style: const TextStyle(fontWeight: FontWeight.bold)),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('${cost.toStringAsFixed(0)} đ/ha', style: const TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(width: 4),
+          const Icon(Icons.chevron_right, size: 18),
+        ],
+      ),
+      onTap: onTap,
     );
   }
 }
