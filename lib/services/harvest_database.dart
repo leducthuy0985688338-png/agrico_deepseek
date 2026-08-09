@@ -16,10 +16,9 @@ class HarvestDatabase {
     _db = await openDatabase(
       p.join(dir.path, _dbName),
       version: _version,
-      onUpgrade: (db, oldVersion, newVersion) async {
-        if (oldVersion < 4) await _createTable(db);
-      },
+      onUpgrade: (db, oldVersion, newVersion) async => _createTable(db),
       onCreate: (db, version) async => _createTable(db),
+      onOpen: (db) async => _createTable(db),
     );
     return _db!;
   }
