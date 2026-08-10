@@ -64,6 +64,44 @@ class FuelTransaction {
     this.operatorName,
     this.note,
   });
+
+  factory FuelTransaction.fromMap(Map<String, dynamic> map) {
+    return FuelTransaction(
+      id: map['id'] as String,
+      fuelId: map['fuelId'] as String,
+      fuelName: map['fuelName'] as String,
+      date: DateTime.parse(map['date'] as String),
+      type: TransactionType.values[(map['type'] as num).toInt()],
+      quantity: (map['quantity'] as num).toDouble(),
+      price: (map['price'] as num?)?.toDouble(),
+      machineId: map['machineId'] as String?,
+      machineName: map['machineName'] as String?,
+      fieldId: map['fieldId'] as String?,
+      fieldName: map['fieldName'] as String?,
+      seasonId: map['seasonId'] as String?,
+      operatorName: map['operatorName'] as String?,
+      note: map['note'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'fuelId': fuelId,
+      'fuelName': fuelName,
+      'date': date.toIso8601String(),
+      'type': type.index,
+      'quantity': quantity,
+      'price': price,
+      'machineId': machineId,
+      'machineName': machineName,
+      'fieldId': fieldId,
+      'fieldName': fieldName,
+      'seasonId': seasonId,
+      'operatorName': operatorName,
+      'note': note,
+    };
+  }
 }
 
 enum TransactionType { NHAP, XUAT }
