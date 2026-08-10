@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'theme/app_theme.dart';
+import 'services/cloud_service.dart';
 
 // ====== IMPORT CÁC MÀN HÌNH ======
 import 'screens/warehouse_screen.dart';
@@ -14,6 +14,7 @@ import 'screens/finance_screen.dart';
 import 'screens/task_screen.dart';
 import 'screens/ai_chat_screen.dart';
 import 'screens/report_screen.dart';
+import 'screens/settings_screen.dart';
 
 // ====== IMPORT PROVIDER ======
 import 'providers/dashboard_provider.dart';
@@ -31,7 +32,9 @@ import 'providers/harvest_provider.dart';
 import 'providers/production_cost_provider.dart';
 
 // ====== ĐIỂM KHỞI ĐẦU ======
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await CloudService.initialize();
   runApp(const MyApp());
 }
 
@@ -1008,44 +1011,6 @@ class FarmPage extends StatelessWidget {
             SizedBox(height: 8),
             Text(
               'Tính năng đang phát triển',
-              style: TextStyle(color: Colors.grey),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ============================================================
-// ====== TRANG CÀI ĐẶT ======
-// ============================================================
-class SettingsPage extends StatelessWidget {
-  const SettingsPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Colors.green.shade50, Colors.white],
-        ),
-      ),
-      child: const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.settings, size: 80, color: Colors.green),
-            SizedBox(height: 16),
-            Text(
-              'Cài đặt',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 8),
-            Text(
-              'Ngôn ngữ, đăng xuất, ...',
               style: TextStyle(color: Colors.grey),
             ),
           ],
