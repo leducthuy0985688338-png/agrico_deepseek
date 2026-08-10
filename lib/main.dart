@@ -55,6 +55,33 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ProductionLogProvider()),
         ChangeNotifierProvider(create: (_) => HarvestProvider()),
         ChangeNotifierProvider(create: (_) => ProductionCostProvider()),
+        ProxyProvider6<
+            FieldProvider,
+            WarehouseProvider,
+            MachineProvider,
+            EmployeeProvider,
+            FinanceProvider,
+            FuelProvider,
+            DashboardProvider>(
+          update: (
+            _,
+            fieldProvider,
+            warehouseProvider,
+            machineProvider,
+            employeeProvider,
+            financeProvider,
+            fuelProvider,
+            __,
+          ) =>
+              DashboardProvider(
+            fieldProvider: fieldProvider,
+            warehouseProvider: warehouseProvider,
+            machineProvider: machineProvider,
+            employeeProvider: employeeProvider,
+            financeProvider: financeProvider,
+            fuelProvider: fuelProvider,
+          ),
+        ),
       ],
       child: MaterialApp(
         title: 'Agrico ERP',
@@ -377,7 +404,7 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final provider = DashboardProvider();
+    final provider = context.watch<DashboardProvider>();
     final monthlyData = provider.getMonthlyFinanceData();
     final costData = provider.getCostDistribution();
     final machineData = provider.getMachineStatusData();
@@ -698,7 +725,7 @@ class HomePage extends StatelessWidget {
                       Expanded(
                         child: _buildQuickStat(
                           'Tồn kho',
-                          '200+',
+                          provider.totalInventoryStock.toStringAsFixed(0),
                           Icons.inventory,
                           Colors.blue,
                         ),
@@ -706,7 +733,7 @@ class HomePage extends StatelessWidget {
                       Expanded(
                         child: _buildQuickStat(
                           'Nhiên liệu',
-                          '620 L',
+                          provider.totalFuelStock.toStringAsFixed(0),
                           Icons.local_gas_station,
                           Colors.orange,
                         ),
