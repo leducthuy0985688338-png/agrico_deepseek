@@ -8,12 +8,16 @@ class CostDriverTraceRow {
   final String fieldId;
   final String driverLabel;
   final ProductionCostCategory category;
+  final DateTime date;
   final double amount;
   final double quantity;
   final String unit;
   final double unitPrice;
   final String? source;
   final String? sourceId;
+  final String? employeeId;
+  final String? machineId;
+  final String notes;
   final String recordId;
 
   const CostDriverTraceRow({
@@ -21,12 +25,16 @@ class CostDriverTraceRow {
     required this.fieldId,
     required this.driverLabel,
     required this.category,
+    required this.date,
     required this.amount,
     required this.quantity,
     required this.unit,
     required this.unitPrice,
     required this.source,
     required this.sourceId,
+    required this.employeeId,
+    required this.machineId,
+    required this.notes,
     required this.recordId,
   });
 }
@@ -53,12 +61,16 @@ class CostDriverTraceService {
               fieldId: record.fieldId,
               driverLabel: driver.label,
               category: record.category,
+              date: record.date,
               amount: record.amount,
               quantity: record.quantity,
               unit: record.unit,
               unitPrice: record.unitPrice,
               source: record.source,
               sourceId: record.sourceId,
+              employeeId: record.employeeId,
+              machineId: record.machineId,
+              notes: record.notes,
               recordId: record.id,
             ),
           )
