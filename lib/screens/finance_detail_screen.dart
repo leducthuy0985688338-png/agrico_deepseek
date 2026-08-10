@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../providers/finance_provider.dart';
 import '../models/finance_model.dart';
 
@@ -8,7 +9,7 @@ class FinanceDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final provider = FinanceProvider();
+    final provider = context.watch<FinanceProvider>();
     final transactions = provider.getTransactionsByField(fieldId);
 
     final totalRevenue = provider.getTotalRevenueByField(fieldId);

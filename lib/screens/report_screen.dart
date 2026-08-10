@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../providers/warehouse_provider.dart';
 import '../providers/machine_provider.dart';
 import '../providers/employee_provider.dart';
@@ -11,11 +12,11 @@ class ReportScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final warehouseProvider = WarehouseProvider();
-    final machineProvider = MachineProvider();
-    final employeeProvider = EmployeeProvider();
-    final financeProvider = FinanceProvider();
-    final fuelProvider = FuelProvider();
+    final warehouseProvider = context.read<WarehouseProvider>();
+    final machineProvider = context.read<MachineProvider>();
+    final employeeProvider = context.read<EmployeeProvider>();
+    final financeProvider = context.read<FinanceProvider>();
+    final fuelProvider = context.read<FuelProvider>();
 
     return Scaffold(
       appBar: AppBar(

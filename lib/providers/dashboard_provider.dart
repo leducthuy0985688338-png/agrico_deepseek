@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'field_provider.dart';
 import 'warehouse_provider.dart';
 import 'machine_provider.dart';
@@ -7,13 +6,27 @@ import 'finance_provider.dart';
 import 'fuel_provider.dart';
 import '../models/finance_model.dart';
 
-class DashboardProvider extends ChangeNotifier {
-  final FieldProvider _fieldProvider = FieldProvider();
-  final WarehouseProvider _warehouseProvider = WarehouseProvider();
-  final MachineProvider _machineProvider = MachineProvider();
-  final EmployeeProvider _employeeProvider = EmployeeProvider();
-  final FinanceProvider _financeProvider = FinanceProvider();
-  final FuelProvider _fuelProvider = FuelProvider();
+class DashboardProvider {
+  final FieldProvider _fieldProvider;
+  final WarehouseProvider _warehouseProvider;
+  final MachineProvider _machineProvider;
+  final EmployeeProvider _employeeProvider;
+  final FinanceProvider _financeProvider;
+  final FuelProvider _fuelProvider;
+
+  DashboardProvider({
+    FieldProvider? fieldProvider,
+    WarehouseProvider? warehouseProvider,
+    MachineProvider? machineProvider,
+    EmployeeProvider? employeeProvider,
+    FinanceProvider? financeProvider,
+    FuelProvider? fuelProvider,
+  })  : _fieldProvider = fieldProvider ?? FieldProvider(),
+        _warehouseProvider = warehouseProvider ?? WarehouseProvider(),
+        _machineProvider = machineProvider ?? MachineProvider(),
+        _employeeProvider = employeeProvider ?? EmployeeProvider(),
+        _financeProvider = financeProvider ?? FinanceProvider(),
+        _fuelProvider = fuelProvider ?? FuelProvider();
 
   int get totalFields => _fieldProvider.fields.length;
   int get totalMachines => _machineProvider.machines.length;
@@ -21,6 +34,16 @@ class DashboardProvider extends ChangeNotifier {
   int get totalRevenue => _financeProvider.getTotalRevenue().toInt();
   int get totalCost => _financeProvider.getTotalCost().toInt();
   int get totalProfit => _financeProvider.getTotalProfit().toInt();
+
+  double get totalInventoryStock => _warehouseProvider.items.fold<double>(
+        0,
+        (sum, item) => sum + item.stock.toDouble(),
+      );
+
+  double get totalFuelStock => _fuelProvider.fuels.fold<double>(
+        0,
+        (sum, fuel) => sum + fuel.stock.toDouble(),
+      );
 
   List<Map<String, dynamic>> getMonthlyFinanceData() {
     final now = DateTime.now();

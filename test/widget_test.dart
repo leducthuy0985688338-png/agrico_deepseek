@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import 'package:agrico_deepseek/main.dart';
 import 'package:agrico_deepseek/providers/cloud_sync_provider.dart';
+import 'package:agrico_deepseek/providers/dashboard_provider.dart';
 import 'package:agrico_deepseek/providers/field_provider.dart';
 import 'package:agrico_deepseek/providers/production_season_provider.dart';
 import 'package:agrico_deepseek/providers/production_log_provider.dart';
@@ -28,6 +29,10 @@ void main() {
     expect(
       Provider.of<CloudSyncProvider>(materialAppContext, listen: false),
       isA<CloudSyncProvider>(),
+    );
+    expect(
+      Provider.of<DashboardProvider>(materialAppContext, listen: false),
+      isA<DashboardProvider>(),
     );
     expect(
       Provider.of<FieldProvider>(materialAppContext, listen: false),

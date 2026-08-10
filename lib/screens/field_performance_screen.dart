@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../providers/dashboard_provider.dart';
 import '../providers/field_provider.dart';
@@ -12,15 +13,7 @@ class FieldPerformanceScreen extends StatefulWidget {
 }
 
 class _FieldPerformanceScreenState extends State<FieldPerformanceScreen> {
-  final DashboardProvider _dashboard = DashboardProvider();
-  final FieldProvider _fields = FieldProvider();
   int _mode = 0;
-
-  @override
-  void dispose() {
-    _dashboard.dispose();
-    super.dispose();
-  }
 
   String _money(num value) {
     final amount = value.toDouble();
@@ -29,8 +22,8 @@ class _FieldPerformanceScreenState extends State<FieldPerformanceScreen> {
     return '${amount.toStringAsFixed(0)} đ';
   }
 
-  List<Map<String, dynamic>> _rows() {
-    final rows = _dashboard.getTopFieldsByProfit(limit: 999999).toList();
+  List<Map<String, dynamic>> _rows(DashboardProvider dashboard) {
+    final rows = dashboard.getTopFieldsByProfit(limit: 999999).toList();
     rows.sort((a, b) {
       switch (_mode) {
         case 1:
@@ -50,7 +43,9 @@ class _FieldPerformanceScreenState extends State<FieldPerformanceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final rows = _rows();
+    final dashboard = context.watch<DashboardProvider>();
+    final fields = context.watch<FieldProvider>();
+    final rows = _rows(dashboard);
 
     return Scaffold(
       appBar: AppBar(
@@ -98,7 +93,7 @@ class _FieldPerformanceScreenState extends State<FieldPerformanceScreen> {
                 final index = entry.key;
                 final row = entry.value;
                 final fieldId = row['fieldId'] as String;
-                final field = _fields.getFieldById(fieldId);
+                final field = fields.getFieldById(fieldId);
                 final areaHa = (row['areaHa'] as num).toDouble();
                 final profit = (row['profit'] as num).toDouble();
                 final cost = (row['cost'] as num).toDouble();
