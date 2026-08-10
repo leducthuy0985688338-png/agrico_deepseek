@@ -28,6 +28,7 @@ import 'providers/fuel_provider.dart';
 import 'providers/production_season_provider.dart';
 import 'providers/production_log_provider.dart';
 import 'providers/harvest_provider.dart';
+import 'providers/production_cost_provider.dart';
 
 // ====== ĐIỂM KHỞI ĐẦU ======
 void main() {
@@ -53,6 +54,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ProductionSeasonProvider()),
         ChangeNotifierProvider(create: (_) => ProductionLogProvider()),
         ChangeNotifierProvider(create: (_) => HarvestProvider()),
+        ChangeNotifierProvider(create: (_) => ProductionCostProvider()),
       ],
       child: MaterialApp(
         title: 'Agrico ERP',
