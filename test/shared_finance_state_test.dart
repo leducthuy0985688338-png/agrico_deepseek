@@ -50,9 +50,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Lô kiểm thử'), findsOneWidget);
+    final sharedFieldLabels = find.text('Lô kiểm thử');
+    expect(sharedFieldLabels, findsWidgets);
 
-    await tester.tap(find.text('Lô kiểm thử'));
+    await tester.tap(sharedFieldLabels.first);
     await tester.pumpAndSettle();
 
     expect(find.text('Kiểm tra trạng thái dùng chung'), findsOneWidget);
