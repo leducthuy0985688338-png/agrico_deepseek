@@ -8,6 +8,7 @@ import 'package:agrico_deepseek/providers/field_provider.dart';
 import 'package:agrico_deepseek/providers/production_season_provider.dart';
 import 'package:agrico_deepseek/providers/production_log_provider.dart';
 import 'package:agrico_deepseek/providers/harvest_provider.dart';
+import 'package:agrico_deepseek/providers/production_cost_provider.dart';
 
 void main() {
   testWidgets('AGRICO app starts successfully', (WidgetTester tester) async {
@@ -43,6 +44,10 @@ void main() {
     expect(
       Provider.of<HarvestProvider>(materialAppContext, listen: false),
       isA<HarvestProvider>(),
+    );
+    expect(
+      Provider.of<ProductionCostProvider>(materialAppContext, listen: false),
+      isA<ProductionCostProvider>(),
     );
 
     // Khôi phục kích thước màn hình mặc định.

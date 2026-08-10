@@ -17,6 +17,32 @@ class ProductionCostProvider extends ChangeNotifier {
   List<ProductionCostModel> recordsForSeason(String seasonId) =>
       List.unmodifiable(_records[seasonId] ?? const []);
 
+  List<ProductionCostModel> get allRecords => List.unmodifiable(
+        _records.values.expand((items) => items),
+      );
+
+  Future<void> loadForSeasons(Iterable<String> seasonIds) async {
+    final ids = seasonIds.toSet();
+    _loading = true;
+    notifyListeners();
+    try {
+      final entries = await Future.wait(
+        ids.map(
+          (seasonId) async => MapEntry(
+            seasonId,
+            await _database.getBySeason(seasonId),
+          ),
+        ),
+      );
+      for (final entry in entries) {
+        _records[entry.key] = entry.value;
+      }
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> loadForSeason(String seasonId) async {
     _loading = true;
     notifyListeners();

@@ -13,6 +13,7 @@ import '../providers/field_provider.dart';
 import '../providers/production_season_provider.dart';
 import '../providers/production_log_provider.dart';
 import '../providers/harvest_provider.dart';
+import '../providers/production_cost_provider.dart';
 import '../theme/app_theme.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -114,6 +115,7 @@ class SettingsPage extends StatelessWidget {
                         final seasonProvider = context.read<ProductionSeasonProvider>();
                         final logProvider = context.read<ProductionLogProvider>();
                         final harvestProvider = context.read<HarvestProvider>();
+                        final costProvider = context.read<ProductionCostProvider>();
 
                         await seasonProvider.loadForFields(
                           fieldProvider.fields.map((field) => field.id),
@@ -122,6 +124,7 @@ class SettingsPage extends StatelessWidget {
                         await Future.wait([
                           logProvider.loadForSeasons(seasonIds),
                           harvestProvider.loadForSeasons(seasonIds),
+                          costProvider.loadForSeasons(seasonIds),
                         ]);
 
                         final success = await provider.syncAllData(
@@ -135,6 +138,7 @@ class SettingsPage extends StatelessWidget {
                           seasons: seasonProvider.allSeasons,
                           productionLogs: logProvider.allLogs,
                           harvestRecords: harvestProvider.allRecords,
+                          productionCosts: costProvider.allRecords,
                         );
 
                         if (success) {

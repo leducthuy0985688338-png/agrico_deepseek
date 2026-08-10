@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../models/production_season_model.dart';
 import '../providers/harvest_provider.dart';
@@ -19,15 +20,10 @@ class _ProductionCostDashboardScreenState extends State<ProductionCostDashboardS
   @override
   void initState() {
     super.initState();
-    _costProvider = ProductionCostProvider()..loadForSeason(widget.season.id);
-    _harvestProvider = HarvestProvider()..loadForSeason(widget.season.id);
-  }
-
-  @override
-  void dispose() {
-    _costProvider.dispose();
-    _harvestProvider.dispose();
-    super.dispose();
+    _costProvider = context.read<ProductionCostProvider>()
+      ..loadForSeason(widget.season.id);
+    _harvestProvider = context.read<HarvestProvider>()
+      ..loadForSeason(widget.season.id);
   }
 
   @override
