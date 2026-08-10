@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../models/field_model.dart';
 import '../models/production_cost_model.dart';
 import '../models/production_season_model.dart';
+import '../services/cost_driver_recommendation_service.dart';
 import '../services/farm_cost_alert_service.dart';
+import '../services/season_cost_driver_analysis_service.dart';
 
 class FarmCostCauseAnalysisCard extends StatefulWidget {
   final List<FieldModel> fields;
@@ -21,19 +23,25 @@ class FarmCostCauseAnalysisCard extends StatefulWidget {
 
 class _FarmCostCauseAnalysisCardState extends State<FarmCostCauseAnalysisCard> {
   late Future<List<FarmCostAlertRow>> _future;
+  late Future<List<CostDriverRecommendation>> _recommendationsFuture;
 
   @override
   void initState() {
     super.initState();
-    _future = _load();
+    _reload();
   }
 
   @override
   void didUpdateWidget(covariant FarmCostCauseAnalysisCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.fields != widget.fields || oldWidget.seasons != widget.seasons) {
-      _future = _load();
+      _reload();
     }
+  }
+
+  void _reload() {
+    _future = _load();
+    _recommendationsFuture = _loadRecommendations();
   }
 
   Future<List<FarmCostAlertRow>> _load() {
@@ -41,6 +49,24 @@ class _FarmCostCauseAnalysisCardState extends State<FarmCostCauseAnalysisCard> {
       fields: widget.fields,
       seasons: widget.seasons,
     );
+  }
+
+  Future<List<CostDriverRecommendation>> _loadRecommendations() async {
+    if (widget.seasons.length < 2) return const <CostDriverRecommendation>[];
+
+    final sorted = [...widget.seasons]
+      ..sort((a, b) => b.startDate.compareTo(a.startDate));
+    final current = sorted.first;
+    final previous = sorted.firstWhere(
+      (season) => season.id != current.id,
+      orElse: () => sorted[1],
+    );
+
+    final analysis = await const SeasonCostDriverAnalysisService().analyze(
+      currentSeasonId: current.id,
+      previousSeasonId: previous.id,
+    );
+    return const CostDriverRecommendationService().buildRecommendations(analysis);
   }
 
   @override
@@ -91,7 +117,7 @@ class _FarmCostCauseAnalysisCardState extends State<FarmCostCauseAnalysisCard> {
                     ),
                     IconButton(
                       tooltip: 'Làm mới',
-                      onPressed: () => setState(() => _future = _load()),
+                      onPressed: () => setState(_reload),
                       icon: const Icon(Icons.refresh),
                     ),
                   ],
@@ -113,6 +139,8 @@ class _FarmCostCauseAnalysisCardState extends State<FarmCostCauseAnalysisCard> {
                   const SizedBox(height: 4),
                   Text(_controlAdvice(causes.first.category)),
                 ],
+                const Divider(height: 24),
+                _RecommendationSection(future: _recommendationsFuture),
               ],
             ),
           ),
@@ -194,6 +222,114 @@ class _FarmCostCauseAnalysisCardState extends State<FarmCostCauseAnalysisCard> {
   }
 
   String _money(double value) => '${value.toStringAsFixed(0)} đ';
+}
+
+class _RecommendationSection extends StatelessWidget {
+  final Future<List<CostDriverRecommendation>> future;
+
+  const _RecommendationSection({required this.future});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<CostDriverRecommendation>>(
+      future: future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Row(
+            children: [
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              SizedBox(width: 8),
+              Text('Đang phân tích cost driver...'),
+            ],
+          );
+        }
+        if (snapshot.hasError) {
+          return Text('Không tải được khuyến nghị: ${snapshot.error}');
+        }
+
+        final items = snapshot.data ?? const <CostDriverRecommendation>[];
+        if (items.isEmpty) {
+          return const Text('Chưa đủ dữ liệu để so sánh cost driver giữa các vụ.');
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '🎯 Khuyến nghị theo Cost Driver',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            ...items.take(3).map((item) => _recommendationRow(item)),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _recommendationRow(CostDriverRecommendation item) {
+    final color = _levelColor(item.level);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        border: Border.all(color: color.withOpacity(0.35)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.warning_amber_rounded, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        item.driver.label,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    Text(
+                      '+${item.absoluteChange.toStringAsFixed(0)} đ',
+                      style: TextStyle(color: color, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '${item.driver.category.label} • tăng ${(item.changeRate * 100).toStringAsFixed(0)}%',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                const SizedBox(height: 4),
+                Text(item.action),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _levelColor(CostRecommendationLevel level) {
+    switch (level) {
+      case CostRecommendationLevel.low:
+        return Colors.green;
+      case CostRecommendationLevel.medium:
+        return Colors.amber.shade800;
+      case CostRecommendationLevel.high:
+        return Colors.deepOrange;
+      case CostRecommendationLevel.critical:
+        return Colors.red;
+    }
+  }
 }
 
 class _CostCause {
