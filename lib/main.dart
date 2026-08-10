@@ -17,6 +17,7 @@ import 'screens/report_screen.dart';
 
 // ====== IMPORT PROVIDER ======
 import 'providers/dashboard_provider.dart';
+import 'providers/field_provider.dart';
 import 'providers/cloud_sync_provider.dart';
 import 'providers/warehouse_provider.dart';
 import 'providers/machine_provider.dart';
@@ -39,6 +40,7 @@ class MyApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => CloudSyncProvider()),
+        ChangeNotifierProvider.value(value: FieldProvider()),
         ChangeNotifierProvider(create: (_) => WarehouseProvider()),
         ChangeNotifierProvider(create: (_) => MachineProvider()),
         ChangeNotifierProvider(create: (_) => EmployeeProvider()),
