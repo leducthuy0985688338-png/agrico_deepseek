@@ -5,6 +5,9 @@ import 'package:provider/provider.dart';
 import 'package:agrico_deepseek/main.dart';
 import 'package:agrico_deepseek/providers/cloud_sync_provider.dart';
 import 'package:agrico_deepseek/providers/field_provider.dart';
+import 'package:agrico_deepseek/providers/production_season_provider.dart';
+import 'package:agrico_deepseek/providers/production_log_provider.dart';
+import 'package:agrico_deepseek/providers/harvest_provider.dart';
 
 void main() {
   testWidgets('AGRICO app starts successfully', (WidgetTester tester) async {
@@ -28,6 +31,18 @@ void main() {
     expect(
       Provider.of<FieldProvider>(materialAppContext, listen: false),
       same(FieldProvider.instance),
+    );
+    expect(
+      Provider.of<ProductionSeasonProvider>(materialAppContext, listen: false),
+      isA<ProductionSeasonProvider>(),
+    );
+    expect(
+      Provider.of<ProductionLogProvider>(materialAppContext, listen: false),
+      isA<ProductionLogProvider>(),
+    );
+    expect(
+      Provider.of<HarvestProvider>(materialAppContext, listen: false),
+      isA<HarvestProvider>(),
     );
 
     // Khôi phục kích thước màn hình mặc định.

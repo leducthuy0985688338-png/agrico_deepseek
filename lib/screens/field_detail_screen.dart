@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart';
+import 'package:provider/provider.dart';
 
 import '../models/field_model.dart';
 import '../models/finance_model.dart';
@@ -31,11 +32,11 @@ class FieldDetailScreen extends StatefulWidget {
 
 class _FieldDetailScreenState extends State<FieldDetailScreen> {
   final Location _location = Location();
-  final _fieldProvider = FieldProvider();
-  final _machineProvider = MachineProvider();
-  final _financeProvider = FinanceProvider();
-  final _fuelProvider = FuelProvider();
-  final _taskProvider = TaskProvider();
+  late final FieldProvider _fieldProvider;
+  late final MachineProvider _machineProvider;
+  late final FinanceProvider _financeProvider;
+  late final FuelProvider _fuelProvider;
+  late final TaskProvider _taskProvider;
   late final ProductionSeasonProvider _seasonProvider;
   late final ProductionLogProvider _logProvider;
   late final HarvestProvider _harvestProvider;
@@ -47,19 +48,16 @@ class _FieldDetailScreenState extends State<FieldDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _seasonProvider = ProductionSeasonProvider();
-    _logProvider = ProductionLogProvider();
-    _harvestProvider = HarvestProvider();
+    _fieldProvider = context.read<FieldProvider>();
+    _machineProvider = context.read<MachineProvider>();
+    _financeProvider = context.read<FinanceProvider>();
+    _fuelProvider = context.read<FuelProvider>();
+    _taskProvider = context.read<TaskProvider>();
+    _seasonProvider = context.read<ProductionSeasonProvider>();
+    _logProvider = context.read<ProductionLogProvider>();
+    _harvestProvider = context.read<HarvestProvider>();
     _getLocation();
     _loadProductionProfile();
-  }
-
-  @override
-  void dispose() {
-    _seasonProvider.dispose();
-    _logProvider.dispose();
-    _harvestProvider.dispose();
-    super.dispose();
   }
 
   Future<void> _loadProductionProfile() async {

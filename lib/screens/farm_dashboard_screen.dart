@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../models/field_model.dart';
 import '../models/production_season_model.dart';
@@ -23,19 +24,19 @@ class FarmDashboardScreen extends StatefulWidget {
 
 class _FarmDashboardScreenState extends State<FarmDashboardScreen> {
   final DashboardProvider _dashboard = DashboardProvider();
-  final FieldProvider _fields = FieldProvider();
+  late final FieldProvider _fields;
   late Future<List<ProductionSeasonModel>> _seasonsFuture;
 
   @override
   void initState() {
     super.initState();
+    _fields = context.read<FieldProvider>();
     _seasonsFuture = _loadSeasons();
   }
 
   @override
   void dispose() {
     _dashboard.dispose();
-    _fields.dispose();
     super.dispose();
   }
 

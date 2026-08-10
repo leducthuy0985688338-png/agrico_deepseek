@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../models/field_model.dart';
 import '../models/production_season_model.dart';
@@ -26,13 +27,8 @@ class _ProductionSeasonScreenState extends State<ProductionSeasonScreen> {
   @override
   void initState() {
     super.initState();
-    _provider = ProductionSeasonProvider()..loadForField(widget.field.id);
-  }
-
-  @override
-  void dispose() {
-    _provider.dispose();
-    super.dispose();
+    _provider = context.read<ProductionSeasonProvider>()
+      ..loadForField(widget.field.id);
   }
 
   Future<void> _createSeason() async {

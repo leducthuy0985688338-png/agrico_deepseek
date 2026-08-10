@@ -10,6 +10,9 @@ import '../providers/task_provider.dart';
 import '../providers/finance_provider.dart';
 import '../providers/fuel_provider.dart';
 import '../providers/field_provider.dart';
+import '../providers/production_season_provider.dart';
+import '../providers/production_log_provider.dart';
+import '../providers/harvest_provider.dart';
 import '../theme/app_theme.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -108,6 +111,18 @@ class SettingsPage extends StatelessWidget {
                         final financeProvider = context.read<FinanceProvider>();
                         final fuelProvider = context.read<FuelProvider>();
                         final fieldProvider = context.read<FieldProvider>();
+                        final seasonProvider = context.read<ProductionSeasonProvider>();
+                        final logProvider = context.read<ProductionLogProvider>();
+                        final harvestProvider = context.read<HarvestProvider>();
+
+                        await seasonProvider.loadForFields(
+                          fieldProvider.fields.map((field) => field.id),
+                        );
+                        final seasonIds = seasonProvider.allSeasons.map((season) => season.id);
+                        await Future.wait([
+                          logProvider.loadForSeasons(seasonIds),
+                          harvestProvider.loadForSeasons(seasonIds),
+                        ]);
 
                         final success = await provider.syncAllData(
                           warehouseItems: warehouseProvider.items,
@@ -117,6 +132,9 @@ class SettingsPage extends StatelessWidget {
                           financeRecords: financeProvider.records,
                           fuels: fuelProvider.fuels,
                           fields: fieldProvider.fields,
+                          seasons: seasonProvider.allSeasons,
+                          productionLogs: logProvider.allLogs,
+                          harvestRecords: harvestProvider.allRecords,
                         );
 
                         if (success) {
