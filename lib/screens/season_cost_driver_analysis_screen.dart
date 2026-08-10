@@ -56,7 +56,7 @@ class _SeasonCostDriverAnalysisScreenState extends State<SeasonCostDriverAnalysi
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-          if (snapshot.hasError) {
+          if (snapshot.hasError || !snapshot.hasData) {
             return Center(
               child: FilledButton(onPressed: _reload, child: const Text('Thử lại')),
             );
@@ -72,7 +72,7 @@ class _SeasonCostDriverAnalysisScreenState extends State<SeasonCostDriverAnalysi
             children: [
               Text(widget.field.name, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
               const SizedBox(height: 4),
-              Text('${widget.currentSeason.name}  →  ${widget.previousSeason.name}'),
+              Text('${widget.previousSeason.name}  →  ${widget.currentSeason.name}'),
               const SizedBox(height: 16),
               Card(
                 child: Padding(
