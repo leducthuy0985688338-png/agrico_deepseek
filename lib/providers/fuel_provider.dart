@@ -115,8 +115,10 @@ class FuelProvider extends ChangeNotifier {
     for (var fuel in _fuels) {
       double totalIn = 0;
       double totalOut = 0;
+      var hasTransactions = false;
       for (var transaction in _allTransactions) {
         if (transaction.fuelId == fuel.id) {
+          hasTransactions = true;
           if (transaction.type == TransactionType.NHAP) {
             totalIn += transaction.quantity;
           } else {
@@ -124,7 +126,9 @@ class FuelProvider extends ChangeNotifier {
           }
         }
       }
-      fuel.stock = totalIn - totalOut;
+      if (hasTransactions) {
+        fuel.stock = totalIn - totalOut;
+      }
     }
   }
 
@@ -206,6 +210,24 @@ class FuelProvider extends ChangeNotifier {
       // Chi phí được đồng bộ lại từ source transaction ở lần sau.
       // Không để lỗi ledger làm hỏng thao tác xuất nhiên liệu.
     }
+  }
+
+  void restoreFromCloud({
+    required List<FuelModel> fuels,
+    required List<FuelTransaction> transactions,
+  }) {
+    if (fuels.isEmpty && transactions.isEmpty) return;
+
+    _fuels = List<FuelModel>.from(fuels);
+    _allTransactions = <String, FuelTransaction>{
+      for (final transaction in transactions) transaction.id: transaction,
+    }.values.toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+
+    if (_allTransactions.isNotEmpty) {
+      _updateStockFromTransactions();
+    }
+    notifyListeners();
   }
 
   List<FuelTransaction> getTransactionsByFuel(String fuelId) {
