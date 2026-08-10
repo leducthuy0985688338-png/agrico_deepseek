@@ -11,6 +11,7 @@ import '../models/field_model.dart';
 import '../models/production_season_model.dart';
 import '../models/production_log_model.dart';
 import '../models/harvest_record_model.dart';
+import '../models/production_cost_model.dart';
 
 class CloudSyncProvider extends ChangeNotifier {
   bool _isSyncing = false;
@@ -40,6 +41,7 @@ class CloudSyncProvider extends ChangeNotifier {
     required List<ProductionSeasonModel> seasons,
     required List<ProductionLogModel> productionLogs,
     required List<HarvestRecordModel> harvestRecords,
+    required List<ProductionCostModel> productionCosts,
   }) async {
     if (_isSyncing) return false;
 
@@ -58,6 +60,7 @@ class CloudSyncProvider extends ChangeNotifier {
         seasons: seasons,
         productionLogs: productionLogs,
         harvestRecords: harvestRecords,
+        productionCosts: productionCosts,
       );
 
       _lastSyncTime = DateTime.now().toString();
