@@ -11,11 +11,7 @@ class SeasonComparisonScreen extends StatefulWidget {
   final FieldModel field;
   final List<ProductionSeasonModel> seasons;
 
-  const SeasonComparisonScreen({
-    super.key,
-    required this.field,
-    required this.seasons,
-  });
+  const SeasonComparisonScreen({super.key, required this.field, required this.seasons});
 
   @override
   State<SeasonComparisonScreen> createState() => _SeasonComparisonScreenState();
@@ -64,11 +60,7 @@ class _SeasonComparisonScreenState extends State<SeasonComparisonScreen> {
       appBar: AppBar(
         title: const Text('So sánh các vụ sản xuất'),
         actions: [
-          IconButton(
-            onPressed: _reload,
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Làm mới',
-          ),
+          IconButton(onPressed: _reload, icon: const Icon(Icons.refresh), tooltip: 'Làm mới'),
         ],
       ),
       body: FutureBuilder<List<_SeasonComparisonData>>(
@@ -88,10 +80,7 @@ class _SeasonComparisonScreenState extends State<SeasonComparisonScreen> {
                     const SizedBox(height: 12),
                     const Text('Không thể tải dữ liệu so sánh.'),
                     const SizedBox(height: 12),
-                    FilledButton(
-                      onPressed: _reload,
-                      child: const Text('Thử lại'),
-                    ),
+                    FilledButton(onPressed: _reload, child: const Text('Thử lại')),
                   ],
                 ),
               ),
@@ -99,33 +88,19 @@ class _SeasonComparisonScreenState extends State<SeasonComparisonScreen> {
           }
 
           final rows = snapshot.data ?? const <_SeasonComparisonData>[];
-          if (rows.isEmpty) {
-            return const Center(child: Text('Chưa có vụ sản xuất để so sánh.'));
-          }
+          if (rows.isEmpty) return const Center(child: Text('Chưa có vụ sản xuất để so sánh.'));
 
           final bestProfit = rows.reduce(
             (a, b) => a.economics.profitPerHa >= b.economics.profitPerHa ? a : b,
           );
-          final totalRevenue = rows.fold<double>(
-            0,
-            (sum, row) => sum + row.economics.totalRevenue,
-          );
-          final totalCost = rows.fold<double>(
-            0,
-            (sum, row) => sum + row.economics.totalCost,
-          );
-          final totalProfit = rows.fold<double>(
-            0,
-            (sum, row) => sum + row.economics.profit,
-          );
+          final totalRevenue = rows.fold<double>(0, (sum, row) => sum + row.economics.totalRevenue);
+          final totalCost = rows.fold<double>(0, (sum, row) => sum + row.economics.totalCost);
+          final totalProfit = rows.fold<double>(0, (sum, row) => sum + row.economics.profit);
 
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Text(
-                'Thửa • ${widget.field.name}',
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
+              Text('Thửa • ${widget.field.name}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 4),
               Text('${widget.field.crop} • ${rows.length} vụ'),
               const SizedBox(height: 16),
@@ -135,29 +110,26 @@ class _SeasonComparisonScreenState extends State<SeasonComparisonScreen> {
                 cost: totalCost,
                 profit: totalProfit,
               ),
+              if (rows.length >= 2) ...[
+                const SizedBox(height: 16),
+                _AnomalyCard(current: rows[0], previous: rows[1]),
+              ],
               const SizedBox(height: 16),
-              const Text(
-                '📈 Xu hướng hiệu quả theo vụ',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
+              const Text('📈 Xu hướng hiệu quả theo vụ', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               _PerformanceCharts(rows: rows),
               const SizedBox(height: 16),
-              const Text(
-                '📊 Xếp hạng hiệu quả vụ',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
+              const Text('📊 Xếp hạng hiệu quả vụ', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
-              ...rows.asMap().entries.map(
-                    (entry) => _SeasonRow(rank: entry.key + 1, data: entry.value),
-                  ),
+              ...rows.asMap().entries.map((entry) => _SeasonRow(rank: entry.key + 1, data: entry.value)),
               const SizedBox(height: 12),
               const Card(
                 child: Padding(
                   padding: EdgeInsets.all(12),
                   child: Text(
-                    'Biểu đồ dùng dữ liệu trực tiếp từ sổ chi phí và thu hoạch của từng vụ. '
-                    'Thứ tự biểu đồ theo ngày bắt đầu vụ, còn bảng xếp hạng theo lợi nhuận/ha.',
+                    'Biểu đồ dùng dữ liệu trực tiếp từ sổ chi phí và thu hoạch. '
+                    'Thứ tự biểu đồ theo ngày bắt đầu vụ, bảng xếp hạng theo lợi nhuận/ha. '
+                    'Cảnh báo biến động so sánh vụ mới nhất với vụ liền trước.',
                   ),
                 ),
               ),
@@ -174,6 +146,102 @@ class _SeasonComparisonData {
   final SeasonEconomics economics;
 
   const _SeasonComparisonData({required this.season, required this.economics});
+}
+
+class _AnomalyCard extends StatelessWidget {
+  final _SeasonComparisonData current;
+  final _SeasonComparisonData previous;
+
+  const _AnomalyCard({required this.current, required this.previous});
+
+  double _change(double current, double previous) {
+    if (previous.abs() < 0.000001) return current.abs() < 0.000001 ? 0 : 1;
+    return (current - previous) / previous.abs();
+  }
+
+  String _percent(double value) => '${(value * 100).toStringAsFixed(1)}%';
+
+  @override
+  Widget build(BuildContext context) {
+    final costChange = _change(current.economics.costPerHa, previous.economics.costPerHa);
+    final yieldChange = _change(current.economics.yieldPerHa, previous.economics.yieldPerHa);
+    final profitChange = _change(current.economics.profitPerHa, previous.economics.profitPerHa);
+
+    final warnings = <String>[];
+    if (costChange >= 0.15) warnings.add('Chi phí/ha tăng ${_percent(costChange)} so với vụ trước.');
+    if (yieldChange <= -0.10) warnings.add('Năng suất/ha giảm ${_percent(yieldChange.abs())}.');
+    if (profitChange <= -0.15) warnings.add('Lợi nhuận/ha giảm ${_percent(profitChange.abs())}.');
+
+    final hasWarning = warnings.isNotEmpty;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  hasWarning ? Icons.warning_amber_rounded : Icons.check_circle_outline,
+                  color: hasWarning ? Colors.orange : Colors.green,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    hasWarning ? '⚠️ Biến động cần chú ý' : '✅ Biến động đang ổn định',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text('So sánh ${current.season.name} với ${previous.season.name}.'),
+            const SizedBox(height: 10),
+            _ChangeRow(label: 'Chi phí/ha', value: costChange),
+            _ChangeRow(label: 'Năng suất/ha', value: yieldChange),
+            _ChangeRow(label: 'Lợi nhuận/ha', value: profitChange),
+            if (hasWarning) ...[
+              const Divider(height: 20),
+              ...warnings.map((warning) => Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text('• $warning'),
+                  )),
+              const SizedBox(height: 4),
+              const Text(
+                'Ưu tiên kiểm tra các khoản chi phí mới tăng trước khi quyết định kế hoạch vụ tiếp theo.',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ChangeRow extends StatelessWidget {
+  final String label;
+  final double value;
+
+  const _ChangeRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = value > 0.001 ? Colors.orange : value < -0.001 ? Colors.green : null;
+    final prefix = value > 0.001 ? '+' : '';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Expanded(child: Text(label)),
+          Text(
+            '$prefix${(value * 100).toStringAsFixed(1)}%',
+            style: TextStyle(fontWeight: FontWeight.bold, color: color),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _PerformanceCharts extends StatelessWidget {
@@ -198,15 +266,9 @@ class _PerformanceCharts extends StatelessWidget {
                 gridData: const FlGridData(show: true),
                 borderData: FlBorderData(show: false),
                 titlesData: FlTitlesData(
-                  leftTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: true, reservedSize: 48),
-                  ),
-                  rightTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  topTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
+                  leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 48)),
+                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
@@ -214,13 +276,7 @@ class _PerformanceCharts extends StatelessWidget {
                       getTitlesWidget: (value, meta) {
                         final index = value.toInt();
                         if (index < 0 || index >= rows.length) return const SizedBox.shrink();
-                        return SideTitleWidget(
-                          axisSide: meta.axisSide,
-                          child: Text(
-                            '${index + 1}',
-                            style: const TextStyle(fontSize: 11),
-                          ),
-                        );
+                        return SideTitleWidget(axisSide: meta.axisSide, child: Text('${index + 1}', style: const TextStyle(fontSize: 11)));
                       },
                     ),
                   ),
@@ -229,13 +285,7 @@ class _PerformanceCharts extends StatelessWidget {
                   for (var i = 0; i < rows.length; i++)
                     BarChartGroupData(
                       x: i,
-                      barRods: [
-                        BarChartRodData(
-                          toY: rows[i].economics.profitPerHa,
-                          width: 18,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ],
+                      barRods: [BarChartRodData(toY: rows[i].economics.profitPerHa, width: 18, borderRadius: BorderRadius.circular(4))],
                     ),
                 ],
               ),
@@ -254,15 +304,9 @@ class _PerformanceCharts extends StatelessWidget {
                 gridData: const FlGridData(show: true),
                 borderData: FlBorderData(show: false),
                 titlesData: FlTitlesData(
-                  leftTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: true, reservedSize: 48),
-                  ),
-                  rightTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  topTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
+                  leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 48)),
+                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
@@ -270,10 +314,7 @@ class _PerformanceCharts extends StatelessWidget {
                       getTitlesWidget: (value, meta) {
                         final index = value.toInt();
                         if (index < 0 || index >= rows.length) return const SizedBox.shrink();
-                        return SideTitleWidget(
-                          axisSide: meta.axisSide,
-                          child: Text('${index + 1}', style: const TextStyle(fontSize: 11)),
-                        );
+                        return SideTitleWidget(axisSide: meta.axisSide, child: Text('${index + 1}', style: const TextStyle(fontSize: 11)));
                       },
                     ),
                   ),
@@ -283,10 +324,7 @@ class _PerformanceCharts extends StatelessWidget {
                     isCurved: true,
                     barWidth: 3,
                     dotData: const FlDotData(show: true),
-                    spots: [
-                      for (var i = 0; i < rows.length; i++)
-                        FlSpot(i.toDouble(), rows[i].economics.yieldPerHa),
-                    ],
+                    spots: [for (var i = 0; i < rows.length; i++) FlSpot(i.toDouble(), rows[i].economics.yieldPerHa)],
                   ),
                 ],
               ),
@@ -310,15 +348,9 @@ class _PerformanceCharts extends StatelessWidget {
                 gridData: const FlGridData(show: true),
                 borderData: FlBorderData(show: false),
                 titlesData: FlTitlesData(
-                  leftTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: true, reservedSize: 48),
-                  ),
-                  rightTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  topTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
+                  leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 48)),
+                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
@@ -326,10 +358,7 @@ class _PerformanceCharts extends StatelessWidget {
                       getTitlesWidget: (value, meta) {
                         final index = value.toInt();
                         if (index < 0 || index >= rows.length) return const SizedBox.shrink();
-                        return SideTitleWidget(
-                          axisSide: meta.axisSide,
-                          child: Text('${index + 1}', style: const TextStyle(fontSize: 11)),
-                        );
+                        return SideTitleWidget(axisSide: meta.axisSide, child: Text('${index + 1}', style: const TextStyle(fontSize: 11)));
                       },
                     ),
                   ),
@@ -340,16 +369,8 @@ class _PerformanceCharts extends StatelessWidget {
                       x: i,
                       barsSpace: 4,
                       barRods: [
-                        BarChartRodData(
-                          toY: rows[i].economics.revenuePerHa,
-                          width: 10,
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                        BarChartRodData(
-                          toY: rows[i].economics.costPerHa,
-                          width: 10,
-                          borderRadius: BorderRadius.circular(3),
-                        ),
+                        BarChartRodData(toY: rows[i].economics.revenuePerHa, width: 10, borderRadius: BorderRadius.circular(3)),
+                        BarChartRodData(toY: rows[i].economics.costPerHa, width: 10, borderRadius: BorderRadius.circular(3)),
                       ],
                     ),
                 ],
@@ -386,11 +407,7 @@ class _ChartCard extends StatelessWidget {
   final String subtitle;
   final Widget child;
 
-  const _ChartCard({
-    required this.title,
-    required this.subtitle,
-    required this.child,
-  });
+  const _ChartCard({required this.title, required this.subtitle, required this.child});
 
   @override
   Widget build(BuildContext context) {
@@ -435,12 +452,7 @@ class _SummaryCard extends StatelessWidget {
   final double cost;
   final double profit;
 
-  const _SummaryCard({
-    required this.bestSeason,
-    required this.revenue,
-    required this.cost,
-    required this.profit,
-  });
+  const _SummaryCard({required this.bestSeason, required this.revenue, required this.cost, required this.profit});
 
   @override
   Widget build(BuildContext context) {
@@ -470,10 +482,7 @@ class _SummaryCard extends StatelessWidget {
             Expanded(child: Text(label)),
             Text(
               '${value.toStringAsFixed(0)} đ',
-              style: TextStyle(
-                fontWeight: emphasized ? FontWeight.bold : FontWeight.w600,
-                color: emphasized ? Colors.green : null,
-              ),
+              style: TextStyle(fontWeight: emphasized ? FontWeight.bold : FontWeight.w600, color: emphasized ? Colors.green : null),
             ),
           ],
         ),
@@ -490,9 +499,7 @@ class _SeasonRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final e = data.economics;
     final profitColor = e.profitPerHa >= 0 ? Colors.green : Colors.red;
-    final ratio = e.revenuePerHa > 0
-        ? (e.profitPerHa / e.revenuePerHa).clamp(-1.0, 1.0)
-        : 0.0;
+    final ratio = e.revenuePerHa > 0 ? (e.profitPerHa / e.revenuePerHa).clamp(-1.0, 1.0) : 0.0;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
@@ -505,12 +512,7 @@ class _SeasonRow extends StatelessWidget {
               children: [
                 CircleAvatar(radius: 17, child: Text('$rank')),
                 const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    data.season.name,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                ),
+                Expanded(child: Text(data.season.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
                 Text(data.season.status, style: Theme.of(context).textTheme.bodySmall),
               ],
             ),
@@ -527,16 +529,8 @@ class _SeasonRow extends StatelessWidget {
             const SizedBox(height: 8),
             Row(
               children: [
-                const Expanded(
-                  child: Text(
-                    'Lợi nhuận/ha',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
-                Text(
-                  '${e.profitPerHa.toStringAsFixed(0)} đ/ha',
-                  style: TextStyle(fontWeight: FontWeight.bold, color: profitColor),
-                ),
+                const Expanded(child: Text('Lợi nhuận/ha', style: TextStyle(fontWeight: FontWeight.w600))),
+                Text('${e.profitPerHa.toStringAsFixed(0)} đ/ha', style: TextStyle(fontWeight: FontWeight.bold, color: profitColor)),
               ],
             ),
             const SizedBox(height: 5),
