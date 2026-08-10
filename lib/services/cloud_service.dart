@@ -8,6 +8,9 @@ import '../models/finance_model.dart';
 import '../models/fuel_model.dart';
 import '../models/field_model.dart';
 import '../models/distance_measurement_model.dart';
+import '../models/production_season_model.dart';
+import '../models/production_log_model.dart';
+import '../models/harvest_record_model.dart';
 
 class CloudService {
   static FirebaseFirestore? _firestore;
@@ -105,9 +108,12 @@ class CloudService {
   static Stream<QuerySnapshot> getFuels() => db.collection('fuel').orderBy('name').snapshots();
   static Future<void> deleteFuel(String id) => db.collection('fuel').doc(id).delete();
 
-  static Future<void> syncAllData({required List<WarehouseItem> warehouseItems, required List<MachineModel> machines, required List<EmployeeModel> employees, required List<TaskModel> tasks, required List<FinanceRecord> financeRecords, required List<FuelModel> fuels, required List<FieldModel> fields}) async {
+  static Future<void> syncAllData({required List<WarehouseItem> warehouseItems, required List<MachineModel> machines, required List<EmployeeModel> employees, required List<TaskModel> tasks, required List<FinanceRecord> financeRecords, required List<FuelModel> fuels, required List<FieldModel> fields, required List<ProductionSeasonModel> seasons, required List<ProductionLogModel> productionLogs, required List<HarvestRecordModel> harvestRecords}) async {
     final batch = db.batch();
     for (final field in fields) { batch.set(db.collection('fields').doc(field.id), {'id': field.id, 'name': field.name, 'area': field.area, 'crop': field.crop, 'status': field.status, 'perimeter': field.perimeter, 'measurementMethod': field.measurementMethod, 'gpsAccuracy': field.gpsAccuracy, 'measuredAt': field.measuredAt == null ? null : Timestamp.fromDate(field.measuredAt!.toUtc()), 'polygon': field.polygon.map((p) => {'lat': p.latitude, 'lng': p.longitude}).toList(growable: false), 'photoPaths': field.photoPaths, 'updatedAt': FieldValue.serverTimestamp()}); }
+    for (final season in seasons) { batch.set(db.collection('production_seasons').doc(season.id), {...season.toJson(), 'updatedAt': FieldValue.serverTimestamp()}); }
+    for (final log in productionLogs) { batch.set(db.collection('production_logs').doc(log.id), {...log.toJson(), 'updatedAt': FieldValue.serverTimestamp()}); }
+    for (final record in harvestRecords) { batch.set(db.collection('harvest_records').doc(record.id), {...record.toJson(), 'updatedAt': FieldValue.serverTimestamp()}); }
     for (final item in warehouseItems) { batch.set(db.collection('warehouse').doc(item.id), {'id': item.id, 'name': item.name, 'unit': item.unit, 'importPrice': item.importPrice, 'supplier': item.supplier, 'stock': item.stock, 'updatedAt': FieldValue.serverTimestamp()}); }
     for (final machine in machines) { batch.set(db.collection('machines').doc(machine.id), {'id': machine.id, 'name': machine.name, 'type': machine.type, 'manufacturer': machine.manufacturer, 'year': machine.year, 'status': machine.status, 'totalHours': machine.totalHours, 'fuelConsumption': machine.fuelConsumption, 'currentFieldId': machine.currentFieldId, 'updatedAt': FieldValue.serverTimestamp()}); }
     for (final employee in employees) { batch.set(db.collection('employees').doc(employee.id), {'id': employee.id, 'name': employee.name, 'position': employee.position, 'department': employee.department, 'dailyRate': employee.dailyRate, 'phone': employee.phone, 'address': employee.address, 'isActive': employee.isActive, 'updatedAt': FieldValue.serverTimestamp()}); }
