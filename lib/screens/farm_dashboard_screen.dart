@@ -12,6 +12,7 @@ import 'overall_field_map_screen.dart';
 import 'field_performance_screen.dart';
 import 'field_detail_screen.dart';
 import 'cost_analysis_screen.dart';
+import 'report_screen.dart';
 
 class FarmDashboardScreen extends StatefulWidget {
   const FarmDashboardScreen({super.key});
