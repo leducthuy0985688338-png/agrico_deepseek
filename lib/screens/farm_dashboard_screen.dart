@@ -6,7 +6,7 @@ import '../models/production_season_model.dart';
 import '../providers/dashboard_provider.dart';
 import '../providers/field_provider.dart';
 import '../services/farm_season_loader_service.dart';
-import '../widgets/farm_cost_alert_dashboard.dart';
+import '../widgets/farm_cost_alertdashboard.dart';
 import '../widgets/farm_cost_cause_analysis_card.dart';
 import 'cost_analysis_screen.dart';
 import 'field_detail_screen.dart';
@@ -23,7 +23,6 @@ class FarmDashboardScreen extends StatefulWidget {
 }
 
 class _FarmDashboardScreenState extends State<FarmDashboardScreen> {
-  final DashboardProvider _dashboard = DashboardProvider();
   late final FieldProvider _fields;
   late Future<List<ProductionSeasonModel>> _seasonsFuture;
 
@@ -32,12 +31,6 @@ class _FarmDashboardScreenState extends State<FarmDashboardScreen> {
     super.initState();
     _fields = context.read<FieldProvider>();
     _seasonsFuture = _loadSeasons();
-  }
-
-  @override
-  void dispose() {
-    _dashboard.dispose();
-    super.dispose();
   }
 
   Future<List<ProductionSeasonModel>> _loadSeasons() {
@@ -77,6 +70,8 @@ class _FarmDashboardScreenState extends State<FarmDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final dashboard = context.watch<DashboardProvider>();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Dashboard quản trị trang trại'),
@@ -103,13 +98,13 @@ class _FarmDashboardScreenState extends State<FarmDashboardScreen> {
             statuses[status] = (statuses[status] ?? 0) + 1;
           }
 
-          final revenue = _dashboard.totalRevenue.toDouble();
-          final cost = _dashboard.totalCost.toDouble();
-          final profit = _dashboard.totalProfit.toDouble();
+          final revenue = dashboard.totalRevenue.toDouble();
+          final cost = dashboard.totalCost.toDouble();
+          final profit = dashboard.totalProfit.toDouble();
           final margin = revenue == 0 ? 0.0 : profit / revenue;
           final costPerHa = areaHa == 0 ? 0.0 : cost / areaHa;
-          final topFields = _dashboard.getTopFieldsByProfit(limit: 5);
-          final highCost = _dashboard.getHighestCostFields(limit: 5);
+          final topFields = dashboard.getTopFieldsByProfit(limit: 5);
+          final highCost = dashboard.getHighestCostFields(limit: 5);
 
           return FutureBuilder<List<ProductionSeasonModel>>(
             future: _seasonsFuture,
