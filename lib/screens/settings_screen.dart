@@ -35,6 +35,14 @@ class SettingsPage extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           _buildSyncButton(context),
+          const SizedBox(height: 12),
+          _buildRestoreFuelButton(context),
+          const SizedBox(height: 8),
+          const Text(
+            'Khôi phục danh mục và sổ nhập/xuất nhiên liệu từ Cloud.',
+            style: TextStyle(color: Colors.grey, fontSize: 12),
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: 32),
 
           const Divider(),
@@ -94,7 +102,7 @@ class SettingsPage extends StatelessWidget {
         return Column(
           children: [
             ElevatedButton(
-              onPressed: provider.isSyncing
+              onPressed: provider.isSyncing || provider.isRestoringFuel
                   ? null
                   : () async {
                       try {
@@ -210,6 +218,109 @@ class SettingsPage extends StatelessWidget {
         );
       },
     );
+  }
+
+  Widget _buildRestoreFuelButton(BuildContext context) {
+    return Consumer<CloudSyncProvider>(
+      builder: (context, provider, child) {
+        return OutlinedButton(
+          onPressed: provider.isSyncing || provider.isRestoringFuel
+              ? null
+              : () => _confirmFuelRestore(context),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppTheme.primaryColor,
+            side: const BorderSide(color: AppTheme.primaryColor),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          child: provider.isRestoringFuel
+              ? const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 12),
+                    Text('Đang khôi phục nhiên liệu...'),
+                  ],
+                )
+              : const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.cloud_download),
+                    SizedBox(width: 8),
+                    Text('Khôi phục nhiên liệu từ Cloud'),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmFuelRestore(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Khôi phục dữ liệu nhiên liệu?'),
+        content: const Text(
+          'Danh mục nhiên liệu và sổ nhập/xuất hiện tại sẽ được thay bằng '
+          'bản trên Cloud. Hãy đồng bộ dữ liệu mới nhất trước nếu cần giữ lại.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Khôi phục'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    final cloudProvider = context.read<CloudSyncProvider>();
+    final fuelProvider = context.read<FuelProvider>();
+
+    try {
+      final data = await cloudProvider.restoreFuelData();
+      if (!context.mounted) return;
+
+      if (data.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cloud chưa có dữ liệu nhiên liệu.')),
+        );
+        return;
+      }
+
+      fuelProvider.restoreFromCloud(
+        fuels: data.fuels,
+        transactions: data.transactions,
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '✅ Đã khôi phục ${data.fuels.length} loại nhiên liệu và '
+            '${data.transactions.length} phiếu.',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Lỗi khôi phục nhiên liệu: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Widget _buildSettingItem({

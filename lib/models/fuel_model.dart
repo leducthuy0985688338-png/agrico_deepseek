@@ -19,6 +19,28 @@ class FuelModel {
     this.transactions = const [],
   });
 
+  factory FuelModel.fromMap(Map<String, dynamic> map) {
+    return FuelModel(
+      id: map['id'] as String,
+      name: map['name'] as String,
+      unit: map['unit'] as String,
+      stock: (map['stock'] as num).toDouble(),
+      unitPrice: (map['unitPrice'] as num).toDouble(),
+      supplier: map['supplier'] as String,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'name': name,
+      'unit': unit,
+      'stock': stock,
+      'unitPrice': unitPrice,
+      'supplier': supplier,
+    };
+  }
+
   FuelModel copyWith({double? stock, List<FuelTransaction>? transactions}) {
     return FuelModel(
       id: id,

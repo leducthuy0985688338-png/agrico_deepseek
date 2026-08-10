@@ -13,12 +13,26 @@ import '../models/production_log_model.dart';
 import '../models/harvest_record_model.dart';
 import '../models/production_cost_model.dart';
 
+class FuelRestoreData {
+  final List<FuelModel> fuels;
+  final List<FuelTransaction> transactions;
+
+  const FuelRestoreData({
+    required this.fuels,
+    required this.transactions,
+  });
+
+  bool get isEmpty => fuels.isEmpty && transactions.isEmpty;
+}
+
 class CloudSyncProvider extends ChangeNotifier {
   bool _isSyncing = false;
+  bool _isRestoringFuel = false;
   String? _lastSyncTime;
   bool _isConnected = false;
 
   bool get isSyncing => _isSyncing;
+  bool get isRestoringFuel => _isRestoringFuel;
   String? get lastSyncTime => _lastSyncTime;
   bool get isConnected => _isConnected;
 
@@ -75,6 +89,28 @@ class CloudSyncProvider extends ChangeNotifier {
       _isSyncing = false;
       notifyListeners();
       rethrow;
+    }
+  }
+
+  Future<FuelRestoreData> restoreFuelData() async {
+    if (_isSyncing || _isRestoringFuel) {
+      throw StateError('Đang có thao tác Cloud khác, vui lòng chờ hoàn tất.');
+    }
+
+    _isRestoringFuel = true;
+    notifyListeners();
+
+    try {
+      final fuels = await CloudService.loadFuels();
+      final transactions = await CloudService.loadFuelTransactions();
+      _isConnected = true;
+      return FuelRestoreData(fuels: fuels, transactions: transactions);
+    } catch (_) {
+      _isConnected = false;
+      rethrow;
+    } finally {
+      _isRestoringFuel = false;
+      notifyListeners();
     }
   }
 
