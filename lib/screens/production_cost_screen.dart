@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../models/production_cost_model.dart';
 import '../models/production_season_model.dart';
@@ -19,13 +20,8 @@ class _ProductionCostScreenState extends State<ProductionCostScreen> {
   @override
   void initState() {
     super.initState();
-    _provider = ProductionCostProvider()..loadForSeason(widget.season.id);
-  }
-
-  @override
-  void dispose() {
-    _provider.dispose();
-    super.dispose();
+    _provider = context.read<ProductionCostProvider>()
+      ..loadForSeason(widget.season.id);
   }
 
   Future<void> _add() async {
