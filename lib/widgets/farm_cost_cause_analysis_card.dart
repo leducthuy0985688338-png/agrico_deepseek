@@ -4,6 +4,7 @@ import '../models/field_model.dart';
 import '../models/production_cost_model.dart';
 import '../models/production_season_model.dart';
 import '../services/cost_driver_recommendation_service.dart';
+import '../services/cost_driver_trace_service.dart';
 import '../services/farm_cost_alert_service.dart';
 import '../services/season_cost_driver_analysis_service.dart';
 
@@ -24,6 +25,7 @@ class FarmCostCauseAnalysisCard extends StatefulWidget {
 class _FarmCostCauseAnalysisCardState extends State<FarmCostCauseAnalysisCard> {
   late Future<List<FarmCostAlertRow>> _future;
   late Future<List<CostDriverRecommendation>> _recommendationsFuture;
+  late Future<List<_TopCostSource>> _topSourcesFuture;
 
   @override
   void initState() {
@@ -42,6 +44,7 @@ class _FarmCostCauseAnalysisCardState extends State<FarmCostCauseAnalysisCard> {
   void _reload() {
     _future = _load();
     _recommendationsFuture = _loadRecommendations();
+    _topSourcesFuture = _loadTopSources();
   }
 
   Future<List<FarmCostAlertRow>> _load() {
@@ -51,8 +54,8 @@ class _FarmCostCauseAnalysisCardState extends State<FarmCostCauseAnalysisCard> {
     );
   }
 
-  Future<List<CostDriverRecommendation>> _loadRecommendations() async {
-    if (widget.seasons.length < 2) return const <CostDriverRecommendation>[];
+  Future<SeasonCostDriverAnalysis?> _loadAnalysis() async {
+    if (widget.seasons.length < 2) return null;
 
     final sorted = [...widget.seasons]
       ..sort((a, b) => b.startDate.compareTo(a.startDate));
@@ -62,11 +65,59 @@ class _FarmCostCauseAnalysisCardState extends State<FarmCostCauseAnalysisCard> {
       orElse: () => sorted[1],
     );
 
-    final analysis = await const SeasonCostDriverAnalysisService().analyze(
+    return const SeasonCostDriverAnalysisService().analyze(
       currentSeasonId: current.id,
       previousSeasonId: previous.id,
     );
+  }
+
+  Future<List<CostDriverRecommendation>> _loadRecommendations() async {
+    final analysis = await _loadAnalysis();
+    if (analysis == null) return const <CostDriverRecommendation>[];
     return const CostDriverRecommendationService().buildRecommendations(analysis);
+  }
+
+  Future<List<_TopCostSource>> _loadTopSources() async {
+    if (widget.seasons.length < 2 || widget.fields.isEmpty) {
+      return const <_TopCostSource>[];
+    }
+
+    final sorted = [...widget.seasons]
+      ..sort((a, b) => b.startDate.compareTo(a.startDate));
+    final current = sorted.first;
+    final recommendations = await _loadRecommendations();
+    if (recommendations.isEmpty) return const <_TopCostSource>[];
+
+    final fieldNames = <String, String>{
+      for (final field in widget.fields) field.id: field.name,
+    };
+    final totals = <String, double>{};
+    final drivers = <String, Set<String>>{};
+
+    for (final recommendation in recommendations.take(3)) {
+      final rows = await const CostDriverTraceService().trace(
+        season: current,
+        driver: recommendation.driver,
+      );
+      for (final row in rows) {
+        totals[row.fieldId] = (totals[row.fieldId] ?? 0) + row.amount;
+        drivers.putIfAbsent(row.fieldId, () => <String>{}).add(row.driverLabel);
+      }
+    }
+
+    final result = totals.entries
+        .map(
+          (entry) => _TopCostSource(
+            fieldId: entry.key,
+            fieldName: fieldNames[entry.key] ?? entry.key,
+            amount: entry.value,
+            drivers: (drivers[entry.key] ?? const <String>{}).toList(growable: false),
+          ),
+        )
+        .toList()
+      ..sort((a, b) => b.amount.compareTo(a.amount));
+
+    return result.take(3).toList(growable: false);
   }
 
   @override
@@ -141,6 +192,8 @@ class _FarmCostCauseAnalysisCardState extends State<FarmCostCauseAnalysisCard> {
                 ],
                 const Divider(height: 24),
                 _RecommendationSection(future: _recommendationsFuture),
+                const Divider(height: 24),
+                _TopCostSourcesSection(future: _topSourcesFuture),
               ],
             ),
           ),
@@ -330,6 +383,83 @@ class _RecommendationSection extends StatelessWidget {
         return Colors.red;
     }
   }
+}
+
+class _TopCostSourcesSection extends StatelessWidget {
+  final Future<List<_TopCostSource>> future;
+
+  const _TopCostSourcesSection({required this.future});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<_TopCostSource>>(
+      future: future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Row(
+            children: [
+              SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+              SizedBox(width: 8),
+              Text('Đang truy nguồn chi phí theo thửa...'),
+            ],
+          );
+        }
+        if (snapshot.hasError) {
+          return Text('Không tải được nguồn chi phí: ${snapshot.error}');
+        }
+
+        final items = snapshot.data ?? const <_TopCostSource>[];
+        if (items.isEmpty) {
+          return const Text('Chưa có đủ dữ liệu để xác định thửa gây tăng chi phí.');
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '📍 Top thửa gây tăng chi phí',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            ...items.asMap().entries.map(
+              (entry) => _topCostSourceRow(context, entry.key + 1, entry.value),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _topCostSourceRow(BuildContext context, int rank, _TopCostSource item) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: CircleAvatar(
+        child: Text('$rank', style: const TextStyle(fontWeight: FontWeight.bold)),
+      ),
+      title: Text(item.fieldName, style: const TextStyle(fontWeight: FontWeight.w600)),
+      subtitle: Text(
+        '${item.drivers.isEmpty ? 'Cost driver' : item.drivers.join(' • ')}\nNguồn tăng: ${item.amount.toStringAsFixed(0)} đ',
+      ),
+      isThreeLine: true,
+      trailing: const Icon(Icons.chevron_right),
+      onTap: item.onTap,
+    );
+  }
+}
+
+class _TopCostSource {
+  final String fieldId;
+  final String fieldName;
+  final double amount;
+  final List<String> drivers;
+  VoidCallback? onTap;
+
+  _TopCostSource({
+    required this.fieldId,
+    required this.fieldName,
+    required this.amount,
+    required this.drivers,
+  });
 }
 
 class _CostCause {
