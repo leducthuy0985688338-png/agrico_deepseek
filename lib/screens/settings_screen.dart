@@ -128,6 +128,7 @@ class SettingsPage extends StatelessWidget {
                           tasks: taskProvider.tasks,
                           financeRecords: financeProvider.records,
                           fuels: fuelProvider.fuels,
+                          fuelTransactions: fuelProvider.allTransactions,
                           fields: fieldProvider.fields,
                           seasons: seasonProvider.allSeasons,
                           productionLogs: logProvider.allLogs,
