@@ -50,7 +50,9 @@ class _CostDriverTraceScreenState extends State<CostDriverTraceScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Truy nguyên khoản chi'),
-        actions: [IconButton(onPressed: _reload, icon: const Icon(Icons.refresh))],
+        actions: [
+          IconButton(onPressed: _reload, icon: const Icon(Icons.refresh)),
+        ],
       ),
       body: FutureBuilder<List<CostDriverTraceRow>>(
         future: _future,
@@ -62,7 +64,10 @@ class _CostDriverTraceScreenState extends State<CostDriverTraceScreen> {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: FilledButton(onPressed: _reload, child: const Text('Thử lại')),
+                child: FilledButton(
+                  onPressed: _reload,
+                  child: const Text('Thử lại'),
+                ),
               ),
             );
           }
@@ -73,7 +78,10 @@ class _CostDriverTraceScreenState extends State<CostDriverTraceScreen> {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Text(widget.field.name, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
+              Text(
+                widget.field.name,
+                style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 4),
               Text(widget.season.name),
               const SizedBox(height: 12),
@@ -83,9 +91,18 @@ class _CostDriverTraceScreenState extends State<CostDriverTraceScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Cost Driver', style: TextStyle(fontWeight: FontWeight.w600)),
+                      const Text(
+                        'Cost Driver',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
                       const SizedBox(height: 4),
-                      Text(widget.driver.label, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                      Text(
+                        widget.driver.label,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       Text(widget.driver.category.label),
                       const SizedBox(height: 10),
                       Row(
@@ -99,30 +116,89 @@ class _CostDriverTraceScreenState extends State<CostDriverTraceScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              const Text('Các khoản chi cụ thể', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const Text(
+                'Các khoản chi cụ thể',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 8),
               if (rows.isEmpty)
-                const Card(child: ListTile(title: Text('Không tìm thấy bản ghi chi phí phù hợp.'))),
-              ...rows.map(
-                (row) => Card(
+                const Card(
                   child: ListTile(
-                    leading: CircleAvatar(child: Icon(_icon(row.category))),
-                    title: Text(_money(row.amount), style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text(
-                      '${row.quantity.toStringAsFixed(2)} ${row.unit} × ${_money(row.unitPrice)}\n'
-                      '${_date(widget.season.startDate)} • ${row.source ?? row.category.label}',
-                    ),
-                    isThreeLine: true,
-                    trailing: row.sourceId == null ? null : Text(row.sourceId!, style: const TextStyle(fontSize: 11)),
+                    title: Text('Không tìm thấy bản ghi chi phí phù hợp.'),
                   ),
                 ),
-              ),
+              ...rows.map(_buildTraceCard),
             ],
           );
         },
       ),
     );
   }
+
+  Widget _buildTraceCard(CostDriverTraceRow row) {
+    final sourceLabel = row.source?.trim().isNotEmpty == true
+        ? row.source!.trim()
+        : 'Chi phí trực tiếp';
+    final hasReferences = row.sourceId != null ||
+        row.employeeId != null ||
+        row.machineId != null ||
+        row.notes.trim().isNotEmpty;
+
+    return Card(
+      child: ExpansionTile(
+        leading: CircleAvatar(child: Icon(_icon(row.category))),
+        title: Text(
+          _money(row.amount),
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(
+          '${_date(row.date)} • ${row.quantity.toStringAsFixed(2)} ${row.unit} × ${_money(row.unitPrice)}\n'
+          '$sourceLabel',
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Divider(),
+                _detailRow('Mã bản ghi', row.recordId),
+                if (row.sourceId != null) _detailRow('Mã nguồn', row.sourceId!),
+                if (row.employeeId != null) _detailRow('Nhân công', row.employeeId!),
+                if (row.machineId != null) _detailRow('Máy', row.machineId!),
+                if (row.notes.trim().isNotEmpty) _detailRow('Ghi chú', row.notes.trim()),
+                if (!hasReferences)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8),
+                    child: Text(
+                      'Chưa có mã nguồn hoặc liên kết chi tiết cho bản ghi này.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) => Padding(
+        padding: const EdgeInsets.only(top: 7),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 100,
+              child: Text(
+                label,
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+            ),
+            Expanded(child: Text(value)),
+          ],
+        ),
+      );
 
   Widget _summary(String label, String value) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
