@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/field_model.dart';
 import '../providers/dashboard_provider.dart';
 import '../providers/field_provider.dart';
+import '../widgets/farm_cost_cause_analysis_card.dart';
 import 'field_list_screen.dart';
 import 'overall_field_map_screen.dart';
 import 'report_screen.dart';
@@ -108,6 +109,8 @@ class _FarmDashboardScreenState extends State<FarmDashboardScreen> {
                   ],
                 ),
                 const SizedBox(height: 20),
+                FarmCostCauseAnalysisCard(fields: fields, seasons: const []),
+                const SizedBox(height: 12),
                 _SectionCard(
                   title: '💰 Hiệu quả tài chính',
                   child: Column(
