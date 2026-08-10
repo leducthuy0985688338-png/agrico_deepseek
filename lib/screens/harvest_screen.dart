@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../models/harvest_record_model.dart';
 import '../models/production_season_model.dart';
@@ -18,13 +19,8 @@ class _HarvestScreenState extends State<HarvestScreen> {
   @override
   void initState() {
     super.initState();
-    _provider = HarvestProvider()..loadForSeason(widget.season.id);
-  }
-
-  @override
-  void dispose() {
-    _provider.dispose();
-    super.dispose();
+    _provider = context.read<HarvestProvider>()
+      ..loadForSeason(widget.season.id);
   }
 
   Future<void> _add() async {
