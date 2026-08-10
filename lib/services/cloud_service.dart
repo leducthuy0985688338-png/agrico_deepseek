@@ -109,6 +109,23 @@ class CloudService {
   static Stream<QuerySnapshot> getFuels() => db.collection('fuel').orderBy('name').snapshots();
   static Future<void> deleteFuel(String id) => db.collection('fuel').doc(id).delete();
 
+  static Future<List<FuelModel>> loadFuels() async {
+    final snapshot = await db.collection('fuel').orderBy('name').get();
+    return snapshot.docs
+        .map((doc) => FuelModel.fromMap(doc.data()))
+        .toList(growable: false);
+  }
+
+  static Future<List<FuelTransaction>> loadFuelTransactions() async {
+    final snapshot = await db
+        .collection('fuel_transactions')
+        .orderBy('date', descending: true)
+        .get();
+    return snapshot.docs
+        .map((doc) => FuelTransaction.fromMap(doc.data()))
+        .toList(growable: false);
+  }
+
   static Future<void> syncAllData({required List<WarehouseItem> warehouseItems, required List<MachineModel> machines, required List<EmployeeModel> employees, required List<TaskModel> tasks, required List<FinanceRecord> financeRecords, required List<FuelModel> fuels, required List<FuelTransaction> fuelTransactions, required List<FieldModel> fields, required List<ProductionSeasonModel> seasons, required List<ProductionLogModel> productionLogs, required List<HarvestRecordModel> harvestRecords, required List<ProductionCostModel> productionCosts}) async {
     final batch = db.batch();
     for (final field in fields) { batch.set(db.collection('fields').doc(field.id), {'id': field.id, 'name': field.name, 'area': field.area, 'crop': field.crop, 'status': field.status, 'perimeter': field.perimeter, 'measurementMethod': field.measurementMethod, 'gpsAccuracy': field.gpsAccuracy, 'measuredAt': field.measuredAt == null ? null : Timestamp.fromDate(field.measuredAt!.toUtc()), 'polygon': field.polygon.map((p) => {'lat': p.latitude, 'lng': p.longitude}).toList(growable: false), 'photoPaths': field.photoPaths, 'updatedAt': FieldValue.serverTimestamp()}); }
