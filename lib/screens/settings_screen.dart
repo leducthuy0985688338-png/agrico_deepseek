@@ -100,12 +100,12 @@ class SettingsPage extends StatelessWidget {
                   : () async {
                       try {
                         // Lấy dữ liệu từ các provider
-                        final warehouseProvider = WarehouseProvider();
-                        final machineProvider = MachineProvider();
-                        final employeeProvider = EmployeeProvider();
-                        final taskProvider = TaskProvider();
-                        final financeProvider = FinanceProvider();
-                        final fuelProvider = FuelProvider();
+                        final warehouseProvider = context.read<WarehouseProvider>();
+                        final machineProvider = context.read<MachineProvider>();
+                        final employeeProvider = context.read<EmployeeProvider>();
+                        final taskProvider = context.read<TaskProvider>();
+                        final financeProvider = context.read<FinanceProvider>();
+                        final fuelProvider = context.read<FuelProvider>();
 
                         final success = await provider.syncAllData(
                           warehouseItems: warehouseProvider.items,

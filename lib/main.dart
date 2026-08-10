@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'theme/app_theme.dart';
@@ -16,6 +17,13 @@ import 'screens/report_screen.dart';
 
 // ====== IMPORT PROVIDER ======
 import 'providers/dashboard_provider.dart';
+import 'providers/cloud_sync_provider.dart';
+import 'providers/warehouse_provider.dart';
+import 'providers/machine_provider.dart';
+import 'providers/employee_provider.dart';
+import 'providers/task_provider.dart';
+import 'providers/finance_provider.dart';
+import 'providers/fuel_provider.dart';
 
 // ====== ĐIỂM KHỞI ĐẦU ======
 void main() {
@@ -28,11 +36,22 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Agrico ERP',
-      theme: AppTheme.lightTheme,
-      home: const LoginScreen(),
-      debugShowCheckedModeBanner: false,
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => CloudSyncProvider()),
+        ChangeNotifierProvider(create: (_) => WarehouseProvider()),
+        ChangeNotifierProvider(create: (_) => MachineProvider()),
+        ChangeNotifierProvider(create: (_) => EmployeeProvider()),
+        ChangeNotifierProvider(create: (_) => TaskProvider()),
+        ChangeNotifierProvider(create: (_) => FinanceProvider()),
+        ChangeNotifierProvider(create: (_) => FuelProvider()),
+      ],
+      child: MaterialApp(
+        title: 'Agrico ERP',
+        theme: AppTheme.lightTheme,
+        home: const LoginScreen(),
+        debugShowCheckedModeBanner: false,
+      ),
     );
   }
 }
