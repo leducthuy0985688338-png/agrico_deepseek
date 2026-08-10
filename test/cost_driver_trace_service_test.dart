@@ -6,7 +6,7 @@ import 'package:agrico_deepseek/services/cost_driver_trace_service.dart';
 void main() {
   group('CostDriverTraceRow', () {
     test('keeps source and cost details for drill-down', () {
-      const row = CostDriverTraceRow(
+      final row = CostDriverTraceRow(
         seasonId: 'season-1',
         fieldId: 'field-01',
         driverLabel: 'Phân bón',
