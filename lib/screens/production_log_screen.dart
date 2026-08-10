@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../models/production_log_model.dart';
 import '../models/production_season_model.dart';
@@ -31,13 +32,8 @@ class _ProductionLogScreenState extends State<ProductionLogScreen> {
   @override
   void initState() {
     super.initState();
-    _provider = ProductionLogProvider()..loadForSeason(widget.season.id);
-  }
-
-  @override
-  void dispose() {
-    _provider.dispose();
-    super.dispose();
+    _provider = context.read<ProductionLogProvider>()
+      ..loadForSeason(widget.season.id);
   }
 
   Future<void> _addLog() async {
