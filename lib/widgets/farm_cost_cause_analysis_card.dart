@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/field_model.dart';
+import '../models/production_cost_model.dart';
 import '../models/production_season_model.dart';
 import '../services/cost_driver_recommendation_service.dart';
 import '../services/cost_driver_trace_service.dart';
