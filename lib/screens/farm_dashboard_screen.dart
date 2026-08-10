@@ -6,7 +6,7 @@ import '../models/production_season_model.dart';
 import '../providers/dashboard_provider.dart';
 import '../providers/field_provider.dart';
 import '../services/farm_season_loader_service.dart';
-import '../widgets/farm_cost_alertdashboard.dart';
+import '../widgets/farm_cost_alert_dashboard.dart';
 import '../widgets/farm_cost_cause_analysis_card.dart';
 import 'cost_analysis_screen.dart';
 import 'field_detail_screen.dart';
