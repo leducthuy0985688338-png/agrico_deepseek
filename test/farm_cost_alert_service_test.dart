@@ -10,8 +10,10 @@ void main() {
         fieldId: 'F1',
         name: 'Vụ Lạc 2026',
         crop: 'Lạc',
+        variety: 'Lạc đỏ',
         startDate: DateTime(2026, 1, 1),
-        endDate: DateTime(2026, 5, 1),
+        expectedHarvestDate: DateTime(2026, 5, 1),
+        status: 'Đang sản xuất',
         plannedArea: 10000,
       );
 
