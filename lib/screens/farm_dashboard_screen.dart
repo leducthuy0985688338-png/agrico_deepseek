@@ -9,7 +9,6 @@ import '../widgets/farm_cost_alert_dashboard.dart';
 import '../widgets/farm_cost_cause_analysis_card.dart';
 import 'field_list_screen.dart';
 import 'overall_field_map_screen.dart';
-import 'report_screen.dart';
 import 'field_performance_screen.dart';
 import 'field_detail_screen.dart';
 import 'cost_analysis_screen.dart';
