@@ -9,6 +9,7 @@ import '../providers/employee_provider.dart';
 import '../providers/task_provider.dart';
 import '../providers/finance_provider.dart';
 import '../providers/fuel_provider.dart';
+import '../providers/field_provider.dart';
 import '../theme/app_theme.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -106,6 +107,7 @@ class SettingsPage extends StatelessWidget {
                         final taskProvider = context.read<TaskProvider>();
                         final financeProvider = context.read<FinanceProvider>();
                         final fuelProvider = context.read<FuelProvider>();
+                        final fieldProvider = context.read<FieldProvider>();
 
                         final success = await provider.syncAllData(
                           warehouseItems: warehouseProvider.items,
@@ -114,6 +116,7 @@ class SettingsPage extends StatelessWidget {
                           tasks: taskProvider.tasks,
                           financeRecords: financeProvider.records,
                           fuels: fuelProvider.fuels,
+                          fields: fieldProvider.fields,
                         );
 
                         if (success) {

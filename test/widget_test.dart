@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import 'package:agrico_deepseek/main.dart';
 import 'package:agrico_deepseek/providers/cloud_sync_provider.dart';
+import 'package:agrico_deepseek/providers/field_provider.dart';
 
 void main() {
   testWidgets('AGRICO app starts successfully', (WidgetTester tester) async {
@@ -23,6 +24,10 @@ void main() {
     expect(
       Provider.of<CloudSyncProvider>(materialAppContext, listen: false),
       isA<CloudSyncProvider>(),
+    );
+    expect(
+      Provider.of<FieldProvider>(materialAppContext, listen: false),
+      same(FieldProvider.instance),
     );
 
     // Khôi phục kích thước màn hình mặc định.
