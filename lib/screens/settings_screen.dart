@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../main.dart';
 import '../providers/cloud_sync_provider.dart';
 import '../providers/warehouse_provider.dart';
 import '../providers/machine_provider.dart';
@@ -22,11 +21,6 @@ class SettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Cài đặt'),
-        backgroundColor: AppTheme.primaryColor,
-        foregroundColor: Colors.white,
-      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -253,10 +247,9 @@ class SettingsPage extends StatelessWidget {
             ElevatedButton(
               onPressed: () {
                 Navigator.pop(ctx);
-                Navigator.pushReplacement(
+                Navigator.of(
                   context,
-                  MaterialPageRoute(builder: (context) => const LoginScreen()),
-                );
+                ).pushNamedAndRemoveUntil('/', (route) => false);
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               child: const Text('Đăng xuất'),

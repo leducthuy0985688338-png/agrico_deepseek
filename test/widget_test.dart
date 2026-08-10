@@ -10,6 +10,7 @@ import 'package:agrico_deepseek/providers/production_season_provider.dart';
 import 'package:agrico_deepseek/providers/production_log_provider.dart';
 import 'package:agrico_deepseek/providers/harvest_provider.dart';
 import 'package:agrico_deepseek/providers/production_cost_provider.dart';
+import 'package:agrico_deepseek/screens/settings_screen.dart';
 
 void main() {
   testWidgets('AGRICO app starts successfully', (WidgetTester tester) async {
@@ -56,6 +57,34 @@ void main() {
     );
 
     // Khôi phục kích thước màn hình mặc định.
+    await tester.binding.setSurfaceSize(null);
+  });
+
+  testWidgets('settings tab opens the real cloud sync screen', (
+    WidgetTester tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 1000));
+    await tester.pumpWidget(const MyApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('ĐĂNG NHẬP'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SettingsPage), findsNothing);
+    await tester.tap(find.text('Cài đặt'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SettingsPage), findsOneWidget);
+    expect(find.text('☁️ Đồng bộ dữ liệu'), findsOneWidget);
+    expect(
+      find.text(
+        'Đồng bộ tất cả dữ liệu lên Cloud để sử dụng trên nhiều thiết bị',
+      ),
+      findsOneWidget,
+    );
+
     await tester.binding.setSurfaceSize(null);
   });
 }
