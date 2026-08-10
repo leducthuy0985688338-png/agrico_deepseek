@@ -16,6 +16,27 @@ class ProductionSeasonProvider extends ChangeNotifier {
   List<ProductionSeasonModel> seasonsForField(String fieldId) =>
       List.unmodifiable(_byField[fieldId] ?? const []);
 
+  List<ProductionSeasonModel> get allSeasons => List.unmodifiable(
+        _byField.values.expand((items) => items),
+      );
+
+  Future<void> loadForFields(Iterable<String> fieldIds) async {
+    final ids = fieldIds.toSet();
+    _loading = true;
+    notifyListeners();
+    try {
+      final entries = await Future.wait(
+        ids.map((fieldId) async => MapEntry(fieldId, await _database.getByField(fieldId))),
+      );
+      for (final entry in entries) {
+        _byField[entry.key] = entry.value;
+      }
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> loadForField(String fieldId) async {
     _loading = true;
     notifyListeners();
