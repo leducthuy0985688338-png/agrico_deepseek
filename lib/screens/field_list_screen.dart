@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../providers/field_provider.dart';
 import 'distance_measure_screen.dart';
@@ -13,7 +14,7 @@ class FieldListScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final provider = FieldProvider();
+    final provider = context.watch<FieldProvider>();
 
     return Scaffold(
       appBar: AppBar(
