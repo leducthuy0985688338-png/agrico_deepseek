@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 
 import 'package:agrico_deepseek/main.dart';
+import 'package:agrico_deepseek/providers/cloud_sync_provider.dart';
 
 void main() {
   testWidgets('AGRICO app starts successfully', (WidgetTester tester) async {
@@ -16,6 +18,12 @@ void main() {
 
     // Kiểm tra MyApp đã được render.
     expect(find.byType(MyApp), findsOneWidget);
+
+    final materialAppContext = tester.element(find.byType(MaterialApp));
+    expect(
+      Provider.of<CloudSyncProvider>(materialAppContext, listen: false),
+      isA<CloudSyncProvider>(),
+    );
 
     // Khôi phục kích thước màn hình mặc định.
     await tester.binding.setSurfaceSize(null);
