@@ -48,6 +48,7 @@ class CloudSyncProvider extends ChangeNotifier {
   bool _isRestoringProductionCosts = false;
   bool _isRestoringWorkforceMachines = false;
   bool _isRestoringWarehouse = false;
+  bool _isRestoringTasks = false;
   String? _lastSyncTime;
   bool _isConnected = false;
 
@@ -61,6 +62,7 @@ class CloudSyncProvider extends ChangeNotifier {
   bool get isRestoringProductionCosts => _isRestoringProductionCosts;
   bool get isRestoringWorkforceMachines => _isRestoringWorkforceMachines;
   bool get isRestoringWarehouse => _isRestoringWarehouse;
+  bool get isRestoringTasks => _isRestoringTasks;
   bool get isBusy =>
       _isSyncing ||
       _isRestoringFuel ||
@@ -71,7 +73,8 @@ class CloudSyncProvider extends ChangeNotifier {
       _isRestoringHarvestRecords ||
       _isRestoringProductionCosts ||
       _isRestoringWorkforceMachines ||
-      _isRestoringWarehouse;
+      _isRestoringWarehouse ||
+      _isRestoringTasks;
   String? get lastSyncTime => _lastSyncTime;
   bool get isConnected => _isConnected;
 
@@ -326,6 +329,27 @@ class CloudSyncProvider extends ChangeNotifier {
     }
   }
 
+  Future<List<TaskModel>> restoreTaskData() async {
+    if (isBusy) {
+      throw StateError('Đang có thao tác Cloud khác, vui lòng chờ hoàn tất.');
+    }
+
+    _isRestoringTasks = true;
+    notifyListeners();
+
+    try {
+      final tasks = await CloudService.loadTasks();
+      _isConnected = true;
+      return tasks;
+    } catch (_) {
+      _isConnected = false;
+      rethrow;
+    } finally {
+      _isRestoringTasks = false;
+      notifyListeners();
+    }
+  }
+
   // ====== LẤY DỮ LIỆU TỪ CLOUD ======
   Stream<List<WarehouseItem>> getWarehouseItems() {
     return CloudService.getWarehouseItems().map((snapshot) {
@@ -377,31 +401,32 @@ class CloudSyncProvider extends ChangeNotifier {
 
   Stream<List<TaskModel>> getTasks() {
     return CloudService.getTasks().map((snapshot) {
-      return snapshot.docs.map((doc) {
-        final data = doc.data() as Map<String, dynamic>;
-        return TaskModel(
-          id: data['id'],
-          title: data['title'],
-          description: data['description'],
-          priority: TaskPriority.values[data['priority']],
-          status: TaskStatus.values[data['status']],
-          dueDate: DateTime.parse(data['dueDate']),
-          completedDate: data['completedDate'] != null
-              ? DateTime.parse(data['completedDate'])
-              : null,
-          assignedTo: data['assignedTo'],
-          assignedToName: data['assignedToName'],
-          fieldId: data['fieldId'],
-          fieldName: data['fieldName'],
-          machineId: data['machineId'],
-          machineName: data['machineName'],
-          tags: List<String>.from(data['tags'] ?? []),
-          createdAt: DateTime.parse(data['createdAt']),
-          updatedAt: data['updatedAt'] != null
-              ? (data['updatedAt'] as Timestamp).toDate()
-              : null,
-        );
-      }).toList();
+      final tasks = <TaskModel>[];
+      for (final doc in snapshot.docs) {
+        final data =
+            Map<String, dynamic>.from(doc.data() as Map<String, dynamic>);
+        data['id'] ??= doc.id;
+        for (final key in [
+          'dueDate',
+          'completedDate',
+          'createdAt',
+          'updatedAt',
+        ]) {
+          final value = data[key];
+          if (value is Timestamp) {
+            data[key] = value.toDate().toUtc().toIso8601String();
+          } else if (value is DateTime) {
+            data[key] = value.toUtc().toIso8601String();
+          }
+        }
+
+        try {
+          tasks.add(TaskModel.fromMap(data));
+        } on FormatException {
+          // Bỏ qua tài liệu Cloud không đủ dữ liệu bắt buộc.
+        }
+      }
+      return tasks;
     });
   }
 }

@@ -76,6 +76,14 @@ class SettingsPage extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 12),
+          _buildRestoreTaskButton(context),
+          const SizedBox(height: 8),
+          const Text(
+            'Khôi phục công việc và lịch việc, đồng thời kiểm tra các liên kết.',
+            style: TextStyle(color: Colors.grey, fontSize: 12),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
           _buildRestoreWarehouseButton(context),
           const SizedBox(height: 8),
           const Text(
@@ -888,6 +896,152 @@ class SettingsPage extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('❌ Lỗi khôi phục nhân sự và máy móc: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Widget _buildRestoreTaskButton(BuildContext context) {
+    return Consumer<CloudSyncProvider>(
+      builder: (context, provider, child) {
+        return OutlinedButton(
+          onPressed: provider.isBusy
+              ? null
+              : () => _confirmTaskRestore(context),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppTheme.primaryColor,
+            side: const BorderSide(color: AppTheme.primaryColor),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          child: provider.isRestoringTasks
+              ? const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 12),
+                    Text('Đang khôi phục công việc và lịch việc...'),
+                  ],
+                )
+              : const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.event_available),
+                    SizedBox(width: 8),
+                    Text('Khôi phục công việc & lịch việc từ Cloud'),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmTaskRestore(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Khôi phục công việc và lịch việc?'),
+        content: const Text(
+          'Danh sách công việc hiện tại sẽ được thay bằng bản trên Cloud. '
+          'Lịch việc được tạo từ ngày thực hiện của từng công việc. Hãy khôi '
+          'phục lô đất, nhân sự và máy móc trước để giữ đúng liên kết.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Khôi phục'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    final cloudProvider = context.read<CloudSyncProvider>();
+    final taskProvider = context.read<TaskProvider>();
+    final employeeProvider = context.read<EmployeeProvider>();
+    final machineProvider = context.read<MachineProvider>();
+    final fieldProvider = context.read<FieldProvider>();
+
+    try {
+      final tasks = await cloudProvider.restoreTaskData();
+      if (!context.mounted) return;
+
+      if (tasks.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Cloud chưa có công việc hợp lệ. Dữ liệu cục bộ được giữ nguyên.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      final result = taskProvider.restoreFromCloud(
+        tasks: tasks,
+        employeeNamesById: {
+          for (final employee in employeeProvider.employees)
+            employee.id: employee.name,
+        },
+        machineNamesById: {
+          for (final machine in machineProvider.machines)
+            machine.id: machine.name,
+        },
+        fieldNamesById: {
+          for (final field in fieldProvider.fields) field.id: field.name,
+        },
+      );
+      if (result.restoredCount == 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Cloud không có công việc hợp lệ. Dữ liệu cục bộ được giữ nguyên.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      final clearedParts = <String>[];
+      if (result.clearedEmployeeLinks > 0) {
+        clearedParts.add('${result.clearedEmployeeLinks} nhân viên');
+      }
+      if (result.clearedMachineLinks > 0) {
+        clearedParts.add('${result.clearedMachineLinks} máy móc');
+      }
+      if (result.clearedFieldLinks > 0) {
+        clearedParts.add('${result.clearedFieldLinks} lô đất');
+      }
+      final clearedMessage = clearedParts.isEmpty
+          ? ''
+          : ' Đã gỡ liên kết không hợp lệ: ${clearedParts.join(', ')}.';
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '✅ Đã khôi phục ${result.restoredCount} công việc và lịch việc.'
+            '$clearedMessage',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Lỗi khôi phục công việc và lịch việc: $e'),
           backgroundColor: Colors.red,
         ),
       );
