@@ -96,6 +96,24 @@ class CloudService {
     }).toList(growable: false);
   }
 
+  static Future<List<ProductionLogModel>> loadProductionLogs() async {
+    final snapshot = await db
+        .collection('production_logs')
+        .orderBy('date', descending: true)
+        .get();
+
+    return snapshot.docs.map((doc) {
+      final data = Map<String, dynamic>.from(doc.data());
+      final date = data['date'];
+      if (date is Timestamp) {
+        data['date'] = date.toDate().toUtc().toIso8601String();
+      } else if (date is DateTime) {
+        data['date'] = date.toUtc().toIso8601String();
+      }
+      return ProductionLogModel.fromJson(data);
+    }).toList(growable: false);
+  }
+
   static Future<void> saveDistanceMeasurement(DistanceMeasurementModel measurement) async {
     await db.collection('distance_measurements').doc(measurement.id).set({
       'id': measurement.id,

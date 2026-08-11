@@ -57,14 +57,41 @@ class ProductionLogDatabase {
 
   Future<void> upsert(ProductionLogModel log) async {
     final db = await database;
-    await db.insert(_table, {
-      'id': log.id, 'season_id': log.seasonId, 'field_id': log.fieldId,
-      'date': log.date.toIso8601String(), 'activity_type': log.activityType,
-      'title': log.title, 'quantity': log.quantity, 'unit': log.unit,
-      'cost': log.cost, 'worker': log.worker, 'notes': log.notes,
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert(
+      _table,
+      _toRow(log),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
+
+  Future<void> replaceAll(List<ProductionLogModel> logs) async {
+    final db = await database;
+    await db.transaction((transaction) async {
+      await transaction.delete(_table);
+      for (final log in logs) {
+        await transaction.insert(
+          _table,
+          _toRow(log),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
+  }
+
+  Map<String, Object?> _toRow(ProductionLogModel log) => {
+        'id': log.id,
+        'season_id': log.seasonId,
+        'field_id': log.fieldId,
+        'date': log.date.toIso8601String(),
+        'activity_type': log.activityType,
+        'title': log.title,
+        'quantity': log.quantity,
+        'unit': log.unit,
+        'cost': log.cost,
+        'worker': log.worker,
+        'notes': log.notes,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      };
 
   Future<void> delete(String id) async {
     final db = await database;

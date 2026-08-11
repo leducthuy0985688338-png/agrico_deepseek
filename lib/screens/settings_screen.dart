@@ -52,6 +52,14 @@ class SettingsPage extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 12),
+          _buildRestoreProductionLogButton(context),
+          const SizedBox(height: 8),
+          const Text(
+            'Khôi phục nhật ký sản xuất theo đúng lô đất và mùa vụ.',
+            style: TextStyle(color: Colors.grey, fontSize: 12),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
           _buildRestoreFuelButton(context),
           const SizedBox(height: 8),
           const Text(
@@ -463,6 +471,139 @@ class SettingsPage extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('❌ Lỗi khôi phục mùa vụ: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Widget _buildRestoreProductionLogButton(BuildContext context) {
+    return Consumer<CloudSyncProvider>(
+      builder: (context, provider, child) {
+        return OutlinedButton(
+          onPressed: provider.isBusy
+              ? null
+              : () => _confirmProductionLogRestore(context),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppTheme.primaryColor,
+            side: const BorderSide(color: AppTheme.primaryColor),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          child: provider.isRestoringProductionLogs
+              ? const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 12),
+                    Text('Đang khôi phục nhật ký sản xuất...'),
+                  ],
+                )
+              : const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.menu_book),
+                    SizedBox(width: 8),
+                    Text('Khôi phục nhật ký sản xuất từ Cloud'),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmProductionLogRestore(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Khôi phục nhật ký sản xuất?'),
+        content: const Text(
+          'Toàn bộ nhật ký sản xuất hiện tại sẽ được thay bằng bản trên '
+          'Cloud. Hãy khôi phục lô đất và mùa vụ trước để giữ đúng liên kết.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Khôi phục'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    final cloudProvider = context.read<CloudSyncProvider>();
+    final fieldProvider = context.read<FieldProvider>();
+    final seasonProvider = context.read<ProductionSeasonProvider>();
+    final logProvider = context.read<ProductionLogProvider>();
+
+    try {
+      final logs = await cloudProvider.restoreProductionLogData();
+      if (!context.mounted) return;
+
+      if (logs.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cloud chưa có dữ liệu nhật ký sản xuất.'),
+          ),
+        );
+        return;
+      }
+
+      final fieldIds = fieldProvider.fields.map((field) => field.id).toSet();
+      final seasonsById = {
+        for (final season in seasonProvider.allSeasons) season.id: season,
+      };
+      final validLogs = logs.where((log) {
+        final season = seasonsById[log.seasonId];
+        return season != null &&
+            season.fieldId == log.fieldId &&
+            fieldIds.contains(log.fieldId);
+      }).toList(growable: false);
+      final skippedCount = logs.length - validLogs.length;
+
+      if (validLogs.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Không có nhật ký nào khớp với lô đất và mùa vụ hiện tại. '
+              'Hãy khôi phục lô đất, rồi khôi phục mùa vụ trước.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      await logProvider.restoreFromCloud(logs: validLogs);
+      if (!context.mounted) return;
+
+      final skippedMessage = skippedCount == 0
+          ? ''
+          : ' Bỏ qua $skippedCount nhật ký mất liên kết.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '✅ Đã khôi phục ${validLogs.length} nhật ký sản xuất.'
+            '$skippedMessage',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Lỗi khôi phục nhật ký sản xuất: $e'),
           backgroundColor: Colors.red,
         ),
       );
