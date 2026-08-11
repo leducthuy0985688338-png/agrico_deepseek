@@ -31,6 +31,7 @@ class CloudSyncProvider extends ChangeNotifier {
   bool _isRestoringFinance = false;
   bool _isRestoringFields = false;
   bool _isRestoringSeasons = false;
+  bool _isRestoringProductionLogs = false;
   String? _lastSyncTime;
   bool _isConnected = false;
 
@@ -39,12 +40,14 @@ class CloudSyncProvider extends ChangeNotifier {
   bool get isRestoringFinance => _isRestoringFinance;
   bool get isRestoringFields => _isRestoringFields;
   bool get isRestoringSeasons => _isRestoringSeasons;
+  bool get isRestoringProductionLogs => _isRestoringProductionLogs;
   bool get isBusy =>
       _isSyncing ||
       _isRestoringFuel ||
       _isRestoringFinance ||
       _isRestoringFields ||
-      _isRestoringSeasons;
+      _isRestoringSeasons ||
+      _isRestoringProductionLogs;
   String? get lastSyncTime => _lastSyncTime;
   bool get isConnected => _isConnected;
 
@@ -185,6 +188,27 @@ class CloudSyncProvider extends ChangeNotifier {
       rethrow;
     } finally {
       _isRestoringSeasons = false;
+      notifyListeners();
+    }
+  }
+
+  Future<List<ProductionLogModel>> restoreProductionLogData() async {
+    if (isBusy) {
+      throw StateError('Đang có thao tác Cloud khác, vui lòng chờ hoàn tất.');
+    }
+
+    _isRestoringProductionLogs = true;
+    notifyListeners();
+
+    try {
+      final logs = await CloudService.loadProductionLogs();
+      _isConnected = true;
+      return logs;
+    } catch (_) {
+      _isConnected = false;
+      rethrow;
+    } finally {
+      _isRestoringProductionLogs = false;
       notifyListeners();
     }
   }
