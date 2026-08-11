@@ -8,6 +8,7 @@ class ProductionCostProvider extends ChangeNotifier {
   final ProductionCostDatabase _database;
   final Map<String, List<ProductionCostModel>> _records = {};
   bool _loading = false;
+  int _revision = 0;
 
   ProductionCostProvider({ProductionCostDatabase? database})
       : _database = database ?? ProductionCostDatabase();
@@ -23,6 +24,7 @@ class ProductionCostProvider extends ChangeNotifier {
 
   Future<void> loadForSeasons(Iterable<String> seasonIds) async {
     final ids = seasonIds.toSet();
+    final revision = _revision;
     _loading = true;
     notifyListeners();
     try {
@@ -34,9 +36,10 @@ class ProductionCostProvider extends ChangeNotifier {
           ),
         ),
       );
-      for (final entry in entries) {
-        _records[entry.key] = entry.value;
-      }
+      if (revision != _revision) return;
+      _records
+        ..clear()
+        ..addEntries(entries);
     } finally {
       _loading = false;
       notifyListeners();
@@ -44,14 +47,44 @@ class ProductionCostProvider extends ChangeNotifier {
   }
 
   Future<void> loadForSeason(String seasonId) async {
+    final revision = _revision;
     _loading = true;
     notifyListeners();
     try {
-      _records[seasonId] = await _database.getBySeason(seasonId);
+      final records = await _database.getBySeason(seasonId);
+      if (revision == _revision) {
+        _records[seasonId] = records;
+      }
     } finally {
       _loading = false;
       notifyListeners();
     }
+  }
+
+  Future<void> restoreFromCloud({
+    required List<ProductionCostModel> records,
+  }) async {
+    if (records.isEmpty) return;
+
+    final restored = <String, ProductionCostModel>{
+      for (final record in records) record.id: record,
+    }.values.toList(growable: false);
+
+    final grouped = <String, List<ProductionCostModel>>{};
+    for (final record in restored) {
+      (grouped[record.seasonId] ??= []).add(record);
+    }
+    for (final items in grouped.values) {
+      items.sort((a, b) => b.date.compareTo(a.date));
+    }
+
+    await _database.replaceAll(restored);
+
+    _revision++;
+    _records
+      ..clear()
+      ..addAll(grouped);
+    notifyListeners();
   }
 
   Future<void> save(ProductionCostModel record) async {
