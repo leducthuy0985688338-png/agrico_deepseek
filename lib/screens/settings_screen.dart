@@ -60,6 +60,14 @@ class SettingsPage extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 12),
+          _buildRestoreHarvestButton(context),
+          const SizedBox(height: 8),
+          const Text(
+            'Khôi phục sản lượng, độ ẩm, giá bán và doanh thu thu hoạch.',
+            style: TextStyle(color: Colors.grey, fontSize: 12),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
           _buildRestoreFuelButton(context),
           const SizedBox(height: 8),
           const Text(
@@ -604,6 +612,139 @@ class SettingsPage extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('❌ Lỗi khôi phục nhật ký sản xuất: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Widget _buildRestoreHarvestButton(BuildContext context) {
+    return Consumer<CloudSyncProvider>(
+      builder: (context, provider, child) {
+        return OutlinedButton(
+          onPressed: provider.isBusy
+              ? null
+              : () => _confirmHarvestRestore(context),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppTheme.primaryColor,
+            side: const BorderSide(color: AppTheme.primaryColor),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          child: provider.isRestoringHarvestRecords
+              ? const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 12),
+                    Text('Đang khôi phục dữ liệu thu hoạch...'),
+                  ],
+                )
+              : const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.agriculture),
+                    SizedBox(width: 8),
+                    Text('Khôi phục thu hoạch từ Cloud'),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmHarvestRestore(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Khôi phục dữ liệu thu hoạch?'),
+        content: const Text(
+          'Toàn bộ dữ liệu thu hoạch hiện tại sẽ được thay bằng bản trên '
+          'Cloud. Hãy khôi phục lô đất và mùa vụ trước để giữ đúng liên kết.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Khôi phục'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    final cloudProvider = context.read<CloudSyncProvider>();
+    final fieldProvider = context.read<FieldProvider>();
+    final seasonProvider = context.read<ProductionSeasonProvider>();
+    final harvestProvider = context.read<HarvestProvider>();
+
+    try {
+      final records = await cloudProvider.restoreHarvestData();
+      if (!context.mounted) return;
+
+      if (records.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cloud chưa có dữ liệu thu hoạch.'),
+          ),
+        );
+        return;
+      }
+
+      final fieldIds = fieldProvider.fields.map((field) => field.id).toSet();
+      final seasonsById = {
+        for (final season in seasonProvider.allSeasons) season.id: season,
+      };
+      final validRecords = records.where((record) {
+        final season = seasonsById[record.seasonId];
+        return season != null &&
+            season.fieldId == record.fieldId &&
+            fieldIds.contains(record.fieldId);
+      }).toList(growable: false);
+      final skippedCount = records.length - validRecords.length;
+
+      if (validRecords.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Không có dữ liệu thu hoạch nào khớp với lô đất và mùa vụ '
+              'hiện tại. Hãy khôi phục lô đất, rồi khôi phục mùa vụ trước.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      await harvestProvider.restoreFromCloud(records: validRecords);
+      if (!context.mounted) return;
+
+      final skippedMessage = skippedCount == 0
+          ? ''
+          : ' Bỏ qua $skippedCount bản ghi mất liên kết.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '✅ Đã khôi phục ${validRecords.length} bản ghi thu hoạch.'
+            '$skippedMessage',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Lỗi khôi phục dữ liệu thu hoạch: $e'),
           backgroundColor: Colors.red,
         ),
       );
