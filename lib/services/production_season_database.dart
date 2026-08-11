@@ -74,27 +74,44 @@ class ProductionSeasonDatabase {
     final db = await database;
     await db.insert(
       _table,
-      {
-        'id': season.id,
-        'field_id': season.fieldId,
-        'name': season.name,
-        'crop': season.crop,
-        'variety': season.variety,
-        'start_date': season.startDate.toIso8601String(),
-        'expected_harvest_date': season.expectedHarvestDate?.toIso8601String(),
-        'status': season.status,
-        'planned_area': season.plannedArea,
-        'notes': season.notes,
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
-      },
+      _toRow(season),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+  }
+
+  Future<void> replaceAll(List<ProductionSeasonModel> seasons) async {
+    final db = await database;
+    await db.transaction((transaction) async {
+      await transaction.delete(_table);
+      for (final season in seasons) {
+        await transaction.insert(
+          _table,
+          _toRow(season),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
   }
 
   Future<void> delete(String id) async {
     final db = await database;
     await db.delete(_table, where: 'id = ?', whereArgs: [id]);
   }
+
+  Map<String, Object?> _toRow(ProductionSeasonModel season) => {
+        'id': season.id,
+        'field_id': season.fieldId,
+        'name': season.name,
+        'crop': season.crop,
+        'variety': season.variety,
+        'start_date': season.startDate.toIso8601String(),
+        'expected_harvest_date':
+            season.expectedHarvestDate?.toIso8601String(),
+        'status': season.status,
+        'planned_area': season.plannedArea,
+        'notes': season.notes,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      };
 
   ProductionSeasonModel _fromRow(Map<String, Object?> row) =>
       ProductionSeasonModel.fromJson({

@@ -76,6 +76,26 @@ class CloudService {
     }).toList(growable: false);
   }
 
+  static Future<List<ProductionSeasonModel>> loadProductionSeasons() async {
+    final snapshot = await db
+        .collection('production_seasons')
+        .orderBy('startDate', descending: true)
+        .get();
+
+    return snapshot.docs.map((doc) {
+      final data = Map<String, dynamic>.from(doc.data());
+      for (final key in ['startDate', 'expectedHarvestDate']) {
+        final value = data[key];
+        if (value is Timestamp) {
+          data[key] = value.toDate().toUtc().toIso8601String();
+        } else if (value is DateTime) {
+          data[key] = value.toUtc().toIso8601String();
+        }
+      }
+      return ProductionSeasonModel.fromJson(data);
+    }).toList(growable: false);
+  }
+
   static Future<void> saveDistanceMeasurement(DistanceMeasurementModel measurement) async {
     await db.collection('distance_measurements').doc(measurement.id).set({
       'id': measurement.id,
