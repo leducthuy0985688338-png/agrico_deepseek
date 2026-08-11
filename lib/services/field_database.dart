@@ -193,16 +193,34 @@ class FieldDatabase {
     }).toList(growable: false);
   }
 
-  Future<void> addDistanceMeasurement(DistanceMeasurement measurement) async {
+  Future<void> addDistanceMeasurement(
+    DistanceMeasurement measurement,
+  ) async {
     final db = await database;
-    await db.insert(_distanceTable, {
-      'id': measurement.id,
-      'points': jsonEncode(measurement.points.map((p) => {'lat': p.latitude, 'lng': p.longitude}).toList(growable: false)),
-      'segment_distances': jsonEncode(measurement.segmentDistances),
-      'total_distance': measurement.totalDistance,
-      'measured_at': measurement.measuredAt.toUtc().toIso8601String(),
-      'created_at': DateTime.now().toUtc().toIso8601String(),
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert(
+      _distanceTable,
+      _distanceToRow(measurement),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> replaceDistanceMeasurements(
+    List<DistanceMeasurement> measurements,
+  ) async {
+    final db = await database;
+    await db.transaction((transaction) async {
+      await transaction.delete(_distanceTable);
+      for (final measurement in measurements) {
+        await transaction.insert(
+          _distanceTable,
+          _distanceToRow(
+            measurement,
+            createdAt: measurement.measuredAt,
+          ),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
   }
 
   Future<List<DistanceMeasurement>> getDistanceMeasurements() async {
@@ -233,6 +251,27 @@ class FieldDatabase {
     await _database?.close();
     _database = null;
   }
+
+  Map<String, Object?> _distanceToRow(
+    DistanceMeasurement measurement, {
+    DateTime? createdAt,
+  }) =>
+      {
+        'id': measurement.id,
+        'points': jsonEncode(
+          measurement.points
+              .map((point) => {
+                    'lat': point.latitude,
+                    'lng': point.longitude,
+                  })
+              .toList(growable: false),
+        ),
+        'segment_distances': jsonEncode(measurement.segmentDistances),
+        'total_distance': measurement.totalDistance,
+        'measured_at': measurement.measuredAt.toUtc().toIso8601String(),
+        'created_at':
+            (createdAt ?? DateTime.now()).toUtc().toIso8601String(),
+      };
 
   Map<String, Object?> _toRow(FieldModel field) => {
         'id': field.id,

@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
-import '../models/distance_measurement_model.dart';
+import '../models/distance_measurement.dart';
 import '../models/field_model.dart';
 import '../providers/field_provider.dart';
-import '../services/cloud_service.dart';
+import '../services/field_storage_service.dart';
 import '../services/gps_field_service.dart';
 
 enum _MeasureMode { field, distance }
@@ -19,6 +19,7 @@ class FieldManualMeasureScreen extends StatefulWidget {
 class _FieldManualMeasureScreenState extends State<FieldManualMeasureScreen> {
   final _gps = GpsFieldService();
   final _fieldProvider = FieldProvider();
+  final _storage = FieldStorageService();
   final List<LatLng> _points = [];
   GoogleMapController? _mapController;
   _MeasureMode _mode = _MeasureMode.field;
@@ -106,18 +107,27 @@ class _FieldManualMeasureScreenState extends State<FieldManualMeasureScreen> {
   Future<void> _saveDistance() async {
     if (_saving || _points.length < 2) return;
     setState(() => _saving = true);
-    final measurement = DistanceMeasurementModel(
+    final measuredDistance = _distance;
+    final measurement = DistanceMeasurement(
       id: 'DIST-${DateTime.now().millisecondsSinceEpoch}',
-      start: _points[0], end: _points[1], distanceMeters: _distance,
-      measuredAt: DateTime.now().toUtc(), method: 'manual',
+      points: List<LatLng>.unmodifiable(_points.take(2)),
+      segmentDistances: [measuredDistance],
+      totalDistance: measuredDistance,
+      measuredAt: DateTime.now().toUtc(),
     );
     try {
-      await CloudService.saveDistanceMeasurement(measurement);
+      final cloudSaved = await _storage.saveDistanceMeasurement(measurement);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã lưu phép đo khoảng cách lên Firebase.')));
+      final message = cloudSaved
+          ? 'Đã lưu phép đo khoảng cách vào AGRICO và Cloud.'
+          : 'Đã lưu phép đo khoảng cách vào AGRICO. Cloud chưa sẵn sàng.';
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã đo xong. Firebase chưa sẵn sàng, phép đo vẫn giữ trên màn hình.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không thể lưu phép đo khoảng cách.')),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }

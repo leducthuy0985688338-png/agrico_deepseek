@@ -12,6 +12,7 @@ import '../models/production_season_model.dart';
 import '../models/production_log_model.dart';
 import '../models/harvest_record_model.dart';
 import '../models/production_cost_model.dart';
+import '../models/distance_measurement.dart';
 
 class FuelRestoreData {
   final List<FuelModel> fuels;
@@ -49,6 +50,7 @@ class CloudSyncProvider extends ChangeNotifier {
   bool _isRestoringWorkforceMachines = false;
   bool _isRestoringWarehouse = false;
   bool _isRestoringTasks = false;
+  bool _isRestoringDistanceMeasurements = false;
   String? _lastSyncTime;
   bool _isConnected = false;
 
@@ -63,6 +65,8 @@ class CloudSyncProvider extends ChangeNotifier {
   bool get isRestoringWorkforceMachines => _isRestoringWorkforceMachines;
   bool get isRestoringWarehouse => _isRestoringWarehouse;
   bool get isRestoringTasks => _isRestoringTasks;
+  bool get isRestoringDistanceMeasurements =>
+      _isRestoringDistanceMeasurements;
   bool get isBusy =>
       _isSyncing ||
       _isRestoringFuel ||
@@ -74,7 +78,8 @@ class CloudSyncProvider extends ChangeNotifier {
       _isRestoringProductionCosts ||
       _isRestoringWorkforceMachines ||
       _isRestoringWarehouse ||
-      _isRestoringTasks;
+      _isRestoringTasks ||
+      _isRestoringDistanceMeasurements;
   String? get lastSyncTime => _lastSyncTime;
   bool get isConnected => _isConnected;
 
@@ -346,6 +351,28 @@ class CloudSyncProvider extends ChangeNotifier {
       rethrow;
     } finally {
       _isRestoringTasks = false;
+      notifyListeners();
+    }
+  }
+
+  Future<List<DistanceMeasurement>>
+      restoreDistanceMeasurementData() async {
+    if (isBusy) {
+      throw StateError('Đang có thao tác Cloud khác, vui lòng chờ hoàn tất.');
+    }
+
+    _isRestoringDistanceMeasurements = true;
+    notifyListeners();
+
+    try {
+      final measurements = await CloudService.loadDistanceMeasurements();
+      _isConnected = true;
+      return measurements;
+    } catch (_) {
+      _isConnected = false;
+      rethrow;
+    } finally {
+      _isRestoringDistanceMeasurements = false;
       notifyListeners();
     }
   }

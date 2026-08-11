@@ -13,6 +13,7 @@ import '../providers/production_season_provider.dart';
 import '../providers/production_log_provider.dart';
 import '../providers/harvest_provider.dart';
 import '../providers/production_cost_provider.dart';
+import '../services/field_storage_service.dart';
 import '../theme/app_theme.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -80,6 +81,14 @@ class SettingsPage extends StatelessWidget {
           const SizedBox(height: 8),
           const Text(
             'Khôi phục công việc và lịch việc, đồng thời kiểm tra các liên kết.',
+            style: TextStyle(color: Colors.grey, fontSize: 12),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+          _buildRestoreDistanceMeasurementButton(context),
+          const SizedBox(height: 8),
+          const Text(
+            'Khôi phục lịch sử đo khoảng cách nhiều điểm và A→B từ Cloud.',
             style: TextStyle(color: Colors.grey, fontSize: 12),
             textAlign: TextAlign.center,
           ),
@@ -1042,6 +1051,116 @@ class SettingsPage extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('❌ Lỗi khôi phục công việc và lịch việc: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Widget _buildRestoreDistanceMeasurementButton(BuildContext context) {
+    return Consumer<CloudSyncProvider>(
+      builder: (context, provider, child) {
+        return OutlinedButton(
+          onPressed: provider.isBusy
+              ? null
+              : () => _confirmDistanceMeasurementRestore(context),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppTheme.primaryColor,
+            side: const BorderSide(color: AppTheme.primaryColor),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          child: provider.isRestoringDistanceMeasurements
+              ? const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 12),
+                    Text('Đang khôi phục lịch sử đo khoảng cách...'),
+                  ],
+                )
+              : const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.straighten),
+                    SizedBox(width: 8),
+                    Text('Khôi phục lịch sử đo khoảng cách từ Cloud'),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmDistanceMeasurementRestore(
+    BuildContext context,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Khôi phục lịch sử đo khoảng cách?'),
+        content: const Text(
+          'Lịch sử đo khoảng cách hiện tại trên thiết bị sẽ được thay bằng '
+          'các phép đo hợp lệ trên Cloud. Cả định dạng nhiều điểm và A→B cũ '
+          'đều được hỗ trợ.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Khôi phục'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    final cloudProvider = context.read<CloudSyncProvider>();
+    final storage = FieldStorageService();
+
+    try {
+      final measurements =
+          await cloudProvider.restoreDistanceMeasurementData();
+      if (!context.mounted) return;
+
+      if (measurements.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Cloud chưa có phép đo khoảng cách hợp lệ. '
+              'Dữ liệu cục bộ được giữ nguyên.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      await storage.replaceDistanceMeasurements(measurements);
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '✅ Đã khôi phục ${measurements.length} phép đo khoảng cách.',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Lỗi khôi phục lịch sử đo khoảng cách: $e'),
           backgroundColor: Colors.red,
         ),
       );

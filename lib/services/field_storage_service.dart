@@ -46,19 +46,33 @@ class FieldStorageService {
 
   Future<void> deleteField(String id) => _database.delete(id);
 
-  Future<void> saveDistanceMeasurement(DistanceMeasurement measurement) async {
+  Future<bool> saveDistanceMeasurement(
+    DistanceMeasurement measurement,
+  ) async {
     await _database.addDistanceMeasurement(measurement);
-    await _ensureFirebase();
-    await FirebaseFirestore.instance.collection('distance_measurements').doc(measurement.id).set({
-      'points': measurement.points.map((p) => {'lat': p.latitude, 'lng': p.longitude}).toList(growable: false),
-      'segmentDistances': measurement.segmentDistances,
-      'totalDistance': measurement.totalDistance,
-      'measuredAt': Timestamp.fromDate(measurement.measuredAt.toUtc()),
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+    try {
+      await _ensureFirebase();
+      await FirebaseFirestore.instance
+          .collection('distance_measurements')
+          .doc(measurement.id)
+          .set({
+        ...measurement.toJson(),
+        'measuredAt': Timestamp.fromDate(measurement.measuredAt.toUtc()),
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
-  Future<List<DistanceMeasurement>> loadDistanceMeasurements() => _database.getDistanceMeasurements();
+  Future<List<DistanceMeasurement>> loadDistanceMeasurements() =>
+      _database.getDistanceMeasurements();
+
+  Future<void> replaceDistanceMeasurements(
+    List<DistanceMeasurement> measurements,
+  ) =>
+      _database.replaceDistanceMeasurements(measurements);
 
   Future<void> deleteDistanceMeasurement(String id) async {
     await _database.deleteDistanceMeasurement(id);
