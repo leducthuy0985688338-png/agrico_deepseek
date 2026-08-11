@@ -40,6 +40,30 @@ class EmployeeModel {
       isActive: isActive ?? this.isActive,
     );
   }
+
+  factory EmployeeModel.fromMap(Map<String, dynamic> map) {
+    return EmployeeModel(
+      id: map['id']?.toString() ?? '',
+      name: map['name']?.toString() ?? '',
+      position: map['position']?.toString() ?? '',
+      department: map['department']?.toString() ?? '',
+      dailyRate: (map['dailyRate'] as num?)?.toDouble() ?? 0,
+      phone: map['phone']?.toString() ?? '',
+      address: map['address']?.toString(),
+      isActive: map['isActive'] is bool ? map['isActive'] as bool : true,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'name': name,
+        'position': position,
+        'department': department,
+        'dailyRate': dailyRate,
+        'phone': phone,
+        'address': address,
+        'isActive': isActive,
+      };
 }
 
 // Model cho chấm công
