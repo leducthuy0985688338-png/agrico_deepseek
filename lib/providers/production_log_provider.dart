@@ -7,6 +7,7 @@ class ProductionLogProvider extends ChangeNotifier {
   final ProductionLogDatabase _database;
   final Map<String, List<ProductionLogModel>> _logs = {};
   bool _loading = false;
+  int _revision = 0;
 
   ProductionLogProvider({ProductionLogDatabase? database}) : _database = database ?? ProductionLogDatabase();
 
@@ -16,15 +17,20 @@ class ProductionLogProvider extends ChangeNotifier {
 
   Future<void> loadForSeasons(Iterable<String> seasonIds) async {
     final ids = seasonIds.toSet();
+    final revision = _revision;
     _loading = true;
     notifyListeners();
     try {
       final entries = await Future.wait(
-        ids.map((seasonId) async => MapEntry(seasonId, await _database.getBySeason(seasonId))),
+        ids.map(
+          (seasonId) async =>
+              MapEntry(seasonId, await _database.getBySeason(seasonId)),
+        ),
       );
-      for (final entry in entries) {
-        _logs[entry.key] = entry.value;
-      }
+      if (revision != _revision) return;
+      _logs
+        ..clear()
+        ..addEntries(entries);
     } finally {
       _loading = false;
       notifyListeners();
@@ -32,14 +38,44 @@ class ProductionLogProvider extends ChangeNotifier {
   }
 
   Future<void> loadForSeason(String seasonId) async {
+    final revision = _revision;
     _loading = true;
     notifyListeners();
     try {
-      _logs[seasonId] = await _database.getBySeason(seasonId);
+      final logs = await _database.getBySeason(seasonId);
+      if (revision == _revision) {
+        _logs[seasonId] = logs;
+      }
     } finally {
       _loading = false;
       notifyListeners();
     }
+  }
+
+  Future<void> restoreFromCloud({
+    required List<ProductionLogModel> logs,
+  }) async {
+    if (logs.isEmpty) return;
+
+    final restored = <String, ProductionLogModel>{
+      for (final log in logs) log.id: log,
+    }.values.toList(growable: false);
+
+    final grouped = <String, List<ProductionLogModel>>{};
+    for (final log in restored) {
+      (grouped[log.seasonId] ??= []).add(log);
+    }
+    for (final items in grouped.values) {
+      items.sort((a, b) => b.date.compareTo(a.date));
+    }
+
+    await _database.replaceAll(restored);
+
+    _revision++;
+    _logs
+      ..clear()
+      ..addAll(grouped);
+    notifyListeners();
   }
 
   Future<void> save(ProductionLogModel log) async {
