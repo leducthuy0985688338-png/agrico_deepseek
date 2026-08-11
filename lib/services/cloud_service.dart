@@ -7,6 +7,7 @@ import '../models/task_model.dart';
 import '../models/finance_model.dart';
 import '../models/fuel_model.dart';
 import '../models/field_model.dart';
+import '../models/distance_measurement.dart';
 import '../models/distance_measurement_model.dart';
 import '../models/production_season_model.dart';
 import '../models/production_log_model.dart';
@@ -162,8 +163,32 @@ class CloudService {
     });
   }
 
-  static Stream<QuerySnapshot<Map<String, dynamic>>> getDistanceMeasurements() => db.collection('distance_measurements').orderBy('measuredAt', descending: true).snapshots();
-  static Future<void> deleteDistanceMeasurement(String id) => db.collection('distance_measurements').doc(id).delete();
+  static Stream<QuerySnapshot<Map<String, dynamic>>>
+      getDistanceMeasurements() => db
+          .collection('distance_measurements')
+          .orderBy('measuredAt', descending: true)
+          .snapshots();
+
+  static Future<List<DistanceMeasurement>> loadDistanceMeasurements() async {
+    final snapshot = await db.collection('distance_measurements').get();
+    final documents = snapshot.docs.map((doc) {
+      final data = Map<String, dynamic>.from(doc.data());
+      data['id'] = doc.id;
+      final measuredAt = data['measuredAt'];
+      if (measuredAt is Timestamp) {
+        data['measuredAt'] =
+            measuredAt.toDate().toUtc().toIso8601String();
+      } else if (measuredAt is DateTime) {
+        data['measuredAt'] = measuredAt.toUtc().toIso8601String();
+      }
+      return data;
+    });
+
+    return parseDistanceMeasurementDocuments(documents);
+  }
+
+  static Future<void> deleteDistanceMeasurement(String id) =>
+      db.collection('distance_measurements').doc(id).delete();
 
   // ====== VẬT TƯ ======
   static Future<void> saveWarehouseItem(WarehouseItem item) async {
