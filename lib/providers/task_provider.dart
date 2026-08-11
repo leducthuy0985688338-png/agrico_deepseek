@@ -1,6 +1,23 @@
 import 'package:flutter/material.dart';
 import '../models/task_model.dart';
 
+class TaskRestoreResult {
+  final int restoredCount;
+  final int clearedEmployeeLinks;
+  final int clearedMachineLinks;
+  final int clearedFieldLinks;
+
+  const TaskRestoreResult({
+    this.restoredCount = 0,
+    this.clearedEmployeeLinks = 0,
+    this.clearedMachineLinks = 0,
+    this.clearedFieldLinks = 0,
+  });
+
+  int get clearedLinkCount =>
+      clearedEmployeeLinks + clearedMachineLinks + clearedFieldLinks;
+}
+
 class TaskProvider extends ChangeNotifier {
   List<TaskModel> _tasks = [];
 
@@ -82,6 +99,105 @@ class TaskProvider extends ChangeNotifier {
         createdAt: now.subtract(const Duration(days: 3)),
       ),
     ];
+  }
+
+  TaskRestoreResult restoreFromCloud({
+    required List<TaskModel> tasks,
+    required Map<String, String> employeeNamesById,
+    required Map<String, String> machineNamesById,
+    required Map<String, String> fieldNamesById,
+  }) {
+    if (tasks.isEmpty) return const TaskRestoreResult();
+
+    final deduplicated = <String, TaskModel>{};
+    for (final task in tasks) {
+      final id = task.id.trim();
+      final title = task.title.trim();
+      if (id.isEmpty || title.isEmpty) continue;
+      deduplicated[id] = TaskModel(
+        id: id,
+        title: title,
+        description: task.description,
+        priority: task.priority,
+        status: task.status,
+        dueDate: task.dueDate,
+        completedDate: task.completedDate,
+        assignedTo: task.assignedTo,
+        assignedToName: task.assignedToName,
+        fieldId: task.fieldId,
+        fieldName: task.fieldName,
+        machineId: task.machineId,
+        machineName: task.machineName,
+        tags: task.tags == null
+            ? null
+            : List<String>.unmodifiable(task.tags!),
+        createdAt: task.createdAt,
+        updatedAt: task.updatedAt,
+      );
+    }
+    if (deduplicated.isEmpty) return const TaskRestoreResult();
+
+    var clearedEmployeeLinks = 0;
+    var clearedMachineLinks = 0;
+    var clearedFieldLinks = 0;
+    final restored = <TaskModel>[];
+
+    for (final task in deduplicated.values) {
+      final employeeId = _cleanTaskLinkId(task.assignedTo);
+      final employeeName =
+          employeeId == null ? null : employeeNamesById[employeeId];
+      if (employeeId != null && employeeName == null) {
+        clearedEmployeeLinks++;
+      }
+
+      final machineId = _cleanTaskLinkId(task.machineId);
+      final machineName =
+          machineId == null ? null : machineNamesById[machineId];
+      if (machineId != null && machineName == null) {
+        clearedMachineLinks++;
+      }
+
+      final fieldId = _cleanTaskLinkId(task.fieldId);
+      final fieldName = fieldId == null ? null : fieldNamesById[fieldId];
+      if (fieldId != null && fieldName == null) {
+        clearedFieldLinks++;
+      }
+
+      restored.add(
+        TaskModel(
+          id: task.id,
+          title: task.title,
+          description: task.description,
+          priority: task.priority,
+          status: task.status,
+          dueDate: task.dueDate,
+          completedDate: task.completedDate,
+          assignedTo: employeeName == null ? null : employeeId,
+          assignedToName: employeeName,
+          fieldId: fieldName == null ? null : fieldId,
+          fieldName: fieldName,
+          machineId: machineName == null ? null : machineId,
+          machineName: machineName,
+          tags: task.tags,
+          createdAt: task.createdAt,
+          updatedAt: task.updatedAt,
+        ),
+      );
+    }
+
+    restored.sort((a, b) {
+      final byDate = a.dueDate.compareTo(b.dueDate);
+      return byDate != 0 ? byDate : a.id.compareTo(b.id);
+    });
+    _tasks = restored;
+    notifyListeners();
+
+    return TaskRestoreResult(
+      restoredCount: restored.length,
+      clearedEmployeeLinks: clearedEmployeeLinks,
+      clearedMachineLinks: clearedMachineLinks,
+      clearedFieldLinks: clearedFieldLinks,
+    );
   }
 
   // Thêm công việc mới
@@ -196,4 +312,9 @@ class TaskProvider extends ChangeNotifier {
     }
     return result;
   }
+}
+
+String? _cleanTaskLinkId(String? value) {
+  final id = value?.trim();
+  return id == null || id.isEmpty ? null : id;
 }
