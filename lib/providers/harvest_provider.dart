@@ -7,6 +7,7 @@ class HarvestProvider extends ChangeNotifier {
   final HarvestDatabase _database;
   final Map<String, List<HarvestRecordModel>> _records = {};
   bool _loading = false;
+  int _revision = 0;
 
   HarvestProvider({HarvestDatabase? database}) : _database = database ?? HarvestDatabase();
 
@@ -16,15 +17,20 @@ class HarvestProvider extends ChangeNotifier {
 
   Future<void> loadForSeasons(Iterable<String> seasonIds) async {
     final ids = seasonIds.toSet();
+    final revision = _revision;
     _loading = true;
     notifyListeners();
     try {
       final entries = await Future.wait(
-        ids.map((seasonId) async => MapEntry(seasonId, await _database.getBySeason(seasonId))),
+        ids.map(
+          (seasonId) async =>
+              MapEntry(seasonId, await _database.getBySeason(seasonId)),
+        ),
       );
-      for (final entry in entries) {
-        _records[entry.key] = entry.value;
-      }
+      if (revision != _revision) return;
+      _records
+        ..clear()
+        ..addEntries(entries);
     } finally {
       _loading = false;
       notifyListeners();
@@ -32,14 +38,44 @@ class HarvestProvider extends ChangeNotifier {
   }
 
   Future<void> loadForSeason(String seasonId) async {
+    final revision = _revision;
     _loading = true;
     notifyListeners();
     try {
-      _records[seasonId] = await _database.getBySeason(seasonId);
+      final records = await _database.getBySeason(seasonId);
+      if (revision == _revision) {
+        _records[seasonId] = records;
+      }
     } finally {
       _loading = false;
       notifyListeners();
     }
+  }
+
+  Future<void> restoreFromCloud({
+    required List<HarvestRecordModel> records,
+  }) async {
+    if (records.isEmpty) return;
+
+    final restored = <String, HarvestRecordModel>{
+      for (final record in records) record.id: record,
+    }.values.toList(growable: false);
+
+    final grouped = <String, List<HarvestRecordModel>>{};
+    for (final record in restored) {
+      (grouped[record.seasonId] ??= []).add(record);
+    }
+    for (final items in grouped.values) {
+      items.sort((a, b) => b.date.compareTo(a.date));
+    }
+
+    await _database.replaceAll(restored);
+
+    _revision++;
+    _records
+      ..clear()
+      ..addAll(grouped);
+    notifyListeners();
   }
 
   Future<void> save(HarvestRecordModel record) async {
