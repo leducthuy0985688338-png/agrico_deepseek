@@ -76,6 +76,14 @@ class SettingsPage extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 12),
+          _buildRestoreWarehouseButton(context),
+          const SizedBox(height: 8),
+          const Text(
+            'Khôi phục danh mục vật tư và số lượng tồn kho từ Cloud.',
+            style: TextStyle(color: Colors.grey, fontSize: 12),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
           _buildRestoreProductionCostButton(context),
           const SizedBox(height: 8),
           const Text(
@@ -880,6 +888,123 @@ class SettingsPage extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('❌ Lỗi khôi phục nhân sự và máy móc: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Widget _buildRestoreWarehouseButton(BuildContext context) {
+    return Consumer<CloudSyncProvider>(
+      builder: (context, provider, child) {
+        return OutlinedButton(
+          onPressed: provider.isBusy
+              ? null
+              : () => _confirmWarehouseRestore(context),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppTheme.primaryColor,
+            side: const BorderSide(color: AppTheme.primaryColor),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          child: provider.isRestoringWarehouse
+              ? const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 12),
+                    Text('Đang khôi phục kho vật tư...'),
+                  ],
+                )
+              : const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.inventory_2),
+                    SizedBox(width: 8),
+                    Text('Khôi phục kho vật tư từ Cloud'),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmWarehouseRestore(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Khôi phục kho vật tư?'),
+        content: const Text(
+          'Danh mục vật tư và số lượng tồn kho hiện tại sẽ được thay bằng '
+          'bản trên Cloud.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Khôi phục'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    final cloudProvider = context.read<CloudSyncProvider>();
+    final warehouseProvider = context.read<WarehouseProvider>();
+
+    try {
+      final items = await cloudProvider.restoreWarehouseData();
+      if (!context.mounted) return;
+
+      if (items.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Cloud chưa có dữ liệu kho vật tư. '
+              'Dữ liệu cục bộ được giữ nguyên.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      final restoredCount =
+          warehouseProvider.restoreFromCloud(items: items);
+      if (restoredCount == 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Cloud không có vật tư hợp lệ. '
+              'Dữ liệu cục bộ được giữ nguyên.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '✅ Đã khôi phục $restoredCount vật tư và số lượng tồn kho.',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Lỗi khôi phục kho vật tư: $e'),
           backgroundColor: Colors.red,
         ),
       );

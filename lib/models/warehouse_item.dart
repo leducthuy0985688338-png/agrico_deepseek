@@ -15,19 +15,17 @@ class WarehouseItem {
     this.stock = 0,
   });
 
-  // Chuyển đổi từ Map (khi lưu xuống database)
   factory WarehouseItem.fromMap(Map<String, dynamic> map) {
     return WarehouseItem(
-      id: map['id'],
-      name: map['name'],
-      unit: map['unit'],
-      importPrice: map['importPrice'],
-      supplier: map['supplier'],
-      stock: map['stock'],
+      id: map['id']?.toString() ?? '',
+      name: map['name']?.toString() ?? '',
+      unit: map['unit']?.toString() ?? '',
+      importPrice: (map['importPrice'] as num?)?.toDouble() ?? 0,
+      supplier: map['supplier']?.toString() ?? '',
+      stock: (map['stock'] as num?)?.toInt() ?? 0,
     );
   }
 
-  // Chuyển đổi sang Map
   Map<String, dynamic> toMap() {
     return {
       'id': id,

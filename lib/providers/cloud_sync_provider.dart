@@ -47,6 +47,7 @@ class CloudSyncProvider extends ChangeNotifier {
   bool _isRestoringHarvestRecords = false;
   bool _isRestoringProductionCosts = false;
   bool _isRestoringWorkforceMachines = false;
+  bool _isRestoringWarehouse = false;
   String? _lastSyncTime;
   bool _isConnected = false;
 
@@ -59,6 +60,7 @@ class CloudSyncProvider extends ChangeNotifier {
   bool get isRestoringHarvestRecords => _isRestoringHarvestRecords;
   bool get isRestoringProductionCosts => _isRestoringProductionCosts;
   bool get isRestoringWorkforceMachines => _isRestoringWorkforceMachines;
+  bool get isRestoringWarehouse => _isRestoringWarehouse;
   bool get isBusy =>
       _isSyncing ||
       _isRestoringFuel ||
@@ -68,7 +70,8 @@ class CloudSyncProvider extends ChangeNotifier {
       _isRestoringProductionLogs ||
       _isRestoringHarvestRecords ||
       _isRestoringProductionCosts ||
-      _isRestoringWorkforceMachines;
+      _isRestoringWorkforceMachines ||
+      _isRestoringWarehouse;
   String? get lastSyncTime => _lastSyncTime;
   bool get isConnected => _isConnected;
 
@@ -302,20 +305,36 @@ class CloudSyncProvider extends ChangeNotifier {
     }
   }
 
+  Future<List<WarehouseItem>> restoreWarehouseData() async {
+    if (isBusy) {
+      throw StateError('Đang có thao tác Cloud khác, vui lòng chờ hoàn tất.');
+    }
+
+    _isRestoringWarehouse = true;
+    notifyListeners();
+
+    try {
+      final items = await CloudService.loadWarehouseItems();
+      _isConnected = true;
+      return items;
+    } catch (_) {
+      _isConnected = false;
+      rethrow;
+    } finally {
+      _isRestoringWarehouse = false;
+      notifyListeners();
+    }
+  }
+
   // ====== LẤY DỮ LIỆU TỪ CLOUD ======
   Stream<List<WarehouseItem>> getWarehouseItems() {
     return CloudService.getWarehouseItems().map((snapshot) {
       return snapshot.docs.map((doc) {
-        final data = doc.data() as Map<String, dynamic>;
-        return WarehouseItem(
-          id: data['id'],
-          name: data['name'],
-          unit: data['unit'],
-          importPrice: data['importPrice'].toDouble(),
-          supplier: data['supplier'],
-          stock: data['stock'],
-        );
-      }).toList();
+        final data =
+            Map<String, dynamic>.from(doc.data() as Map<String, dynamic>);
+        data['id'] ??= doc.id;
+        return WarehouseItem.fromMap(data);
+      }).toList(growable: false);
     });
   }
 

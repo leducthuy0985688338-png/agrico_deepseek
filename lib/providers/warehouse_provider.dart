@@ -38,6 +38,25 @@ class WarehouseProvider extends ChangeNotifier {
     ];
   }
 
+  int restoreFromCloud({required List<WarehouseItem> items}) {
+    if (items.isEmpty) return 0;
+
+    final restoredById = <String, WarehouseItem>{};
+    for (final item in items) {
+      final id = item.id.trim();
+      if (id.isEmpty) continue;
+      restoredById[id] = item;
+    }
+    if (restoredById.isEmpty) return 0;
+
+    _items = restoredById.values.toList(growable: false)
+      ..sort(
+        (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+      );
+    notifyListeners();
+    return _items.length;
+  }
+
   // Hàm nhập kho: tăng số lượng tồn
   void importItem(String id, int quantity) {
     final item = _items.firstWhere((e) => e.id == id);

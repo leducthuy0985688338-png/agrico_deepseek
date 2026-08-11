@@ -167,10 +167,26 @@ class CloudService {
 
   // ====== VẬT TƯ ======
   static Future<void> saveWarehouseItem(WarehouseItem item) async {
-    try { await db.collection('warehouse').doc(item.id).set({'id': item.id, 'name': item.name, 'unit': item.unit, 'importPrice': item.importPrice, 'supplier': item.supplier, 'stock': item.stock, 'updatedAt': FieldValue.serverTimestamp()}); } catch (e) { rethrow; }
+    await db.collection('warehouse').doc(item.id).set({
+      ...item.toMap(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
   }
-  static Stream<QuerySnapshot> getWarehouseItems() => db.collection('warehouse').orderBy('name').snapshots();
-  static Future<void> deleteWarehouseItem(String id) => db.collection('warehouse').doc(id).delete();
+
+  static Stream<QuerySnapshot> getWarehouseItems() =>
+      db.collection('warehouse').orderBy('name').snapshots();
+
+  static Future<List<WarehouseItem>> loadWarehouseItems() async {
+    final snapshot = await db.collection('warehouse').orderBy('name').get();
+    return snapshot.docs.map((doc) {
+      final data = Map<String, dynamic>.from(doc.data());
+      data['id'] ??= doc.id;
+      return WarehouseItem.fromMap(data);
+    }).toList(growable: false);
+  }
+
+  static Future<void> deleteWarehouseItem(String id) =>
+      db.collection('warehouse').doc(id).delete();
 
   // ====== MÁY MÓC ======
   static Future<void> saveMachine(MachineModel machine) async {
@@ -267,7 +283,7 @@ class CloudService {
     for (final log in productionLogs) { batch.set(db.collection('production_logs').doc(log.id), {...log.toJson(), 'updatedAt': FieldValue.serverTimestamp()}); }
     for (final record in harvestRecords) { batch.set(db.collection('harvest_records').doc(record.id), {...record.toJson(), 'updatedAt': FieldValue.serverTimestamp()}); }
     for (final cost in productionCosts) { batch.set(db.collection('production_costs').doc(cost.id), {...cost.toJson(), 'updatedAt': FieldValue.serverTimestamp()}); }
-    for (final item in warehouseItems) { batch.set(db.collection('warehouse').doc(item.id), {'id': item.id, 'name': item.name, 'unit': item.unit, 'importPrice': item.importPrice, 'supplier': item.supplier, 'stock': item.stock, 'updatedAt': FieldValue.serverTimestamp()}); }
+    for (final item in warehouseItems) { batch.set(db.collection('warehouse').doc(item.id), {...item.toMap(), 'updatedAt': FieldValue.serverTimestamp()}); }
     for (final machine in machines) { batch.set(db.collection('machines').doc(machine.id), {...machine.toMap(), 'updatedAt': FieldValue.serverTimestamp()}); }
     for (final employee in employees) { batch.set(db.collection('employees').doc(employee.id), {...employee.toMap(), 'updatedAt': FieldValue.serverTimestamp()}); }
     for (final task in tasks) { batch.set(db.collection('tasks').doc(task.id), {'id': task.id, 'title': task.title, 'description': task.description, 'priority': task.priority.index, 'status': task.status.index, 'dueDate': task.dueDate.toIso8601String(), 'completedDate': task.completedDate?.toIso8601String(), 'assignedTo': task.assignedTo, 'assignedToName': task.assignedToName, 'fieldId': task.fieldId, 'fieldName': task.fieldName, 'machineId': task.machineId, 'machineName': task.machineName, 'tags': task.tags, 'createdAt': task.createdAt.toIso8601String(), 'updatedAt': FieldValue.serverTimestamp()}); }
