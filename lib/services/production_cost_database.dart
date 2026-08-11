@@ -107,8 +107,31 @@ class ProductionCostDatabase {
 
     await db.insert(
       _table,
+      _toRow(record, id: id),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> replaceAll(List<ProductionCostModel> records) async {
+    final db = await database;
+    await db.transaction((transaction) async {
+      await transaction.delete(_table);
+      for (final record in records) {
+        await transaction.insert(
+          _table,
+          _toRow(record),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
+  }
+
+  Map<String, Object?> _toRow(
+    ProductionCostModel record, {
+    String? id,
+  }) =>
       {
-        'id': id,
+        'id': id ?? record.id,
         'field_id': record.fieldId,
         'season_id': record.seasonId,
         'category': record.category.key,
@@ -123,10 +146,7 @@ class ProductionCostDatabase {
         'notes': record.notes,
         'source': record.source,
         'source_id': record.sourceId,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-  }
+      };
 
   Future<void> delete(String id) async {
     final db = await database;
