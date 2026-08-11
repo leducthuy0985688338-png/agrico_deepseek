@@ -173,14 +173,50 @@ class CloudService {
   static Future<void> deleteWarehouseItem(String id) => db.collection('warehouse').doc(id).delete();
 
   // ====== MÁY MÓC ======
-  static Future<void> saveMachine(MachineModel machine) async { await db.collection('machines').doc(machine.id).set({'id': machine.id, 'name': machine.name, 'type': machine.type, 'manufacturer': machine.manufacturer, 'year': machine.year, 'status': machine.status, 'totalHours': machine.totalHours, 'fuelConsumption': machine.fuelConsumption, 'currentFieldId': machine.currentFieldId, 'updatedAt': FieldValue.serverTimestamp()}); }
-  static Stream<QuerySnapshot> getMachines() => db.collection('machines').orderBy('name').snapshots();
-  static Future<void> deleteMachine(String id) => db.collection('machines').doc(id).delete();
+  static Future<void> saveMachine(MachineModel machine) async {
+    await db.collection('machines').doc(machine.id).set({
+      ...machine.toMap(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  static Stream<QuerySnapshot> getMachines() =>
+      db.collection('machines').orderBy('name').snapshots();
+
+  static Future<List<MachineModel>> loadMachines() async {
+    final snapshot = await db.collection('machines').orderBy('name').get();
+    return snapshot.docs.map((doc) {
+      final data = Map<String, dynamic>.from(doc.data());
+      data['id'] ??= doc.id;
+      return MachineModel.fromMap(data);
+    }).toList(growable: false);
+  }
+
+  static Future<void> deleteMachine(String id) =>
+      db.collection('machines').doc(id).delete();
 
   // ====== NHÂN VIÊN ======
-  static Future<void> saveEmployee(EmployeeModel employee) async { await db.collection('employees').doc(employee.id).set({'id': employee.id, 'name': employee.name, 'position': employee.position, 'department': employee.department, 'dailyRate': employee.dailyRate, 'phone': employee.phone, 'address': employee.address, 'isActive': employee.isActive, 'updatedAt': FieldValue.serverTimestamp()}); }
-  static Stream<QuerySnapshot> getEmployees() => db.collection('employees').orderBy('name').snapshots();
-  static Future<void> deleteEmployee(String id) => db.collection('employees').doc(id).delete();
+  static Future<void> saveEmployee(EmployeeModel employee) async {
+    await db.collection('employees').doc(employee.id).set({
+      ...employee.toMap(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  static Stream<QuerySnapshot> getEmployees() =>
+      db.collection('employees').orderBy('name').snapshots();
+
+  static Future<List<EmployeeModel>> loadEmployees() async {
+    final snapshot = await db.collection('employees').orderBy('name').get();
+    return snapshot.docs.map((doc) {
+      final data = Map<String, dynamic>.from(doc.data());
+      data['id'] ??= doc.id;
+      return EmployeeModel.fromMap(data);
+    }).toList(growable: false);
+  }
+
+  static Future<void> deleteEmployee(String id) =>
+      db.collection('employees').doc(id).delete();
 
   // ====== CÔNG VIỆC ======
   static Future<void> saveTask(TaskModel task) async { await db.collection('tasks').doc(task.id).set({'id': task.id, 'title': task.title, 'description': task.description, 'priority': task.priority.index, 'status': task.status.index, 'dueDate': task.dueDate.toIso8601String(), 'completedDate': task.completedDate?.toIso8601String(), 'assignedTo': task.assignedTo, 'assignedToName': task.assignedToName, 'fieldId': task.fieldId, 'fieldName': task.fieldName, 'machineId': task.machineId, 'machineName': task.machineName, 'tags': task.tags, 'createdAt': task.createdAt.toIso8601String(), 'updatedAt': FieldValue.serverTimestamp()}); }
@@ -232,8 +268,8 @@ class CloudService {
     for (final record in harvestRecords) { batch.set(db.collection('harvest_records').doc(record.id), {...record.toJson(), 'updatedAt': FieldValue.serverTimestamp()}); }
     for (final cost in productionCosts) { batch.set(db.collection('production_costs').doc(cost.id), {...cost.toJson(), 'updatedAt': FieldValue.serverTimestamp()}); }
     for (final item in warehouseItems) { batch.set(db.collection('warehouse').doc(item.id), {'id': item.id, 'name': item.name, 'unit': item.unit, 'importPrice': item.importPrice, 'supplier': item.supplier, 'stock': item.stock, 'updatedAt': FieldValue.serverTimestamp()}); }
-    for (final machine in machines) { batch.set(db.collection('machines').doc(machine.id), {'id': machine.id, 'name': machine.name, 'type': machine.type, 'manufacturer': machine.manufacturer, 'year': machine.year, 'status': machine.status, 'totalHours': machine.totalHours, 'fuelConsumption': machine.fuelConsumption, 'currentFieldId': machine.currentFieldId, 'updatedAt': FieldValue.serverTimestamp()}); }
-    for (final employee in employees) { batch.set(db.collection('employees').doc(employee.id), {'id': employee.id, 'name': employee.name, 'position': employee.position, 'department': employee.department, 'dailyRate': employee.dailyRate, 'phone': employee.phone, 'address': employee.address, 'isActive': employee.isActive, 'updatedAt': FieldValue.serverTimestamp()}); }
+    for (final machine in machines) { batch.set(db.collection('machines').doc(machine.id), {...machine.toMap(), 'updatedAt': FieldValue.serverTimestamp()}); }
+    for (final employee in employees) { batch.set(db.collection('employees').doc(employee.id), {...employee.toMap(), 'updatedAt': FieldValue.serverTimestamp()}); }
     for (final task in tasks) { batch.set(db.collection('tasks').doc(task.id), {'id': task.id, 'title': task.title, 'description': task.description, 'priority': task.priority.index, 'status': task.status.index, 'dueDate': task.dueDate.toIso8601String(), 'completedDate': task.completedDate?.toIso8601String(), 'assignedTo': task.assignedTo, 'assignedToName': task.assignedToName, 'fieldId': task.fieldId, 'fieldName': task.fieldName, 'machineId': task.machineId, 'machineName': task.machineName, 'tags': task.tags, 'createdAt': task.createdAt.toIso8601String(), 'updatedAt': FieldValue.serverTimestamp()}); }
     for (final record in financeRecords) { batch.set(db.collection('finance').doc(record.id), {...record.toMap(), 'updatedAt': FieldValue.serverTimestamp()}); }
     for (final fuel in fuels) { batch.set(db.collection('fuel').doc(fuel.id), {'id': fuel.id, 'name': fuel.name, 'unit': fuel.unit, 'stock': fuel.stock, 'unitPrice': fuel.unitPrice, 'supplier': fuel.supplier, 'updatedAt': FieldValue.serverTimestamp()}); }
