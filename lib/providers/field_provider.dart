@@ -16,6 +16,7 @@ class FieldProvider extends ChangeNotifier {
   final FieldStorageService _storage = FieldStorageService();
   late List<FieldModel> _fields;
   bool _isLoading = true;
+  bool _hasRestoredFromCloud = false;
 
   List<FieldModel> get fields => List.unmodifiable(_fields);
   bool get isLoading => _isLoading;
@@ -28,11 +29,30 @@ class FieldProvider extends ChangeNotifier {
   Future<void> _loadPersistedFields() async {
     try {
       final saved = await _storage.loadFields();
-      if (saved.isNotEmpty) _fields = saved;
+      if (saved.isNotEmpty && !_hasRestoredFromCloud) _fields = saved;
     } catch (_) {} finally {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  Future<void> restoreFromCloud({
+    required List<FieldModel> fields,
+  }) async {
+    if (fields.isEmpty) return;
+
+    final restored = <String, FieldModel>{
+      for (final field in fields) field.id: field,
+    }.values.toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+
+    _hasRestoredFromCloud = true;
+    _fields = restored;
+    notifyListeners();
+
+    try {
+      await _storage.replaceFields(_fields);
+    } catch (_) {}
   }
 
   FieldModel? getFieldById(String id) {
