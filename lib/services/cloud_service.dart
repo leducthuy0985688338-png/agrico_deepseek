@@ -100,9 +100,19 @@ class CloudService {
   static Future<void> deleteTask(String id) => db.collection('tasks').doc(id).delete();
 
   // ====== TÀI CHÍNH ======
-  static Future<void> saveFinanceRecord(FinanceRecord record) async { await db.collection('finance').doc(record.id).set({'id': record.id, 'fieldId': record.fieldId, 'fieldName': record.fieldName, 'date': record.date.toIso8601String(), 'type': record.type.index, 'category': record.category, 'amount': record.amount, 'description': record.description, 'machineId': record.machineId, 'machineName': record.machineName, 'updatedAt': FieldValue.serverTimestamp()}); }
+  static Future<void> saveFinanceRecord(FinanceRecord record) async { await db.collection('finance').doc(record.id).set({...record.toMap(), 'updatedAt': FieldValue.serverTimestamp()}); }
   static Stream<QuerySnapshot> getFinanceRecords() => db.collection('finance').orderBy('date', descending: true).snapshots();
   static Future<void> deleteFinanceRecord(String id) => db.collection('finance').doc(id).delete();
+
+  static Future<List<FinanceRecord>> loadFinanceRecords() async {
+    final snapshot = await db
+        .collection('finance')
+        .orderBy('date', descending: true)
+        .get();
+    return snapshot.docs
+        .map((doc) => FinanceRecord.fromMap(doc.data()))
+        .toList(growable: false);
+  }
 
   // ====== NHIÊN LIỆU ======
   static Future<void> saveFuel(FuelModel fuel) async { await db.collection('fuel').doc(fuel.id).set({'id': fuel.id, 'name': fuel.name, 'unit': fuel.unit, 'stock': fuel.stock, 'unitPrice': fuel.unitPrice, 'supplier': fuel.supplier, 'updatedAt': FieldValue.serverTimestamp()}); }
@@ -137,7 +147,7 @@ class CloudService {
     for (final machine in machines) { batch.set(db.collection('machines').doc(machine.id), {'id': machine.id, 'name': machine.name, 'type': machine.type, 'manufacturer': machine.manufacturer, 'year': machine.year, 'status': machine.status, 'totalHours': machine.totalHours, 'fuelConsumption': machine.fuelConsumption, 'currentFieldId': machine.currentFieldId, 'updatedAt': FieldValue.serverTimestamp()}); }
     for (final employee in employees) { batch.set(db.collection('employees').doc(employee.id), {'id': employee.id, 'name': employee.name, 'position': employee.position, 'department': employee.department, 'dailyRate': employee.dailyRate, 'phone': employee.phone, 'address': employee.address, 'isActive': employee.isActive, 'updatedAt': FieldValue.serverTimestamp()}); }
     for (final task in tasks) { batch.set(db.collection('tasks').doc(task.id), {'id': task.id, 'title': task.title, 'description': task.description, 'priority': task.priority.index, 'status': task.status.index, 'dueDate': task.dueDate.toIso8601String(), 'completedDate': task.completedDate?.toIso8601String(), 'assignedTo': task.assignedTo, 'assignedToName': task.assignedToName, 'fieldId': task.fieldId, 'fieldName': task.fieldName, 'machineId': task.machineId, 'machineName': task.machineName, 'tags': task.tags, 'createdAt': task.createdAt.toIso8601String(), 'updatedAt': FieldValue.serverTimestamp()}); }
-    for (final record in financeRecords) { batch.set(db.collection('finance').doc(record.id), {'id': record.id, 'fieldId': record.fieldId, 'fieldName': record.fieldName, 'date': record.date.toIso8601String(), 'type': record.type.index, 'category': record.category, 'amount': record.amount, 'description': record.description, 'machineId': record.machineId, 'machineName': record.machineName, 'updatedAt': FieldValue.serverTimestamp()}); }
+    for (final record in financeRecords) { batch.set(db.collection('finance').doc(record.id), {...record.toMap(), 'updatedAt': FieldValue.serverTimestamp()}); }
     for (final fuel in fuels) { batch.set(db.collection('fuel').doc(fuel.id), {'id': fuel.id, 'name': fuel.name, 'unit': fuel.unit, 'stock': fuel.stock, 'unitPrice': fuel.unitPrice, 'supplier': fuel.supplier, 'updatedAt': FieldValue.serverTimestamp()}); }
     for (final transaction in fuelTransactions) { batch.set(db.collection('fuel_transactions').doc(transaction.id), {...transaction.toMap(), 'updatedAt': FieldValue.serverTimestamp()}); }
     await batch.commit();

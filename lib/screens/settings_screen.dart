@@ -43,6 +43,14 @@ class SettingsPage extends StatelessWidget {
             style: TextStyle(color: Colors.grey, fontSize: 12),
             textAlign: TextAlign.center,
           ),
+          const SizedBox(height: 12),
+          _buildRestoreFinanceButton(context),
+          const SizedBox(height: 8),
+          const Text(
+            'Khôi phục toàn bộ sổ Thu/Chi từ Cloud và tính lại ngân sách.',
+            style: TextStyle(color: Colors.grey, fontSize: 12),
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: 32),
 
           const Divider(),
@@ -102,7 +110,7 @@ class SettingsPage extends StatelessWidget {
         return Column(
           children: [
             ElevatedButton(
-              onPressed: provider.isSyncing || provider.isRestoringFuel
+              onPressed: provider.isSyncing || provider.isRestoringFuel || provider.isRestoringFinance
                   ? null
                   : () async {
                       try {
@@ -224,7 +232,7 @@ class SettingsPage extends StatelessWidget {
     return Consumer<CloudSyncProvider>(
       builder: (context, provider, child) {
         return OutlinedButton(
-          onPressed: provider.isSyncing || provider.isRestoringFuel
+          onPressed: provider.isSyncing || provider.isRestoringFuel || provider.isRestoringFinance
               ? null
               : () => _confirmFuelRestore(context),
           style: OutlinedButton.styleFrom(
@@ -317,6 +325,108 @@ class SettingsPage extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('❌ Lỗi khôi phục nhiên liệu: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Widget _buildRestoreFinanceButton(BuildContext context) {
+    return Consumer<CloudSyncProvider>(
+      builder: (context, provider, child) {
+        return OutlinedButton(
+          onPressed:
+              provider.isSyncing ||
+                  provider.isRestoringFuel ||
+                  provider.isRestoringFinance
+              ? null
+              : () => _confirmFinanceRestore(context),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppTheme.primaryColor,
+            side: const BorderSide(color: AppTheme.primaryColor),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          child: provider.isRestoringFinance
+              ? const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 12),
+                    Text('Đang khôi phục tài chính...'),
+                  ],
+                )
+              : const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.account_balance_wallet),
+                    SizedBox(width: 8),
+                    Text('Khôi phục tài chính từ Cloud'),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmFinanceRestore(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Khôi phục dữ liệu tài chính?'),
+        content: const Text(
+          'Toàn bộ sổ Thu/Chi hiện tại sẽ được thay bằng bản trên Cloud. '
+          'Hãy đồng bộ dữ liệu mới nhất trước nếu cần giữ lại.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Khôi phục'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    final cloudProvider = context.read<CloudSyncProvider>();
+    final financeProvider = context.read<FinanceProvider>();
+
+    try {
+      final records = await cloudProvider.restoreFinanceData();
+      if (!context.mounted) return;
+
+      if (records.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cloud chưa có dữ liệu tài chính.')),
+        );
+        return;
+      }
+
+      financeProvider.restoreFromCloud(records: records);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '✅ Đã khôi phục ${records.length} giao dịch tài chính.',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Lỗi khôi phục tài chính: $e'),
           backgroundColor: Colors.red,
         ),
       );

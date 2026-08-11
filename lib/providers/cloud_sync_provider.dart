@@ -28,11 +28,13 @@ class FuelRestoreData {
 class CloudSyncProvider extends ChangeNotifier {
   bool _isSyncing = false;
   bool _isRestoringFuel = false;
+  bool _isRestoringFinance = false;
   String? _lastSyncTime;
   bool _isConnected = false;
 
   bool get isSyncing => _isSyncing;
   bool get isRestoringFuel => _isRestoringFuel;
+  bool get isRestoringFinance => _isRestoringFinance;
   String? get lastSyncTime => _lastSyncTime;
   bool get isConnected => _isConnected;
 
@@ -58,7 +60,7 @@ class CloudSyncProvider extends ChangeNotifier {
     required List<HarvestRecordModel> harvestRecords,
     required List<ProductionCostModel> productionCosts,
   }) async {
-    if (_isSyncing) return false;
+    if (_isSyncing || _isRestoringFuel || _isRestoringFinance) return false;
 
     _isSyncing = true;
     notifyListeners();
@@ -93,7 +95,7 @@ class CloudSyncProvider extends ChangeNotifier {
   }
 
   Future<FuelRestoreData> restoreFuelData() async {
-    if (_isSyncing || _isRestoringFuel) {
+    if (_isSyncing || _isRestoringFuel || _isRestoringFinance) {
       throw StateError('Đang có thao tác Cloud khác, vui lòng chờ hoàn tất.');
     }
 
@@ -110,6 +112,27 @@ class CloudSyncProvider extends ChangeNotifier {
       rethrow;
     } finally {
       _isRestoringFuel = false;
+      notifyListeners();
+    }
+  }
+
+  Future<List<FinanceRecord>> restoreFinanceData() async {
+    if (_isSyncing || _isRestoringFuel || _isRestoringFinance) {
+      throw StateError('Đang có thao tác Cloud khác, vui lòng chờ hoàn tất.');
+    }
+
+    _isRestoringFinance = true;
+    notifyListeners();
+
+    try {
+      final records = await CloudService.loadFinanceRecords();
+      _isConnected = true;
+      return records;
+    } catch (_) {
+      _isConnected = false;
+      rethrow;
+    } finally {
+      _isRestoringFinance = false;
       notifyListeners();
     }
   }

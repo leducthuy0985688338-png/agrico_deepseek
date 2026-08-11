@@ -144,6 +144,17 @@ class FinanceProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void restoreFromCloud({required List<FinanceRecord> records}) {
+    if (records.isEmpty) return;
+
+    _records = <String, FinanceRecord>{
+      for (final record in records) record.id: record,
+    }.values.toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+    _updateBudgets();
+    notifyListeners();
+  }
+
   // Lấy danh sách giao dịch theo lô
   List<FinanceRecord> getTransactionsByField(String fieldId) {
     return _records.where((r) => r.fieldId == fieldId).toList()
