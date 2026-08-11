@@ -55,14 +55,40 @@ class HarvestDatabase {
 
   Future<void> upsert(HarvestRecordModel record) async {
     final db = await database;
-    await db.insert(_table, {
-      'id': record.id, 'season_id': record.seasonId, 'field_id': record.fieldId,
-      'date': record.date.toIso8601String(), 'quantity': record.quantity,
-      'unit': record.unit, 'moisture_percent': record.moisturePercent,
-      'selling_price': record.sellingPrice, 'revenue': record.revenue,
-      'notes': record.notes, 'updated_at': DateTime.now().toUtc().toIso8601String(),
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert(
+      _table,
+      _toRow(record),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
+
+  Future<void> replaceAll(List<HarvestRecordModel> records) async {
+    final db = await database;
+    await db.transaction((transaction) async {
+      await transaction.delete(_table);
+      for (final record in records) {
+        await transaction.insert(
+          _table,
+          _toRow(record),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
+  }
+
+  Map<String, Object?> _toRow(HarvestRecordModel record) => {
+        'id': record.id,
+        'season_id': record.seasonId,
+        'field_id': record.fieldId,
+        'date': record.date.toIso8601String(),
+        'quantity': record.quantity,
+        'unit': record.unit,
+        'moisture_percent': record.moisturePercent,
+        'selling_price': record.sellingPrice,
+        'revenue': record.revenue,
+        'notes': record.notes,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      };
 
   Future<void> delete(String id) async {
     final db = await database;
