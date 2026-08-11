@@ -6,33 +6,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/distance_measurement.dart';
+import '../models/field_measurement_history.dart';
 import '../models/field_model.dart';
-
-class FieldMeasurementHistory {
-  final String id;
-  final String fieldId;
-  final String fieldName;
-  final String measurementMethod;
-  final List<LatLng> polygon;
-  final double area;
-  final double perimeter;
-  final double? gpsAccuracy;
-  final DateTime measuredAt;
-  final DateTime createdAt;
-
-  const FieldMeasurementHistory({
-    required this.id,
-    required this.fieldId,
-    required this.fieldName,
-    required this.measurementMethod,
-    required this.polygon,
-    required this.area,
-    required this.perimeter,
-    required this.measuredAt,
-    required this.createdAt,
-    this.gpsAccuracy,
-  });
-}
 
 class FieldDatabase {
   static const _databaseName = 'agrico.db';
@@ -148,20 +123,44 @@ class FieldDatabase {
     await db.delete(_historyTable, where: 'field_id = ?', whereArgs: [id]);
   }
 
-  Future<void> addMeasurementHistory(FieldModel field) async {
+  Future<FieldMeasurementHistory> addMeasurementHistory(
+    FieldModel field,
+  ) async {
     final db = await database;
-    final measuredAt = field.measuredAt ?? DateTime.now().toUtc();
-    await db.insert(_historyTable, {
-      'id': '${field.id}_${DateTime.now().microsecondsSinceEpoch}',
-      'field_id': field.id,
-      'field_name': field.name,
-      'measurement_method': field.measurementMethod,
-      'polygon': jsonEncode(field.polygon.map((point) => {'lat': point.latitude, 'lng': point.longitude}).toList(growable: false)),
-      'area': field.area,
-      'perimeter': field.perimeter,
-      'gps_accuracy': field.gpsAccuracy,
-      'measured_at': measuredAt.toUtc().toIso8601String(),
-      'created_at': DateTime.now().toUtc().toIso8601String(),
+    final createdAt = DateTime.now().toUtc();
+    final measurement = FieldMeasurementHistory(
+      id: '${field.id}_${createdAt.microsecondsSinceEpoch}',
+      fieldId: field.id,
+      fieldName: field.name,
+      measurementMethod: field.measurementMethod,
+      polygon: List.unmodifiable(field.polygon),
+      area: field.area,
+      perimeter: field.perimeter,
+      gpsAccuracy: field.gpsAccuracy,
+      measuredAt: (field.measuredAt ?? createdAt).toUtc(),
+      createdAt: createdAt,
+    );
+    await db.insert(
+      _historyTable,
+      _historyToRow(measurement),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    return measurement;
+  }
+
+  Future<void> replaceMeasurementHistory(
+    List<FieldMeasurementHistory> measurements,
+  ) async {
+    final db = await database;
+    await db.transaction((transaction) async {
+      await transaction.delete(_historyTable);
+      for (final measurement in measurements) {
+        await transaction.insert(
+          _historyTable,
+          _historyToRow(measurement),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
     });
   }
 
@@ -251,6 +250,31 @@ class FieldDatabase {
     await _database?.close();
     _database = null;
   }
+
+  Map<String, Object?> _historyToRow(
+    FieldMeasurementHistory measurement,
+  ) =>
+      {
+        'id': measurement.id,
+        'field_id': measurement.fieldId,
+        'field_name': measurement.fieldName,
+        'measurement_method': measurement.measurementMethod,
+        'polygon': jsonEncode(
+          measurement.polygon
+              .map(
+                (point) => {
+                  'lat': point.latitude,
+                  'lng': point.longitude,
+                },
+              )
+              .toList(growable: false),
+        ),
+        'area': measurement.area,
+        'perimeter': measurement.perimeter,
+        'gps_accuracy': measurement.gpsAccuracy,
+        'measured_at': measurement.measuredAt.toUtc().toIso8601String(),
+        'created_at': measurement.createdAt.toUtc().toIso8601String(),
+      };
 
   Map<String, Object?> _distanceToRow(
     DistanceMeasurement measurement, {
