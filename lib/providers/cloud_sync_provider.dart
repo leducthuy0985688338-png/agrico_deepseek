@@ -32,6 +32,7 @@ class CloudSyncProvider extends ChangeNotifier {
   bool _isRestoringFields = false;
   bool _isRestoringSeasons = false;
   bool _isRestoringProductionLogs = false;
+  bool _isRestoringHarvestRecords = false;
   String? _lastSyncTime;
   bool _isConnected = false;
 
@@ -41,13 +42,15 @@ class CloudSyncProvider extends ChangeNotifier {
   bool get isRestoringFields => _isRestoringFields;
   bool get isRestoringSeasons => _isRestoringSeasons;
   bool get isRestoringProductionLogs => _isRestoringProductionLogs;
+  bool get isRestoringHarvestRecords => _isRestoringHarvestRecords;
   bool get isBusy =>
       _isSyncing ||
       _isRestoringFuel ||
       _isRestoringFinance ||
       _isRestoringFields ||
       _isRestoringSeasons ||
-      _isRestoringProductionLogs;
+      _isRestoringProductionLogs ||
+      _isRestoringHarvestRecords;
   String? get lastSyncTime => _lastSyncTime;
   bool get isConnected => _isConnected;
 
@@ -209,6 +212,27 @@ class CloudSyncProvider extends ChangeNotifier {
       rethrow;
     } finally {
       _isRestoringProductionLogs = false;
+      notifyListeners();
+    }
+  }
+
+  Future<List<HarvestRecordModel>> restoreHarvestData() async {
+    if (isBusy) {
+      throw StateError('Đang có thao tác Cloud khác, vui lòng chờ hoàn tất.');
+    }
+
+    _isRestoringHarvestRecords = true;
+    notifyListeners();
+
+    try {
+      final records = await CloudService.loadHarvestRecords();
+      _isConnected = true;
+      return records;
+    } catch (_) {
+      _isConnected = false;
+      rethrow;
+    } finally {
+      _isRestoringHarvestRecords = false;
       notifyListeners();
     }
   }
