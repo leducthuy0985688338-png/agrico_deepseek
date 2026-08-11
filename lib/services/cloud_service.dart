@@ -62,6 +62,20 @@ class CloudService {
   static Stream<QuerySnapshot<Map<String, dynamic>>> getFields() => db.collection('fields').orderBy('name').snapshots();
   static Future<void> deleteField(String id) => db.collection('fields').doc(id).delete();
 
+  static Future<List<FieldModel>> loadFields() async {
+    final snapshot = await db.collection('fields').orderBy('name').get();
+    return snapshot.docs.map((doc) {
+      final data = Map<String, dynamic>.from(doc.data());
+      final measuredAt = data['measuredAt'];
+      if (measuredAt is Timestamp) {
+        data['measuredAt'] = measuredAt.toDate().toUtc().toIso8601String();
+      } else if (measuredAt is DateTime) {
+        data['measuredAt'] = measuredAt.toUtc().toIso8601String();
+      }
+      return FieldModel.fromJson(data);
+    }).toList(growable: false);
+  }
+
   static Future<void> saveDistanceMeasurement(DistanceMeasurementModel measurement) async {
     await db.collection('distance_measurements').doc(measurement.id).set({
       'id': measurement.id,
