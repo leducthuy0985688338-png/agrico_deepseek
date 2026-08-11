@@ -41,6 +41,9 @@ class FieldStorageService {
     }
   }
 
+  Future<void> replaceFields(List<FieldModel> fields) =>
+      _database.replaceAll(fields);
+
   Future<void> deleteField(String id) => _database.delete(id);
 
   Future<void> saveDistanceMeasurement(DistanceMeasurement measurement) async {

@@ -128,6 +128,20 @@ class FieldDatabase {
     await db.insert(_table, _toRow(field), conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
+  Future<void> replaceAll(List<FieldModel> fields) async {
+    final db = await database;
+    await db.transaction((transaction) async {
+      await transaction.delete(_table);
+      for (final field in fields) {
+        await transaction.insert(
+          _table,
+          _toRow(field),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
+  }
+
   Future<void> delete(String id) async {
     final db = await database;
     await db.delete(_table, where: 'id = ?', whereArgs: [id]);

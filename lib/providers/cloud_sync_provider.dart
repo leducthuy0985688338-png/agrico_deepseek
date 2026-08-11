@@ -29,12 +29,19 @@ class CloudSyncProvider extends ChangeNotifier {
   bool _isSyncing = false;
   bool _isRestoringFuel = false;
   bool _isRestoringFinance = false;
+  bool _isRestoringFields = false;
   String? _lastSyncTime;
   bool _isConnected = false;
 
   bool get isSyncing => _isSyncing;
   bool get isRestoringFuel => _isRestoringFuel;
   bool get isRestoringFinance => _isRestoringFinance;
+  bool get isRestoringFields => _isRestoringFields;
+  bool get isBusy =>
+      _isSyncing ||
+      _isRestoringFuel ||
+      _isRestoringFinance ||
+      _isRestoringFields;
   String? get lastSyncTime => _lastSyncTime;
   bool get isConnected => _isConnected;
 
@@ -60,7 +67,7 @@ class CloudSyncProvider extends ChangeNotifier {
     required List<HarvestRecordModel> harvestRecords,
     required List<ProductionCostModel> productionCosts,
   }) async {
-    if (_isSyncing || _isRestoringFuel || _isRestoringFinance) return false;
+    if (isBusy) return false;
 
     _isSyncing = true;
     notifyListeners();
@@ -95,7 +102,7 @@ class CloudSyncProvider extends ChangeNotifier {
   }
 
   Future<FuelRestoreData> restoreFuelData() async {
-    if (_isSyncing || _isRestoringFuel || _isRestoringFinance) {
+    if (isBusy) {
       throw StateError('Đang có thao tác Cloud khác, vui lòng chờ hoàn tất.');
     }
 
@@ -117,7 +124,7 @@ class CloudSyncProvider extends ChangeNotifier {
   }
 
   Future<List<FinanceRecord>> restoreFinanceData() async {
-    if (_isSyncing || _isRestoringFuel || _isRestoringFinance) {
+    if (isBusy) {
       throw StateError('Đang có thao tác Cloud khác, vui lòng chờ hoàn tất.');
     }
 
@@ -133,6 +140,27 @@ class CloudSyncProvider extends ChangeNotifier {
       rethrow;
     } finally {
       _isRestoringFinance = false;
+      notifyListeners();
+    }
+  }
+
+  Future<List<FieldModel>> restoreFieldData() async {
+    if (isBusy) {
+      throw StateError('Đang có thao tác Cloud khác, vui lòng chờ hoàn tất.');
+    }
+
+    _isRestoringFields = true;
+    notifyListeners();
+
+    try {
+      final fields = await CloudService.loadFields();
+      _isConnected = true;
+      return fields;
+    } catch (_) {
+      _isConnected = false;
+      rethrow;
+    } finally {
+      _isRestoringFields = false;
       notifyListeners();
     }
   }
