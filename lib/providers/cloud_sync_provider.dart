@@ -25,6 +25,18 @@ class FuelRestoreData {
   bool get isEmpty => fuels.isEmpty && transactions.isEmpty;
 }
 
+class WorkforceMachineRestoreData {
+  final List<EmployeeModel> employees;
+  final List<MachineModel> machines;
+
+  const WorkforceMachineRestoreData({
+    required this.employees,
+    required this.machines,
+  });
+
+  bool get isEmpty => employees.isEmpty && machines.isEmpty;
+}
+
 class CloudSyncProvider extends ChangeNotifier {
   bool _isSyncing = false;
   bool _isRestoringFuel = false;
@@ -34,6 +46,7 @@ class CloudSyncProvider extends ChangeNotifier {
   bool _isRestoringProductionLogs = false;
   bool _isRestoringHarvestRecords = false;
   bool _isRestoringProductionCosts = false;
+  bool _isRestoringWorkforceMachines = false;
   String? _lastSyncTime;
   bool _isConnected = false;
 
@@ -45,6 +58,7 @@ class CloudSyncProvider extends ChangeNotifier {
   bool get isRestoringProductionLogs => _isRestoringProductionLogs;
   bool get isRestoringHarvestRecords => _isRestoringHarvestRecords;
   bool get isRestoringProductionCosts => _isRestoringProductionCosts;
+  bool get isRestoringWorkforceMachines => _isRestoringWorkforceMachines;
   bool get isBusy =>
       _isSyncing ||
       _isRestoringFuel ||
@@ -53,7 +67,8 @@ class CloudSyncProvider extends ChangeNotifier {
       _isRestoringSeasons ||
       _isRestoringProductionLogs ||
       _isRestoringHarvestRecords ||
-      _isRestoringProductionCosts;
+      _isRestoringProductionCosts ||
+      _isRestoringWorkforceMachines;
   String? get lastSyncTime => _lastSyncTime;
   bool get isConnected => _isConnected;
 
@@ -257,6 +272,32 @@ class CloudSyncProvider extends ChangeNotifier {
       rethrow;
     } finally {
       _isRestoringProductionCosts = false;
+      notifyListeners();
+    }
+  }
+
+  Future<WorkforceMachineRestoreData>
+      restoreWorkforceMachineData() async {
+    if (isBusy) {
+      throw StateError('Đang có thao tác Cloud khác, vui lòng chờ hoàn tất.');
+    }
+
+    _isRestoringWorkforceMachines = true;
+    notifyListeners();
+
+    try {
+      final employees = await CloudService.loadEmployees();
+      final machines = await CloudService.loadMachines();
+      _isConnected = true;
+      return WorkforceMachineRestoreData(
+        employees: employees,
+        machines: machines,
+      );
+    } catch (_) {
+      _isConnected = false;
+      rethrow;
+    } finally {
+      _isRestoringWorkforceMachines = false;
       notifyListeners();
     }
   }

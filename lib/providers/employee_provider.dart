@@ -59,6 +59,16 @@ class EmployeeProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void restoreFromCloud({required List<EmployeeModel> employees}) {
+    if (employees.isEmpty) return;
+
+    _employees = <String, EmployeeModel>{
+      for (final employee in employees) employee.id: employee,
+    }.values.toList(growable: false)
+      ..sort((a, b) => a.name.compareTo(b.name));
+    notifyListeners();
+  }
+
   void checkIn(String employeeId, {String? fieldId}) {
     final now = DateTime.now();
     _attendanceLogs.add(

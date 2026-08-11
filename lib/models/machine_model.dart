@@ -53,6 +53,35 @@ class MachineModel {
       fieldHistory: fieldHistory ?? this.fieldHistory,
     );
   }
+
+  factory MachineModel.fromMap(Map<String, dynamic> map) {
+    return MachineModel(
+      id: map['id']?.toString() ?? '',
+      name: map['name']?.toString() ?? '',
+      type: map['type']?.toString() ?? '',
+      manufacturer: map['manufacturer']?.toString() ?? '',
+      year: (map['year'] as num?)?.toInt() ?? 0,
+      status: map['status']?.toString() ?? 'Tốt',
+      totalHours: (map['totalHours'] as num?)?.toInt() ?? 0,
+      fuelConsumption:
+          (map['fuelConsumption'] as num?)?.toDouble() ?? 0,
+      costPerHour: (map['costPerHour'] as num?)?.toDouble() ?? 0,
+      currentFieldId: map['currentFieldId']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'name': name,
+        'type': type,
+        'manufacturer': manufacturer,
+        'year': year,
+        'status': status,
+        'totalHours': totalHours,
+        'fuelConsumption': fuelConsumption,
+        'costPerHour': costPerHour,
+        'currentFieldId': currentFieldId,
+      };
 }
 
 class MaintenanceRecord {

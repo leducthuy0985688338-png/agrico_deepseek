@@ -68,6 +68,14 @@ class SettingsPage extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 12),
+          _buildRestoreWorkforceMachineButton(context),
+          const SizedBox(height: 8),
+          const Text(
+            'Khôi phục danh mục nhân sự và máy móc để nối đúng chi phí.',
+            style: TextStyle(color: Colors.grey, fontSize: 12),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
           _buildRestoreProductionCostButton(context),
           const SizedBox(height: 8),
           const Text(
@@ -753,6 +761,125 @@ class SettingsPage extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('❌ Lỗi khôi phục dữ liệu thu hoạch: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Widget _buildRestoreWorkforceMachineButton(BuildContext context) {
+    return Consumer<CloudSyncProvider>(
+      builder: (context, provider, child) {
+        return OutlinedButton(
+          onPressed: provider.isBusy
+              ? null
+              : () => _confirmWorkforceMachineRestore(context),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppTheme.primaryColor,
+            side: const BorderSide(color: AppTheme.primaryColor),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          child: provider.isRestoringWorkforceMachines
+              ? const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 12),
+                    Text('Đang khôi phục nhân sự và máy móc...'),
+                  ],
+                )
+              : const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.engineering),
+                    SizedBox(width: 8),
+                    Text('Khôi phục nhân sự & máy móc từ Cloud'),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmWorkforceMachineRestore(
+    BuildContext context,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Khôi phục nhân sự và máy móc?'),
+        content: const Text(
+          'Danh mục nhân sự và máy móc hiện tại sẽ được thay bằng bản trên '
+          'Cloud. Chấm công, bảng lương, bảo trì và lịch sử làm việc cục bộ '
+          'không bị thay đổi.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Khôi phục'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    final cloudProvider = context.read<CloudSyncProvider>();
+    final employeeProvider = context.read<EmployeeProvider>();
+    final machineProvider = context.read<MachineProvider>();
+    final fieldProvider = context.read<FieldProvider>();
+
+    try {
+      final data = await cloudProvider.restoreWorkforceMachineData();
+      if (!context.mounted) return;
+
+      if (data.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Cloud chưa có danh mục nhân sự hoặc máy móc. '
+              'Dữ liệu cục bộ được giữ nguyên.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      employeeProvider.restoreFromCloud(employees: data.employees);
+      final clearedAssignments = machineProvider.restoreFromCloud(
+        machines: data.machines,
+        validFieldIds:
+            fieldProvider.fields.map((field) => field.id).toSet(),
+      );
+
+      final clearedMessage = clearedAssignments == 0
+          ? ''
+          : ' Đã bỏ $clearedAssignments liên kết máy–lô không còn hợp lệ.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '✅ Đã khôi phục ${data.employees.length} nhân viên và '
+            '${data.machines.length} máy móc.$clearedMessage',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Lỗi khôi phục nhân sự và máy móc: $e'),
           backgroundColor: Colors.red,
         ),
       );
