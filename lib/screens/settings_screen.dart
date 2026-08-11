@@ -13,6 +13,7 @@ import '../providers/production_season_provider.dart';
 import '../providers/production_log_provider.dart';
 import '../providers/harvest_provider.dart';
 import '../providers/production_cost_provider.dart';
+import '../models/field_measurement_history.dart';
 import '../services/field_storage_service.dart';
 import '../theme/app_theme.dart';
 
@@ -41,6 +42,14 @@ class SettingsPage extends StatelessWidget {
           const SizedBox(height: 8),
           const Text(
             'Khôi phục danh mục lô đất và toàn bộ ranh giới GPS từ Cloud.',
+            style: TextStyle(color: Colors.grey, fontSize: 12),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+          _buildRestoreFieldMeasurementButton(context),
+          const SizedBox(height: 8),
+          const Text(
+            'Khôi phục các phiên bản đo diện tích và chỉnh ranh theo lô đất.',
             style: TextStyle(color: Colors.grey, fontSize: 12),
             textAlign: TextAlign.center,
           ),
@@ -199,6 +208,7 @@ class SettingsPage extends StatelessWidget {
                         final logProvider = context.read<ProductionLogProvider>();
                         final harvestProvider = context.read<HarvestProvider>();
                         final costProvider = context.read<ProductionCostProvider>();
+                        final fieldStorage = FieldStorageService();
 
                         await seasonProvider.loadForFields(
                           fieldProvider.fields.map((field) => field.id),
@@ -209,6 +219,9 @@ class SettingsPage extends StatelessWidget {
                           harvestProvider.loadForSeasons(seasonIds),
                           costProvider.loadForSeasons(seasonIds),
                         ]);
+                        final fieldMeasurements =
+                            await fieldStorage.loadMeasurementHistory();
+                        if (!context.mounted) return;
 
                         final success = await provider.syncAllData(
                           warehouseItems: warehouseProvider.items,
@@ -219,6 +232,7 @@ class SettingsPage extends StatelessWidget {
                           fuels: fuelProvider.fuels,
                           fuelTransactions: fuelProvider.allTransactions,
                           fields: fieldProvider.fields,
+                          fieldMeasurements: fieldMeasurements,
                           seasons: seasonProvider.allSeasons,
                           productionLogs: logProvider.allLogs,
                           harvestRecords: harvestProvider.allRecords,
@@ -396,6 +410,138 @@ class SettingsPage extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('❌ Lỗi khôi phục lô đất: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Widget _buildRestoreFieldMeasurementButton(BuildContext context) {
+    return Consumer<CloudSyncProvider>(
+      builder: (context, provider, child) {
+        return OutlinedButton(
+          onPressed: provider.isBusy
+              ? null
+              : () => _confirmFieldMeasurementRestore(context),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppTheme.primaryColor,
+            side: const BorderSide(color: AppTheme.primaryColor),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          child: provider.isRestoringFieldMeasurements
+              ? const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 12),
+                    Text('Đang khôi phục lịch sử đo diện tích...'),
+                  ],
+                )
+              : const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.layers_outlined),
+                    SizedBox(width: 8),
+                    Text('Khôi phục lịch sử đo diện tích từ Cloud'),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmFieldMeasurementRestore(
+    BuildContext context,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Khôi phục lịch sử đo diện tích?'),
+        content: const Text(
+          'Các phiên bản đo và chỉnh ranh hiện tại trên thiết bị sẽ được '
+          'thay bằng lịch sử hợp lệ trên Cloud. Hãy khôi phục lô đất trước '
+          'để giữ đúng liên kết.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Khôi phục'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    final cloudProvider = context.read<CloudSyncProvider>();
+    final fieldProvider = context.read<FieldProvider>();
+    final storage = FieldStorageService();
+
+    try {
+      final measurements =
+          await cloudProvider.restoreFieldMeasurementData();
+      if (!context.mounted) return;
+
+      if (measurements.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Cloud chưa có lịch sử đo diện tích hợp lệ. '
+              'Dữ liệu cục bộ được giữ nguyên.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      final fieldIds = fieldProvider.fields.map((field) => field.id).toSet();
+      final validMeasurements =
+          keepMeasurementsForFields(measurements, fieldIds);
+      final skippedCount = measurements.length - validMeasurements.length;
+
+      if (validMeasurements.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Không có lịch sử nào khớp với lô đất hiện tại. '
+              'Dữ liệu cục bộ được giữ nguyên; hãy khôi phục lô đất trước.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      await storage.replaceMeasurementHistory(validMeasurements);
+      if (!context.mounted) return;
+
+      final skippedMessage = skippedCount == 0
+          ? ''
+          : ' Bỏ qua $skippedCount bản ghi không còn lô đất.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '✅ Đã khôi phục ${validMeasurements.length} phiên bản đo '
+            'diện tích và ranh giới.$skippedMessage',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Lỗi khôi phục lịch sử đo diện tích: $e'),
           backgroundColor: Colors.red,
         ),
       );

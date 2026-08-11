@@ -7,6 +7,7 @@ import '../models/task_model.dart';
 import '../models/finance_model.dart';
 import '../models/fuel_model.dart';
 import '../models/field_model.dart';
+import '../models/field_measurement_history.dart';
 import '../models/distance_measurement.dart';
 import '../models/distance_measurement_model.dart';
 import '../models/production_season_model.dart';
@@ -60,8 +61,27 @@ class CloudService {
     });
   }
 
-  static Stream<QuerySnapshot<Map<String, dynamic>>> getFields() => db.collection('fields').orderBy('name').snapshots();
-  static Future<void> deleteField(String id) => db.collection('fields').doc(id).delete();
+  static Stream<QuerySnapshot<Map<String, dynamic>>> getFields() =>
+      db.collection('fields').orderBy('name').snapshots();
+
+  static Future<void> deleteField(String id) async {
+    await db.collection('fields').doc(id).delete();
+    final history = await db
+        .collection('field_measurements')
+        .where('fieldId', isEqualTo: id)
+        .get();
+    const batchLimit = 450;
+    for (var start = 0; start < history.docs.length; start += batchLimit) {
+      final end = start + batchLimit < history.docs.length
+          ? start + batchLimit
+          : history.docs.length;
+      final batch = db.batch();
+      for (final document in history.docs.sublist(start, end)) {
+        batch.delete(document.reference);
+      }
+      await batch.commit();
+    }
+  }
 
   static Future<List<FieldModel>> loadFields() async {
     final snapshot = await db.collection('fields').orderBy('name').get();
@@ -76,6 +96,63 @@ class CloudService {
       return FieldModel.fromJson(data);
     }).toList(growable: false);
   }
+
+  static Future<void> saveFieldMeasurement(
+    FieldMeasurementHistory measurement,
+  ) async {
+    await db
+        .collection('field_measurements')
+        .doc(measurement.id)
+        .set(_fieldMeasurementData(measurement));
+  }
+
+  static Future<void> syncFieldMeasurements(
+    List<FieldMeasurementHistory> measurements,
+  ) async {
+    const batchLimit = 450;
+    for (var start = 0; start < measurements.length; start += batchLimit) {
+      final end = start + batchLimit < measurements.length
+          ? start + batchLimit
+          : measurements.length;
+      final batch = db.batch();
+      for (final measurement in measurements.sublist(start, end)) {
+        batch.set(
+          db.collection('field_measurements').doc(measurement.id),
+          _fieldMeasurementData(measurement),
+        );
+      }
+      await batch.commit();
+    }
+  }
+
+  static Future<List<FieldMeasurementHistory>>
+      loadFieldMeasurements() async {
+    final snapshot = await db.collection('field_measurements').get();
+    final documents = snapshot.docs.map((document) {
+      final data = Map<String, dynamic>.from(document.data());
+      data['id'] = document.id;
+      for (final key in ['measuredAt', 'createdAt']) {
+        final value = data[key];
+        if (value is Timestamp) {
+          data[key] = value.toDate().toUtc().toIso8601String();
+        } else if (value is DateTime) {
+          data[key] = value.toUtc().toIso8601String();
+        }
+      }
+      return data;
+    });
+    return parseFieldMeasurementDocuments(documents);
+  }
+
+  static Map<String, dynamic> _fieldMeasurementData(
+    FieldMeasurementHistory measurement,
+  ) =>
+      {
+        ...measurement.toJson(),
+        'measuredAt': Timestamp.fromDate(measurement.measuredAt.toUtc()),
+        'createdAt': Timestamp.fromDate(measurement.createdAt.toUtc()),
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
 
   static Future<List<ProductionSeasonModel>> loadProductionSeasons() async {
     final snapshot = await db

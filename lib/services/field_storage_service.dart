@@ -5,7 +5,9 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/distance_measurement.dart';
+import '../models/field_measurement_history.dart';
 import '../models/field_model.dart';
+import 'cloud_service.dart';
 import 'field_database.dart';
 
 /// Local persistence facade for field data and measurement history.
@@ -31,9 +33,26 @@ class FieldStorageService {
 
   Future<void> saveField(FieldModel field) => _database.upsert(field);
 
-  Future<void> recordMeasurement(FieldModel field) => _database.addMeasurementHistory(field);
+  Future<bool> recordMeasurement(FieldModel field) async {
+    final measurement = await _database.addMeasurementHistory(field);
+    try {
+      await CloudService.initialize();
+      await CloudService.saveFieldMeasurement(measurement);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 
-  Future<List<FieldMeasurementHistory>> loadMeasurementHistory({String? fieldId}) => _database.getMeasurementHistory(fieldId: fieldId);
+  Future<List<FieldMeasurementHistory>> loadMeasurementHistory({
+    String? fieldId,
+  }) =>
+      _database.getMeasurementHistory(fieldId: fieldId);
+
+  Future<void> replaceMeasurementHistory(
+    List<FieldMeasurementHistory> measurements,
+  ) =>
+      _database.replaceMeasurementHistory(measurements);
 
   Future<void> saveFields(List<FieldModel> fields) async {
     for (final field in fields) {

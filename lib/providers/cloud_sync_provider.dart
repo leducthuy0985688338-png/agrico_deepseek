@@ -8,6 +8,7 @@ import '../models/task_model.dart';
 import '../models/finance_model.dart';
 import '../models/fuel_model.dart';
 import '../models/field_model.dart';
+import '../models/field_measurement_history.dart';
 import '../models/production_season_model.dart';
 import '../models/production_log_model.dart';
 import '../models/harvest_record_model.dart';
@@ -43,6 +44,7 @@ class CloudSyncProvider extends ChangeNotifier {
   bool _isRestoringFuel = false;
   bool _isRestoringFinance = false;
   bool _isRestoringFields = false;
+  bool _isRestoringFieldMeasurements = false;
   bool _isRestoringSeasons = false;
   bool _isRestoringProductionLogs = false;
   bool _isRestoringHarvestRecords = false;
@@ -58,6 +60,7 @@ class CloudSyncProvider extends ChangeNotifier {
   bool get isRestoringFuel => _isRestoringFuel;
   bool get isRestoringFinance => _isRestoringFinance;
   bool get isRestoringFields => _isRestoringFields;
+  bool get isRestoringFieldMeasurements => _isRestoringFieldMeasurements;
   bool get isRestoringSeasons => _isRestoringSeasons;
   bool get isRestoringProductionLogs => _isRestoringProductionLogs;
   bool get isRestoringHarvestRecords => _isRestoringHarvestRecords;
@@ -72,6 +75,7 @@ class CloudSyncProvider extends ChangeNotifier {
       _isRestoringFuel ||
       _isRestoringFinance ||
       _isRestoringFields ||
+      _isRestoringFieldMeasurements ||
       _isRestoringSeasons ||
       _isRestoringProductionLogs ||
       _isRestoringHarvestRecords ||
@@ -100,6 +104,7 @@ class CloudSyncProvider extends ChangeNotifier {
     required List<FuelModel> fuels,
     required List<FuelTransaction> fuelTransactions,
     required List<FieldModel> fields,
+    required List<FieldMeasurementHistory> fieldMeasurements,
     required List<ProductionSeasonModel> seasons,
     required List<ProductionLogModel> productionLogs,
     required List<HarvestRecordModel> harvestRecords,
@@ -125,6 +130,7 @@ class CloudSyncProvider extends ChangeNotifier {
         harvestRecords: harvestRecords,
         productionCosts: productionCosts,
       );
+      await CloudService.syncFieldMeasurements(fieldMeasurements);
 
       _lastSyncTime = DateTime.now().toString();
       _isConnected = true;
@@ -199,6 +205,28 @@ class CloudSyncProvider extends ChangeNotifier {
       rethrow;
     } finally {
       _isRestoringFields = false;
+      notifyListeners();
+    }
+  }
+
+  Future<List<FieldMeasurementHistory>>
+      restoreFieldMeasurementData() async {
+    if (isBusy) {
+      throw StateError('Đang có thao tác Cloud khác, vui lòng chờ hoàn tất.');
+    }
+
+    _isRestoringFieldMeasurements = true;
+    notifyListeners();
+
+    try {
+      final measurements = await CloudService.loadFieldMeasurements();
+      _isConnected = true;
+      return measurements;
+    } catch (_) {
+      _isConnected = false;
+      rethrow;
+    } finally {
+      _isRestoringFieldMeasurements = false;
       notifyListeners();
     }
   }
