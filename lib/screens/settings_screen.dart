@@ -44,6 +44,14 @@ class SettingsPage extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 12),
+          _buildRestoreSeasonButton(context),
+          const SizedBox(height: 8),
+          const Text(
+            'Khôi phục mùa vụ theo lô đất trước khi tải nhật ký sản xuất.',
+            style: TextStyle(color: Colors.grey, fontSize: 12),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
           _buildRestoreFuelButton(context),
           const SizedBox(height: 8),
           const Text(
@@ -331,6 +339,130 @@ class SettingsPage extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('❌ Lỗi khôi phục lô đất: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Widget _buildRestoreSeasonButton(BuildContext context) {
+    return Consumer<CloudSyncProvider>(
+      builder: (context, provider, child) {
+        return OutlinedButton(
+          onPressed: provider.isBusy
+              ? null
+              : () => _confirmSeasonRestore(context),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppTheme.primaryColor,
+            side: const BorderSide(color: AppTheme.primaryColor),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          child: provider.isRestoringSeasons
+              ? const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 12),
+                    Text('Đang khôi phục mùa vụ...'),
+                  ],
+                )
+              : const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.agriculture),
+                    SizedBox(width: 8),
+                    Text('Khôi phục mùa vụ từ Cloud'),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmSeasonRestore(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Khôi phục dữ liệu mùa vụ?'),
+        content: const Text(
+          'Toàn bộ mùa vụ hiện tại sẽ được thay bằng bản trên Cloud. '
+          'Hãy khôi phục lô đất trước để giữ đúng liên kết dữ liệu.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Khôi phục'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    final cloudProvider = context.read<CloudSyncProvider>();
+    final fieldProvider = context.read<FieldProvider>();
+    final seasonProvider = context.read<ProductionSeasonProvider>();
+
+    try {
+      final seasons = await cloudProvider.restoreSeasonData();
+      if (!context.mounted) return;
+
+      if (seasons.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cloud chưa có dữ liệu mùa vụ.')),
+        );
+        return;
+      }
+
+      final fieldIds = fieldProvider.fields.map((field) => field.id).toSet();
+      final validSeasons = seasons
+          .where((season) => fieldIds.contains(season.fieldId))
+          .toList(growable: false);
+      final skippedCount = seasons.length - validSeasons.length;
+
+      if (validSeasons.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Không có mùa vụ nào khớp với lô đất hiện tại. '
+              'Hãy khôi phục lô đất trước.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      await seasonProvider.restoreFromCloud(seasons: validSeasons);
+      if (!context.mounted) return;
+
+      final skippedMessage = skippedCount == 0
+          ? ''
+          : ' Bỏ qua $skippedCount mùa vụ không còn lô đất.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '✅ Đã khôi phục ${validSeasons.length} mùa vụ.'
+            '$skippedMessage',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Lỗi khôi phục mùa vụ: $e'),
           backgroundColor: Colors.red,
         ),
       );
