@@ -101,6 +101,47 @@ class MachineProvider extends ChangeNotifier {
     return _machines.where((m) => m.status == status).toList();
   }
 
+  int restoreFromCloud({
+    required List<MachineModel> machines,
+    required Set<String> validFieldIds,
+  }) {
+    if (machines.isEmpty) return 0;
+
+    var clearedAssignments = 0;
+    final restored = <String, MachineModel>{};
+    final deduplicated = <String, MachineModel>{
+      for (final machine in machines) machine.id: machine,
+    };
+    for (final machine in deduplicated.values) {
+      final fieldId = machine.currentFieldId;
+      final hasInvalidField =
+          fieldId != null && !validFieldIds.contains(fieldId);
+      if (hasInvalidField) clearedAssignments++;
+
+      final local = getMachineById(machine.id);
+      restored[machine.id] = MachineModel(
+        id: machine.id,
+        name: machine.name,
+        type: machine.type,
+        manufacturer: machine.manufacturer,
+        year: machine.year,
+        status: machine.status,
+        totalHours: machine.totalHours,
+        fuelConsumption: machine.fuelConsumption,
+        costPerHour: machine.costPerHour,
+        currentFieldId: hasInvalidField ? null : fieldId,
+        maintenanceHistory:
+            local?.maintenanceHistory ?? machine.maintenanceHistory,
+        fieldHistory: local?.fieldHistory ?? machine.fieldHistory,
+      );
+    }
+
+    _machines = restored.values.toList(growable: false)
+      ..sort((a, b) => a.name.compareTo(b.name));
+    notifyListeners();
+    return clearedAssignments;
+  }
+
   void assignMachineToField(
     String machineId,
     String fieldId,
