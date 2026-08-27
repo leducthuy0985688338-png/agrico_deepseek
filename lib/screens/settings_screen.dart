@@ -38,6 +38,24 @@ class SettingsPage extends StatelessWidget {
           const SizedBox(height: 16),
           _buildSyncButton(context),
           const SizedBox(height: 12),
+          _buildRestoreAllButton(context),
+          const SizedBox(height: 8),
+          const Text(
+            'Tải toàn bộ dữ liệu trước, sau đó khôi phục theo đúng thứ tự '
+            'liên kết. Nhóm Cloud trống hoặc không hợp lệ sẽ giữ nguyên dữ '
+            'liệu trên thiết bị.',
+            style: TextStyle(color: Colors.grey, fontSize: 12),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 20),
+          const Divider(),
+          const SizedBox(height: 12),
+          const Text(
+            'Khôi phục từng phần',
+            style: TextStyle(fontWeight: FontWeight.w600),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
           _buildRestoreFieldButton(context),
           const SizedBox(height: 8),
           const Text(
@@ -313,6 +331,328 @@ class SettingsPage extends StatelessWidget {
         );
       },
     );
+  }
+
+  Widget _buildRestoreAllButton(BuildContext context) {
+    return Consumer<CloudSyncProvider>(
+      builder: (context, provider, child) {
+        return ElevatedButton(
+          onPressed: provider.isBusy
+              ? null
+              : () => _confirmRestoreAll(context),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.primaryColor,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          child: provider.isRestoringAll
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Flexible(
+                          child: Text(
+                            'Đang xử lý: ${provider.restoreAllStep} '
+                            '(${provider.restoreAllCompletedSteps}/'
+                            '${provider.restoreAllTotalSteps})',
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    LinearProgressIndicator(
+                      value: provider.restoreAllProgress,
+                      backgroundColor: Colors.white24,
+                      color: Colors.white,
+                    ),
+                  ],
+                )
+              : const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.settings_backup_restore),
+                    SizedBox(width: 8),
+                    Text('Khôi phục toàn bộ hệ thống từ Cloud'),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmRestoreAll(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Khôi phục toàn bộ hệ thống?'),
+        content: const Text(
+          'AGRICO sẽ tải và kiểm tra toàn bộ dữ liệu Cloud trước khi thay dữ '
+          'liệu trên thiết bị. Các nhóm được khôi phục theo đúng thứ tự phụ '
+          'thuộc; nhóm Cloud trống hoặc không còn liên kết hợp lệ sẽ giữ '
+          'nguyên dữ liệu cục bộ.\n\nHãy đồng bộ dữ liệu mới nhất trước nếu '
+          'cần giữ lại thay đổi chỉ có trên thiết bị này.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Khôi phục toàn bộ'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    final cloudProvider = context.read<CloudSyncProvider>();
+
+    try {
+      final summary = await cloudProvider.restoreAllData<_RestoreAllSummary?>(
+        apply: (data) async {
+          if (data.isEmpty || !context.mounted) return null;
+          return _applyRestoreAllData(context, data);
+        },
+      );
+      if (!context.mounted) return;
+
+      if (summary == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Cloud chưa có dữ liệu hợp lệ. Toàn bộ dữ liệu cục bộ được giữ '
+              'nguyên.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(summary.message),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 8),
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '❌ Khôi phục toàn bộ chưa hoàn tất: $e. Những nhóm chưa được '
+            'thay sẽ giữ nguyên dữ liệu cục bộ.',
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 8),
+        ),
+      );
+    }
+  }
+
+  Future<_RestoreAllSummary> _applyRestoreAllData(
+    BuildContext context,
+    CloudRestoreData data,
+  ) async {
+    final fieldProvider = context.read<FieldProvider>();
+    final seasonProvider = context.read<ProductionSeasonProvider>();
+    final logProvider = context.read<ProductionLogProvider>();
+    final harvestProvider = context.read<HarvestProvider>();
+    final costProvider = context.read<ProductionCostProvider>();
+    final employeeProvider = context.read<EmployeeProvider>();
+    final machineProvider = context.read<MachineProvider>();
+    final taskProvider = context.read<TaskProvider>();
+    final warehouseProvider = context.read<WarehouseProvider>();
+    final fuelProvider = context.read<FuelProvider>();
+    final financeProvider = context.read<FinanceProvider>();
+    final fieldStorage = FieldStorageService();
+    final summary = _RestoreAllSummary();
+
+    if (data.fields.isEmpty) {
+      summary.preservedGroup();
+    } else {
+      await fieldProvider.restoreFromCloud(fields: data.fields);
+      summary.restoredGroup(data.fields.length);
+    }
+    final fieldIds = fieldProvider.fields.map((field) => field.id).toSet();
+
+    if (data.fieldMeasurements.isEmpty) {
+      summary.preservedGroup();
+    } else {
+      final validMeasurements = keepMeasurementsForFields(
+        data.fieldMeasurements,
+        fieldIds,
+      );
+      summary.skippedRecords +=
+          data.fieldMeasurements.length - validMeasurements.length;
+      if (validMeasurements.isEmpty) {
+        summary.preservedGroup();
+      } else {
+        await fieldStorage.replaceMeasurementHistory(validMeasurements);
+        summary.restoredGroup(validMeasurements.length);
+      }
+    }
+
+    if (data.seasons.isEmpty) {
+      summary.preservedGroup();
+    } else {
+      final validSeasons = data.seasons
+          .where((season) => fieldIds.contains(season.fieldId))
+          .toList(growable: false);
+      summary.skippedRecords += data.seasons.length - validSeasons.length;
+      if (validSeasons.isEmpty) {
+        summary.preservedGroup();
+      } else {
+        await seasonProvider.restoreFromCloud(seasons: validSeasons);
+        summary.restoredGroup(validSeasons.length);
+      }
+    }
+    final seasonsById = {
+      for (final season in seasonProvider.allSeasons) season.id: season,
+    };
+
+    if (data.employees.isEmpty && data.machines.isEmpty) {
+      summary.preservedGroup();
+    } else {
+      if (data.employees.isNotEmpty) {
+        employeeProvider.restoreFromCloud(employees: data.employees);
+      }
+      if (data.machines.isNotEmpty) {
+        summary.clearedLinks += machineProvider.restoreFromCloud(
+          machines: data.machines,
+          validFieldIds: fieldIds,
+        );
+      }
+      summary.restoredGroup(data.employees.length + data.machines.length);
+    }
+
+    if (data.warehouseItems.isEmpty) {
+      summary.preservedGroup();
+    } else {
+      final restoredCount = warehouseProvider.restoreFromCloud(
+        items: data.warehouseItems,
+      );
+      if (restoredCount == 0) {
+        summary.preservedGroup();
+      } else {
+        summary.restoredGroup(restoredCount);
+      }
+    }
+
+    final validLogs = data.productionLogs.where((log) {
+      final season = seasonsById[log.seasonId];
+      return season != null &&
+          season.fieldId == log.fieldId &&
+          fieldIds.contains(log.fieldId);
+    }).toList(growable: false);
+    summary.skippedRecords += data.productionLogs.length - validLogs.length;
+    if (validLogs.isEmpty) {
+      summary.preservedGroup();
+    } else {
+      await logProvider.restoreFromCloud(logs: validLogs);
+      summary.restoredGroup(validLogs.length);
+    }
+
+    final validHarvests = data.harvestRecords.where((record) {
+      final season = seasonsById[record.seasonId];
+      return season != null &&
+          season.fieldId == record.fieldId &&
+          fieldIds.contains(record.fieldId);
+    }).toList(growable: false);
+    summary.skippedRecords +=
+        data.harvestRecords.length - validHarvests.length;
+    if (validHarvests.isEmpty) {
+      summary.preservedGroup();
+    } else {
+      await harvestProvider.restoreFromCloud(records: validHarvests);
+      summary.restoredGroup(validHarvests.length);
+    }
+
+    final validCosts = data.productionCosts.where((record) {
+      final season = seasonsById[record.seasonId];
+      return season != null &&
+          season.fieldId == record.fieldId &&
+          fieldIds.contains(record.fieldId);
+    }).toList(growable: false);
+    summary.skippedRecords += data.productionCosts.length - validCosts.length;
+    if (validCosts.isEmpty) {
+      summary.preservedGroup();
+    } else {
+      await costProvider.restoreFromCloud(records: validCosts);
+      summary.restoredGroup(validCosts.length);
+    }
+
+    if (data.tasks.isEmpty) {
+      summary.preservedGroup();
+    } else {
+      final taskResult = taskProvider.restoreFromCloud(
+        tasks: data.tasks,
+        employeeNamesById: {
+          for (final employee in employeeProvider.employees)
+            employee.id: employee.name,
+        },
+        machineNamesById: {
+          for (final machine in machineProvider.machines)
+            machine.id: machine.name,
+        },
+        fieldNamesById: {
+          for (final field in fieldProvider.fields) field.id: field.name,
+        },
+      );
+      summary.clearedLinks += taskResult.clearedLinkCount;
+      if (taskResult.restoredCount == 0) {
+        summary.preservedGroup();
+      } else {
+        summary.restoredGroup(taskResult.restoredCount);
+      }
+    }
+
+    if (data.distanceMeasurements.isEmpty) {
+      summary.preservedGroup();
+    } else {
+      await fieldStorage.replaceDistanceMeasurements(
+        data.distanceMeasurements,
+      );
+      summary.restoredGroup(data.distanceMeasurements.length);
+    }
+
+    if (data.fuels.isEmpty && data.fuelTransactions.isEmpty) {
+      summary.preservedGroup();
+    } else {
+      fuelProvider.restoreFromCloud(
+        fuels: data.fuels,
+        transactions: data.fuelTransactions,
+      );
+      summary.restoredGroup(
+        data.fuels.length + data.fuelTransactions.length,
+      );
+    }
+
+    if (data.financeRecords.isEmpty) {
+      summary.preservedGroup();
+    } else {
+      financeProvider.restoreFromCloud(records: data.financeRecords);
+      summary.restoredGroup(data.financeRecords.length);
+    }
+
+    return summary;
   }
 
   Widget _buildRestoreFieldButton(BuildContext context) {
@@ -1812,5 +2152,40 @@ class SettingsPage extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+class _RestoreAllSummary {
+  int restoredGroups = 0;
+  int restoredRecords = 0;
+  int preservedGroups = 0;
+  int skippedRecords = 0;
+  int clearedLinks = 0;
+
+  void restoredGroup(int recordCount) {
+    restoredGroups++;
+    restoredRecords += recordCount;
+  }
+
+  void preservedGroup() {
+    preservedGroups++;
+  }
+
+  String get message {
+    final details = <String>[];
+    if (preservedGroups > 0) {
+      details.add(
+        'Giữ nguyên $preservedGroups nhóm Cloud trống hoặc không hợp lệ.',
+      );
+    }
+    if (skippedRecords > 0) {
+      details.add('Bỏ qua $skippedRecords bản ghi mất liên kết.');
+    }
+    if (clearedLinks > 0) {
+      details.add('Gỡ $clearedLinks liên kết không còn tồn tại.');
+    }
+    final suffix = details.isEmpty ? '' : ' ${details.join(' ')}';
+    return '✅ Đã khôi phục $restoredRecords bản ghi thuộc '
+        '$restoredGroups nhóm dữ liệu.$suffix';
   }
 }

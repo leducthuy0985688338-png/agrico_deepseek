@@ -39,8 +39,59 @@ class WorkforceMachineRestoreData {
   bool get isEmpty => employees.isEmpty && machines.isEmpty;
 }
 
+class CloudRestoreData {
+  final List<FieldModel> fields;
+  final List<FieldMeasurementHistory> fieldMeasurements;
+  final List<ProductionSeasonModel> seasons;
+  final List<ProductionLogModel> productionLogs;
+  final List<HarvestRecordModel> harvestRecords;
+  final List<ProductionCostModel> productionCosts;
+  final List<EmployeeModel> employees;
+  final List<MachineModel> machines;
+  final List<TaskModel> tasks;
+  final List<DistanceMeasurement> distanceMeasurements;
+  final List<WarehouseItem> warehouseItems;
+  final List<FuelModel> fuels;
+  final List<FuelTransaction> fuelTransactions;
+  final List<FinanceRecord> financeRecords;
+
+  const CloudRestoreData({
+    required this.fields,
+    required this.fieldMeasurements,
+    required this.seasons,
+    required this.productionLogs,
+    required this.harvestRecords,
+    required this.productionCosts,
+    required this.employees,
+    required this.machines,
+    required this.tasks,
+    required this.distanceMeasurements,
+    required this.warehouseItems,
+    required this.fuels,
+    required this.fuelTransactions,
+    required this.financeRecords,
+  });
+
+  bool get isEmpty =>
+      fields.isEmpty &&
+      fieldMeasurements.isEmpty &&
+      seasons.isEmpty &&
+      productionLogs.isEmpty &&
+      harvestRecords.isEmpty &&
+      productionCosts.isEmpty &&
+      employees.isEmpty &&
+      machines.isEmpty &&
+      tasks.isEmpty &&
+      distanceMeasurements.isEmpty &&
+      warehouseItems.isEmpty &&
+      fuels.isEmpty &&
+      fuelTransactions.isEmpty &&
+      financeRecords.isEmpty;
+}
+
 class CloudSyncProvider extends ChangeNotifier {
   bool _isSyncing = false;
+  bool _isRestoringAll = false;
   bool _isRestoringFuel = false;
   bool _isRestoringFinance = false;
   bool _isRestoringFields = false;
@@ -53,10 +104,13 @@ class CloudSyncProvider extends ChangeNotifier {
   bool _isRestoringWarehouse = false;
   bool _isRestoringTasks = false;
   bool _isRestoringDistanceMeasurements = false;
+  int _restoreAllCompletedSteps = 0;
+  String _restoreAllStep = '';
   String? _lastSyncTime;
   bool _isConnected = false;
 
   bool get isSyncing => _isSyncing;
+  bool get isRestoringAll => _isRestoringAll;
   bool get isRestoringFuel => _isRestoringFuel;
   bool get isRestoringFinance => _isRestoringFinance;
   bool get isRestoringFields => _isRestoringFields;
@@ -70,8 +124,14 @@ class CloudSyncProvider extends ChangeNotifier {
   bool get isRestoringTasks => _isRestoringTasks;
   bool get isRestoringDistanceMeasurements =>
       _isRestoringDistanceMeasurements;
+  int get restoreAllCompletedSteps => _restoreAllCompletedSteps;
+  int get restoreAllTotalSteps => 12;
+  String get restoreAllStep => _restoreAllStep;
+  double get restoreAllProgress =>
+      _restoreAllCompletedSteps / restoreAllTotalSteps;
   bool get isBusy =>
       _isSyncing ||
+      _isRestoringAll ||
       _isRestoringFuel ||
       _isRestoringFinance ||
       _isRestoringFields ||
@@ -143,6 +203,120 @@ class CloudSyncProvider extends ChangeNotifier {
       notifyListeners();
       rethrow;
     }
+  }
+
+  Future<T> restoreAllData<T>({
+    required Future<T> Function(CloudRestoreData data) apply,
+  }) async {
+    if (isBusy) {
+      throw StateError('Đang có thao tác Cloud khác, vui lòng chờ hoàn tất.');
+    }
+
+    _isRestoringAll = true;
+    _restoreAllCompletedSteps = 0;
+    _restoreAllStep = 'Đang chuẩn bị';
+    notifyListeners();
+
+    try {
+      final fields = await _loadRestoreStep(
+        step: 'Lô đất',
+        loader: CloudService.loadFields,
+      );
+      final fieldMeasurements = await _loadRestoreStep(
+        step: 'Lịch sử đo diện tích',
+        loader: CloudService.loadFieldMeasurements,
+      );
+      final seasons = await _loadRestoreStep(
+        step: 'Mùa vụ',
+        loader: CloudService.loadProductionSeasons,
+      );
+      final productionLogs = await _loadRestoreStep(
+        step: 'Nhật ký sản xuất',
+        loader: CloudService.loadProductionLogs,
+      );
+      final harvestRecords = await _loadRestoreStep(
+        step: 'Thu hoạch',
+        loader: CloudService.loadHarvestRecords,
+      );
+
+      _setRestoreAllStep('Nhân sự và máy móc');
+      final employees = await CloudService.loadEmployees();
+      final machines = await CloudService.loadMachines();
+      _completeRestoreAllStep();
+
+      final tasks = await _loadRestoreStep(
+        step: 'Công việc và lịch việc',
+        loader: CloudService.loadTasks,
+      );
+      final distanceMeasurements = await _loadRestoreStep(
+        step: 'Lịch sử đo khoảng cách',
+        loader: CloudService.loadDistanceMeasurements,
+      );
+      final warehouseItems = await _loadRestoreStep(
+        step: 'Kho vật tư',
+        loader: CloudService.loadWarehouseItems,
+      );
+      final productionCosts = await _loadRestoreStep(
+        step: 'Chi phí sản xuất',
+        loader: CloudService.loadProductionCosts,
+      );
+
+      _setRestoreAllStep('Nhiên liệu');
+      final fuels = await CloudService.loadFuels();
+      final fuelTransactions = await CloudService.loadFuelTransactions();
+      _completeRestoreAllStep();
+
+      final financeRecords = await _loadRestoreStep(
+        step: 'Tài chính',
+        loader: CloudService.loadFinanceRecords,
+      );
+
+      final data = CloudRestoreData(
+        fields: fields,
+        fieldMeasurements: fieldMeasurements,
+        seasons: seasons,
+        productionLogs: productionLogs,
+        harvestRecords: harvestRecords,
+        productionCosts: productionCosts,
+        employees: employees,
+        machines: machines,
+        tasks: tasks,
+        distanceMeasurements: distanceMeasurements,
+        warehouseItems: warehouseItems,
+        fuels: fuels,
+        fuelTransactions: fuelTransactions,
+        financeRecords: financeRecords,
+      );
+      _isConnected = true;
+      _setRestoreAllStep('Áp dụng dữ liệu trên thiết bị');
+      return await apply(data);
+    } catch (_) {
+      _isConnected = false;
+      rethrow;
+    } finally {
+      _isRestoringAll = false;
+      notifyListeners();
+    }
+  }
+
+  Future<T> _loadRestoreStep<T>({
+    required String step,
+    required Future<T> Function() loader,
+  }) async {
+    _setRestoreAllStep(step);
+    final result = await loader();
+    _completeRestoreAllStep();
+    return result;
+  }
+
+  void _setRestoreAllStep(String step) {
+    _restoreAllStep = step;
+    notifyListeners();
+  }
+
+  void _completeRestoreAllStep() {
+    _restoreAllCompletedSteps++;
+    notifyListeners();
   }
 
   Future<FuelRestoreData> restoreFuelData() async {

@@ -1,4 +1,4 @@
-package com.example.agrico_deepseek
+﻿package com.agrico.erp
 
 import io.flutter.embedding.android.FlutterActivity
 
