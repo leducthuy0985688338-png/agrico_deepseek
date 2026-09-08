@@ -5,6 +5,7 @@ import 'package:archive/archive.dart';
 import 'package:xml/xml.dart';
 
 import '../../domain/entities/land_parcel.dart';
+import '../../domain/entities/land_survey.dart';
 import '../../domain/geometry/wgs84_geometry.dart';
 
 enum KmlInterchangeError {
@@ -54,6 +55,17 @@ class AgricoKmlMetadata {
   String? get parcelCode => values['${prefix}parcelCode'];
   String? get parcelName => values['${prefix}parcelName'];
   String? get farmId => values['${prefix}farmId'];
+  String? get householdId => values['${prefix}householdId'];
+  String? get householdCode => values['${prefix}householdCode'];
+  String? get ownerName => values['${prefix}ownerName'];
+  String? get country => values['${prefix}country'];
+  String? get province => values['${prefix}province'];
+  String? get district => values['${prefix}district'];
+  String? get village => values['${prefix}village'];
+  String? get landUse => values['${prefix}landUse'];
+  String? get currentCondition => values['${prefix}currentCondition'];
+  String? get clearingStatus => values['${prefix}clearingStatus'];
+  String? get readinessStatus => values['${prefix}readinessStatus'];
   double? get declaredAreaM2 => _double('${prefix}areaM2');
   double? get declaredPerimeterM => _double('${prefix}perimeterM');
   String? get boundarySource => values['${prefix}boundarySource'];
@@ -63,6 +75,13 @@ class AgricoKmlMetadata {
 
   double? _double(String key) => double.tryParse(values[key] ?? '');
   int? _int(String key) => int.tryParse(values[key] ?? '');
+}
+
+class LandParcelExchangeMetadata {
+  const LandParcelExchangeMetadata({this.household, this.landUseProfile});
+
+  final Household? household;
+  final LandUseProfile? landUseProfile;
 }
 
 class LandParcelImportPreview {
@@ -103,7 +122,10 @@ class KmlInterchangeCodec {
 
   static const kmlNamespace = 'http://www.opengis.net/kml/2.2';
 
-  String exportKml(LandParcel parcel) {
+  String exportKml(
+    LandParcel parcel, {
+    LandParcelExchangeMetadata metadata = const LandParcelExchangeMetadata(),
+  }) {
     final builder = XmlBuilder();
     builder.processing('xml', 'version="1.0" encoding="UTF-8"');
     builder.element(
@@ -115,7 +137,7 @@ class KmlInterchangeCodec {
           'Placemark',
           nest: () {
             builder.element('name', nest: parcel.name);
-            _writeExtendedData(builder, parcel);
+            _writeExtendedData(builder, parcel, metadata);
             builder.element(
               'Polygon',
               nest: () {
@@ -139,8 +161,11 @@ class KmlInterchangeCodec {
     return builder.buildDocument().toXmlString(pretty: true);
   }
 
-  Uint8List exportKmz(LandParcel parcel) {
-    final bytes = utf8.encode(exportKml(parcel));
+  Uint8List exportKmz(
+    LandParcel parcel, {
+    LandParcelExchangeMetadata metadata = const LandParcelExchangeMetadata(),
+  }) {
+    final bytes = utf8.encode(exportKml(parcel, metadata: metadata));
     final archive = Archive()
       ..addFile(ArchiveFile('doc.kml', bytes.length, bytes));
     final encoded = ZipEncoder().encode(archive);
@@ -364,12 +389,35 @@ class KmlInterchangeCodec {
     return AgricoKmlMetadata(values);
   }
 
-  static void _writeExtendedData(XmlBuilder builder, LandParcel parcel) {
-    final values = <String, Object>{
+  static void _writeExtendedData(
+    XmlBuilder builder,
+    LandParcel parcel,
+    LandParcelExchangeMetadata metadata,
+  ) {
+    final household = metadata.household;
+    final landUse = metadata.landUseProfile;
+    final values = <String, Object?>{
       '${AgricoKmlMetadata.prefix}parcelId': parcel.id,
       '${AgricoKmlMetadata.prefix}parcelCode': parcel.parcelCode,
       '${AgricoKmlMetadata.prefix}parcelName': parcel.name,
       '${AgricoKmlMetadata.prefix}farmId': parcel.farmId,
+      '${AgricoKmlMetadata.prefix}householdId': parcel.ownerHouseholdId,
+      '${AgricoKmlMetadata.prefix}householdCode': household?.householdCode,
+      '${AgricoKmlMetadata.prefix}ownerName': household?.headOfHouseholdName,
+      '${AgricoKmlMetadata.prefix}country':
+          household?.administrativeLocation.countryName,
+      '${AgricoKmlMetadata.prefix}province':
+          household?.administrativeLocation.provinceName,
+      '${AgricoKmlMetadata.prefix}district':
+          household?.administrativeLocation.districtName,
+      '${AgricoKmlMetadata.prefix}village':
+          household?.administrativeLocation.villageName,
+      '${AgricoKmlMetadata.prefix}landUse': landUse?.landUseType.name,
+      '${AgricoKmlMetadata.prefix}currentCondition':
+          landUse?.currentCondition.name,
+      '${AgricoKmlMetadata.prefix}clearingStatus': landUse?.clearingStatus.name,
+      '${AgricoKmlMetadata.prefix}readinessStatus':
+          landUse?.readinessStatus.name,
       '${AgricoKmlMetadata.prefix}areaM2': parcel.areaM2,
       '${AgricoKmlMetadata.prefix}areaHa': parcel.areaHa,
       '${AgricoKmlMetadata.prefix}perimeterM': parcel.perimeterM,
@@ -382,7 +430,9 @@ class KmlInterchangeCodec {
     builder.element(
       'ExtendedData',
       nest: () {
-        for (final entry in values.entries) {
+        for (final entry in values.entries.where(
+          (entry) => entry.value != null,
+        )) {
           builder.element(
             'Data',
             attributes: {'name': entry.key},
