@@ -23,6 +23,28 @@ abstract final class PermissionCodes {
   static const chatSend = 'chat.send';
   static const cloudSync = 'cloud.sync';
   static const cloudRestore = 'cloud.restore';
+
+  static const values = <String>{
+    fieldView,
+    fieldCreate,
+    fieldEdit,
+    fieldDelete,
+    fieldMeasure,
+    fieldBoundaryEdit,
+    fieldBoundaryVerify,
+    fieldGoogleEarthImport,
+    fieldGoogleEarthExport,
+    taskView,
+    taskCreate,
+    taskEdit,
+    taskAssign,
+    taskComplete,
+    taskVerify,
+    chatView,
+    chatSend,
+    cloudSync,
+    cloudRestore,
+  };
 }
 
 class AuthorizationSubject {
