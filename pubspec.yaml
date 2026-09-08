@@ -9,11 +9,13 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   sqflite: ^2.3.0
   path: ^1.9.1
   path_provider: ^2.1.6
   shared_preferences: ^2.5.3
-  intl: ^0.18.1
+  intl: ^0.20.3
   google_maps_flutter: ^2.5.3
   location: ^9.0.0
   geolocator: ^10.1.0
