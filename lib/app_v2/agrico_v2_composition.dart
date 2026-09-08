@@ -1,0 +1,282 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../core/localization/app_localizations.dart';
+import '../core/permissions/authorization.dart';
+import '../features/farm/application/land_parcel_application_service.dart';
+import '../features/farm/application/land_parcel_use_cases.dart';
+import '../features/farm/data/legacy/land_parcel_legacy_migration.dart';
+import '../features/farm/data/legacy/legacy_field_adapter.dart';
+import '../features/farm/data/local/sqlite_land_parcel_repository.dart';
+import '../features/farm/data/local/sqlite_land_survey_repository.dart';
+import '../features/farm/domain/entities/land_parcel.dart';
+import '../features/farm/domain/geometry/wgs84_geometry.dart';
+import '../features/farm/presentation/controllers/land_parcel_controller.dart';
+import '../features/farm/presentation/platform/land_parcel_platform_io.dart';
+import '../features/farm/presentation/screens/land_parcel_detail_screen.dart';
+import '../features/farm/presentation/screens/land_parcel_form_screen.dart';
+import '../features/farm/presentation/screens/land_parcel_list_screen.dart';
+import '../features/farm/presentation/widgets/boundary_workflow_widgets.dart';
+import '../models/field_model.dart';
+import '../providers/field_provider.dart';
+import '../providers/production_season_provider.dart';
+import '../providers/task_provider.dart';
+import '../screens/ai_chat_screen.dart';
+import '../screens/employee_list_screen.dart';
+import '../screens/field_gps_measure_screen.dart';
+import '../screens/finance_screen.dart';
+import '../screens/fuel_screen.dart';
+import '../screens/machine_list_screen.dart';
+import '../screens/report_screen.dart';
+import '../screens/settings_screen.dart';
+import '../screens/task_screen.dart';
+import '../screens/warehouse_screen.dart';
+import '../services/field_database.dart';
+import 'agrico_app_shell.dart';
+
+class AgricoV2Root extends StatefulWidget {
+  const AgricoV2Root({super.key, required this.userId});
+  final String userId;
+  @override
+  State<AgricoV2Root> createState() => _AgricoV2RootState();
+}
+
+class _AgricoV2RootState extends State<AgricoV2Root> {
+  late final Future<_V2Dependencies> dependencies = _bootstrap();
+
+  Future<_V2Dependencies> _bootstrap() async {
+    final sharedDatabase = FieldDatabase();
+    final database = await sharedDatabase.database;
+    await SqliteLandSurveyRepository.createSchema(database);
+    final parcels = SqliteLandParcelRepository(database);
+    final legacyFields = await sharedDatabase.getAll();
+    await const LandParcelLegacyMigration().migrate(
+      legacyRecords: legacyFields,
+      policy: LegacyFieldMigrationPolicy(
+        farmId: 'local-farm',
+        actorMembershipId: 'local-membership',
+        occurredAt: DateTime.now().toUtc(),
+        parcelCode: (field) => field.id,
+        isActive: (_) => true,
+        boundarySource: (field) => switch (field.measurementMethod) {
+          'gps' => BoundarySource.gps,
+          'manual' => BoundarySource.manual,
+          _ => BoundarySource.imported,
+        },
+        verificationStatus: (_) => BoundaryVerificationStatus.draft,
+      ),
+      repository: parcels,
+    );
+    final subject = AuthorizationSubject(
+      userId: widget.userId.isEmpty ? 'local-user' : widget.userId,
+      membershipId: 'local-membership',
+      farmId: 'local-farm',
+      permissionCodes: PermissionCodes.values,
+      dataScopes: const {DataScope.allFarm},
+    );
+    final application = LandParcelApplicationService(repository: parcels);
+    const platform = MobileLandParcelPlatformGateway();
+    return _V2Dependencies(
+      subject: subject,
+      controller: LandParcelController(
+        subject: subject,
+        parcels: parcels,
+        surveys: SqliteLandSurveyRepository(database),
+        createLandParcel: CreateLandParcel(application),
+        updateMetadata: UpdateLandParcelMetadata(application),
+        completeGpsMeasurement: CompleteGpsMeasurement(application),
+        importPreview: ImportKmlKmzPreview(application),
+        applyImportedBoundary: ApplyImportedBoundary(application),
+        exportKmlKmz: ExportKmlKmz(application),
+        fileOpener: platform,
+      ),
+      platform: platform,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<_V2Dependencies>(
+    future: dependencies,
+    builder: (context, snapshot) {
+      if (snapshot.hasError) {
+        return _StartupError(error: snapshot.error!);
+      }
+      if (!snapshot.hasData) {
+        return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      }
+      final deps = snapshot.data!;
+      void push(Widget page) =>
+          Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+      late final VoidCallback openParcels;
+      Widget detail(String id) => LandParcelDetailScreen(
+        controller: deps.controller,
+        parcelId: id,
+        onGpsRequested: () => _measureGps(context, deps, id),
+        onImportRequested: () => _import(context, deps, id),
+      );
+      openParcels = () => push(
+        LandParcelListScreen(
+          controller: deps.controller,
+          onCreate: () => _createParcel(context),
+          detailBuilder: (_, id) => detail(id),
+        ),
+      );
+      final legacy = <String, VoidCallback>{
+        'machines': () => push(const MachineListScreen()),
+        'employees': () => push(const EmployeeListScreen()),
+        'finance': () => push(const FinanceScreen()),
+        'warehouse': () => push(const WarehouseScreen()),
+        'fuel': () => push(const FuelScreen()),
+        'tasks': () => push(const TaskScreen()),
+        'ai': () => push(const AiChatScreen()),
+        'reports': () => push(const ReportScreen()),
+        'settings': () => push(const SettingsPage()),
+      };
+      return AgricoAppShell(
+        subject: deps.subject,
+        landParcelController: deps.controller,
+        openLandParcels: openParcels,
+        openCreateParcel: () => _createParcel(context),
+        legacyRoutes: legacy,
+        parcelCount: context.watch<FieldProvider>().isLoading
+            ? null
+            : context.watch<FieldProvider>().fields.length,
+        seasonCount: context.watch<ProductionSeasonProvider>().isLoading
+            ? null
+            : context.watch<ProductionSeasonProvider>().allSeasons.length,
+        taskCount: context.watch<TaskProvider>().tasks.length,
+      );
+    },
+  );
+
+  Future<void> _measureGps(
+    BuildContext context,
+    _V2Dependencies deps,
+    String parcelId,
+  ) async {
+    final measured = await Navigator.of(context).push<FieldModel>(
+      MaterialPageRoute(builder: (_) => const FieldGpsMeasureScreen()),
+    );
+    if (!context.mounted || measured == null) return;
+    final parcel = await deps.controller.parcels.getById(
+      farmId: deps.subject.farmId,
+      id: parcelId,
+    );
+    if (!context.mounted || parcel == null) return;
+    final vertices = measured.polygon
+        .map(
+          (point) =>
+              Wgs84Vertex(latitude: point.latitude, longitude: point.longitude),
+        )
+        .toList();
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(),
+          body: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: GpsBoundaryPreview(
+                controller: deps.controller,
+                parcel: parcel,
+                completedVertices: vertices,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _import(
+    BuildContext context,
+    _V2Dependencies deps,
+    String parcelId,
+  ) async {
+    try {
+      final selected = await deps.platform.pickKmlOrKmz();
+      if (!context.mounted || selected == null) return;
+      final result = selected.isKmz
+          ? deps.controller.previewKmz(selected.bytes)
+          : deps.controller.previewKml(utf8.decode(selected.bytes));
+      final parcel = await deps.controller.parcels.getById(
+        farmId: deps.subject.farmId,
+        id: parcelId,
+      );
+      if (!context.mounted ||
+          !result.isSuccess ||
+          result.value == null ||
+          parcel == null) {
+        return;
+      }
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => Scaffold(
+            appBar: AppBar(),
+            body: KmlImportPreviewView(
+              controller: deps.controller,
+              parcel: parcel,
+              preview: result.value!.previews.first,
+            ),
+          ),
+        ),
+      );
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(context.l10n.text('landParcel.import.failed')),
+          ),
+        );
+      }
+    }
+  }
+
+  void _createParcel(BuildContext context) => Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => LandParcelFormScreen(
+        onSubmit: (_) async {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(context.l10n.text('parcel.boundaryRequired')),
+              ),
+            );
+          }
+        },
+      ),
+    ),
+  );
+}
+
+class _V2Dependencies {
+  const _V2Dependencies({
+    required this.subject,
+    required this.controller,
+    required this.platform,
+  });
+  final AuthorizationSubject subject;
+  final LandParcelController controller;
+  final MobileLandParcelPlatformGateway platform;
+}
+
+class _StartupError extends StatelessWidget {
+  const _StartupError({required this.error});
+  final Object error;
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: SafeArea(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            '${context.l10n.text('startup.error')}\n$error',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ),
+    ),
+  );
+}

@@ -301,6 +301,13 @@ void main() {
     expect(find.text('This file has no AGRICO metadata.'), findsOneWidget);
     expect(value.boundaryVersion, before);
   });
+
+  test('open in Google Earth unavailable path is safe and localized', () async {
+    final value = controller();
+    expect(await value.openInGoogleEarth('parcel-1'), isFalse);
+    expect(value.phase, ParcelPresentationPhase.persistenceError);
+    expect(value.messageKey, 'googleEarth.openUnavailable');
+  });
 }
 
 class _MemoryParcelRepository implements LandParcelRepository {

@@ -298,6 +298,30 @@ class LandParcelController extends ChangeNotifier {
     return opened;
   }
 
+  Future<bool> exportAndOpen(
+    String parcelId,
+    LandParcelInterchangeFormat format,
+  ) async {
+    final opener = fileOpener;
+    if (opener == null) {
+      _phase(ParcelPresentationPhase.persistenceError, 'export.unavailable');
+      return false;
+    }
+    final result = await export(parcelId, format);
+    final value = result.value;
+    if (!result.isSuccess || value == null) return false;
+    final bytes =
+        value.bytes ?? Uint8List.fromList(utf8.encode(value.text ?? ''));
+    final opened = await opener.open(fileName: value.fileName, bytes: bytes);
+    _phase(
+      opened
+          ? ParcelPresentationPhase.success
+          : ParcelPresentationPhase.persistenceError,
+      opened ? 'landParcel.export.success' : 'export.unavailable',
+    );
+    return opened;
+  }
+
   void _result(LandParcelApplicationResult<Object?> result) {
     messageKey = result.messageKey;
     phase = switch (result.status) {

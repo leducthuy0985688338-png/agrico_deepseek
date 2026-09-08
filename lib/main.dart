@@ -7,6 +7,7 @@ import 'core/localization/app_locale_controller.dart';
 import 'core/localization/app_localizations.dart';
 import 'theme/app_theme.dart';
 import 'services/cloud_service.dart';
+import 'app_v2/agrico_v2_composition.dart';
 
 // ====== IMPORT CÁC MÀN HÌNH ======
 import 'screens/warehouse_screen.dart';
@@ -44,7 +45,9 @@ Future<void> main() async {
 
 // ====== APP CHÍNH ======
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, this.homeOverride});
+
+  final Widget? homeOverride;
 
   @override
   Widget build(BuildContext context) {
@@ -106,7 +109,7 @@ class MyApp extends StatelessWidget {
             GlobalCupertinoLocalizations.delegate,
           ],
           theme: AppTheme.lightTheme,
-          home: const LoginScreen(),
+          home: homeOverride ?? const LoginScreen(),
           debugShowCheckedModeBanner: false,
         ),
       ),
@@ -244,7 +247,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         Navigator.pushReplacement(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const DashboardScreen(),
+                            builder: (context) => AgricoV2Root(
+                              userId: emailController.text.trim(),
+                            ),
                           ),
                         );
                       });

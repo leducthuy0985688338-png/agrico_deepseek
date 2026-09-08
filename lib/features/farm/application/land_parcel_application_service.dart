@@ -413,12 +413,12 @@ class LandParcelApplicationService {
         format == LandParcelInterchangeFormat.kml
             ? LandParcelExport(
                 format: format,
-                fileName: '$safeCode.kml',
+                fileName: 'AGRICO_$safeCode.kml',
                 text: interchange.exportKml(parcel),
               )
             : LandParcelExport(
                 format: format,
-                fileName: '$safeCode.kmz',
+                fileName: 'AGRICO_$safeCode.kmz',
                 bytes: interchange.exportKmz(parcel),
               ),
         'landParcel.export.success',

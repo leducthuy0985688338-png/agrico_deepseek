@@ -214,14 +214,14 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
                   parcelId: parcel.id,
                 )) ...[
                   OutlinedButton(
-                    onPressed: () => controller.export(
+                    onPressed: () => controller.exportAndOpen(
                       parcel.id,
                       LandParcelInterchangeFormat.kml,
                     ),
                     child: Text(l10n.text('googleEarth.exportKml')),
                   ),
                   OutlinedButton(
-                    onPressed: () => controller.export(
+                    onPressed: () => controller.exportAndOpen(
                       parcel.id,
                       LandParcelInterchangeFormat.kmz,
                     ),

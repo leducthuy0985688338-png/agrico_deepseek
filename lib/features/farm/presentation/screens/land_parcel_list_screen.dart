@@ -11,9 +11,11 @@ class LandParcelListScreen extends StatefulWidget {
     super.key,
     required this.controller,
     this.onCreate,
+    this.detailBuilder,
   });
   final LandParcelController controller;
   final VoidCallback? onCreate;
+  final Widget Function(BuildContext context, String parcelId)? detailBuilder;
 
   @override
   State<LandParcelListScreen> createState() => _LandParcelListScreenState();
@@ -165,10 +167,15 @@ class _LandParcelListScreenState extends State<LandParcelListScreen> {
                 ),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => LandParcelDetailScreen(
-                      controller: controller,
-                      parcelId: item.parcel.id,
-                    ),
+                    builder: (routeContext) =>
+                        widget.detailBuilder?.call(
+                          routeContext,
+                          item.parcel.id,
+                        ) ??
+                        LandParcelDetailScreen(
+                          controller: controller,
+                          parcelId: item.parcel.id,
+                        ),
                   ),
                 ),
               ),

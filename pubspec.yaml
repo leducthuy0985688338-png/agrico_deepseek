@@ -24,6 +24,7 @@ dependencies:
   image_picker: ^1.0.5
   excel: ^4.0.6
   open_file: ^4.0.0
+  file_picker: ^8.1.7
   fl_chart: ^0.68.0
   cloud_firestore: ^5.6.3
   firebase_core: ^3.10.0

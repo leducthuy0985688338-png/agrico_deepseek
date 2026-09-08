@@ -9,10 +9,15 @@ import '../models/distance_measurement.dart';
 import '../models/field_measurement_history.dart';
 import '../models/field_model.dart';
 import '../features/farm/data/local/sqlite_land_parcel_repository.dart';
+import '../features/farm/data/local/sqlite_land_survey_repository.dart';
 
 class FieldDatabase {
+  factory FieldDatabase() => _instance;
+  FieldDatabase._();
+  static final FieldDatabase _instance = FieldDatabase._();
+
   static const _databaseName = 'agrico.db';
-  static const _databaseVersion = 5;
+  static const _databaseVersion = 6;
   static const _table = 'fields';
   static const _historyTable = 'field_measurement_history';
   static const _distanceTable = 'distance_measurements';
@@ -48,7 +53,7 @@ class FieldDatabase {
         );
         await _createHistoryTable(db);
         await _createDistanceTable(db);
-        await SqliteLandParcelRepository.createSchema(db);
+        await SqliteLandSurveyRepository.createSchema(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -65,6 +70,9 @@ class FieldDatabase {
         if (oldVersion < 4) await _createDistanceTable(db);
         if (oldVersion < 5) {
           await SqliteLandParcelRepository.createSchema(db);
+        }
+        if (oldVersion < 6) {
+          await SqliteLandSurveyRepository.createSchema(db);
         }
       },
     );
