@@ -66,13 +66,15 @@ class LandParcel {
     required this.verificationStatus,
     required this.boundaryVersion,
     required List<LandParcelBoundaryVersion> boundaryHistory,
+    Map<String, Object?> legacyMetadata = const {},
     this.ownerHouseholdId,
     this.ownerDisplayName,
     this.horizontalAccuracyM,
     this.measuredAt,
     this.measuredBy,
     this.boundaryConfidence,
-  }) : boundaryHistory = UnmodifiableListView(boundaryHistory);
+  }) : boundaryHistory = UnmodifiableListView(boundaryHistory),
+       legacyMetadata = UnmodifiableMapView(legacyMetadata);
 
   factory LandParcel.create({
     required String id,
@@ -90,6 +92,7 @@ class LandParcel {
     double? horizontalAccuracyM,
     double? boundaryConfidence,
     String? note,
+    Map<String, Object?> legacyMetadata = const {},
   }) {
     _requireIdentity(id, farmId, parcelCode, name, actorMembershipId);
     final metrics = const Wgs84GeometryService().measure(boundary);
@@ -131,6 +134,78 @@ class LandParcel {
       boundaryConfidence: boundaryConfidence,
       boundaryVersion: 1,
       boundaryHistory: [version],
+      legacyMetadata: legacyMetadata,
+    );
+  }
+
+  factory LandParcel.rehydrate({
+    required String id,
+    required String farmId,
+    required String parcelCode,
+    required String name,
+    required bool active,
+    required DateTime createdAt,
+    required String createdBy,
+    required DateTime updatedAt,
+    required String updatedBy,
+    required int schemaVersion,
+    required Wgs84Polygon boundary,
+    required Wgs84Vertex centroid,
+    required double areaM2,
+    required double perimeterM,
+    required BoundarySource boundarySource,
+    required BoundaryVerificationStatus verificationStatus,
+    required int boundaryVersion,
+    required List<LandParcelBoundaryVersion> boundaryHistory,
+    String? ownerHouseholdId,
+    String? ownerDisplayName,
+    double? horizontalAccuracyM,
+    DateTime? measuredAt,
+    String? measuredBy,
+    double? boundaryConfidence,
+    Map<String, Object?> legacyMetadata = const {},
+  }) {
+    _requireIdentity(id, farmId, parcelCode, name, createdBy);
+    if (schemaVersion <= 0 ||
+        boundaryVersion <= 0 ||
+        areaM2 <= 0 ||
+        perimeterM <= 0) {
+      throw const FormatException('Land parcel persisted values are invalid.');
+    }
+    final matchingVersion = boundaryHistory.any(
+      (item) => item.parcelId == id && item.version == boundaryVersion,
+    );
+    if (!matchingVersion) {
+      throw const FormatException(
+        'Current boundary version is missing from immutable history.',
+      );
+    }
+    return LandParcel._(
+      id: id,
+      farmId: farmId,
+      parcelCode: parcelCode,
+      name: name,
+      ownerHouseholdId: ownerHouseholdId,
+      ownerDisplayName: ownerDisplayName,
+      active: active,
+      createdAt: createdAt,
+      createdBy: createdBy,
+      updatedAt: updatedAt,
+      updatedBy: updatedBy,
+      schemaVersion: schemaVersion,
+      boundary: boundary,
+      centroid: centroid,
+      areaM2: areaM2,
+      perimeterM: perimeterM,
+      boundarySource: boundarySource,
+      horizontalAccuracyM: horizontalAccuracyM,
+      measuredAt: measuredAt,
+      measuredBy: measuredBy,
+      verificationStatus: verificationStatus,
+      boundaryConfidence: boundaryConfidence,
+      boundaryVersion: boundaryVersion,
+      boundaryHistory: boundaryHistory,
+      legacyMetadata: legacyMetadata,
     );
   }
 
@@ -160,6 +235,7 @@ class LandParcel {
   final double? boundaryConfidence;
   final int boundaryVersion;
   final UnmodifiableListView<LandParcelBoundaryVersion> boundaryHistory;
+  final UnmodifiableMapView<String, Object?> legacyMetadata;
 
   double get areaHa => areaM2 / 10000;
 
@@ -227,6 +303,7 @@ class LandParcel {
       boundaryConfidence: boundaryConfidence,
       boundaryVersion: nextVersion,
       boundaryHistory: history,
+      legacyMetadata: legacyMetadata,
     );
   }
 
