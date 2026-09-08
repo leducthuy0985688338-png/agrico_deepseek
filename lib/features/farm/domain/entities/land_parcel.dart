@@ -239,6 +239,49 @@ class LandParcel {
 
   double get areaHa => areaM2 / 10000;
 
+  LandParcel updateMetadata({
+    String? parcelCode,
+    String? name,
+    String? ownerHouseholdId,
+    String? ownerDisplayName,
+    bool? active,
+    required String actorMembershipId,
+    required DateTime occurredAt,
+  }) {
+    final nextCode = parcelCode ?? this.parcelCode;
+    final nextName = name ?? this.name;
+    _requireIdentity(id, farmId, nextCode, nextName, actorMembershipId);
+    return _copyWith(
+      parcelCode: nextCode,
+      name: nextName,
+      ownerHouseholdId: ownerHouseholdId ?? this.ownerHouseholdId,
+      ownerDisplayName: ownerDisplayName ?? this.ownerDisplayName,
+      active: active ?? this.active,
+      updatedAt: occurredAt,
+      updatedBy: actorMembershipId,
+    );
+  }
+
+  LandParcel verifyBoundary({
+    required BoundaryVerificationStatus status,
+    required String actorMembershipId,
+    required DateTime occurredAt,
+  }) {
+    if (status != BoundaryVerificationStatus.verified &&
+        status != BoundaryVerificationStatus.rejected) {
+      throw ArgumentError.value(
+        status,
+        'status',
+        'Verification can only resolve to verified or rejected.',
+      );
+    }
+    return _copyWith(
+      verificationStatus: status,
+      updatedAt: occurredAt,
+      updatedBy: actorMembershipId,
+    );
+  }
+
   LandParcel replaceBoundary({
     required Wgs84Polygon boundary,
     required BoundarySource source,
@@ -333,6 +376,43 @@ class LandParcel {
       allowVerifiedReplacement: allowVerifiedReplacement,
     );
   }
+
+  LandParcel _copyWith({
+    String? parcelCode,
+    String? name,
+    String? ownerHouseholdId,
+    String? ownerDisplayName,
+    bool? active,
+    DateTime? updatedAt,
+    String? updatedBy,
+    BoundaryVerificationStatus? verificationStatus,
+  }) => LandParcel._(
+    id: id,
+    farmId: farmId,
+    parcelCode: parcelCode ?? this.parcelCode,
+    name: name ?? this.name,
+    ownerHouseholdId: ownerHouseholdId ?? this.ownerHouseholdId,
+    ownerDisplayName: ownerDisplayName ?? this.ownerDisplayName,
+    active: active ?? this.active,
+    createdAt: createdAt,
+    createdBy: createdBy,
+    updatedAt: updatedAt ?? this.updatedAt,
+    updatedBy: updatedBy ?? this.updatedBy,
+    schemaVersion: schemaVersion,
+    boundary: boundary,
+    centroid: centroid,
+    areaM2: areaM2,
+    perimeterM: perimeterM,
+    boundarySource: boundarySource,
+    horizontalAccuracyM: horizontalAccuracyM,
+    measuredAt: measuredAt,
+    measuredBy: measuredBy,
+    verificationStatus: verificationStatus ?? this.verificationStatus,
+    boundaryConfidence: boundaryConfidence,
+    boundaryVersion: boundaryVersion,
+    boundaryHistory: boundaryHistory,
+    legacyMetadata: legacyMetadata,
+  );
 
   static LandParcelBoundaryVersion _buildVersion({
     required String parcelId,
