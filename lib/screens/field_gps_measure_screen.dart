@@ -7,7 +7,12 @@ import '../providers/field_provider.dart';
 import '../services/gps_field_service.dart';
 
 class FieldGpsMeasureScreen extends StatefulWidget {
-  const FieldGpsMeasureScreen({super.key});
+  const FieldGpsMeasureScreen({
+    super.key,
+    this.persistResult = true,
+  });
+
+  final bool persistResult;
   @override
   State<FieldGpsMeasureScreen> createState() => _FieldGpsMeasureScreenState();
 }
@@ -58,7 +63,19 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
   void _undoLastPoint() { if (_points.isNotEmpty && !_saving) setState(() => _points.removeLast()); }
 
   Future<void> _saveField() async {
-    if (_saving || _points.length < 3 || _area <= 1) return;
+    if (_saving) return;
+    if (_points.length < 3 || _area <= 1) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Ranh giới GPS chưa hợp lệ. Hãy di chuyển quanh khu đất để tạo ít nhất 3 điểm khác nhau và diện tích lớn hơn 1 m².',
+            ),
+          ),
+        );
+      }
+      return;
+    }
     final accuracy = _lastPosition?.accuracy;
     if (accuracy != null && accuracy > 20) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('GPS đang sai số ${accuracy.toStringAsFixed(1)} m. Hãy chờ tín hiệu tốt hơn.')));
@@ -100,7 +117,9 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
       gpsAccuracy: accuracy,
       measuredAt: DateTime.now().toUtc(),
     );
-    _fieldProvider.addField(field);
+    if (widget.persistResult) {
+      _fieldProvider.addField(field);
+    }
     if (!mounted) return;
     setState(() => _saving = false);
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã lưu thửa GPS vào AGRICO.')));

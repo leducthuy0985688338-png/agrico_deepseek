@@ -191,6 +191,56 @@ class LandParcelController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<LandParcelApplicationResult<LandParcel>> create({
+    required String id,
+    required String parcelCode,
+    required String name,
+    required List<Wgs84Vertex> vertices,
+    required BoundarySource source,
+    String? ownerHouseholdId,
+    String? ownerDisplayName,
+    double? horizontalAccuracyM,
+    double? boundaryConfidence,
+    Map<String, Object?> legacyMetadata = const {},
+  }) async {
+    if (vertices.length < 3) {
+      return const LandParcelApplicationResult.failure(
+        LandParcelApplicationStatus.validationFailed,
+        'landParcel.geometry.invalid',
+      );
+    }
+
+    _phase(ParcelPresentationPhase.saving);
+
+    final result = await createLandParcel(
+      subject,
+      CreateLandParcelCommand(
+        id: id,
+        farmId: subject.farmId,
+        parcelCode: parcelCode,
+        name: name,
+        vertices: vertices,
+        source: source,
+        actorMembershipId: subject.membershipId,
+        occurredAt: DateTime.now().toUtc(),
+        ownerHouseholdId: ownerHouseholdId,
+        ownerDisplayName: ownerDisplayName,
+        horizontalAccuracyM: horizontalAccuracyM,
+        boundaryConfidence: boundaryConfidence,
+        legacyMetadata: legacyMetadata,
+      ),
+    );
+
+    _result(result);
+
+    if (result.isSuccess && result.value != null) {
+      await loadList();
+      await loadDetail(result.value!.id);
+    }
+
+    return result;
+  }
+
   Future<LandParcelApplicationResult<LandParcel>> applyGps({
     required String parcelId,
     required List<Wgs84Vertex> vertices,

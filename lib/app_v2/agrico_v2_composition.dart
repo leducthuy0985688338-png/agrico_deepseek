@@ -119,7 +119,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       openParcels = () => push(
         LandParcelListScreen(
           controller: deps.controller,
-          onCreate: () => _createParcel(context),
+          onCreate: () => _createParcel(context, deps),
           detailBuilder: (_, id) => detail(id),
         ),
       );
@@ -138,7 +138,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         subject: deps.subject,
         landParcelController: deps.controller,
         openLandParcels: openParcels,
-        openCreateParcel: () => _createParcel(context),
+        openCreateParcel: () => _createParcel(context, deps),
         legacyRoutes: legacy,
         parcelCount: context.watch<FieldProvider>().isLoading
             ? null
@@ -234,21 +234,147 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     }
   }
 
-  void _createParcel(BuildContext context) => Navigator.of(context).push(
+  void _createParcel(
+    BuildContext context,
+    _V2Dependencies deps,
+  ) => Navigator.of(context).push(
     MaterialPageRoute(
       builder: (_) => LandParcelFormScreen(
-        onSubmit: (_) async {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(context.l10n.text('parcel.boundaryRequired')),
-              ),
-            );
+        onGpsRequested: () => _measureGpsForCreate(context),
+        onImportRequested: () => _importForCreate(context, deps),
+        onSubmit: (value) async {
+          final draft = value.boundaryDraft;
+          if (draft == null) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(context.l10n.text('parcel.boundaryRequired')),
+                ),
+              );
+            }
+            return;
           }
+
+          final id = 'parcel-${DateTime.now().toUtc().microsecondsSinceEpoch}';
+          final result = await deps.controller.create(
+            id: id,
+            parcelCode: value.parcelCode,
+            name: value.name,
+            vertices: draft.boundary.vertices.toList(),
+            source: draft.source,
+            ownerDisplayName: value.ownerName.isEmpty ? null : value.ownerName,
+            legacyMetadata: {
+              'active': value.active,
+              'country': value.country,
+              'province': value.province,
+              'district': value.district,
+              'village': value.village,
+              'householdCode': value.householdCode,
+              'phone': value.phone,
+              'alternativeContact': value.alternativeContact,
+            },
+          );
+
+          if (!context.mounted) return;
+          if (!result.isSuccess || result.value == null) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(result.messageKey)));
+            return;
+          }
+
+          Navigator.of(context).pop();
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => LandParcelDetailScreen(
+                controller: deps.controller,
+                parcelId: result.value!.id,
+                onGpsRequested: () =>
+                    _measureGps(context, deps, result.value!.id),
+                onImportRequested: () =>
+                    _import(context, deps, result.value!.id),
+              ),
+            ),
+          );
         },
       ),
     ),
   );
+
+  Future<LandParcelBoundaryDraft?> _measureGpsForCreate(
+    BuildContext context,
+  ) async {
+    final measured = await Navigator.of(context).push<FieldModel>(
+      MaterialPageRoute(
+        builder: (_) => const FieldGpsMeasureScreen(persistResult: false),
+      ),
+    );
+    if (!context.mounted || measured == null) return null;
+
+    try {
+      final vertices = measured.polygon
+          .map(
+            (point) => Wgs84Vertex(
+              latitude: point.latitude,
+              longitude: point.longitude,
+            ),
+          )
+          .toList();
+      return LandParcelBoundaryDraft(
+        boundary: Wgs84Polygon.fromVertices(vertices),
+        source: BoundarySource.gps,
+      );
+    } on FormatException {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.text('parcel.boundaryRequired'))),
+        );
+      }
+      return null;
+    }
+  }
+
+  Future<LandParcelBoundaryDraft?> _importForCreate(
+    BuildContext context,
+    _V2Dependencies deps,
+  ) async {
+    try {
+      final selected = await deps.platform.pickKmlOrKmz();
+      if (!context.mounted || selected == null) return null;
+
+      final result = selected.isKmz
+          ? deps.controller.previewKmz(selected.bytes)
+          : deps.controller.previewKml(utf8.decode(selected.bytes));
+
+      if (!result.isSuccess ||
+          result.value == null ||
+          result.value!.previews.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(context.l10n.text('landParcel.import.failed')),
+            ),
+          );
+        }
+        return null;
+      }
+
+      final preview = result.value!.previews.first;
+      return LandParcelBoundaryDraft(
+        boundary: preview.boundary,
+        source: BoundarySource.googleEarth,
+      );
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(context.l10n.text('landParcel.import.failed')),
+          ),
+        );
+      }
+      return null;
+    }
+  }
 }
 
 class _V2Dependencies {

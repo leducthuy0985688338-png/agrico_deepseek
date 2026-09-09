@@ -3,6 +3,16 @@ import 'package:flutter/material.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../domain/entities/land_parcel.dart';
 import '../../domain/entities/land_survey.dart';
+import '../../domain/geometry/wgs84_geometry.dart';
+
+class LandParcelBoundaryDraft {
+  LandParcelBoundaryDraft({required this.boundary, required this.source})
+    : metrics = const Wgs84GeometryService().measure(boundary);
+
+  final Wgs84Polygon boundary;
+  final BoundarySource source;
+  final Wgs84PolygonMetrics metrics;
+}
 
 class LandParcelFormValue {
   const LandParcelFormValue({
@@ -18,6 +28,7 @@ class LandParcelFormValue {
     required this.phone,
     required this.alternativeContact,
     required this.crops,
+    this.boundaryDraft,
   });
   final String parcelCode;
   final String name;
@@ -31,6 +42,7 @@ class LandParcelFormValue {
   final String phone;
   final String alternativeContact;
   final List<CropRecord> crops;
+  final LandParcelBoundaryDraft? boundaryDraft;
 }
 
 class LandParcelFormScreen extends StatefulWidget {
@@ -43,6 +55,9 @@ class LandParcelFormScreen extends StatefulWidget {
     this.surveys = const [],
     this.attachments = const [],
     this.onAddAttachment,
+    this.boundaryDraft,
+    this.onGpsRequested,
+    this.onImportRequested,
     required this.onSubmit,
   });
   final LandParcel? parcel;
@@ -52,6 +67,9 @@ class LandParcelFormScreen extends StatefulWidget {
   final List<LandParcelSurvey> surveys;
   final List<ParcelAttachment> attachments;
   final VoidCallback? onAddAttachment;
+  final LandParcelBoundaryDraft? boundaryDraft;
+  final Future<LandParcelBoundaryDraft?> Function()? onGpsRequested;
+  final Future<LandParcelBoundaryDraft?> Function()? onImportRequested;
   final Future<void> Function(LandParcelFormValue value) onSubmit;
 
   @override
@@ -68,6 +86,7 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
   late LandCondition landCondition;
   late ClearingStatus clearingStatus;
   late ReadinessStatus readinessStatus;
+  LandParcelBoundaryDraft? boundaryDraft;
 
   @override
   void initState() {
@@ -98,6 +117,7 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
     clearingStatus = widget.landUse?.clearingStatus ?? ClearingStatus.unknown;
     readinessStatus =
         widget.landUse?.readinessStatus ?? ReadinessStatus.unknown;
+    boundaryDraft = boundaryDraft;
   }
 
   @override
@@ -152,19 +172,60 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
               _field('contact', l10n.text('household.alternativeContact')),
             ]),
             _section(context, l10n.text('parcel.section.boundary'), [
+              if (parcel == null) ...[
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      key: const Key('create-boundary-gps'),
+                      onPressed: widget.onGpsRequested == null
+                          ? null
+                          : _requestGps,
+                      icon: const Icon(Icons.gps_fixed),
+                      label: Text(l10n.text('gps.start')),
+                    ),
+                    OutlinedButton.icon(
+                      key: const Key('create-boundary-import'),
+                      onPressed: widget.onImportRequested == null
+                          ? null
+                          : _requestImport,
+                      icon: const Icon(Icons.file_open),
+                      label: const Text('KML/KMZ'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
+              if (boundaryDraft != null)
+                _readOnly(
+                  l10n.text('boundary.source'),
+                  l10n.text('boundary.source.${boundaryDraft!.source.name}'),
+                  'boundary-source-readonly',
+                ),
               _readOnly(
                 l10n.text('geometry.areaM2'),
-                parcel == null ? '—' : '${parcel.areaM2.toStringAsFixed(1)} m²',
+                boundaryDraft != null
+                    ? '${boundaryDraft!.metrics.areaM2.toStringAsFixed(1)} m²'
+                    : parcel == null
+                    ? '—'
+                    : '${parcel.areaM2.toStringAsFixed(1)} m²',
                 'area-readonly',
               ),
               _readOnly(
                 l10n.text('geometry.areaHa'),
-                parcel == null ? '—' : '${parcel.areaHa.toStringAsFixed(3)} ha',
+                boundaryDraft != null
+                    ? '${boundaryDraft!.metrics.areaHa.toStringAsFixed(3)} ha'
+                    : parcel == null
+                    ? '—'
+                    : '${parcel.areaHa.toStringAsFixed(3)} ha',
                 'area-ha-readonly',
               ),
               _readOnly(
                 l10n.text('geometry.perimeter'),
-                parcel == null
+                boundaryDraft != null
+                    ? '${boundaryDraft!.metrics.perimeterM.toStringAsFixed(1)} m'
+                    : parcel == null
                     ? '—'
                     : '${parcel.perimeterM.toStringAsFixed(1)} m',
                 'perimeter-readonly',
@@ -194,12 +255,14 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
                 ClearingStatus.values,
                 'clearing',
                 (value) => setState(() => clearingStatus = value),
+                labelKey: 'survey.clearingStatus',
               ),
               _enumField<ReadinessStatus>(
                 readinessStatus,
                 ReadinessStatus.values,
                 'readiness',
                 (value) => setState(() => readinessStatus = value),
+                labelKey: 'survey.readinessStatus',
               ),
             ]),
             _section(context, l10n.text('survey.crop'), [
@@ -321,11 +384,14 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
     T value,
     List<T> values,
     String prefix,
-    ValueChanged<T> changed,
-  ) => DropdownButtonFormField<T>(
+    ValueChanged<T> changed, {
+    String? labelKey,
+  }) => DropdownButtonFormField<T>(
     initialValue: value,
     decoration: InputDecoration(
-      labelText: AppLocalizations.of(context).text('survey.$prefix'),
+      labelText: AppLocalizations.of(
+        context,
+      ).text(labelKey ?? 'survey.$prefix'),
     ),
     items: values
         .map(
@@ -341,6 +407,18 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
       if (next != null) changed(next);
     },
   );
+
+  Future<void> _requestGps() async {
+    final draft = await widget.onGpsRequested?.call();
+    if (!mounted || draft == null) return;
+    setState(() => boundaryDraft = draft);
+  }
+
+  Future<void> _requestImport() async {
+    final draft = await widget.onImportRequested?.call();
+    if (!mounted || draft == null) return;
+    setState(() => boundaryDraft = draft);
+  }
 
   Future<void> _editCrop(int? index) async {
     final original = index == null ? null : crops[index];
@@ -437,6 +515,7 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
           phone: fields['phone']!.text.trim(),
           alternativeContact: fields['contact']!.text.trim(),
           crops: List.unmodifiable(crops),
+          boundaryDraft: boundaryDraft,
         ),
       );
     } finally {
