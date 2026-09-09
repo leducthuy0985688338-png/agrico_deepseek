@@ -48,6 +48,13 @@ abstract interface class ExternalFileOpener {
   Future<bool> open({required String fileName, required Uint8List bytes});
 }
 
+abstract interface class GoogleEarthOpener {
+  Future<bool> openInGoogleEarth({
+    required String fileName,
+    required Uint8List bytes,
+  });
+}
+
 class LandParcelController extends ChangeNotifier {
   LandParcelController({
     required this.subject,
@@ -61,6 +68,7 @@ class LandParcelController extends ChangeNotifier {
     required this.exportKmlKmz,
     this.authorization = const AuthorizationService(),
     this.fileOpener,
+    this.googleEarthOpener,
   });
 
   final AuthorizationSubject subject;
@@ -74,6 +82,7 @@ class LandParcelController extends ChangeNotifier {
   final ExportKmlKmz exportKmlKmz;
   final AuthorizationService authorization;
   final ExternalFileOpener? fileOpener;
+  final GoogleEarthOpener? googleEarthOpener;
 
   ParcelPresentationPhase phase = ParcelPresentationPhase.initial;
   String? messageKey;
@@ -325,7 +334,7 @@ class LandParcelController extends ChangeNotifier {
   }
 
   Future<bool> openInGoogleEarth(String parcelId) async {
-    final opener = fileOpener;
+    final opener = googleEarthOpener;
     if (opener == null) {
       _phase(
         ParcelPresentationPhase.persistenceError,
@@ -338,7 +347,10 @@ class LandParcelController extends ChangeNotifier {
     if (!result.isSuccess || value == null) return false;
     final bytes =
         value.bytes ?? Uint8List.fromList(utf8.encode(value.text ?? ''));
-    final opened = await opener.open(fileName: value.fileName, bytes: bytes);
+    final opened = await opener.openInGoogleEarth(
+      fileName: value.fileName,
+      bytes: bytes,
+    );
     _phase(
       opened
           ? ParcelPresentationPhase.success

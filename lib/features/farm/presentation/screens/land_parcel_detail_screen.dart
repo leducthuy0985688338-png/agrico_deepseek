@@ -227,9 +227,30 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
                     ),
                     child: Text(l10n.text('googleEarth.exportKmz')),
                   ),
-                  if (controller.fileOpener != null)
+                  if (controller.googleEarthOpener != null)
                     OutlinedButton.icon(
-                      onPressed: () => controller.openInGoogleEarth(parcel.id),
+                      onPressed: () async {
+                        final opened = await controller.openInGoogleEarth(
+                          parcel.id,
+                        );
+
+                        if (!context.mounted) return;
+
+                        final messageKey = controller.messageKey;
+                        await controller.loadDetail(parcel.id);
+
+                        if (!context.mounted || opened) return;
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              l10n.text(
+                                messageKey ?? 'googleEarth.openUnavailable',
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                       icon: const Icon(Icons.open_in_new),
                       label: Text(l10n.text('googleEarth.open')),
                     ),

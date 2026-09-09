@@ -10,7 +10,7 @@ class PickedBoundaryFile {
 }
 
 abstract interface class LandParcelPlatformGateway
-    implements ExternalFileOpener {
+    implements ExternalFileOpener, GoogleEarthOpener {
   Future<PickedBoundaryFile?> pickKmlOrKmz();
   Future<bool> saveAndOpen({
     required String fileName,

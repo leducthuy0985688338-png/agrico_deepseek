@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:agrico_deepseek/core/localization/app_localizations.dart';
 import 'package:agrico_deepseek/core/permissions/authorization.dart';
 import 'package:agrico_deepseek/features/farm/application/land_parcel_application_service.dart';
@@ -91,6 +93,8 @@ void main() {
   LandParcelController controller({
     Set<String>? permissions,
     List<LandParcel>? source,
+    ExternalFileOpener? fileOpener,
+    GoogleEarthOpener? googleEarthOpener,
   }) {
     final parcelRepository = _MemoryParcelRepository(source ?? [parcel()]);
     final surveyRepository = _MemorySurveyRepository(
@@ -127,6 +131,8 @@ void main() {
       importPreview: ImportKmlKmzPreview(application),
       applyImportedBoundary: ApplyImportedBoundary(application),
       exportKmlKmz: ExportKmlKmz(application),
+      fileOpener: fileOpener,
+      googleEarthOpener: googleEarthOpener,
     );
   }
 
@@ -308,6 +314,32 @@ void main() {
     expect(value.phase, ParcelPresentationPhase.persistenceError);
     expect(value.messageKey, 'googleEarth.openUnavailable');
   });
+
+  test(
+    'open in Google Earth reports unavailable when opener rejects it',
+    () async {
+      final opener = _RejectingFileOpener();
+      final value = controller(googleEarthOpener: opener);
+
+      expect(await value.openInGoogleEarth('parcel-1'), isFalse);
+      expect(opener.openCalls, 1);
+      expect(value.phase, ParcelPresentationPhase.persistenceError);
+      expect(value.messageKey, 'googleEarth.openUnavailable');
+    },
+  );
+}
+
+class _RejectingFileOpener implements GoogleEarthOpener {
+  int openCalls = 0;
+
+  @override
+  Future<bool> openInGoogleEarth({
+    required String fileName,
+    required Uint8List bytes,
+  }) async {
+    openCalls++;
+    return false;
+  }
 }
 
 class _MemoryParcelRepository implements LandParcelRepository {

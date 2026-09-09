@@ -91,6 +91,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         applyImportedBoundary: ApplyImportedBoundary(application),
         exportKmlKmz: ExportKmlKmz(application),
         fileOpener: platform,
+        googleEarthOpener: platform,
       ),
       platform: platform,
     );
