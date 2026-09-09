@@ -92,20 +92,30 @@ class GpsBoundaryPreview extends StatelessWidget {
   }
 }
 
-class KmlImportPreviewView extends StatelessWidget {
+class KmlImportPreviewView extends StatefulWidget {
   const KmlImportPreviewView({
     super.key,
     required this.controller,
     required this.parcel,
     required this.preview,
   });
+
   final LandParcelController controller;
   final LandParcel parcel;
   final LandParcelImportPreview preview;
 
   @override
+  State<KmlImportPreviewView> createState() => _KmlImportPreviewViewState();
+}
+
+class _KmlImportPreviewViewState extends State<KmlImportPreviewView> {
+  bool _isSaving = false;
+
+  @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final preview = widget.preview;
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -135,48 +145,66 @@ class KmlImportPreviewView extends StatelessWidget {
         ),
         FilledButton(
           key: const Key('confirm-kml-import'),
-          onPressed: () => _confirm(context),
+          onPressed: _isSaving ? null : _confirm,
           child: Text(l10n.text('common.confirm')),
         ),
       ],
     );
   }
 
-  Future<void> _confirm(BuildContext context) async {
+  Future<void> _confirm() async {
+    if (_isSaving) return;
+
     var verifiedConfirmation = false;
-    if (parcel.verificationStatus == BoundaryVerificationStatus.verified) {
+
+    if (widget.parcel.verificationStatus ==
+        BoundaryVerificationStatus.verified) {
       verifiedConfirmation =
           await showDialog<bool>(
             context: context,
-            builder: (context) => AlertDialog(
+            builder: (dialogContext) => AlertDialog(
               content: Text(
                 AppLocalizations.of(
-                  context,
+                  dialogContext,
                 ).text('landParcel.boundary.verifiedConfirmation'),
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context, false),
+                  onPressed: () => Navigator.pop(dialogContext, false),
                   child: Text(
-                    AppLocalizations.of(context).text('common.cancel'),
+                    AppLocalizations.of(dialogContext).text('common.cancel'),
                   ),
                 ),
                 FilledButton(
-                  onPressed: () => Navigator.pop(context, true),
+                  onPressed: () => Navigator.pop(dialogContext, true),
                   child: Text(
-                    AppLocalizations.of(context).text('common.confirm'),
+                    AppLocalizations.of(dialogContext).text('common.confirm'),
                   ),
                 ),
               ],
             ),
           ) ??
           false;
-      if (!verifiedConfirmation) return;
+
+      if (!verifiedConfirmation || !mounted) return;
     }
-    await controller.confirmImport(
-      parcelId: parcel.id,
-      preview: preview,
-      confirmVerifiedReplacement: verifiedConfirmation,
-    );
+
+    setState(() => _isSaving = true);
+
+    try {
+      final result = await widget.controller.confirmImport(
+        parcelId: widget.parcel.id,
+        preview: widget.preview,
+        confirmVerifiedReplacement: verifiedConfirmation,
+      );
+
+      if (!mounted || !result.isSuccess) return;
+
+      Navigator.of(context).pop(true);
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
   }
 }

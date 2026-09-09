@@ -308,6 +308,67 @@ void main() {
     expect(value.boundaryVersion, before);
   });
 
+  testWidgets(
+    'KML confirm replaces boundary once and closes preview on success',
+    (tester) async {
+      final value = parcel();
+      final parcelController = controller(source: [value]);
+      const codec = KmlInterchangeCodec();
+      final preview = codec
+          .importKml(
+            '<kml><Placemark><Polygon><outerBoundaryIs><LinearRing><coordinates>104.7,16.5 104.702,16.5 104.7,16.502</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark></kml>',
+          )
+          .previews
+          .single;
+      final before = value.boundaryVersion;
+
+      await tester.pumpWidget(
+        app(
+          Builder(
+            builder: (context) => Scaffold(
+              body: FilledButton(
+                key: const Key('open-kml-preview'),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => Scaffold(
+                        body: KmlImportPreviewView(
+                          controller: parcelController,
+                          parcel: value,
+                          preview: preview,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+                child: const Text('Open preview'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('open-kml-preview')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('confirm-kml-import')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('confirm-kml-import')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('confirm-kml-import')), findsNothing);
+      expect(find.byKey(const Key('open-kml-preview')), findsOneWidget);
+
+      final updated = await parcelController.parcels.getById(
+        farmId: value.farmId,
+        id: value.id,
+      );
+
+      expect(updated, isNotNull);
+      expect(updated!.boundaryVersion, before + 1);
+    },
+  );
+
   test('open in Google Earth unavailable path is safe and localized', () async {
     final value = controller();
     expect(await value.openInGoogleEarth('parcel-1'), isFalse);
