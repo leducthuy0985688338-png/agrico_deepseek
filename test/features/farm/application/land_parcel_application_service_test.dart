@@ -155,6 +155,55 @@ void main() {
       expect(stored?.boundaryHistory, hasLength(1));
     },
   );
+  test(
+    'confirmed verified boundary replacement persists exactly one new version',
+    () async {
+      await repository.create(
+        parcel(status: BoundaryVerificationStatus.verified),
+      );
+
+      const replacementVertices = [
+        Wgs84Vertex(latitude: 16.6, longitude: 104.8),
+        Wgs84Vertex(latitude: 16.6, longitude: 104.802),
+        Wgs84Vertex(latitude: 16.602, longitude: 104.8),
+      ];
+
+      final replacement = Wgs84Polygon.fromVertices(replacementVertices);
+      final authorizedSubject = subject();
+
+      expect(
+        authorizedSubject.permissionCodes,
+        contains(PermissionCodes.fieldBoundaryVerify),
+      );
+
+      final result = await ReplaceBoundary(application)(
+        authorizedSubject,
+        ReplaceBoundaryCommand(
+          farmId: 'farm-1',
+          parcelId: 'parcel-1',
+          vertices: replacementVertices,
+          source: BoundarySource.manual,
+          actorMembershipId: 'member-1',
+          occurredAt: now.add(const Duration(hours: 1)),
+          confirmVerifiedReplacement: true,
+        ),
+      );
+
+      expect(result.isSuccess, isTrue);
+
+      final stored = await repository.getById(
+        farmId: 'farm-1',
+        id: 'parcel-1',
+      );
+
+      expect(stored?.boundaryHistory, hasLength(2));
+      expect(stored?.boundaryHistory.last.version, 2);
+      expect(stored?.boundaryHistory.last.boundary, replacement);
+      expect(stored?.boundaryHistory.last.source, BoundarySource.manual);
+      expect(stored?.boundary, replacement);
+      expect(stored?.boundarySource, BoundarySource.manual);
+    },
+  );
 
   test(
     'KML preview does not mutate until ApplyImportedBoundary confirms',
