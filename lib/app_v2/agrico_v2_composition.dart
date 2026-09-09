@@ -117,6 +117,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         parcelId: id,
         onGpsRequested: () => _measureGps(context, deps, id),
         onImportRequested: () => _import(context, deps, id),
+        onEditRequested: () => _editParcel(context, deps, id),
       );
       openParcels = () => push(
         LandParcelListScreen(
@@ -236,6 +237,55 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     }
   }
 
+  void _editParcel(
+    BuildContext context,
+    _V2Dependencies deps,
+    String parcelId,
+  ) {
+    final data = deps.controller.detail;
+    if (data == null || data.parcel.id != parcelId) return;
+
+    final parcel = data.parcel;
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (editContext) => LandParcelFormScreen(
+          parcel: parcel,
+          household: data.household,
+          crops: data.crops,
+          landUse: data.landUse,
+          surveys: data.surveys,
+          attachments: data.attachments,
+          onSubmit: (value) async {
+            final result = await deps.controller.update(
+              parcelId: parcel.id,
+              parcelCode: value.parcelCode,
+              name: value.name,
+              ownerHouseholdId: parcel.ownerHouseholdId,
+              ownerDisplayName: value.ownerName.isEmpty
+                  ? null
+                  : value.ownerName,
+              active: value.active,
+            );
+
+            if (!editContext.mounted) return;
+
+            if (!result.isSuccess) {
+              ScaffoldMessenger.of(editContext).showSnackBar(
+                SnackBar(
+                  content: Text(editContext.l10n.text(result.messageKey)),
+                ),
+              );
+              return;
+            }
+
+            Navigator.of(editContext).pop();
+          },
+        ),
+      ),
+    );
+  }
+
   void _createParcel(
     BuildContext context,
     _V2Dependencies deps,
@@ -295,6 +345,8 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
                     _measureGps(context, deps, result.value!.id),
                 onImportRequested: () =>
                     _import(context, deps, result.value!.id),
+                onEditRequested: () =>
+                    _editParcel(context, deps, result.value!.id),
               ),
             ),
           );

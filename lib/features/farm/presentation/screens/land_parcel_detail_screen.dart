@@ -15,11 +15,13 @@ class LandParcelDetailScreen extends StatefulWidget {
     required this.parcelId,
     this.onGpsRequested,
     this.onImportRequested,
+    this.onEditRequested,
   });
   final LandParcelController controller;
   final String parcelId;
   final VoidCallback? onGpsRequested;
   final VoidCallback? onImportRequested;
+  final VoidCallback? onEditRequested;
 
   @override
   State<LandParcelDetailScreen> createState() => _LandParcelDetailScreenState();
@@ -71,7 +73,19 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
     final parcel = data.parcel;
     final household = data.household;
     return Scaffold(
-      appBar: AppBar(title: Text('${parcel.parcelCode} · ${parcel.name}')),
+      appBar: AppBar(
+        title: Text('${parcel.parcelCode} · ${parcel.name}'),
+        actions: [
+          if (widget.onEditRequested != null &&
+              controller.can(PermissionCodes.fieldEdit, parcelId: parcel.id))
+            IconButton(
+              key: const Key('edit-parcel'),
+              onPressed: widget.onEditRequested,
+              tooltip: l10n.text('common.edit'),
+              icon: const Icon(Icons.edit_outlined),
+            ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

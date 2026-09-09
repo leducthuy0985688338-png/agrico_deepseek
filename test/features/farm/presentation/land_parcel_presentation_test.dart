@@ -275,6 +275,80 @@ void main() {
   });
 
   testWidgets(
+    'edit action respects permission and metadata update preserves boundary',
+    (tester) async {
+      final value = controller();
+      var editCalls = 0;
+
+      await tester.pumpWidget(
+        app(
+          LandParcelDetailScreen(
+            controller: value,
+            parcelId: 'parcel-1',
+            onEditRequested: () {
+              editCalls += 1;
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final editAction = find.byKey(const Key('edit-parcel'));
+      expect(editAction, findsOneWidget);
+
+      await tester.tap(editAction);
+      await tester.pump();
+      expect(editCalls, 1);
+
+      final before = value.detail!.parcel;
+      final beforeBoundary = before.boundary;
+      final beforeVersion = before.boundaryVersion;
+      final beforeHistory = before.boundaryHistory.toList();
+      final beforeVerification = before.verificationStatus;
+
+      final result = await value.update(
+        parcelId: before.id,
+        parcelCode: 'P-EDIT',
+        name: 'Edited parcel',
+        ownerHouseholdId: before.ownerHouseholdId,
+        ownerDisplayName: 'Edited owner',
+        active: false,
+      );
+
+      expect(result.isSuccess, isTrue);
+
+      final after = value.detail!.parcel;
+      expect(after.parcelCode, 'P-EDIT');
+      expect(after.name, 'Edited parcel');
+      expect(after.ownerDisplayName, 'Edited owner');
+      expect(after.active, isFalse);
+
+      expect(after.boundary, same(beforeBoundary));
+      expect(after.boundaryVersion, beforeVersion);
+      expect(after.boundaryHistory.length, beforeHistory.length);
+      for (var index = 0; index < beforeHistory.length; index += 1) {
+        expect(after.boundaryHistory[index], same(beforeHistory[index]));
+      }
+      expect(after.verificationStatus, beforeVerification);
+
+      final denied = controller(permissions: const {PermissionCodes.fieldView});
+
+      await tester.pumpWidget(
+        app(
+          LandParcelDetailScreen(
+            controller: denied,
+            parcelId: 'parcel-1',
+            onEditRequested: () {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byKey(const Key('edit-parcel')), findsNothing);
+    },
+  );
+
+  testWidgets(
     'form validates identity, derived geometry is read-only and crops are dynamic',
     (tester) async {
       var submitted = false;

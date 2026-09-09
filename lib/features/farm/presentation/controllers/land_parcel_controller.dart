@@ -252,6 +252,41 @@ class LandParcelController extends ChangeNotifier {
     return result;
   }
 
+  Future<LandParcelApplicationResult<LandParcel>> update({
+    required String parcelId,
+    required String parcelCode,
+    required String name,
+    String? ownerHouseholdId,
+    String? ownerDisplayName,
+    required bool active,
+  }) async {
+    _phase(ParcelPresentationPhase.saving);
+
+    final result = await updateMetadata(
+      subject,
+      UpdateLandParcelMetadataCommand(
+        farmId: subject.farmId,
+        parcelId: parcelId,
+        actorMembershipId: subject.membershipId,
+        occurredAt: DateTime.now().toUtc(),
+        parcelCode: parcelCode,
+        name: name,
+        ownerHouseholdId: ownerHouseholdId,
+        ownerDisplayName: ownerDisplayName,
+        active: active,
+      ),
+    );
+
+    _result(result);
+
+    if (result.isSuccess) {
+      await loadList();
+      await loadDetail(parcelId);
+    }
+
+    return result;
+  }
+
   Future<LandParcelApplicationResult<LandParcel>> applyGps({
     required String parcelId,
     required List<Wgs84Vertex> vertices,
