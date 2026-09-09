@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/permissions/authorization.dart';
 import '../../application/land_parcel_application_service.dart';
+import '../../domain/entities/land_parcel.dart';
 import '../../domain/entities/land_survey.dart';
 import '../controllers/land_parcel_controller.dart';
 import 'boundary_history_screen.dart';
@@ -25,6 +26,8 @@ class LandParcelDetailScreen extends StatefulWidget {
 }
 
 class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
+  bool _isVerifying = false;
+
   @override
   void initState() {
     super.initState();
@@ -78,6 +81,23 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
           ),
           if (data.village.isNotEmpty || data.owner.isNotEmpty)
             Text('${data.village} · ${data.owner}'),
+          if (parcel.verificationStatus !=
+                  BoundaryVerificationStatus.verified &&
+              controller.can(
+                PermissionCodes.fieldBoundaryVerify,
+                parcelId: parcel.id,
+              ))
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.tonalIcon(
+                key: const Key('verify-boundary'),
+                onPressed: _isVerifying
+                    ? null
+                    : () => _confirmVerification(parcel.id),
+                icon: const Icon(Icons.verified_outlined),
+                label: Text(l10n.text('boundary.verify.action')),
+              ),
+            ),
           _section(context, l10n.text('parcel.section.overview'), [
             _row(
               l10n.text('geometry.areaM2'),
@@ -271,6 +291,65 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _confirmVerification(String parcelId) async {
+    if (_isVerifying) return;
+    setState(() => _isVerifying = true);
+
+    try {
+      final confirmed =
+          await showDialog<bool>(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              title: Text(
+                AppLocalizations.of(
+                  dialogContext,
+                ).text('boundary.verify.confirmTitle'),
+              ),
+              content: Text(
+                AppLocalizations.of(
+                  dialogContext,
+                ).text('boundary.verify.confirmMessage'),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: Text(
+                    AppLocalizations.of(dialogContext).text('common.cancel'),
+                  ),
+                ),
+                FilledButton(
+                  key: const Key('confirm-verify-boundary'),
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  child: Text(
+                    AppLocalizations.of(dialogContext).text('common.confirm'),
+                  ),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+      if (!confirmed || !mounted) return;
+
+      final result = await widget.controller.verify(
+        parcelId: parcelId,
+        status: BoundaryVerificationStatus.verified,
+      );
+      if (!mounted) return;
+
+      if (!result.isSuccess) {
+        await widget.controller.loadDetail(parcelId);
+        if (!mounted) return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppLocalizations.of(context).text(result.messageKey)),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isVerifying = false);
+    }
   }
 
   Widget _landUse(

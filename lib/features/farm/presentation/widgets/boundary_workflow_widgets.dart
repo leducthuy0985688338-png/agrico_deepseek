@@ -6,7 +6,7 @@ import '../../domain/entities/land_parcel.dart';
 import '../../domain/geometry/wgs84_geometry.dart';
 import '../controllers/land_parcel_controller.dart';
 
-class GpsBoundaryPreview extends StatelessWidget {
+class GpsBoundaryPreview extends StatefulWidget {
   const GpsBoundaryPreview({
     super.key,
     required this.controller,
@@ -18,12 +18,19 @@ class GpsBoundaryPreview extends StatelessWidget {
   final List<Wgs84Vertex> completedVertices;
 
   @override
+  State<GpsBoundaryPreview> createState() => _GpsBoundaryPreviewState();
+}
+
+class _GpsBoundaryPreviewState extends State<GpsBoundaryPreview> {
+  bool _isSaving = false;
+
+  @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     Wgs84PolygonMetrics? metrics;
     try {
       metrics = const Wgs84GeometryService().measure(
-        Wgs84Polygon.fromVertices(completedVertices),
+        Wgs84Polygon.fromVertices(widget.completedVertices),
       );
     } catch (_) {}
     return Column(
@@ -43,7 +50,9 @@ class GpsBoundaryPreview extends StatelessWidget {
         ],
         FilledButton(
           key: const Key('apply-gps-boundary'),
-          onPressed: metrics == null ? null : () => _confirmAndApply(context),
+          onPressed: metrics == null || _isSaving
+              ? null
+              : () => _confirmAndApply(context),
           child: Text(l10n.text('gps.confirm')),
         ),
       ],
@@ -51,8 +60,12 @@ class GpsBoundaryPreview extends StatelessWidget {
   }
 
   Future<void> _confirmAndApply(BuildContext context) async {
+    if (_isSaving) return;
+    setState(() => _isSaving = true);
+
     var confirmed = false;
-    if (parcel.verificationStatus == BoundaryVerificationStatus.verified) {
+    if (widget.parcel.verificationStatus ==
+        BoundaryVerificationStatus.verified) {
       confirmed =
           await showDialog<bool>(
             context: context,
@@ -82,13 +95,20 @@ class GpsBoundaryPreview extends StatelessWidget {
             ),
           ) ??
           false;
-      if (!confirmed) return;
+      if (!confirmed) {
+        if (mounted) setState(() => _isSaving = false);
+        return;
+      }
     }
-    await controller.applyGps(
-      parcelId: parcel.id,
-      vertices: completedVertices,
-      confirmVerifiedReplacement: confirmed,
-    );
+    try {
+      await widget.controller.applyGps(
+        parcelId: widget.parcel.id,
+        vertices: widget.completedVertices,
+        confirmVerifiedReplacement: confirmed,
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
   }
 }
 
@@ -154,6 +174,7 @@ class _KmlImportPreviewViewState extends State<KmlImportPreviewView> {
 
   Future<void> _confirm() async {
     if (_isSaving) return;
+    setState(() => _isSaving = true);
 
     var verifiedConfirmation = false;
 
@@ -186,10 +207,11 @@ class _KmlImportPreviewViewState extends State<KmlImportPreviewView> {
           ) ??
           false;
 
-      if (!verifiedConfirmation || !mounted) return;
+      if (!verifiedConfirmation || !mounted) {
+        if (mounted) setState(() => _isSaving = false);
+        return;
+      }
     }
-
-    setState(() => _isSaving = true);
 
     try {
       final result = await widget.controller.confirmImport(

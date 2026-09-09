@@ -63,6 +63,7 @@ class LandParcelController extends ChangeNotifier {
     required this.createLandParcel,
     required this.updateMetadata,
     required this.completeGpsMeasurement,
+    required this.verifyBoundary,
     required this.importPreview,
     required this.applyImportedBoundary,
     required this.exportKmlKmz,
@@ -77,6 +78,7 @@ class LandParcelController extends ChangeNotifier {
   final CreateLandParcel createLandParcel;
   final UpdateLandParcelMetadata updateMetadata;
   final CompleteGpsMeasurement completeGpsMeasurement;
+  final VerifyBoundary verifyBoundary;
   final ImportKmlKmzPreview importPreview;
   final ApplyImportedBoundary applyImportedBoundary;
   final ExportKmlKmz exportKmlKmz;
@@ -270,6 +272,26 @@ class LandParcelController extends ChangeNotifier {
       actorMembershipId: subject.membershipId,
       occurredAt: DateTime.now().toUtc(),
       confirmVerifiedReplacement: confirmVerifiedReplacement,
+    );
+    _result(result);
+    if (result.isSuccess) await loadDetail(parcelId);
+    return result;
+  }
+
+  Future<LandParcelApplicationResult<LandParcel>> verify({
+    required String parcelId,
+    BoundaryVerificationStatus status = BoundaryVerificationStatus.verified,
+  }) async {
+    _phase(ParcelPresentationPhase.saving);
+    final result = await verifyBoundary(
+      subject,
+      VerifyBoundaryCommand(
+        farmId: subject.farmId,
+        parcelId: parcelId,
+        status: status,
+        actorMembershipId: subject.membershipId,
+        occurredAt: DateTime.now().toUtc(),
+      ),
     );
     _result(result);
     if (result.isSuccess) await loadDetail(parcelId);

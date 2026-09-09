@@ -212,6 +212,10 @@ class AppLocalizations {
           'Ranh giới đã được xác minh. Hãy xác nhận trước khi thay thế.',
       'landParcel.boundary.replaceSuccess': 'Đã cập nhật ranh giới lô đất.',
       'landParcel.boundary.verifySuccess': 'Đã cập nhật trạng thái xác minh.',
+      'boundary.verify.action': 'Xác minh ranh giới',
+      'boundary.verify.confirmTitle': 'Xác minh ranh giới?',
+      'boundary.verify.confirmMessage':
+          'Sau khi xác minh, việc thay đổi ranh giới sẽ yêu cầu xác nhận rõ ràng.',
       'landParcel.gps.invalidSource': 'Nguồn đo GPS không hợp lệ.',
       'landParcel.import.previewReady':
           'Đã chuẩn bị bản xem trước nhập dữ liệu.',
@@ -356,6 +360,10 @@ class AppLocalizations {
           'ເຂດແດນນີ້ຖືກຢືນຢັນແລ້ວ. ກະລຸນາຢືນຢັນກ່ອນປ່ຽນແທນ.',
       'landParcel.boundary.replaceSuccess': 'ອັບເດດເຂດແດນແລ້ວ.',
       'landParcel.boundary.verifySuccess': 'ອັບເດດສະຖານະການຢືນຢັນແລ້ວ.',
+      'boundary.verify.action': 'ຢືນຢັນເຂດແດນ',
+      'boundary.verify.confirmTitle': 'ຢືນຢັນເຂດແດນບໍ?',
+      'boundary.verify.confirmMessage':
+          'ຫຼັງຈາກຢືນຢັນແລ້ວ ການປ່ຽນແທນເຂດແດນນີ້ຈະຕ້ອງມີການຢືນຢັນຢ່າງຊັດເຈນ.',
       'landParcel.gps.invalidSource': 'ແຫຼ່ງຂໍ້ມູນ GPS ບໍ່ຖືກຕ້ອງ.',
       'landParcel.import.previewReady': 'ກຽມຕົວຢ່າງກ່ອນນຳເຂົ້າແລ້ວ.',
       'landParcel.import.failed': 'ບໍ່ສາມາດອ່ານໄຟລ໌ KML/KMZ.',
@@ -499,6 +507,10 @@ class AppLocalizations {
           'This boundary is verified. Confirm before replacing it.',
       'landParcel.boundary.replaceSuccess': 'Land parcel boundary updated.',
       'landParcel.boundary.verifySuccess': 'Verification status updated.',
+      'boundary.verify.action': 'Verify boundary',
+      'boundary.verify.confirmTitle': 'Verify boundary?',
+      'boundary.verify.confirmMessage':
+          'After verification, replacing this boundary will require explicit confirmation.',
       'landParcel.gps.invalidSource': 'The GPS measurement source is invalid.',
       'landParcel.import.previewReady': 'Import preview is ready.',
       'landParcel.import.failed': 'The KML/KMZ file could not be read.',

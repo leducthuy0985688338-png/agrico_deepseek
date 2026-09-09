@@ -87,6 +87,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         createLandParcel: CreateLandParcel(application),
         updateMetadata: UpdateLandParcelMetadata(application),
         completeGpsMeasurement: CompleteGpsMeasurement(application),
+        verifyBoundary: VerifyBoundary(application),
         importPreview: ImportKmlKmzPreview(application),
         applyImportedBoundary: ApplyImportedBoundary(application),
         exportKmlKmz: ExportKmlKmz(application),

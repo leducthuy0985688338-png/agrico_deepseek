@@ -32,6 +32,7 @@ void main() {
       createLandParcel: CreateLandParcel(app),
       updateMetadata: UpdateLandParcelMetadata(app),
       completeGpsMeasurement: CompleteGpsMeasurement(app),
+      verifyBoundary: VerifyBoundary(app),
       importPreview: ImportKmlKmzPreview(app),
       applyImportedBoundary: ApplyImportedBoundary(app),
       exportKmlKmz: ExportKmlKmz(app),

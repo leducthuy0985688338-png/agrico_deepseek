@@ -128,6 +128,7 @@ void main() {
       createLandParcel: CreateLandParcel(application),
       updateMetadata: UpdateLandParcelMetadata(application),
       completeGpsMeasurement: CompleteGpsMeasurement(application),
+      verifyBoundary: VerifyBoundary(application),
       importPreview: ImportKmlKmzPreview(application),
       applyImportedBoundary: ApplyImportedBoundary(application),
       exportKmlKmz: ExportKmlKmz(application),
@@ -200,10 +201,77 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('ນາງ ສົມພອນ'), findsWidgets);
     expect(find.textContaining('ບ້ານ ໃໝ່'), findsWidgets);
+    await tester.scrollUntilVisible(find.text('Coffee'), 300);
     expect(find.text('Coffee'), findsOneWidget);
     expect(find.text('Banana'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('ຮູບ.jpg'), 300);
     expect(find.text('ຮູບ.jpg'), findsOneWidget);
+  });
+
+  testWidgets('authorized user verifies boundary once and detail refreshes', (
+    tester,
+  ) async {
+    final value = controller();
+    final repository = value.parcels as _MemoryParcelRepository;
+    await tester.pumpWidget(
+      app(LandParcelDetailScreen(controller: value, parcelId: 'parcel-1')),
+    );
+    await tester.pumpAndSettle();
+
+    final action = find.byKey(const Key('verify-boundary'));
+    expect(action, findsOneWidget);
+    final verifyButton = tester.widget<FilledButton>(action);
+    verifyButton.onPressed!();
+    verifyButton.onPressed!();
+    await tester.pump();
+    expect(find.byType(AlertDialog), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('confirm-verify-boundary')));
+    await tester.pumpAndSettle();
+
+    final stored = await value.parcels.getById(
+      farmId: 'farm-1',
+      id: 'parcel-1',
+    );
+    expect(stored!.verificationStatus, BoundaryVerificationStatus.verified);
+    expect(
+      value.detail!.parcel.verificationStatus,
+      BoundaryVerificationStatus.verified,
+    );
+    expect(repository.updateCalls, 1);
+    expect(find.textContaining('Verified'), findsOneWidget);
+    expect(find.text('Verification status updated.'), findsOneWidget);
+    expect(action, findsNothing);
+  });
+
+  testWidgets('verify action is hidden without boundary verify permission', (
+    tester,
+  ) async {
+    final value = controller(permissions: const {PermissionCodes.fieldView});
+    await tester.pumpWidget(
+      app(LandParcelDetailScreen(controller: value, parcelId: 'parcel-1')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Measured'), findsOneWidget);
+    expect(find.byKey(const Key('verify-boundary')), findsNothing);
+    expect(
+      value.detail!.parcel.verificationStatus,
+      BoundaryVerificationStatus.measured,
+    );
+  });
+
+  testWidgets('verify action is hidden for an already verified boundary', (
+    tester,
+  ) async {
+    final value = controller(source: [parcel(verified: true)]);
+    await tester.pumpWidget(
+      app(LandParcelDetailScreen(controller: value, parcelId: 'parcel-1')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Verified'), findsOneWidget);
+    expect(find.byKey(const Key('verify-boundary')), findsNothing);
   });
 
   testWidgets(
@@ -279,6 +347,51 @@ void main() {
     );
     expect(button.onPressed, isNull);
     expect(find.text('The land parcel boundary is invalid.'), findsOneWidget);
+  });
+
+  testWidgets('rapid verified GPS taps open one dialog and replace once', (
+    tester,
+  ) async {
+    final value = parcel(verified: true);
+    final parcelController = controller(source: [value]);
+    final repository = parcelController.parcels as _MemoryParcelRepository;
+    await tester.pumpWidget(
+      app(
+        Scaffold(
+          body: GpsBoundaryPreview(
+            controller: parcelController,
+            parcel: value,
+            completedVertices: const [
+              Wgs84Vertex(latitude: 16.5, longitude: 104.7),
+              Wgs84Vertex(latitude: 16.5, longitude: 104.703),
+              Wgs84Vertex(latitude: 16.503, longitude: 104.7),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final action = find.byKey(const Key('apply-gps-boundary'));
+    final gpsButton = tester.widget<FilledButton>(action);
+    gpsButton.onPressed!();
+    gpsButton.onPressed!();
+    await tester.pump();
+    expect(find.byType(AlertDialog), findsOneWidget);
+
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('Confirm'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final updated = await parcelController.parcels.getById(
+      farmId: value.farmId,
+      id: value.id,
+    );
+    expect(updated!.boundaryVersion, value.boundaryVersion + 1);
+    expect(repository.updateCalls, 1);
   });
 
   testWidgets('KML warning renders and preview itself does not mutate parcel', (
@@ -369,6 +482,55 @@ void main() {
     },
   );
 
+  testWidgets('rapid verified KML taps open one dialog and replace once', (
+    tester,
+  ) async {
+    final value = parcel(verified: true);
+    final parcelController = controller(source: [value]);
+    final repository = parcelController.parcels as _MemoryParcelRepository;
+    const codec = KmlInterchangeCodec();
+    final preview = codec
+        .importKml(
+          '<kml><Placemark><Polygon><outerBoundaryIs><LinearRing><coordinates>104.7,16.5 104.702,16.5 104.7,16.502</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark></kml>',
+        )
+        .previews
+        .single;
+
+    await tester.pumpWidget(
+      app(
+        Scaffold(
+          body: KmlImportPreviewView(
+            controller: parcelController,
+            parcel: value,
+            preview: preview,
+          ),
+        ),
+      ),
+    );
+
+    final action = find.byKey(const Key('confirm-kml-import'));
+    final importButton = tester.widget<FilledButton>(action);
+    importButton.onPressed!();
+    importButton.onPressed!();
+    await tester.pump();
+    expect(find.byType(AlertDialog), findsOneWidget);
+
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('Confirm'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final updated = await parcelController.parcels.getById(
+      farmId: value.farmId,
+      id: value.id,
+    );
+    expect(updated!.boundaryVersion, value.boundaryVersion + 1);
+    expect(repository.updateCalls, 1);
+  });
+
   test('open in Google Earth unavailable path is safe and localized', () async {
     final value = controller();
     expect(await value.openInGoogleEarth('parcel-1'), isFalse);
@@ -407,6 +569,7 @@ class _MemoryParcelRepository implements LandParcelRepository {
   _MemoryParcelRepository(List<LandParcel> values)
     : values = {for (final value in values) value.id: value};
   final Map<String, LandParcel> values;
+  int updateCalls = 0;
   @override
   Future<void> create(LandParcel value) async {
     values[value.id] = value;
@@ -445,6 +608,7 @@ class _MemoryParcelRepository implements LandParcelRepository {
   ) => action(this);
   @override
   Future<void> update(LandParcel value) async {
+    updateCalls++;
     values[value.id] = value;
   }
 }
