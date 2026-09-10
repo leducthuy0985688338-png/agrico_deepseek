@@ -1,20 +1,23 @@
 import '../domain/entities/spatial_feature_revision.dart';
+import 'in_memory_spatial_store.dart';
 import 'spatial_feature_revision_repository.dart';
 
 class InMemorySpatialFeatureRevisionRepository
     implements SpatialFeatureRevisionRepository {
-  final Map<String, SpatialFeatureRevision> _revisions =
-      <String, SpatialFeatureRevision>{};
+  InMemorySpatialFeatureRevisionRepository({InMemorySpatialStore? store})
+    : _store = store ?? InMemorySpatialStore();
+
+  final InMemorySpatialStore _store;
 
   @override
   SpatialFeatureRevision? findById(String id) {
-    return _revisions[id];
+    return _store.findRevisionById(id);
   }
 
   @override
   List<SpatialFeatureRevision> findByFeatureId(String featureId) {
     final revisions =
-        _revisions.values
+        _store.revisions
             .where((revision) => revision.featureId == featureId)
             .toList()
           ..sort((a, b) => a.revision.compareTo(b.revision));
@@ -37,13 +40,13 @@ class InMemorySpatialFeatureRevisionRepository
   void create(SpatialFeatureRevision revision) {
     revision.validate();
 
-    if (_revisions.containsKey(revision.id)) {
+    if (_store.containsRevision(revision.id)) {
       throw StateError(
         'Spatial feature revision with id "${revision.id}" already exists.',
       );
     }
 
-    final duplicateIdentity = _revisions.values.any(
+    final duplicateIdentity = _store.revisions.any(
       (existing) =>
           existing.featureId == revision.featureId &&
           existing.revision == revision.revision,
@@ -56,6 +59,6 @@ class InMemorySpatialFeatureRevisionRepository
       );
     }
 
-    _revisions[revision.id] = revision;
+    _store.putRevision(revision);
   }
 }

@@ -1,7 +1,7 @@
 import 'package:agrico_deepseek/core/spatial/data/in_memory_spatial_feature_creation_transaction.dart';
 import 'package:agrico_deepseek/core/spatial/data/in_memory_spatial_feature_repository.dart';
 import 'package:agrico_deepseek/core/spatial/data/in_memory_spatial_feature_revision_repository.dart';
-import 'package:agrico_deepseek/core/spatial/data/spatial_feature_revision_repository.dart';
+import 'package:agrico_deepseek/core/spatial/data/in_memory_spatial_store.dart';
 import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_feature.dart';
 import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_feature_revision.dart';
 import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_source.dart';
@@ -53,12 +53,14 @@ void main() {
 
   group('InMemorySpatialFeatureCreationTransaction', () {
     test('creates feature and initial revision together', () {
-      final featureRepository = InMemorySpatialFeatureRepository();
-      final revisionRepository = InMemorySpatialFeatureRevisionRepository();
+      final store = InMemorySpatialStore();
+      final featureRepository = InMemorySpatialFeatureRepository(store: store);
+      final revisionRepository = InMemorySpatialFeatureRevisionRepository(
+        store: store,
+      );
 
       final transaction = InMemorySpatialFeatureCreationTransaction(
-        featureRepository: featureRepository,
-        revisionRepository: revisionRepository,
+        store: store,
       );
 
       final feature = buildFeature();
@@ -72,15 +74,17 @@ void main() {
     });
 
     test('duplicate feature is rejected without creating revision', () {
-      final featureRepository = InMemorySpatialFeatureRepository();
-      final revisionRepository = InMemorySpatialFeatureRevisionRepository();
+      final store = InMemorySpatialStore();
+      final featureRepository = InMemorySpatialFeatureRepository(store: store);
+      final revisionRepository = InMemorySpatialFeatureRevisionRepository(
+        store: store,
+      );
 
       final existingFeature = buildFeature();
       featureRepository.create(existingFeature);
 
       final transaction = InMemorySpatialFeatureCreationTransaction(
-        featureRepository: featureRepository,
-        revisionRepository: revisionRepository,
+        store: store,
       );
 
       expect(
@@ -96,16 +100,18 @@ void main() {
     });
 
     test('existing revision id is rejected without creating feature', () {
-      final featureRepository = InMemorySpatialFeatureRepository();
-      final revisionRepository = InMemorySpatialFeatureRevisionRepository();
+      final store = InMemorySpatialStore();
+      final featureRepository = InMemorySpatialFeatureRepository(store: store);
+      final revisionRepository = InMemorySpatialFeatureRevisionRepository(
+        store: store,
+      );
 
       revisionRepository.create(
         buildRevision(id: 'shared-revision-id', featureId: 'other-parcel'),
       );
 
       final transaction = InMemorySpatialFeatureCreationTransaction(
-        featureRepository: featureRepository,
-        revisionRepository: revisionRepository,
+        store: store,
       );
 
       expect(
@@ -117,17 +123,21 @@ void main() {
       );
 
       expect(featureRepository.findById('parcel-1'), isNull);
+      expect(revisionRepository.findById('shared-revision-id'), isNotNull);
     });
 
     test('existing feature revision history prevents feature creation', () {
-      final featureRepository = InMemorySpatialFeatureRepository();
-      final revisionRepository = InMemorySpatialFeatureRevisionRepository();
+      final store = InMemorySpatialStore();
+      final featureRepository = InMemorySpatialFeatureRepository(store: store);
+      final revisionRepository = InMemorySpatialFeatureRevisionRepository(
+        store: store,
+      );
 
-      revisionRepository.create(buildRevision());
+      final existingRevision = buildRevision();
+      revisionRepository.create(existingRevision);
 
       final transaction = InMemorySpatialFeatureCreationTransaction(
-        featureRepository: featureRepository,
-        revisionRepository: revisionRepository,
+        store: store,
       );
 
       expect(
@@ -140,48 +150,53 @@ void main() {
 
       expect(featureRepository.findById('parcel-1'), isNull);
       expect(revisionRepository.findByFeatureId('parcel-1'), hasLength(1));
+      expect(
+        revisionRepository.findById(existingRevision.id),
+        same(existingRevision),
+      );
     });
 
-    test('rolls back feature when revision creation fails', () {
-      final featureRepository = InMemorySpatialFeatureRepository();
-      final revisionRepository = _FailingRevisionRepository();
+    test('failed staged revision leaves original store unchanged', () {
+      final store = InMemorySpatialStore();
+      final featureRepository = InMemorySpatialFeatureRepository(store: store);
+      final revisionRepository = InMemorySpatialFeatureRevisionRepository(
+        store: store,
+      );
+
+      final unrelatedFeature = buildFeature(id: 'parcel-existing');
+      featureRepository.create(unrelatedFeature);
+
+      final conflictingRevision = buildRevision(
+        id: 'shared-revision-id',
+        featureId: 'parcel-existing',
+      );
+      revisionRepository.create(conflictingRevision);
 
       final transaction = InMemorySpatialFeatureCreationTransaction(
-        featureRepository: featureRepository,
-        revisionRepository: revisionRepository,
+        store: store,
       );
 
       expect(
         () => transaction.create(
           feature: buildFeature(),
-          initialRevision: buildRevision(),
+          initialRevision: buildRevision(id: 'shared-revision-id'),
         ),
         throwsStateError,
       );
 
       expect(featureRepository.findById('parcel-1'), isNull);
-      expect(revisionRepository.createCallCount, 1);
-      expect(revisionRepository.findByFeatureId('parcel-1'), isEmpty);
+      expect(
+        featureRepository.findById('parcel-existing'),
+        same(unrelatedFeature),
+      );
+      expect(
+        revisionRepository.findById('shared-revision-id'),
+        same(conflictingRevision),
+      );
+      expect(
+        revisionRepository.findByFeatureId('parcel-existing'),
+        hasLength(1),
+      );
     });
   });
-}
-
-class _FailingRevisionRepository implements SpatialFeatureRevisionRepository {
-  int createCallCount = 0;
-
-  @override
-  SpatialFeatureRevision? findById(String id) => null;
-
-  @override
-  List<SpatialFeatureRevision> findByFeatureId(String featureId) =>
-      const <SpatialFeatureRevision>[];
-
-  @override
-  SpatialFeatureRevision? findLatestByFeatureId(String featureId) => null;
-
-  @override
-  void create(SpatialFeatureRevision revision) {
-    createCallCount += 1;
-    throw StateError('Simulated revision persistence failure.');
-  }
 }

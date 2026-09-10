@@ -1,18 +1,15 @@
 import '../application/spatial_feature_creation_transaction.dart';
 import '../domain/entities/spatial_feature.dart';
 import '../domain/entities/spatial_feature_revision.dart';
-import 'spatial_feature_repository.dart';
-import 'spatial_feature_revision_repository.dart';
+import 'in_memory_spatial_feature_repository.dart';
+import 'in_memory_spatial_feature_revision_repository.dart';
+import 'in_memory_spatial_store.dart';
 
 class InMemorySpatialFeatureCreationTransaction
     implements SpatialFeatureCreationTransaction {
-  InMemorySpatialFeatureCreationTransaction({
-    required this.featureRepository,
-    required this.revisionRepository,
-  });
+  InMemorySpatialFeatureCreationTransaction({required this.store});
 
-  final SpatialFeatureRepository featureRepository;
-  final SpatialFeatureRevisionRepository revisionRepository;
+  final InMemorySpatialStore store;
 
   @override
   void create({
@@ -29,17 +26,21 @@ class InMemorySpatialFeatureCreationTransaction
       );
     }
 
-    if (featureRepository.findById(feature.id) != null) {
-      throw StateError('Spatial feature already exists: ${feature.id}');
-    }
+    final stagedStore = store.copy();
 
-    if (revisionRepository.findById(initialRevision.id) != null) {
-      throw StateError(
-        'Spatial feature revision already exists: ${initialRevision.id}',
-      );
-    }
+    final stagedFeatureRepository = InMemorySpatialFeatureRepository(
+      store: stagedStore,
+    );
 
-    final existingRevisions = revisionRepository.findByFeatureId(feature.id);
+    final stagedRevisionRepository = InMemorySpatialFeatureRevisionRepository(
+      store: stagedStore,
+    );
+
+    stagedFeatureRepository.create(feature);
+
+    final existingRevisions = stagedRevisionRepository.findByFeatureId(
+      feature.id,
+    );
 
     if (existingRevisions.isNotEmpty) {
       throw StateError(
@@ -47,13 +48,8 @@ class InMemorySpatialFeatureCreationTransaction
       );
     }
 
-    featureRepository.create(feature);
+    stagedRevisionRepository.create(initialRevision);
 
-    try {
-      revisionRepository.create(initialRevision);
-    } catch (_) {
-      featureRepository.deleteById(feature.id);
-      rethrow;
-    }
+    store.replaceWith(stagedStore);
   }
 }

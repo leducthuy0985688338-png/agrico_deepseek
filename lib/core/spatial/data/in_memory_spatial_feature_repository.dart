@@ -1,51 +1,55 @@
 import '../domain/entities/spatial_feature.dart';
+import 'in_memory_spatial_store.dart';
 import 'spatial_feature_repository.dart';
 
 class InMemorySpatialFeatureRepository implements SpatialFeatureRepository {
-  final Map<String, SpatialFeature> _features = <String, SpatialFeature>{};
+  InMemorySpatialFeatureRepository({InMemorySpatialStore? store})
+    : _store = store ?? InMemorySpatialStore();
+
+  final InMemorySpatialStore _store;
 
   @override
   SpatialFeature? findById(String id) {
-    return _features[id];
+    return _store.findFeatureById(id);
   }
 
   @override
   List<SpatialFeature> findAll() {
-    return List<SpatialFeature>.unmodifiable(_features.values);
+    return List<SpatialFeature>.unmodifiable(_store.features);
   }
 
   @override
   void create(SpatialFeature feature) {
     feature.validate();
 
-    if (_features.containsKey(feature.id)) {
+    if (_store.containsFeature(feature.id)) {
       throw StateError(
         'Spatial feature with id "${feature.id}" already exists.',
       );
     }
 
-    _features[feature.id] = feature;
+    _store.putFeature(feature);
   }
 
   @override
   void update(SpatialFeature feature) {
     feature.validate();
 
-    if (!_features.containsKey(feature.id)) {
+    if (!_store.containsFeature(feature.id)) {
       throw StateError(
         'Spatial feature with id "${feature.id}" does not exist.',
       );
     }
 
-    _features[feature.id] = feature;
+    _store.putFeature(feature);
   }
 
   @override
   void deleteById(String id) {
-    if (!_features.containsKey(id)) {
+    if (!_store.containsFeature(id)) {
       throw StateError('Spatial feature with id "$id" does not exist.');
     }
 
-    _features.remove(id);
+    _store.removeFeature(id);
   }
 }
