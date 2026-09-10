@@ -1,6 +1,8 @@
 import '../geometry/spatial_geometry_type.dart';
 
 abstract final class SpatialFeatureTypes {
+  static const administrativeBoundary = 'administrativeBoundary';
+
   static const cultivationArea = 'cultivationArea';
   static const preCompensationParcel = 'preCompensationParcel';
   static const landParcel = 'landParcel';

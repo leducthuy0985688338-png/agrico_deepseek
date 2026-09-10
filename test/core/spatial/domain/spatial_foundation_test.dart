@@ -49,6 +49,14 @@ void main() {
 
       expect(period.validate, throwsFormatException);
     });
+    test('rejects zero-length effective period', () {
+      final period = SpatialEffectivePeriod(
+        validFrom: createdAt,
+        validTo: createdAt,
+      );
+
+      expect(period.validate, throwsFormatException);
+    });
   });
 
   group('SpatialFeature', () {
@@ -82,7 +90,6 @@ void main() {
       expect(feature.validate, throwsFormatException);
     });
   });
-
   group('SpatialFeatureRevision', () {
     test('accepts baseline revision with provenance', () {
       final revision = SpatialFeatureRevision(

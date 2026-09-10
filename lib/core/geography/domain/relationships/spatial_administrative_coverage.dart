@@ -1,3 +1,5 @@
+import '../../../spatial/domain/entities/spatial_temporal.dart';
+
 enum AdministrativeCoverageType { contains, intersects, centroidWithin }
 
 class SpatialAdministrativeCoverage {
@@ -9,6 +11,7 @@ class SpatialAdministrativeCoverage {
     required this.createdAt,
     required this.createdBy,
     this.coverageShare,
+    this.effectivePeriod,
     this.notes,
     this.schemaVersion = currentSchemaVersion,
   });
@@ -32,6 +35,12 @@ class SpatialAdministrativeCoverage {
   /// This value is optional because it may not be known until a spatial
   /// intersection calculation has been performed.
   final double? coverageShare;
+
+  /// Optional period during which this administrative coverage is valid.
+  ///
+  /// Historical coverage remains queryable when administrative boundaries
+  /// change. Null means the effective period has not been established.
+  final SpatialEffectivePeriod? effectivePeriod;
 
   final String? notes;
 
@@ -61,6 +70,7 @@ class SpatialAdministrativeCoverage {
       );
     }
 
+    effectivePeriod?.validate();
     _validateOptionalText(notes, 'notes');
 
     if (schemaVersion <= 0) {

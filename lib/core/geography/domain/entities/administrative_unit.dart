@@ -1,4 +1,15 @@
-enum AdministrativeLevel { country, province, district, village }
+enum AdministrativeLevel {
+  country,
+  region,
+  state,
+  province,
+  municipality,
+  district,
+  commune,
+  ward,
+  village,
+  other,
+}
 
 class AdministrativeUnit {
   const AdministrativeUnit({
@@ -11,6 +22,7 @@ class AdministrativeUnit {
     this.parentId,
     this.countryCode,
     this.alternateName,
+    this.spatialFeatureId,
     this.active = true,
     this.schemaVersion = currentSchemaVersion,
   });
@@ -45,6 +57,12 @@ class AdministrativeUnit {
   /// Optional alternate/localized name.
   final String? alternateName;
 
+  /// Stable SpatialFeature identity for this administrative unit's boundary.
+  ///
+  /// Boundary geometry and its historical revisions are owned by Spatial Core.
+  /// This reference may be null when no GIS boundary has been recorded yet.
+  final String? spatialFeatureId;
+
   final bool active;
 
   final DateTime createdAt;
@@ -61,6 +79,7 @@ class AdministrativeUnit {
     _validateOptionalText(parentId, 'parentId');
     _validateOptionalText(countryCode, 'countryCode');
     _validateOptionalText(alternateName, 'alternateName');
+    _validateOptionalText(spatialFeatureId, 'spatialFeatureId');
 
     if (level == AdministrativeLevel.country && parentId != null) {
       throw const FormatException(

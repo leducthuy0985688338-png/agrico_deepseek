@@ -27,9 +27,9 @@ class SpatialEffectivePeriod {
   bool get isOpenEnded => validTo == null;
 
   void validate() {
-    if (validTo != null && validTo!.isBefore(validFrom)) {
+    if (validTo != null && !validTo!.isAfter(validFrom)) {
       throw const FormatException(
-        'Spatial effective period cannot end before it starts.',
+        'Spatial effective period must end after it starts.',
       );
     }
   }
