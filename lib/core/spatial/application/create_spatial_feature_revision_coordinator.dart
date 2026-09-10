@@ -19,6 +19,22 @@ class CreateSpatialFeatureRevisionCoordinator {
     }
 
     revision.validateAgainstFeature(feature);
+
+    final latestRevision = revisionRepository.findLatestByFeatureId(
+      revision.featureId,
+    );
+
+    final expectedRevision = latestRevision == null
+        ? 1
+        : latestRevision.revision + 1;
+
+    if (revision.revision != expectedRevision) {
+      throw StateError(
+        'Expected spatial feature revision $expectedRevision '
+        'for ${revision.featureId}, but received ${revision.revision}.',
+      );
+    }
+
     revisionRepository.create(revision);
   }
 }
