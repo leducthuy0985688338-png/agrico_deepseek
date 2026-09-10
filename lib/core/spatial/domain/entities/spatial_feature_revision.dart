@@ -1,4 +1,5 @@
 import '../geometry/spatial_geometry.dart';
+import 'spatial_feature.dart';
 import '../geometry/spatial_geometry_type.dart';
 import 'spatial_source.dart';
 import 'spatial_temporal.dart';
@@ -59,6 +60,28 @@ class SpatialFeatureRevision {
 
   SpatialRevisionIdentity get identity =>
       SpatialRevisionIdentity(featureId: featureId, revision: revision);
+
+  /// Validates this revision against its stable parent feature.
+  ///
+  /// Revision geometry remains optional for legacy migration records, but
+  /// whenever concrete geometry is present its type must agree with both the
+  /// revision metadata and the parent feature.
+  void validateAgainstFeature(SpatialFeature feature) {
+    feature.validate();
+    validate();
+
+    if (featureId != feature.id) {
+      throw const FormatException(
+        'Spatial feature revision featureId must match the parent feature id.',
+      );
+    }
+
+    if (geometryType != feature.geometryType) {
+      throw const FormatException(
+        'Spatial feature revision geometryType must match the parent feature.',
+      );
+    }
+  }
 
   void validate() {
     if (id.trim().isEmpty) {
