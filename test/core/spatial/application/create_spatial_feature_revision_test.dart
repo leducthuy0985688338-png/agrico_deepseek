@@ -54,33 +54,36 @@ void main() {
   }
 
   group('CreateSpatialFeatureRevision', () {
-    test('stores a revision that matches its feature', () {
+    test('stores a revision that matches its feature', () async {
       final repository = InMemorySpatialFeatureRevisionRepository();
       final useCase = CreateSpatialFeatureRevision(repository);
       final feature = buildFeature();
       final revision = buildPolygonRevision();
 
-      useCase.execute(feature: feature, revision: revision);
+      await useCase.execute(feature: feature, revision: revision);
 
-      expect(repository.findById(revision.id), same(revision));
-      expect(repository.findLatestByFeatureId(feature.id), same(revision));
+      expect(await repository.findById(revision.id), same(revision));
+      expect(
+        await repository.findLatestByFeatureId(feature.id),
+        same(revision),
+      );
     });
 
-    test('rejects revision belonging to another feature', () {
+    test('rejects revision belonging to another feature', () async {
       final repository = InMemorySpatialFeatureRevisionRepository();
       final useCase = CreateSpatialFeatureRevision(repository);
       final feature = buildFeature();
       final revision = buildPolygonRevision(featureId: 'parcel-2');
 
-      expect(
-        () => useCase.execute(feature: feature, revision: revision),
+      await expectLater(
+        useCase.execute(feature: feature, revision: revision),
         throwsFormatException,
       );
 
-      expect(repository.findById(revision.id), isNull);
+      expect(await repository.findById(revision.id), isNull);
     });
 
-    test('rejects revision geometry type different from feature', () {
+    test('rejects revision geometry type different from feature', () async {
       final repository = InMemorySpatialFeatureRevisionRepository();
       final useCase = CreateSpatialFeatureRevision(repository);
       final feature = buildFeature();
@@ -101,15 +104,15 @@ void main() {
         createdBy: 'user-1',
       );
 
-      expect(
-        () => useCase.execute(feature: feature, revision: revision),
+      await expectLater(
+        useCase.execute(feature: feature, revision: revision),
         throwsFormatException,
       );
 
-      expect(repository.findById(revision.id), isNull);
+      expect(await repository.findById(revision.id), isNull);
     });
 
-    test('rejects invalid revision before repository storage', () {
+    test('rejects invalid revision before repository storage', () async {
       final repository = InMemorySpatialFeatureRevisionRepository();
       final useCase = CreateSpatialFeatureRevision(repository);
       final feature = buildFeature();
@@ -119,33 +122,33 @@ void main() {
         featureId: '',
       );
 
-      expect(
-        () => useCase.execute(feature: feature, revision: revision),
+      await expectLater(
+        useCase.execute(feature: feature, revision: revision),
         throwsFormatException,
       );
 
-      expect(repository.findById('invalid-revision'), isNull);
+      expect(await repository.findById('invalid-revision'), isNull);
     });
 
-    test('repository still enforces duplicate revision identity', () {
+    test('repository still enforces duplicate revision identity', () async {
       final repository = InMemorySpatialFeatureRevisionRepository();
       final useCase = CreateSpatialFeatureRevision(repository);
       final feature = buildFeature();
 
-      useCase.execute(
+      await useCase.execute(
         feature: feature,
         revision: buildPolygonRevision(id: 'revision-a'),
       );
 
-      expect(
-        () => useCase.execute(
+      await expectLater(
+        useCase.execute(
           feature: feature,
           revision: buildPolygonRevision(id: 'revision-b'),
         ),
         throwsStateError,
       );
 
-      expect(repository.findByFeatureId(feature.id), hasLength(1));
+      expect(await repository.findByFeatureId(feature.id), hasLength(1));
     });
   });
 }

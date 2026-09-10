@@ -7,10 +7,10 @@ class UpdateSpatialFeatureWithRevision {
 
   final SpatialFeatureRevisionUpdateTransaction transaction;
 
-  void execute({
+  Future<void> execute({
     required SpatialFeature feature,
     required SpatialFeatureRevision revision,
-  }) {
+  }) async {
     feature.validate();
     revision.validateAgainstFeature(feature);
 
@@ -21,6 +21,6 @@ class UpdateSpatialFeatureWithRevision {
       );
     }
 
-    transaction.update(feature: feature, revision: revision);
+    await transaction.update(feature: feature, revision: revision);
   }
 }

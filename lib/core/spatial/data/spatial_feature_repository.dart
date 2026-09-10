@@ -1,13 +1,13 @@
 import '../domain/entities/spatial_feature.dart';
 
 abstract interface class SpatialFeatureRepository {
-  SpatialFeature? findById(String id);
+  Future<SpatialFeature?> findById(String id);
 
-  List<SpatialFeature> findAll();
+  Future<List<SpatialFeature>> findAll();
 
-  void create(SpatialFeature feature);
+  Future<void> create(SpatialFeature feature);
 
-  void update(SpatialFeature feature);
+  Future<void> update(SpatialFeature feature);
 
-  void deleteById(String id);
+  Future<void> deleteById(String id);
 }

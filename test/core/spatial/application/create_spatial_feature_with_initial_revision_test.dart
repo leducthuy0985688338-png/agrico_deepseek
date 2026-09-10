@@ -71,41 +71,47 @@ void main() {
   }
 
   group('CreateSpatialFeatureWithInitialRevision', () {
-    test('creates feature and initial revision through one transaction', () {
+    test(
+      'creates feature and initial revision through one transaction',
+      () async {
+        final transaction = _RecordingCreationTransaction();
+        final useCase = CreateSpatialFeatureWithInitialRevision(transaction);
+
+        final feature = buildFeature();
+        final revision = buildPolygonRevision();
+
+        await useCase.execute(feature: feature, initialRevision: revision);
+
+        expect(transaction.callCount, 1);
+        expect(transaction.feature, same(feature));
+        expect(transaction.initialRevision, same(revision));
+      },
+    );
+
+    test(
+      'rejects initial revision greater than 1 before transaction',
+      () async {
+        final transaction = _RecordingCreationTransaction();
+        final useCase = CreateSpatialFeatureWithInitialRevision(transaction);
+
+        await expectLater(
+          useCase.execute(
+            feature: buildFeature(),
+            initialRevision: buildPolygonRevision(revision: 2),
+          ),
+          throwsStateError,
+        );
+
+        expect(transaction.callCount, 0);
+      },
+    );
+
+    test('rejects revision for another feature before transaction', () async {
       final transaction = _RecordingCreationTransaction();
       final useCase = CreateSpatialFeatureWithInitialRevision(transaction);
 
-      final feature = buildFeature();
-      final revision = buildPolygonRevision();
-
-      useCase.execute(feature: feature, initialRevision: revision);
-
-      expect(transaction.callCount, 1);
-      expect(transaction.feature, same(feature));
-      expect(transaction.initialRevision, same(revision));
-    });
-
-    test('rejects initial revision greater than 1 before transaction', () {
-      final transaction = _RecordingCreationTransaction();
-      final useCase = CreateSpatialFeatureWithInitialRevision(transaction);
-
-      expect(
-        () => useCase.execute(
-          feature: buildFeature(),
-          initialRevision: buildPolygonRevision(revision: 2),
-        ),
-        throwsStateError,
-      );
-
-      expect(transaction.callCount, 0);
-    });
-
-    test('rejects revision for another feature before transaction', () {
-      final transaction = _RecordingCreationTransaction();
-      final useCase = CreateSpatialFeatureWithInitialRevision(transaction);
-
-      expect(
-        () => useCase.execute(
+      await expectLater(
+        useCase.execute(
           feature: buildFeature(),
           initialRevision: buildPolygonRevision(featureId: 'parcel-2'),
         ),
@@ -115,12 +121,12 @@ void main() {
       expect(transaction.callCount, 0);
     });
 
-    test('rejects geometry type mismatch before transaction', () {
+    test('rejects geometry type mismatch before transaction', () async {
       final transaction = _RecordingCreationTransaction();
       final useCase = CreateSpatialFeatureWithInitialRevision(transaction);
 
-      expect(
-        () => useCase.execute(
+      await expectLater(
+        useCase.execute(
           feature: buildFeature(),
           initialRevision: buildLineRevision(),
         ),
@@ -130,12 +136,12 @@ void main() {
       expect(transaction.callCount, 0);
     });
 
-    test('rejects invalid feature before transaction', () {
+    test('rejects invalid feature before transaction', () async {
       final transaction = _RecordingCreationTransaction();
       final useCase = CreateSpatialFeatureWithInitialRevision(transaction);
 
-      expect(
-        () => useCase.execute(
+      await expectLater(
+        useCase.execute(
           feature: buildFeature(id: ''),
           initialRevision: buildPolygonRevision(featureId: ''),
         ),
@@ -154,10 +160,10 @@ class _RecordingCreationTransaction
   SpatialFeatureRevision? initialRevision;
 
   @override
-  void create({
+  Future<void> create({
     required SpatialFeature feature,
     required SpatialFeatureRevision initialRevision,
-  }) {
+  }) async {
     callCount += 1;
     this.feature = feature;
     this.initialRevision = initialRevision;

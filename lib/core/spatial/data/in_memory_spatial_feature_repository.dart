@@ -9,17 +9,17 @@ class InMemorySpatialFeatureRepository implements SpatialFeatureRepository {
   final InMemorySpatialStore _store;
 
   @override
-  SpatialFeature? findById(String id) {
+  Future<SpatialFeature?> findById(String id) async {
     return _store.findFeatureById(id);
   }
 
   @override
-  List<SpatialFeature> findAll() {
+  Future<List<SpatialFeature>> findAll() async {
     return List<SpatialFeature>.unmodifiable(_store.features);
   }
 
   @override
-  void create(SpatialFeature feature) {
+  Future<void> create(SpatialFeature feature) async {
     feature.validate();
 
     if (_store.containsFeature(feature.id)) {
@@ -32,7 +32,7 @@ class InMemorySpatialFeatureRepository implements SpatialFeatureRepository {
   }
 
   @override
-  void update(SpatialFeature feature) {
+  Future<void> update(SpatialFeature feature) async {
     feature.validate();
 
     if (!_store.containsFeature(feature.id)) {
@@ -45,7 +45,7 @@ class InMemorySpatialFeatureRepository implements SpatialFeatureRepository {
   }
 
   @override
-  void deleteById(String id) {
+  Future<void> deleteById(String id) async {
     if (!_store.containsFeature(id)) {
       throw StateError('Spatial feature with id "$id" does not exist.');
     }

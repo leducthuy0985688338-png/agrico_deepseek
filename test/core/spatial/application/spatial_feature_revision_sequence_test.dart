@@ -50,129 +50,158 @@ void main() {
   }
 
   group('Spatial feature revision sequence', () {
-    test('new feature accepts revision 1', () {
+    test('new feature accepts revision 1', () async {
       final featureRepository = InMemorySpatialFeatureRepository();
       final revisionRepository = InMemorySpatialFeatureRevisionRepository();
 
-      featureRepository.create(buildFeature('parcel-1'));
+      await featureRepository.create(buildFeature('parcel-1'));
 
       final coordinator = CreateSpatialFeatureRevisionCoordinator(
         featureRepository: featureRepository,
         revisionRepository: revisionRepository,
       );
 
-      coordinator.execute(buildRevision(featureId: 'parcel-1', revision: 1));
-
-      expect(revisionRepository.findLatestByFeatureId('parcel-1')?.revision, 1);
-    });
-
-    test('new feature rejects revision greater than 1', () {
-      final featureRepository = InMemorySpatialFeatureRepository();
-      final revisionRepository = InMemorySpatialFeatureRevisionRepository();
-
-      featureRepository.create(buildFeature('parcel-1'));
-
-      final coordinator = CreateSpatialFeatureRevisionCoordinator(
-        featureRepository: featureRepository,
-        revisionRepository: revisionRepository,
+      await coordinator.execute(
+        buildRevision(featureId: 'parcel-1', revision: 1),
       );
 
       expect(
-        () => coordinator.execute(
-          buildRevision(featureId: 'parcel-1', revision: 2),
-        ),
-        throwsStateError,
+        (await revisionRepository.findLatestByFeatureId('parcel-1'))?.revision,
+        1,
       );
-
-      expect(revisionRepository.findByFeatureId('parcel-1'), isEmpty);
     });
 
-    test('accepts strictly sequential revisions 1 2 3', () {
+    test('new feature rejects revision greater than 1', () async {
       final featureRepository = InMemorySpatialFeatureRepository();
       final revisionRepository = InMemorySpatialFeatureRevisionRepository();
 
-      featureRepository.create(buildFeature('parcel-1'));
+      await featureRepository.create(buildFeature('parcel-1'));
 
       final coordinator = CreateSpatialFeatureRevisionCoordinator(
         featureRepository: featureRepository,
         revisionRepository: revisionRepository,
       );
 
-      coordinator.execute(buildRevision(featureId: 'parcel-1', revision: 1));
-      coordinator.execute(buildRevision(featureId: 'parcel-1', revision: 2));
-      coordinator.execute(buildRevision(featureId: 'parcel-1', revision: 3));
+      await expectLater(
+        coordinator.execute(buildRevision(featureId: 'parcel-1', revision: 2)),
+        throwsStateError,
+      );
 
-      final revisions = revisionRepository.findByFeatureId('parcel-1');
+      expect(await revisionRepository.findByFeatureId('parcel-1'), isEmpty);
+    });
+
+    test('accepts strictly sequential revisions 1 2 3', () async {
+      final featureRepository = InMemorySpatialFeatureRepository();
+      final revisionRepository = InMemorySpatialFeatureRevisionRepository();
+
+      await featureRepository.create(buildFeature('parcel-1'));
+
+      final coordinator = CreateSpatialFeatureRevisionCoordinator(
+        featureRepository: featureRepository,
+        revisionRepository: revisionRepository,
+      );
+
+      await coordinator.execute(
+        buildRevision(featureId: 'parcel-1', revision: 1),
+      );
+      await coordinator.execute(
+        buildRevision(featureId: 'parcel-1', revision: 2),
+      );
+      await coordinator.execute(
+        buildRevision(featureId: 'parcel-1', revision: 3),
+      );
+
+      final revisions = await revisionRepository.findByFeatureId('parcel-1');
 
       expect(revisions.map((item) => item.revision).toList(), [1, 2, 3]);
     });
 
-    test('rejects gap in revision sequence', () {
+    test('rejects gap in revision sequence', () async {
       final featureRepository = InMemorySpatialFeatureRepository();
       final revisionRepository = InMemorySpatialFeatureRevisionRepository();
 
-      featureRepository.create(buildFeature('parcel-1'));
+      await featureRepository.create(buildFeature('parcel-1'));
 
       final coordinator = CreateSpatialFeatureRevisionCoordinator(
         featureRepository: featureRepository,
         revisionRepository: revisionRepository,
       );
 
-      coordinator.execute(buildRevision(featureId: 'parcel-1', revision: 1));
+      await coordinator.execute(
+        buildRevision(featureId: 'parcel-1', revision: 1),
+      );
 
-      expect(
-        () => coordinator.execute(
-          buildRevision(featureId: 'parcel-1', revision: 3),
-        ),
+      await expectLater(
+        coordinator.execute(buildRevision(featureId: 'parcel-1', revision: 3)),
         throwsStateError,
       );
 
-      expect(revisionRepository.findByFeatureId('parcel-1'), hasLength(1));
+      expect(
+        await revisionRepository.findByFeatureId('parcel-1'),
+        hasLength(1),
+      );
     });
 
-    test('rejects repeated or backward revision', () {
+    test('rejects repeated or backward revision', () async {
       final featureRepository = InMemorySpatialFeatureRepository();
       final revisionRepository = InMemorySpatialFeatureRevisionRepository();
 
-      featureRepository.create(buildFeature('parcel-1'));
+      await featureRepository.create(buildFeature('parcel-1'));
 
       final coordinator = CreateSpatialFeatureRevisionCoordinator(
         featureRepository: featureRepository,
         revisionRepository: revisionRepository,
       );
 
-      coordinator.execute(buildRevision(featureId: 'parcel-1', revision: 1));
-      coordinator.execute(buildRevision(featureId: 'parcel-1', revision: 2));
+      await coordinator.execute(
+        buildRevision(featureId: 'parcel-1', revision: 1),
+      );
+      await coordinator.execute(
+        buildRevision(featureId: 'parcel-1', revision: 2),
+      );
 
-      expect(
-        () => coordinator.execute(
-          buildRevision(featureId: 'parcel-1', revision: 1),
-        ),
+      await expectLater(
+        coordinator.execute(buildRevision(featureId: 'parcel-1', revision: 1)),
         throwsStateError,
       );
 
-      expect(revisionRepository.findByFeatureId('parcel-1'), hasLength(2));
+      expect(
+        await revisionRepository.findByFeatureId('parcel-1'),
+        hasLength(2),
+      );
     });
 
-    test('each spatial feature maintains an independent sequence', () {
+    test('each spatial feature maintains an independent sequence', () async {
       final featureRepository = InMemorySpatialFeatureRepository();
       final revisionRepository = InMemorySpatialFeatureRevisionRepository();
 
-      featureRepository.create(buildFeature('parcel-1'));
-      featureRepository.create(buildFeature('parcel-2'));
+      await featureRepository.create(buildFeature('parcel-1'));
+      await featureRepository.create(buildFeature('parcel-2'));
 
       final coordinator = CreateSpatialFeatureRevisionCoordinator(
         featureRepository: featureRepository,
         revisionRepository: revisionRepository,
       );
 
-      coordinator.execute(buildRevision(featureId: 'parcel-1', revision: 1));
-      coordinator.execute(buildRevision(featureId: 'parcel-1', revision: 2));
+      await coordinator.execute(
+        buildRevision(featureId: 'parcel-1', revision: 1),
+      );
+      await coordinator.execute(
+        buildRevision(featureId: 'parcel-1', revision: 2),
+      );
 
-      coordinator.execute(buildRevision(featureId: 'parcel-2', revision: 1));
+      await coordinator.execute(
+        buildRevision(featureId: 'parcel-2', revision: 1),
+      );
 
-      expect(revisionRepository.findLatestByFeatureId('parcel-1')?.revision, 2);
-      expect(revisionRepository.findLatestByFeatureId('parcel-2')?.revision, 1);
+      expect(
+        (await revisionRepository.findLatestByFeatureId('parcel-1'))?.revision,
+        2,
+      );
+      expect(
+        (await revisionRepository.findLatestByFeatureId('parcel-2'))?.revision,
+        1,
+      );
     });
   });
 }

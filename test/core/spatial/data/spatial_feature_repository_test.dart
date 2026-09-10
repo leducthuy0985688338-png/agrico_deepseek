@@ -32,76 +32,76 @@ void main() {
   }
 
   group('InMemorySpatialFeatureRepository', () {
-    test('starts empty', () {
+    test('starts empty', () async {
       final repository = InMemorySpatialFeatureRepository();
 
-      expect(repository.findAll(), isEmpty);
-      expect(repository.findById('missing'), isNull);
+      expect(await repository.findAll(), isEmpty);
+      expect(await repository.findById('missing'), isNull);
     });
 
-    test('creates and retrieves a feature by id', () {
+    test('creates and retrieves a feature by id', () async {
       final repository = InMemorySpatialFeatureRepository();
       final feature = buildFeature();
 
-      repository.create(feature);
+      await repository.create(feature);
 
-      expect(repository.findById(feature.id), same(feature));
-      expect(repository.findAll(), hasLength(1));
+      expect(await repository.findById(feature.id), same(feature));
+      expect(await repository.findAll(), hasLength(1));
     });
 
-    test('create rejects duplicate feature id', () {
+    test('create rejects duplicate feature id', () async {
       final repository = InMemorySpatialFeatureRepository();
       final feature = buildFeature();
 
-      repository.create(feature);
+      await repository.create(feature);
 
-      expect(
-        () => repository.create(buildFeature(name: 'Duplicate')),
+      await expectLater(
+        repository.create(buildFeature(name: 'Duplicate')),
         throwsStateError,
       );
     });
 
-    test('update replaces an existing feature', () {
+    test('update replaces an existing feature', () async {
       final repository = InMemorySpatialFeatureRepository();
       final original = buildFeature();
-      repository.create(original);
+      await repository.create(original);
 
       final updated = buildFeature(name: 'Updated');
-      repository.update(updated);
+      await repository.update(updated);
 
-      expect(repository.findById(original.id), same(updated));
-      expect(repository.findById(original.id)!.name, 'Updated');
-      expect(repository.findAll(), hasLength(1));
+      expect(await repository.findById(original.id), same(updated));
+      expect((await repository.findById(original.id))!.name, 'Updated');
+      expect(await repository.findAll(), hasLength(1));
     });
 
-    test('update rejects a missing feature', () {
+    test('update rejects a missing feature', () async {
       final repository = InMemorySpatialFeatureRepository();
 
-      expect(() => repository.update(buildFeature()), throwsStateError);
+      await expectLater(repository.update(buildFeature()), throwsStateError);
     });
 
-    test('delete removes an existing feature', () {
+    test('delete removes an existing feature', () async {
       final repository = InMemorySpatialFeatureRepository();
       final feature = buildFeature();
 
-      repository.create(feature);
-      repository.deleteById(feature.id);
+      await repository.create(feature);
+      await repository.deleteById(feature.id);
 
-      expect(repository.findById(feature.id), isNull);
-      expect(repository.findAll(), isEmpty);
+      expect(await repository.findById(feature.id), isNull);
+      expect(await repository.findAll(), isEmpty);
     });
 
-    test('delete rejects a missing feature', () {
+    test('delete rejects a missing feature', () async {
       final repository = InMemorySpatialFeatureRepository();
 
-      expect(() => repository.deleteById('missing'), throwsStateError);
+      await expectLater(repository.deleteById('missing'), throwsStateError);
     });
 
-    test('findAll returns an unmodifiable collection', () {
+    test('findAll returns an unmodifiable collection', () async {
       final repository = InMemorySpatialFeatureRepository();
-      repository.create(buildFeature());
+      await repository.create(buildFeature());
 
-      final features = repository.findAll();
+      final features = await repository.findAll();
 
       expect(
         () => features.add(buildFeature(id: 'parcel-2')),
@@ -109,7 +109,7 @@ void main() {
       );
     });
 
-    test('create validates the feature before storing it', () {
+    test('create validates the feature before storing it', () async {
       final repository = InMemorySpatialFeatureRepository();
 
       final invalid = SpatialFeature(
@@ -123,14 +123,14 @@ void main() {
         updatedBy: 'user-1',
       );
 
-      expect(() => repository.create(invalid), throwsFormatException);
-      expect(repository.findById('invalid'), isNull);
+      await expectLater(repository.create(invalid), throwsFormatException);
+      expect(await repository.findById('invalid'), isNull);
     });
 
-    test('update validates the feature before replacing it', () {
+    test('update validates the feature before replacing it', () async {
       final repository = InMemorySpatialFeatureRepository();
       final original = buildFeature();
-      repository.create(original);
+      await repository.create(original);
 
       final invalid = SpatialFeature(
         id: original.id,
@@ -143,8 +143,8 @@ void main() {
         updatedBy: 'user-1',
       );
 
-      expect(() => repository.update(invalid), throwsFormatException);
-      expect(repository.findById(original.id), same(original));
+      await expectLater(repository.update(invalid), throwsFormatException);
+      expect(await repository.findById(original.id), same(original));
     });
   });
 }

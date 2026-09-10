@@ -79,7 +79,7 @@ void main() {
   }
 
   group('InMemorySpatialFeatureRevisionUpdateTransaction', () {
-    test('updates feature and appends revision 2 atomically', () {
+    test('updates feature and appends revision 2 atomically', () async {
       final store = InMemorySpatialStore();
       final featureRepository = InMemorySpatialFeatureRepository(store: store);
       final revisionRepository = InMemorySpatialFeatureRevisionRepository(
@@ -89,8 +89,8 @@ void main() {
       final originalFeature = buildFeature();
       final revision1 = buildRevision();
 
-      featureRepository.create(originalFeature);
-      revisionRepository.create(revision1);
+      await featureRepository.create(originalFeature);
+      await revisionRepository.create(revision1);
 
       final transaction = InMemorySpatialFeatureRevisionUpdateTransaction(
         store: store,
@@ -102,15 +102,21 @@ void main() {
       );
       final revision2 = buildRevision(revision: 2);
 
-      transaction.update(feature: updatedFeature, revision: revision2);
+      await transaction.update(feature: updatedFeature, revision: revision2);
 
-      expect(featureRepository.findById('parcel-1'), same(updatedFeature));
-      expect(revisionRepository.findByFeatureId('parcel-1'), hasLength(2));
-      expect(revisionRepository.findById(revision1.id), same(revision1));
-      expect(revisionRepository.findById(revision2.id), same(revision2));
+      expect(
+        await featureRepository.findById('parcel-1'),
+        same(updatedFeature),
+      );
+      expect(
+        await revisionRepository.findByFeatureId('parcel-1'),
+        hasLength(2),
+      );
+      expect(await revisionRepository.findById(revision1.id), same(revision1));
+      expect(await revisionRepository.findById(revision2.id), same(revision2));
     });
 
-    test('rejects featureType mutation without changing state', () {
+    test('rejects featureType mutation without changing state', () async {
       final store = InMemorySpatialStore();
       final featureRepository = InMemorySpatialFeatureRepository(store: store);
       final revisionRepository = InMemorySpatialFeatureRevisionRepository(
@@ -118,14 +124,14 @@ void main() {
       );
       final originalFeature = buildFeature();
       final revision1 = buildRevision();
-      featureRepository.create(originalFeature);
-      revisionRepository.create(revision1);
+      await featureRepository.create(originalFeature);
+      await revisionRepository.create(revision1);
       final transaction = InMemorySpatialFeatureRevisionUpdateTransaction(
         store: store,
       );
 
-      expect(
-        () => transaction.update(
+      await expectLater(
+        transaction.update(
           feature: buildFeature(
             featureType: SpatialFeatureTypes.road,
             updateTime: updatedAt,
@@ -141,17 +147,17 @@ void main() {
         ),
       );
       expect(
-        featureRepository.findById(originalFeature.id),
+        await featureRepository.findById(originalFeature.id),
         same(originalFeature),
       );
       expect(
-        revisionRepository.findByFeatureId(originalFeature.id),
+        await revisionRepository.findByFeatureId(originalFeature.id),
         hasLength(1),
       );
-      expect(revisionRepository.findById(revision1.id), same(revision1));
+      expect(await revisionRepository.findById(revision1.id), same(revision1));
     });
 
-    test('rejects geometryType mutation without changing state', () {
+    test('rejects geometryType mutation without changing state', () async {
       final store = InMemorySpatialStore();
       final featureRepository = InMemorySpatialFeatureRepository(store: store);
       final revisionRepository = InMemorySpatialFeatureRevisionRepository(
@@ -159,8 +165,8 @@ void main() {
       );
       final originalFeature = buildFeature();
       final revision1 = buildRevision();
-      featureRepository.create(originalFeature);
-      revisionRepository.create(revision1);
+      await featureRepository.create(originalFeature);
+      await revisionRepository.create(revision1);
       final transaction = InMemorySpatialFeatureRevisionUpdateTransaction(
         store: store,
       );
@@ -169,8 +175,8 @@ void main() {
         SpatialCoordinate(latitude: 16.6, longitude: 104.8),
       ]);
 
-      expect(
-        () => transaction.update(
+      await expectLater(
+        transaction.update(
           feature: buildFeature(
             geometryType: SpatialGeometryType.lineString,
             updateTime: updatedAt,
@@ -190,17 +196,17 @@ void main() {
         ),
       );
       expect(
-        featureRepository.findById(originalFeature.id),
+        await featureRepository.findById(originalFeature.id),
         same(originalFeature),
       );
       expect(
-        revisionRepository.findByFeatureId(originalFeature.id),
+        await revisionRepository.findByFeatureId(originalFeature.id),
         hasLength(1),
       );
-      expect(revisionRepository.findById(revision1.id), same(revision1));
+      expect(await revisionRepository.findById(revision1.id), same(revision1));
     });
 
-    test('rejects createdAt mutation without changing state', () {
+    test('rejects createdAt mutation without changing state', () async {
       final store = InMemorySpatialStore();
       final featureRepository = InMemorySpatialFeatureRepository(store: store);
       final revisionRepository = InMemorySpatialFeatureRevisionRepository(
@@ -208,15 +214,15 @@ void main() {
       );
       final originalFeature = buildFeature();
       final revision1 = buildRevision();
-      featureRepository.create(originalFeature);
-      revisionRepository.create(revision1);
+      await featureRepository.create(originalFeature);
+      await revisionRepository.create(revision1);
       final transaction = InMemorySpatialFeatureRevisionUpdateTransaction(
         store: store,
       );
       final changedCreationTime = createdAt.add(const Duration(days: 1));
 
-      expect(
-        () => transaction.update(
+      await expectLater(
+        transaction.update(
           feature: buildFeature(
             creationTime: changedCreationTime,
             updateTime: updatedAt,
@@ -232,17 +238,17 @@ void main() {
         ),
       );
       expect(
-        featureRepository.findById(originalFeature.id),
+        await featureRepository.findById(originalFeature.id),
         same(originalFeature),
       );
       expect(
-        revisionRepository.findByFeatureId(originalFeature.id),
+        await revisionRepository.findByFeatureId(originalFeature.id),
         hasLength(1),
       );
-      expect(revisionRepository.findById(revision1.id), same(revision1));
+      expect(await revisionRepository.findById(revision1.id), same(revision1));
     });
 
-    test('rejects createdBy mutation without changing state', () {
+    test('rejects createdBy mutation without changing state', () async {
       final store = InMemorySpatialStore();
       final featureRepository = InMemorySpatialFeatureRepository(store: store);
       final revisionRepository = InMemorySpatialFeatureRevisionRepository(
@@ -250,14 +256,14 @@ void main() {
       );
       final originalFeature = buildFeature();
       final revision1 = buildRevision();
-      featureRepository.create(originalFeature);
-      revisionRepository.create(revision1);
+      await featureRepository.create(originalFeature);
+      await revisionRepository.create(revision1);
       final transaction = InMemorySpatialFeatureRevisionUpdateTransaction(
         store: store,
       );
 
-      expect(
-        () => transaction.update(
+      await expectLater(
+        transaction.update(
           feature: buildFeature(createdBy: 'user-2', updateTime: updatedAt),
           revision: buildRevision(revision: 2),
         ),
@@ -270,17 +276,17 @@ void main() {
         ),
       );
       expect(
-        featureRepository.findById(originalFeature.id),
+        await featureRepository.findById(originalFeature.id),
         same(originalFeature),
       );
       expect(
-        revisionRepository.findByFeatureId(originalFeature.id),
+        await revisionRepository.findByFeatureId(originalFeature.id),
         hasLength(1),
       );
-      expect(revisionRepository.findById(revision1.id), same(revision1));
+      expect(await revisionRepository.findById(revision1.id), same(revision1));
     });
 
-    test('allows legitimate mutable snapshot changes', () {
+    test('allows legitimate mutable snapshot changes', () async {
       final store = InMemorySpatialStore();
       final featureRepository = InMemorySpatialFeatureRepository(store: store);
       final revisionRepository = InMemorySpatialFeatureRevisionRepository(
@@ -288,8 +294,8 @@ void main() {
       );
       final originalFeature = buildFeature();
       final revision1 = buildRevision();
-      featureRepository.create(originalFeature);
-      revisionRepository.create(revision1);
+      await featureRepository.create(originalFeature);
+      await revisionRepository.create(revision1);
       final transaction = InMemorySpatialFeatureRevisionUpdateTransaction(
         store: store,
       );
@@ -301,30 +307,30 @@ void main() {
       );
       final revision2 = buildRevision(revision: 2);
 
-      transaction.update(feature: updatedFeature, revision: revision2);
+      await transaction.update(feature: updatedFeature, revision: revision2);
 
       expect(
-        featureRepository.findById(originalFeature.id),
+        await featureRepository.findById(originalFeature.id),
         same(updatedFeature),
       );
       expect(
-        revisionRepository.findByFeatureId(originalFeature.id),
+        await revisionRepository.findByFeatureId(originalFeature.id),
         hasLength(2),
       );
-      expect(revisionRepository.findById(revision1.id), same(revision1));
-      expect(revisionRepository.findById(revision2.id), same(revision2));
+      expect(await revisionRepository.findById(revision1.id), same(revision1));
+      expect(await revisionRepository.findById(revision2.id), same(revision2));
     });
 
-    test('continues sequentially from revision 2 to revision 3', () {
+    test('continues sequentially from revision 2 to revision 3', () async {
       final store = InMemorySpatialStore();
       final featureRepository = InMemorySpatialFeatureRepository(store: store);
       final revisionRepository = InMemorySpatialFeatureRevisionRepository(
         store: store,
       );
 
-      featureRepository.create(buildFeature());
-      revisionRepository.create(buildRevision());
-      revisionRepository.create(buildRevision(revision: 2));
+      await featureRepository.create(buildFeature());
+      await revisionRepository.create(buildRevision());
+      await revisionRepository.create(buildRevision(revision: 2));
 
       final transaction = InMemorySpatialFeatureRevisionUpdateTransaction(
         store: store,
@@ -332,19 +338,22 @@ void main() {
 
       final revision3 = buildRevision(revision: 3);
 
-      transaction.update(
+      await transaction.update(
         feature: buildFeature(updateTime: updatedAt, updatedBy: 'user-3'),
         revision: revision3,
       );
 
-      expect(revisionRepository.findByFeatureId('parcel-1'), hasLength(3));
       expect(
-        revisionRepository.findLatestByFeatureId('parcel-1'),
+        await revisionRepository.findByFeatureId('parcel-1'),
+        hasLength(3),
+      );
+      expect(
+        await revisionRepository.findLatestByFeatureId('parcel-1'),
         same(revision3),
       );
     });
 
-    test('rejects revision gap without changing state', () {
+    test('rejects revision gap without changing state', () async {
       final store = InMemorySpatialStore();
       final featureRepository = InMemorySpatialFeatureRepository(store: store);
       final revisionRepository = InMemorySpatialFeatureRevisionRepository(
@@ -354,42 +363,48 @@ void main() {
       final originalFeature = buildFeature();
       final revision1 = buildRevision();
 
-      featureRepository.create(originalFeature);
-      revisionRepository.create(revision1);
+      await featureRepository.create(originalFeature);
+      await revisionRepository.create(revision1);
 
       final transaction = InMemorySpatialFeatureRevisionUpdateTransaction(
         store: store,
       );
 
-      expect(
-        () => transaction.update(
+      await expectLater(
+        transaction.update(
           feature: buildFeature(updateTime: updatedAt, updatedBy: 'user-2'),
           revision: buildRevision(revision: 3),
         ),
         throwsStateError,
       );
 
-      expect(featureRepository.findById('parcel-1'), same(originalFeature));
-      expect(revisionRepository.findByFeatureId('parcel-1'), hasLength(1));
+      expect(
+        await featureRepository.findById('parcel-1'),
+        same(originalFeature),
+      );
+      expect(
+        await revisionRepository.findByFeatureId('parcel-1'),
+        hasLength(1),
+      );
     });
 
-    test('rejects repeated or backward revision', () {
+    test('rejects repeated or backward revision', () async {
       final store = InMemorySpatialStore();
       final featureRepository = InMemorySpatialFeatureRepository(store: store);
       final revisionRepository = InMemorySpatialFeatureRevisionRepository(
         store: store,
       );
 
-      featureRepository.create(buildFeature());
-      revisionRepository.create(buildRevision());
-      revisionRepository.create(buildRevision(revision: 2));
+      await featureRepository.create(buildFeature());
+      await revisionRepository.create(buildRevision());
+      await revisionRepository.create(buildRevision(revision: 2));
 
       final transaction = InMemorySpatialFeatureRevisionUpdateTransaction(
         store: store,
       );
 
-      expect(
-        () => transaction.update(
+      await expectLater(
+        transaction.update(
           feature: buildFeature(updateTime: updatedAt, updatedBy: 'user-2'),
           revision: buildRevision(
             id: 'parcel-1-repeated-revision-2',
@@ -399,55 +414,64 @@ void main() {
         throwsStateError,
       );
 
-      expect(revisionRepository.findByFeatureId('parcel-1'), hasLength(2));
+      expect(
+        await revisionRepository.findByFeatureId('parcel-1'),
+        hasLength(2),
+      );
     });
 
-    test('rejects update when feature does not exist', () {
+    test('rejects update when feature does not exist', () async {
       final store = InMemorySpatialStore();
       final revisionRepository = InMemorySpatialFeatureRevisionRepository(
         store: store,
       );
 
-      revisionRepository.create(buildRevision());
+      await revisionRepository.create(buildRevision());
 
       final transaction = InMemorySpatialFeatureRevisionUpdateTransaction(
         store: store,
       );
 
-      expect(
-        () => transaction.update(
+      await expectLater(
+        transaction.update(
           feature: buildFeature(),
           revision: buildRevision(revision: 2),
         ),
         throwsStateError,
       );
 
-      expect(revisionRepository.findByFeatureId('parcel-1'), hasLength(1));
+      expect(
+        await revisionRepository.findByFeatureId('parcel-1'),
+        hasLength(1),
+      );
     });
 
-    test('rejects update when feature has no revision history', () {
+    test('rejects update when feature has no revision history', () async {
       final store = InMemorySpatialStore();
       final featureRepository = InMemorySpatialFeatureRepository(store: store);
 
       final originalFeature = buildFeature();
-      featureRepository.create(originalFeature);
+      await featureRepository.create(originalFeature);
 
       final transaction = InMemorySpatialFeatureRevisionUpdateTransaction(
         store: store,
       );
 
-      expect(
-        () => transaction.update(
+      await expectLater(
+        transaction.update(
           feature: buildFeature(updateTime: updatedAt, updatedBy: 'user-2'),
           revision: buildRevision(revision: 2),
         ),
         throwsStateError,
       );
 
-      expect(featureRepository.findById('parcel-1'), same(originalFeature));
+      expect(
+        await featureRepository.findById('parcel-1'),
+        same(originalFeature),
+      );
     });
 
-    test('revision conflict leaves original store unchanged', () {
+    test('revision conflict leaves original store unchanged', () async {
       final store = InMemorySpatialStore();
       final featureRepository = InMemorySpatialFeatureRepository(store: store);
       final revisionRepository = InMemorySpatialFeatureRevisionRepository(
@@ -457,32 +481,38 @@ void main() {
       final originalFeature = buildFeature();
       final revision1 = buildRevision();
 
-      featureRepository.create(originalFeature);
-      revisionRepository.create(revision1);
+      await featureRepository.create(originalFeature);
+      await revisionRepository.create(revision1);
 
       final conflictingRevision = buildRevision(
         id: 'shared-revision-id',
         featureId: 'other-parcel',
       );
-      revisionRepository.create(conflictingRevision);
+      await revisionRepository.create(conflictingRevision);
 
       final transaction = InMemorySpatialFeatureRevisionUpdateTransaction(
         store: store,
       );
 
-      expect(
-        () => transaction.update(
+      await expectLater(
+        transaction.update(
           feature: buildFeature(updateTime: updatedAt, updatedBy: 'user-2'),
           revision: buildRevision(id: 'shared-revision-id', revision: 2),
         ),
         throwsStateError,
       );
 
-      expect(featureRepository.findById('parcel-1'), same(originalFeature));
-      expect(revisionRepository.findByFeatureId('parcel-1'), hasLength(1));
-      expect(revisionRepository.findById(revision1.id), same(revision1));
       expect(
-        revisionRepository.findById('shared-revision-id'),
+        await featureRepository.findById('parcel-1'),
+        same(originalFeature),
+      );
+      expect(
+        await revisionRepository.findByFeatureId('parcel-1'),
+        hasLength(1),
+      );
+      expect(await revisionRepository.findById(revision1.id), same(revision1));
+      expect(
+        await revisionRepository.findById('shared-revision-id'),
         same(conflictingRevision),
       );
     });

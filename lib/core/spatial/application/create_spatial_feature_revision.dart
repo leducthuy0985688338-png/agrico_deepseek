@@ -7,11 +7,11 @@ class CreateSpatialFeatureRevision {
 
   final SpatialFeatureRevisionRepository repository;
 
-  void execute({
+  Future<void> execute({
     required SpatialFeature feature,
     required SpatialFeatureRevision revision,
-  }) {
+  }) async {
     revision.validateAgainstFeature(feature);
-    repository.create(revision);
+    await repository.create(revision);
   }
 }

@@ -71,26 +71,26 @@ void main() {
   }
 
   group('UpdateSpatialFeatureWithRevision', () {
-    test('updates feature and revision through one transaction', () {
+    test('updates feature and revision through one transaction', () async {
       final transaction = _RecordingRevisionUpdateTransaction();
       final useCase = UpdateSpatialFeatureWithRevision(transaction);
 
       final feature = buildFeature();
       final revision = buildPolygonRevision();
 
-      useCase.execute(feature: feature, revision: revision);
+      await useCase.execute(feature: feature, revision: revision);
 
       expect(transaction.callCount, 1);
       expect(transaction.feature, same(feature));
       expect(transaction.revision, same(revision));
     });
 
-    test('rejects revision 1 before transaction', () {
+    test('rejects revision 1 before transaction', () async {
       final transaction = _RecordingRevisionUpdateTransaction();
       final useCase = UpdateSpatialFeatureWithRevision(transaction);
 
-      expect(
-        () => useCase.execute(
+      await expectLater(
+        useCase.execute(
           feature: buildFeature(),
           revision: buildPolygonRevision(revision: 1),
         ),
@@ -100,12 +100,12 @@ void main() {
       expect(transaction.callCount, 0);
     });
 
-    test('rejects revision for another feature before transaction', () {
+    test('rejects revision for another feature before transaction', () async {
       final transaction = _RecordingRevisionUpdateTransaction();
       final useCase = UpdateSpatialFeatureWithRevision(transaction);
 
-      expect(
-        () => useCase.execute(
+      await expectLater(
+        useCase.execute(
           feature: buildFeature(),
           revision: buildPolygonRevision(featureId: 'parcel-2'),
         ),
@@ -115,27 +115,24 @@ void main() {
       expect(transaction.callCount, 0);
     });
 
-    test('rejects geometry type mismatch before transaction', () {
+    test('rejects geometry type mismatch before transaction', () async {
       final transaction = _RecordingRevisionUpdateTransaction();
       final useCase = UpdateSpatialFeatureWithRevision(transaction);
 
-      expect(
-        () => useCase.execute(
-          feature: buildFeature(),
-          revision: buildLineRevision(),
-        ),
+      await expectLater(
+        useCase.execute(feature: buildFeature(), revision: buildLineRevision()),
         throwsFormatException,
       );
 
       expect(transaction.callCount, 0);
     });
 
-    test('rejects invalid feature before transaction', () {
+    test('rejects invalid feature before transaction', () async {
       final transaction = _RecordingRevisionUpdateTransaction();
       final useCase = UpdateSpatialFeatureWithRevision(transaction);
 
-      expect(
-        () => useCase.execute(
+      await expectLater(
+        useCase.execute(
           feature: buildFeature(id: ''),
           revision: buildPolygonRevision(featureId: ''),
         ),
@@ -154,10 +151,10 @@ class _RecordingRevisionUpdateTransaction
   SpatialFeatureRevision? revision;
 
   @override
-  void update({
+  Future<void> update({
     required SpatialFeature feature,
     required SpatialFeatureRevision revision,
-  }) {
+  }) async {
     callCount += 1;
     this.feature = feature;
     this.revision = revision;

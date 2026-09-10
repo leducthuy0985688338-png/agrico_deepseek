@@ -12,10 +12,10 @@ class InMemorySpatialFeatureRevisionUpdateTransaction
   final InMemorySpatialStore store;
 
   @override
-  void update({
+  Future<void> update({
     required SpatialFeature feature,
     required SpatialFeatureRevision revision,
-  }) {
+  }) async {
     feature.validate();
     revision.validateAgainstFeature(feature);
 
@@ -36,7 +36,7 @@ class InMemorySpatialFeatureRevisionUpdateTransaction
       store: stagedStore,
     );
 
-    final existingFeature = stagedFeatureRepository.findById(feature.id);
+    final existingFeature = await stagedFeatureRepository.findById(feature.id);
 
     if (existingFeature == null) {
       throw StateError('Spatial feature not found: ${feature.id}');
@@ -66,7 +66,7 @@ class InMemorySpatialFeatureRevisionUpdateTransaction
       );
     }
 
-    final latestRevision = stagedRevisionRepository.findLatestByFeatureId(
+    final latestRevision = await stagedRevisionRepository.findLatestByFeatureId(
       feature.id,
     );
 
@@ -85,8 +85,8 @@ class InMemorySpatialFeatureRevisionUpdateTransaction
       );
     }
 
-    stagedFeatureRepository.update(feature);
-    stagedRevisionRepository.create(revision);
+    await stagedFeatureRepository.update(feature);
+    await stagedRevisionRepository.create(revision);
 
     store.replaceWith(stagedStore);
   }

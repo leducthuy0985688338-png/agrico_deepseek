@@ -10,12 +10,12 @@ class InMemorySpatialFeatureRevisionRepository
   final InMemorySpatialStore _store;
 
   @override
-  SpatialFeatureRevision? findById(String id) {
+  Future<SpatialFeatureRevision?> findById(String id) async {
     return _store.findRevisionById(id);
   }
 
   @override
-  List<SpatialFeatureRevision> findByFeatureId(String featureId) {
+  Future<List<SpatialFeatureRevision>> findByFeatureId(String featureId) async {
     final revisions =
         _store.revisions
             .where((revision) => revision.featureId == featureId)
@@ -26,8 +26,10 @@ class InMemorySpatialFeatureRevisionRepository
   }
 
   @override
-  SpatialFeatureRevision? findLatestByFeatureId(String featureId) {
-    final revisions = findByFeatureId(featureId);
+  Future<SpatialFeatureRevision?> findLatestByFeatureId(
+    String featureId,
+  ) async {
+    final revisions = await findByFeatureId(featureId);
 
     if (revisions.isEmpty) {
       return null;
@@ -37,7 +39,7 @@ class InMemorySpatialFeatureRevisionRepository
   }
 
   @override
-  void create(SpatialFeatureRevision revision) {
+  Future<void> create(SpatialFeatureRevision revision) async {
     revision.validate();
 
     if (_store.containsRevision(revision.id)) {

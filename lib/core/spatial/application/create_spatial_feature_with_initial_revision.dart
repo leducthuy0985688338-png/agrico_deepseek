@@ -7,10 +7,10 @@ class CreateSpatialFeatureWithInitialRevision {
 
   final SpatialFeatureCreationTransaction transaction;
 
-  void execute({
+  Future<void> execute({
     required SpatialFeature feature,
     required SpatialFeatureRevision initialRevision,
-  }) {
+  }) async {
     feature.validate();
     initialRevision.validateAgainstFeature(feature);
 
@@ -21,6 +21,9 @@ class CreateSpatialFeatureWithInitialRevision {
       );
     }
 
-    transaction.create(feature: feature, initialRevision: initialRevision);
+    await transaction.create(
+      feature: feature,
+      initialRevision: initialRevision,
+    );
   }
 }

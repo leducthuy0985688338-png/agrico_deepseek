@@ -35,24 +35,24 @@ void main() {
   }
 
   group('InMemorySpatialFeatureRevisionRepository', () {
-    test('starts empty', () {
+    test('starts empty', () async {
       final repository = InMemorySpatialFeatureRevisionRepository();
 
-      expect(repository.findById('missing'), isNull);
-      expect(repository.findByFeatureId('parcel-1'), isEmpty);
-      expect(repository.findLatestByFeatureId('parcel-1'), isNull);
+      expect(await repository.findById('missing'), isNull);
+      expect(await repository.findByFeatureId('parcel-1'), isEmpty);
+      expect(await repository.findLatestByFeatureId('parcel-1'), isNull);
     });
 
-    test('creates and retrieves revision by id', () {
+    test('creates and retrieves revision by id', () async {
       final repository = InMemorySpatialFeatureRevisionRepository();
       final revision = buildRevision();
 
-      repository.create(revision);
+      await repository.create(revision);
 
-      expect(repository.findById(revision.id), same(revision));
+      expect(await repository.findById(revision.id), same(revision));
     });
 
-    test('finds revisions belonging to one feature', () {
+    test('finds revisions belonging to one feature', () async {
       final repository = InMemorySpatialFeatureRevisionRepository();
 
       final parcel1Revision1 = buildRevision();
@@ -65,68 +65,71 @@ void main() {
         featureId: 'parcel-2',
       );
 
-      repository.create(parcel1Revision1);
-      repository.create(parcel1Revision2);
-      repository.create(parcel2Revision1);
+      await repository.create(parcel1Revision1);
+      await repository.create(parcel1Revision2);
+      await repository.create(parcel2Revision1);
 
-      final revisions = repository.findByFeatureId('parcel-1');
+      final revisions = await repository.findByFeatureId('parcel-1');
 
       expect(revisions, hasLength(2));
       expect(revisions[0], same(parcel1Revision1));
       expect(revisions[1], same(parcel1Revision2));
     });
 
-    test('sorts feature revisions by revision number', () {
+    test('sorts feature revisions by revision number', () async {
       final repository = InMemorySpatialFeatureRevisionRepository();
 
       final revision3 = buildRevision(id: 'parcel-1-revision-3', revision: 3);
       final revision1 = buildRevision(id: 'parcel-1-revision-1', revision: 1);
       final revision2 = buildRevision(id: 'parcel-1-revision-2', revision: 2);
 
-      repository.create(revision3);
-      repository.create(revision1);
-      repository.create(revision2);
+      await repository.create(revision3);
+      await repository.create(revision1);
+      await repository.create(revision2);
 
-      final revisions = repository.findByFeatureId('parcel-1');
+      final revisions = await repository.findByFeatureId('parcel-1');
 
       expect(revisions.map((revision) => revision.revision), [1, 2, 3]);
     });
 
-    test('finds latest revision regardless of insertion order', () {
+    test('finds latest revision regardless of insertion order', () async {
       final repository = InMemorySpatialFeatureRevisionRepository();
 
       final revision3 = buildRevision(id: 'parcel-1-revision-3', revision: 3);
       final revision1 = buildRevision(id: 'parcel-1-revision-1', revision: 1);
       final revision2 = buildRevision(id: 'parcel-1-revision-2', revision: 2);
 
-      repository.create(revision3);
-      repository.create(revision1);
-      repository.create(revision2);
+      await repository.create(revision3);
+      await repository.create(revision1);
+      await repository.create(revision2);
 
-      expect(repository.findLatestByFeatureId('parcel-1'), same(revision3));
+      expect(
+        await repository.findLatestByFeatureId('parcel-1'),
+        same(revision3),
+      );
     });
 
-    test('rejects duplicate revision id', () {
+    test('rejects duplicate revision id', () async {
       final repository = InMemorySpatialFeatureRevisionRepository();
       final revision = buildRevision();
 
-      repository.create(revision);
+      await repository.create(revision);
 
-      expect(() => repository.create(revision), throwsStateError);
+      await expectLater(repository.create(revision), throwsStateError);
     });
 
-    test('rejects duplicate feature revision identity', () {
+    test('rejects duplicate feature revision identity', () async {
       final repository = InMemorySpatialFeatureRevisionRepository();
 
-      repository.create(buildRevision(id: 'revision-a'));
+      await repository.create(buildRevision(id: 'revision-a'));
 
-      expect(
-        () => repository.create(buildRevision(id: 'revision-b')),
+      await expectLater(
+        repository.create(buildRevision(id: 'revision-b')),
         throwsStateError,
       );
     });
 
-    test('allows same revision number for different features', () {
+    test('allows same revision number for different features', () async {
       final repository = InMemorySpatialFeatureRevisionRepository();
 
       final parcel1 = buildRevision(
@@ -138,27 +141,27 @@ void main() {
         featureId: 'parcel-2',
       );
 
-      repository.create(parcel1);
-      repository.create(parcel2);
+      await repository.create(parcel1);
+      await repository.create(parcel2);
 
-      expect(repository.findByFeatureId('parcel-1'), [parcel1]);
-      expect(repository.findByFeatureId('parcel-2'), [parcel2]);
+      expect(await repository.findByFeatureId('parcel-1'), [parcel1]);
+      expect(await repository.findByFeatureId('parcel-2'), [parcel2]);
     });
 
-    test('validates revision before storing it', () {
+    test('validates revision before storing it', () async {
       final repository = InMemorySpatialFeatureRevisionRepository();
 
       final invalid = buildRevision(id: 'invalid', featureId: '');
 
-      expect(() => repository.create(invalid), throwsFormatException);
-      expect(repository.findById('invalid'), isNull);
+      await expectLater(repository.create(invalid), throwsFormatException);
+      expect(await repository.findById('invalid'), isNull);
     });
 
-    test('returns an unmodifiable revision list', () {
+    test('returns an unmodifiable revision list', () async {
       final repository = InMemorySpatialFeatureRevisionRepository();
-      repository.create(buildRevision());
+      await repository.create(buildRevision());
 
-      final revisions = repository.findByFeatureId('parcel-1');
+      final revisions = await repository.findByFeatureId('parcel-1');
 
       expect(
         () => revisions.add(

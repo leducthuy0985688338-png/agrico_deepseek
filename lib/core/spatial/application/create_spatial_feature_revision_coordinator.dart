@@ -11,8 +11,8 @@ class CreateSpatialFeatureRevisionCoordinator {
   final SpatialFeatureRepository featureRepository;
   final SpatialFeatureRevisionRepository revisionRepository;
 
-  void execute(SpatialFeatureRevision revision) {
-    final feature = featureRepository.findById(revision.featureId);
+  Future<void> execute(SpatialFeatureRevision revision) async {
+    final feature = await featureRepository.findById(revision.featureId);
 
     if (feature == null) {
       throw StateError('Spatial feature not found: ${revision.featureId}');
@@ -20,7 +20,7 @@ class CreateSpatialFeatureRevisionCoordinator {
 
     revision.validateAgainstFeature(feature);
 
-    final latestRevision = revisionRepository.findLatestByFeatureId(
+    final latestRevision = await revisionRepository.findLatestByFeatureId(
       revision.featureId,
     );
 
@@ -35,6 +35,6 @@ class CreateSpatialFeatureRevisionCoordinator {
       );
     }
 
-    revisionRepository.create(revision);
+    await revisionRepository.create(revision);
   }
 }

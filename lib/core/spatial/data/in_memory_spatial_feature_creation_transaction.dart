@@ -12,10 +12,10 @@ class InMemorySpatialFeatureCreationTransaction
   final InMemorySpatialStore store;
 
   @override
-  void create({
+  Future<void> create({
     required SpatialFeature feature,
     required SpatialFeatureRevision initialRevision,
-  }) {
+  }) async {
     feature.validate();
     initialRevision.validateAgainstFeature(feature);
 
@@ -36,9 +36,9 @@ class InMemorySpatialFeatureCreationTransaction
       store: stagedStore,
     );
 
-    stagedFeatureRepository.create(feature);
+    await stagedFeatureRepository.create(feature);
 
-    final existingRevisions = stagedRevisionRepository.findByFeatureId(
+    final existingRevisions = await stagedRevisionRepository.findByFeatureId(
       feature.id,
     );
 
@@ -48,7 +48,7 @@ class InMemorySpatialFeatureCreationTransaction
       );
     }
 
-    stagedRevisionRepository.create(initialRevision);
+    await stagedRevisionRepository.create(initialRevision);
 
     store.replaceWith(stagedStore);
   }

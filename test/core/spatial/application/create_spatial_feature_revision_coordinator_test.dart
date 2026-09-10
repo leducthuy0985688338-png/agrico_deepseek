@@ -55,12 +55,12 @@ void main() {
   }
 
   group('CreateSpatialFeatureRevisionCoordinator', () {
-    test('loads authoritative feature and stores valid revision', () {
+    test('loads authoritative feature and stores valid revision', () async {
       final featureRepository = InMemorySpatialFeatureRepository();
       final revisionRepository = InMemorySpatialFeatureRevisionRepository();
 
       final feature = buildFeature();
-      featureRepository.create(feature);
+      await featureRepository.create(feature);
 
       final coordinator = CreateSpatialFeatureRevisionCoordinator(
         featureRepository: featureRepository,
@@ -69,16 +69,16 @@ void main() {
 
       final revision = buildPolygonRevision();
 
-      coordinator.execute(revision);
+      await coordinator.execute(revision);
 
-      expect(revisionRepository.findById(revision.id), same(revision));
+      expect(await revisionRepository.findById(revision.id), same(revision));
       expect(
-        revisionRepository.findLatestByFeatureId(feature.id),
+        await revisionRepository.findLatestByFeatureId(feature.id),
         same(revision),
       );
     });
 
-    test('rejects revision when parent feature does not exist', () {
+    test('rejects revision when parent feature does not exist', () async {
       final featureRepository = InMemorySpatialFeatureRepository();
       final revisionRepository = InMemorySpatialFeatureRevisionRepository();
 
@@ -89,39 +89,45 @@ void main() {
 
       final revision = buildPolygonRevision();
 
-      expect(() => coordinator.execute(revision), throwsStateError);
+      await expectLater(coordinator.execute(revision), throwsStateError);
 
-      expect(revisionRepository.findById(revision.id), isNull);
-      expect(revisionRepository.findByFeatureId(revision.featureId), isEmpty);
+      expect(await revisionRepository.findById(revision.id), isNull);
+      expect(
+        await revisionRepository.findByFeatureId(revision.featureId),
+        isEmpty,
+      );
     });
 
-    test('rejects geometry type mismatch against authoritative feature', () {
-      final featureRepository = InMemorySpatialFeatureRepository();
-      final revisionRepository = InMemorySpatialFeatureRevisionRepository();
+    test(
+      'rejects geometry type mismatch against authoritative feature',
+      () async {
+        final featureRepository = InMemorySpatialFeatureRepository();
+        final revisionRepository = InMemorySpatialFeatureRevisionRepository();
 
-      final feature = buildFeature(
-        geometryType: SpatialGeometryType.lineString,
-      );
-      featureRepository.create(feature);
+        final feature = buildFeature(
+          geometryType: SpatialGeometryType.lineString,
+        );
+        await featureRepository.create(feature);
 
-      final coordinator = CreateSpatialFeatureRevisionCoordinator(
-        featureRepository: featureRepository,
-        revisionRepository: revisionRepository,
-      );
+        final coordinator = CreateSpatialFeatureRevisionCoordinator(
+          featureRepository: featureRepository,
+          revisionRepository: revisionRepository,
+        );
 
-      final revision = buildPolygonRevision();
+        final revision = buildPolygonRevision();
 
-      expect(() => coordinator.execute(revision), throwsFormatException);
+        await expectLater(coordinator.execute(revision), throwsFormatException);
 
-      expect(revisionRepository.findById(revision.id), isNull);
-    });
+        expect(await revisionRepository.findById(revision.id), isNull);
+      },
+    );
 
-    test('rejects invalid revision before storage', () {
+    test('rejects invalid revision before storage', () async {
       final featureRepository = InMemorySpatialFeatureRepository();
       final revisionRepository = InMemorySpatialFeatureRevisionRepository();
 
       final feature = buildFeature();
-      featureRepository.create(feature);
+      await featureRepository.create(feature);
 
       final coordinator = CreateSpatialFeatureRevisionCoordinator(
         featureRepository: featureRepository,
@@ -133,66 +139,72 @@ void main() {
         revision: 0,
       );
 
-      expect(() => coordinator.execute(revision), throwsFormatException);
+      await expectLater(coordinator.execute(revision), throwsFormatException);
 
-      expect(revisionRepository.findById(revision.id), isNull);
+      expect(await revisionRepository.findById(revision.id), isNull);
     });
 
-    test('repository still rejects duplicate revision identity', () {
+    test('repository still rejects duplicate revision identity', () async {
       final featureRepository = InMemorySpatialFeatureRepository();
       final revisionRepository = InMemorySpatialFeatureRevisionRepository();
 
       final feature = buildFeature();
-      featureRepository.create(feature);
+      await featureRepository.create(feature);
 
       final coordinator = CreateSpatialFeatureRevisionCoordinator(
         featureRepository: featureRepository,
         revisionRepository: revisionRepository,
       );
 
-      coordinator.execute(buildPolygonRevision(id: 'revision-a'));
+      await coordinator.execute(buildPolygonRevision(id: 'revision-a'));
 
-      expect(
-        () => coordinator.execute(buildPolygonRevision(id: 'revision-b')),
+      await expectLater(
+        coordinator.execute(buildPolygonRevision(id: 'revision-b')),
         throwsStateError,
       );
 
-      expect(revisionRepository.findByFeatureId(feature.id), hasLength(1));
+      expect(
+        await revisionRepository.findByFeatureId(feature.id),
+        hasLength(1),
+      );
     });
 
-    test('accepts line revision when authoritative feature is lineString', () {
-      final featureRepository = InMemorySpatialFeatureRepository();
-      final revisionRepository = InMemorySpatialFeatureRevisionRepository();
+    test(
+      'accepts line revision when authoritative feature is lineString',
+      () async {
+        final featureRepository = InMemorySpatialFeatureRepository();
+        final revisionRepository = InMemorySpatialFeatureRevisionRepository();
 
-      final feature = buildFeature(
-        geometryType: SpatialGeometryType.lineString,
-      );
-      featureRepository.create(feature);
+        final feature = buildFeature(
+          geometryType: SpatialGeometryType.lineString,
+        );
+        await featureRepository.create(feature);
 
-      final coordinator = CreateSpatialFeatureRevisionCoordinator(
-        featureRepository: featureRepository,
-        revisionRepository: revisionRepository,
-      );
+        final coordinator = CreateSpatialFeatureRevisionCoordinator(
+          featureRepository: featureRepository,
+          revisionRepository: revisionRepository,
+        );
 
-      final revision = SpatialFeatureRevision(
-        id: 'road-1-revision-1',
-        featureId: feature.id,
-        revision: 1,
-        geometryType: SpatialGeometryType.lineString,
-        geometry: SpatialLineString.fromCoordinates(const [
-          SpatialCoordinate(latitude: 16.5, longitude: 104.7),
-          SpatialCoordinate(latitude: 16.6, longitude: 104.8),
-        ]),
-        temporalState: SpatialTemporalState.baseline,
-        effectivePeriod: SpatialEffectivePeriod(validFrom: createdAt),
-        source: const SpatialSource(type: SpatialSourceType.survey),
-        createdAt: createdAt,
-        createdBy: 'user-1',
-      );
+        final revision = SpatialFeatureRevision(
+          id: 'road-1-revision-1',
+          featureId: feature.id,
+          revision: 1,
+          geometryType: SpatialGeometryType.lineString,
+          geometry: SpatialLineString.fromCoordinates(const [
+            SpatialCoordinate(latitude: 16.5, longitude: 104.7),
+            SpatialCoordinate(latitude: 16.6, longitude: 104.8),
+          ]),
+          temporalState: SpatialTemporalState.baseline,
+          effectivePeriod: SpatialEffectivePeriod(validFrom: createdAt),
+          source: const SpatialSource(type: SpatialSourceType.survey),
+          createdAt: createdAt,
+          createdBy: 'user-1',
+        );
 
-      coordinator.execute(revision);
+        await coordinator.execute(revision);
 
-      expect(revisionRepository.findById(revision.id), same(revision));
-    });
+        expect(await revisionRepository.findById(revision.id), same(revision));
+      },
+    );
   });
 }
