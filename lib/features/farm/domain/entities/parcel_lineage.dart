@@ -75,14 +75,6 @@ class ParcelLineage {
     _validatePositiveArea(sourceAreaM2, 'sourceAreaM2');
     _validatePositiveArea(derivedAreaM2, 'derivedAreaM2');
 
-    if (sourceAreaM2 != null &&
-        derivedAreaM2 != null &&
-        derivedAreaM2! > sourceAreaM2!) {
-      throw const FormatException(
-        'Parcel lineage derivedAreaM2 cannot exceed sourceAreaM2.',
-      );
-    }
-
     if (derivedShare != null &&
         (!derivedShare!.isFinite || derivedShare! <= 0 || derivedShare! > 1)) {
       throw const FormatException(

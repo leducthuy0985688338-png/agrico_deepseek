@@ -147,20 +147,20 @@ void main() {
       expect(first.productionParcelId, second.productionParcelId);
     });
 
-    test('rejects derived area greater than source area', () {
+    test('allows relocation derived area to exceed historical source area', () {
       final lineage = ParcelLineage(
         id: 'lineage-1',
         preCompensationParcelId: 'pre-1',
         productionParcelId: 'production-1',
-        lineageType: ParcelLineageType.partialDerivation,
-        sourceAreaM2: 1000,
-        derivedAreaM2: 1200,
+        lineageType: ParcelLineageType.relocation,
+        sourceAreaM2: 8000,
+        derivedAreaM2: 10000,
         effectiveAt: effectiveAt,
         createdAt: createdAt,
         createdBy: 'user-1',
       );
 
-      expect(lineage.validate, throwsFormatException);
+      expect(lineage.validate, returnsNormally);
     });
 
     test('rejects lineage share outside zero-to-one range', () {
