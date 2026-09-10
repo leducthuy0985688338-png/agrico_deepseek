@@ -42,6 +42,30 @@ class InMemorySpatialFeatureRevisionUpdateTransaction
       throw StateError('Spatial feature not found: ${feature.id}');
     }
 
+    if (existingFeature.featureType != feature.featureType) {
+      throw StateError(
+        'Spatial feature featureType is immutable for ${feature.id}.',
+      );
+    }
+
+    if (existingFeature.geometryType != feature.geometryType) {
+      throw StateError(
+        'Spatial feature geometryType is immutable for ${feature.id}.',
+      );
+    }
+
+    if (existingFeature.createdAt != feature.createdAt) {
+      throw StateError(
+        'Spatial feature createdAt is immutable for ${feature.id}.',
+      );
+    }
+
+    if (existingFeature.createdBy != feature.createdBy) {
+      throw StateError(
+        'Spatial feature createdBy is immutable for ${feature.id}.',
+      );
+    }
+
     final latestRevision = stagedRevisionRepository.findLatestByFeatureId(
       feature.id,
     );

@@ -7,7 +7,9 @@ import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_feature_rev
 import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_source.dart';
 import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_temporal.dart';
 import 'package:agrico_deepseek/core/spatial/domain/geometry/spatial_coordinate.dart';
+import 'package:agrico_deepseek/core/spatial/domain/geometry/spatial_geometry.dart';
 import 'package:agrico_deepseek/core/spatial/domain/geometry/spatial_geometry_type.dart';
+import 'package:agrico_deepseek/core/spatial/domain/geometry/spatial_linear_geometry.dart';
 import 'package:agrico_deepseek/core/spatial/domain/geometry/spatial_polygon.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -17,17 +19,27 @@ void main() {
 
   SpatialFeature buildFeature({
     String id = 'parcel-1',
+    String featureType = SpatialFeatureTypes.landParcel,
+    SpatialGeometryType geometryType = SpatialGeometryType.polygon,
+    DateTime? creationTime,
+    String createdBy = 'user-1',
+    SpatialFeatureLifecycleStatus lifecycleStatus =
+        SpatialFeatureLifecycleStatus.existing,
+    String? name,
     DateTime? updateTime,
     String updatedBy = 'user-1',
   }) {
+    final featureCreatedAt = creationTime ?? createdAt;
+
     return SpatialFeature(
       id: id,
-      featureType: SpatialFeatureTypes.landParcel,
-      geometryType: SpatialGeometryType.polygon,
-      lifecycleStatus: SpatialFeatureLifecycleStatus.existing,
-      createdAt: createdAt,
-      createdBy: 'user-1',
-      updatedAt: updateTime ?? createdAt,
+      featureType: featureType,
+      geometryType: geometryType,
+      lifecycleStatus: lifecycleStatus,
+      name: name,
+      createdAt: featureCreatedAt,
+      createdBy: createdBy,
+      updatedAt: updateTime ?? featureCreatedAt,
       updatedBy: updatedBy,
     );
   }
@@ -36,6 +48,8 @@ void main() {
     String id = '',
     String featureId = 'parcel-1',
     int revision = 1,
+    SpatialGeometryType geometryType = SpatialGeometryType.polygon,
+    SpatialGeometry? geometry,
   }) {
     final revisionId = id.isEmpty ? '$featureId-revision-$revision' : id;
 
@@ -43,13 +57,15 @@ void main() {
       id: revisionId,
       featureId: featureId,
       revision: revision,
-      geometryType: SpatialGeometryType.polygon,
-      geometry: SpatialPolygon.fromOuterRing(const [
-        SpatialCoordinate(latitude: 16.5, longitude: 104.7),
-        SpatialCoordinate(latitude: 16.5, longitude: 104.8),
-        SpatialCoordinate(latitude: 16.6, longitude: 104.8),
-        SpatialCoordinate(latitude: 16.6, longitude: 104.7),
-      ]),
+      geometryType: geometryType,
+      geometry:
+          geometry ??
+          SpatialPolygon.fromOuterRing(const [
+            SpatialCoordinate(latitude: 16.5, longitude: 104.7),
+            SpatialCoordinate(latitude: 16.5, longitude: 104.8),
+            SpatialCoordinate(latitude: 16.6, longitude: 104.8),
+            SpatialCoordinate(latitude: 16.6, longitude: 104.7),
+          ]),
       temporalState: revision == 1
           ? SpatialTemporalState.baseline
           : SpatialTemporalState.operational,
@@ -90,6 +106,211 @@ void main() {
 
       expect(featureRepository.findById('parcel-1'), same(updatedFeature));
       expect(revisionRepository.findByFeatureId('parcel-1'), hasLength(2));
+      expect(revisionRepository.findById(revision1.id), same(revision1));
+      expect(revisionRepository.findById(revision2.id), same(revision2));
+    });
+
+    test('rejects featureType mutation without changing state', () {
+      final store = InMemorySpatialStore();
+      final featureRepository = InMemorySpatialFeatureRepository(store: store);
+      final revisionRepository = InMemorySpatialFeatureRevisionRepository(
+        store: store,
+      );
+      final originalFeature = buildFeature();
+      final revision1 = buildRevision();
+      featureRepository.create(originalFeature);
+      revisionRepository.create(revision1);
+      final transaction = InMemorySpatialFeatureRevisionUpdateTransaction(
+        store: store,
+      );
+
+      expect(
+        () => transaction.update(
+          feature: buildFeature(
+            featureType: SpatialFeatureTypes.road,
+            updateTime: updatedAt,
+          ),
+          revision: buildRevision(revision: 2),
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            contains('featureType'),
+          ),
+        ),
+      );
+      expect(
+        featureRepository.findById(originalFeature.id),
+        same(originalFeature),
+      );
+      expect(
+        revisionRepository.findByFeatureId(originalFeature.id),
+        hasLength(1),
+      );
+      expect(revisionRepository.findById(revision1.id), same(revision1));
+    });
+
+    test('rejects geometryType mutation without changing state', () {
+      final store = InMemorySpatialStore();
+      final featureRepository = InMemorySpatialFeatureRepository(store: store);
+      final revisionRepository = InMemorySpatialFeatureRevisionRepository(
+        store: store,
+      );
+      final originalFeature = buildFeature();
+      final revision1 = buildRevision();
+      featureRepository.create(originalFeature);
+      revisionRepository.create(revision1);
+      final transaction = InMemorySpatialFeatureRevisionUpdateTransaction(
+        store: store,
+      );
+      final line = SpatialLineString.fromCoordinates(const [
+        SpatialCoordinate(latitude: 16.5, longitude: 104.7),
+        SpatialCoordinate(latitude: 16.6, longitude: 104.8),
+      ]);
+
+      expect(
+        () => transaction.update(
+          feature: buildFeature(
+            geometryType: SpatialGeometryType.lineString,
+            updateTime: updatedAt,
+          ),
+          revision: buildRevision(
+            revision: 2,
+            geometryType: SpatialGeometryType.lineString,
+            geometry: line,
+          ),
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            contains('geometryType'),
+          ),
+        ),
+      );
+      expect(
+        featureRepository.findById(originalFeature.id),
+        same(originalFeature),
+      );
+      expect(
+        revisionRepository.findByFeatureId(originalFeature.id),
+        hasLength(1),
+      );
+      expect(revisionRepository.findById(revision1.id), same(revision1));
+    });
+
+    test('rejects createdAt mutation without changing state', () {
+      final store = InMemorySpatialStore();
+      final featureRepository = InMemorySpatialFeatureRepository(store: store);
+      final revisionRepository = InMemorySpatialFeatureRevisionRepository(
+        store: store,
+      );
+      final originalFeature = buildFeature();
+      final revision1 = buildRevision();
+      featureRepository.create(originalFeature);
+      revisionRepository.create(revision1);
+      final transaction = InMemorySpatialFeatureRevisionUpdateTransaction(
+        store: store,
+      );
+      final changedCreationTime = createdAt.add(const Duration(days: 1));
+
+      expect(
+        () => transaction.update(
+          feature: buildFeature(
+            creationTime: changedCreationTime,
+            updateTime: updatedAt,
+          ),
+          revision: buildRevision(revision: 2),
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            contains('createdAt'),
+          ),
+        ),
+      );
+      expect(
+        featureRepository.findById(originalFeature.id),
+        same(originalFeature),
+      );
+      expect(
+        revisionRepository.findByFeatureId(originalFeature.id),
+        hasLength(1),
+      );
+      expect(revisionRepository.findById(revision1.id), same(revision1));
+    });
+
+    test('rejects createdBy mutation without changing state', () {
+      final store = InMemorySpatialStore();
+      final featureRepository = InMemorySpatialFeatureRepository(store: store);
+      final revisionRepository = InMemorySpatialFeatureRevisionRepository(
+        store: store,
+      );
+      final originalFeature = buildFeature();
+      final revision1 = buildRevision();
+      featureRepository.create(originalFeature);
+      revisionRepository.create(revision1);
+      final transaction = InMemorySpatialFeatureRevisionUpdateTransaction(
+        store: store,
+      );
+
+      expect(
+        () => transaction.update(
+          feature: buildFeature(createdBy: 'user-2', updateTime: updatedAt),
+          revision: buildRevision(revision: 2),
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            contains('createdBy'),
+          ),
+        ),
+      );
+      expect(
+        featureRepository.findById(originalFeature.id),
+        same(originalFeature),
+      );
+      expect(
+        revisionRepository.findByFeatureId(originalFeature.id),
+        hasLength(1),
+      );
+      expect(revisionRepository.findById(revision1.id), same(revision1));
+    });
+
+    test('allows legitimate mutable snapshot changes', () {
+      final store = InMemorySpatialStore();
+      final featureRepository = InMemorySpatialFeatureRepository(store: store);
+      final revisionRepository = InMemorySpatialFeatureRevisionRepository(
+        store: store,
+      );
+      final originalFeature = buildFeature();
+      final revision1 = buildRevision();
+      featureRepository.create(originalFeature);
+      revisionRepository.create(revision1);
+      final transaction = InMemorySpatialFeatureRevisionUpdateTransaction(
+        store: store,
+      );
+      final updatedFeature = buildFeature(
+        lifecycleStatus: SpatialFeatureLifecycleStatus.inactive,
+        name: 'Updated parcel',
+        updateTime: updatedAt,
+        updatedBy: 'user-2',
+      );
+      final revision2 = buildRevision(revision: 2);
+
+      transaction.update(feature: updatedFeature, revision: revision2);
+
+      expect(
+        featureRepository.findById(originalFeature.id),
+        same(updatedFeature),
+      );
+      expect(
+        revisionRepository.findByFeatureId(originalFeature.id),
+        hasLength(2),
+      );
       expect(revisionRepository.findById(revision1.id), same(revision1));
       expect(revisionRepository.findById(revision2.id), same(revision2));
     });
