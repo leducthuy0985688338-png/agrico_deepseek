@@ -69,6 +69,45 @@ class Household {
   final DateTime updatedAt;
   final String updatedBy;
   final int schemaVersion;
+  void validate() {
+    _requireText(id, 'id');
+    _requireText(farmId, 'farmId');
+    _requireText(householdCode, 'householdCode');
+    _requireText(headOfHouseholdName, 'headOfHouseholdName');
+    _requireText(createdBy, 'createdBy');
+    _requireText(updatedBy, 'updatedBy');
+
+    _validateOptionalText(phone, 'phone');
+    _validateOptionalText(alternativeContact, 'alternativeContact');
+    _validateOptionalText(address, 'address');
+    _validateOptionalText(notes, 'notes');
+
+    if (updatedAt.isBefore(createdAt)) {
+      throw const FormatException(
+        'Household updatedAt cannot be before createdAt.',
+      );
+    }
+
+    if (schemaVersion <= 0) {
+      throw const FormatException(
+        'Household schemaVersion must be greater than zero.',
+      );
+    }
+  }
+
+  static void _requireText(String value, String fieldName) {
+    if (value.trim().isEmpty) {
+      throw FormatException('Household $fieldName cannot be blank.');
+    }
+  }
+
+  static void _validateOptionalText(String? value, String fieldName) {
+    if (value != null && value.trim().isEmpty) {
+      throw FormatException(
+        'Household $fieldName cannot be blank when provided.',
+      );
+    }
+  }
 }
 
 class LandParcelSurvey {
