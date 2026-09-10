@@ -1,3 +1,4 @@
+import '../geometry/spatial_geometry.dart';
 import '../geometry/spatial_geometry_type.dart';
 
 abstract final class SpatialFeatureTypes {
@@ -47,6 +48,7 @@ class SpatialFeature {
     required this.createdBy,
     required this.updatedAt,
     required this.updatedBy,
+    this.geometry,
     this.projectId,
     this.businessUnitId,
     this.name,
@@ -64,6 +66,12 @@ class SpatialFeature {
 
   /// Expected geometry family for this feature.
   final SpatialGeometryType geometryType;
+
+  /// Concrete Spatial Core geometry when available.
+  ///
+  /// This remains optional so existing metadata-only features can migrate
+  /// incrementally from the legacy geometry representation.
+  final SpatialGeometry? geometry;
 
   final SpatialFeatureLifecycleStatus lifecycleStatus;
 
@@ -105,6 +113,16 @@ class SpatialFeature {
       throw const FormatException(
         'Spatial feature schemaVersion must be greater than zero.',
       );
+    }
+
+    if (geometry != null) {
+      geometry!.validate();
+
+      if (geometry!.geometryType != geometryType) {
+        throw const FormatException(
+          'Spatial feature geometryType must match its geometry payload.',
+        );
+      }
     }
 
     _validateOptionalText(projectId, 'projectId');
