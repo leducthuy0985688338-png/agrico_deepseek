@@ -1,10 +1,11 @@
 import 'dart:collection';
 
 import 'spatial_coordinate.dart';
+import 'spatial_geometry.dart';
 import 'spatial_geometry_type.dart';
 
 /// Point geometry in canonical WGS84 coordinates.
-class SpatialPoint {
+class SpatialPoint implements SpatialGeometry {
   const SpatialPoint({required this.coordinate});
 
   final SpatialCoordinate coordinate;
@@ -20,7 +21,7 @@ class SpatialPoint {
 ///
 /// A valid LineString contains at least two coordinates. The coordinate
 /// collection is defensively copied and exposed as an unmodifiable view.
-class SpatialLineString {
+class SpatialLineString implements SpatialGeometry {
   SpatialLineString._(List<SpatialCoordinate> coordinates)
     : coordinates = UnmodifiableListView(coordinates);
 

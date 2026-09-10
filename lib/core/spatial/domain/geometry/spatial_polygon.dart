@@ -1,13 +1,14 @@
 import 'dart:collection';
 
 import 'spatial_coordinate.dart';
+import 'spatial_geometry.dart';
 import 'spatial_geometry_type.dart';
 
 /// Polygon geometry in canonical WGS84 coordinates.
 ///
 /// Foundation v1 supports one outer ring without interior holes. The ring is
 /// automatically closed when necessary and is exposed as immutable data.
-class SpatialPolygon {
+class SpatialPolygon implements SpatialGeometry {
   SpatialPolygon._(List<SpatialCoordinate> outerRing)
     : outerRing = UnmodifiableListView(outerRing);
 

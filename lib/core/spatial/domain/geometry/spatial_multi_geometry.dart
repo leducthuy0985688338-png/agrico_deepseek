@@ -1,11 +1,12 @@
 import 'dart:collection';
 
+import 'spatial_geometry.dart';
 import 'spatial_geometry_type.dart';
 import 'spatial_linear_geometry.dart';
 import 'spatial_polygon.dart';
 
 /// Collection of one or more point geometries.
-class SpatialMultiPoint {
+class SpatialMultiPoint implements SpatialGeometry {
   SpatialMultiPoint._(List<SpatialPoint> points)
     : points = UnmodifiableListView(points);
 
@@ -43,7 +44,7 @@ class SpatialMultiPoint {
 }
 
 /// Collection of one or more LineString geometries.
-class SpatialMultiLineString {
+class SpatialMultiLineString implements SpatialGeometry {
   SpatialMultiLineString._(List<SpatialLineString> lineStrings)
     : lineStrings = UnmodifiableListView(lineStrings);
 
@@ -86,7 +87,7 @@ class SpatialMultiLineString {
 ///
 /// This allows one stable spatial feature, such as a cultivation area,
 /// to consist of multiple geographically separate polygon parts.
-class SpatialMultiPolygon {
+class SpatialMultiPolygon implements SpatialGeometry {
   SpatialMultiPolygon._(List<SpatialPolygon> polygons)
     : polygons = UnmodifiableListView(polygons);
 

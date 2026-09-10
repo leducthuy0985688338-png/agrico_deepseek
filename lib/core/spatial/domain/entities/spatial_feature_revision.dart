@@ -1,3 +1,4 @@
+import '../geometry/spatial_geometry.dart';
 import '../geometry/spatial_geometry_type.dart';
 import 'spatial_source.dart';
 import 'spatial_temporal.dart';
@@ -13,6 +14,7 @@ class SpatialFeatureRevision {
     required this.source,
     required this.createdAt,
     required this.createdBy,
+    this.geometry,
     this.geometryReference,
     this.changeReason,
     this.notes,
@@ -29,16 +31,23 @@ class SpatialFeatureRevision {
   /// Monotonically increasing revision number within the feature.
   final int revision;
 
+  /// Geometry type metadata retained for persistence and migration
+  /// compatibility.
   final SpatialGeometryType geometryType;
+
+  /// Concrete Spatial Core geometry payload when available.
+  ///
+  /// During migration, older records may contain only [geometryReference].
+  final SpatialGeometry? geometry;
+
   final SpatialTemporalState temporalState;
   final SpatialEffectivePeriod effectivePeriod;
   final SpatialSource source;
 
   /// Reference to persisted geometry during the migration phase.
   ///
-  /// Spatial Core deliberately does not duplicate the existing Farm WGS84
-  /// geometry implementation yet. Concrete persistence adapters may use this
-  /// field to associate the revision with its geometry payload.
+  /// This remains optional for backward compatibility while concrete geometry
+  /// payloads are progressively adopted by Spatial Core.
   final String? geometryReference;
 
   final String? changeReason;
@@ -78,6 +87,16 @@ class SpatialFeatureRevision {
       throw const FormatException(
         'Spatial feature revision geometryReference cannot be blank.',
       );
+    }
+
+    if (geometry != null) {
+      geometry!.validate();
+
+      if (geometry!.geometryType != geometryType) {
+        throw const FormatException(
+          'Spatial feature revision geometryType must match its geometry payload.',
+        );
+      }
     }
 
     if (changeReason != null && changeReason!.trim().isEmpty) {
