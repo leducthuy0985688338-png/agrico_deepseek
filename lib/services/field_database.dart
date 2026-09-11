@@ -10,6 +10,7 @@ import '../models/field_measurement_history.dart';
 import '../models/field_model.dart';
 import '../features/farm/data/local/sqlite_land_parcel_repository.dart';
 import '../features/farm/data/local/sqlite_land_survey_repository.dart';
+import '../core/spatial/data/sqlite_spatial_schema.dart';
 
 class FieldDatabase {
   factory FieldDatabase() => _instance;
@@ -17,7 +18,7 @@ class FieldDatabase {
   static final FieldDatabase _instance = FieldDatabase._();
 
   static const _databaseName = 'agrico.db';
-  static const _databaseVersion = 6;
+  static const databaseVersion = 7;
   static const _table = 'fields';
   static const _historyTable = 'field_measurement_history';
   static const _distanceTable = 'distance_measurements';
@@ -30,56 +31,76 @@ class FieldDatabase {
     final path = p.join(directory.path, _databaseName);
     _database = await openDatabase(
       path,
-      version: _databaseVersion,
-      onCreate: (db, version) async {
-        await db.execute('''
-          CREATE TABLE $_table (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            area REAL NOT NULL,
-            crop TEXT NOT NULL,
-            status TEXT NOT NULL,
-            polygon TEXT NOT NULL,
-            photo_paths TEXT NOT NULL,
-            perimeter REAL NOT NULL DEFAULT 0,
-            measurement_method TEXT NOT NULL DEFAULT 'unknown',
-            gps_accuracy REAL,
-            measured_at TEXT,
-            updated_at TEXT NOT NULL
-          )
-        ''');
-        await db.execute(
-          'CREATE INDEX idx_fields_updated_at ON $_table(updated_at)',
-        );
-        await _createHistoryTable(db);
-        await _createDistanceTable(db);
-        await SqliteLandSurveyRepository.createSchema(db);
-      },
-      onUpgrade: (db, oldVersion, newVersion) async {
-        if (oldVersion < 2) {
-          await db.execute(
-            "ALTER TABLE $_table ADD COLUMN perimeter REAL NOT NULL DEFAULT 0",
-          );
-          await db.execute(
-            "ALTER TABLE $_table ADD COLUMN measurement_method TEXT NOT NULL DEFAULT 'unknown'",
-          );
-          await db.execute('ALTER TABLE $_table ADD COLUMN gps_accuracy REAL');
-          await db.execute('ALTER TABLE $_table ADD COLUMN measured_at TEXT');
-        }
-        if (oldVersion < 3) await _createHistoryTable(db);
-        if (oldVersion < 4) await _createDistanceTable(db);
-        if (oldVersion < 5) {
-          await SqliteLandParcelRepository.createSchema(db);
-        }
-        if (oldVersion < 6) {
-          await SqliteLandSurveyRepository.createSchema(db);
-        }
-      },
+      version: databaseVersion,
+      onConfigure: configure,
+      onCreate: createSchema,
+      onUpgrade: upgradeSchema,
     );
     return _database!;
   }
 
-  Future<void> _createHistoryTable(Database db) async {
+  static Future<void> configure(Database database) =>
+      database.execute('PRAGMA foreign_keys = ON');
+
+  static Future<void> createSchema(Database database, int version) async {
+    await database.execute('''
+      CREATE TABLE $_table (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        area REAL NOT NULL,
+        crop TEXT NOT NULL,
+        status TEXT NOT NULL,
+        polygon TEXT NOT NULL,
+        photo_paths TEXT NOT NULL,
+        perimeter REAL NOT NULL DEFAULT 0,
+        measurement_method TEXT NOT NULL DEFAULT 'unknown',
+        gps_accuracy REAL,
+        measured_at TEXT,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+    await database.execute(
+      'CREATE INDEX idx_fields_updated_at ON $_table(updated_at)',
+    );
+    await _createHistoryTable(database);
+    await _createDistanceTable(database);
+    await SqliteLandSurveyRepository.createSchema(database);
+    if (version >= 7) {
+      await SqliteSpatialSchema.createSchema(database);
+    }
+  }
+
+  static Future<void> upgradeSchema(
+    Database database,
+    int oldVersion,
+    int newVersion,
+  ) async {
+    if (oldVersion < 2) {
+      await database.execute(
+        "ALTER TABLE $_table ADD COLUMN perimeter REAL NOT NULL DEFAULT 0",
+      );
+      await database.execute(
+        "ALTER TABLE $_table ADD COLUMN measurement_method TEXT NOT NULL DEFAULT 'unknown'",
+      );
+      await database.execute(
+        'ALTER TABLE $_table ADD COLUMN gps_accuracy REAL',
+      );
+      await database.execute('ALTER TABLE $_table ADD COLUMN measured_at TEXT');
+    }
+    if (oldVersion < 3) await _createHistoryTable(database);
+    if (oldVersion < 4) await _createDistanceTable(database);
+    if (oldVersion < 5) {
+      await SqliteLandParcelRepository.createSchema(database);
+    }
+    if (oldVersion < 6) {
+      await SqliteLandSurveyRepository.createSchema(database);
+    }
+    if (oldVersion < 7) {
+      await SqliteSpatialSchema.createSchema(database);
+    }
+  }
+
+  static Future<void> _createHistoryTable(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS $_historyTable (
         id TEXT PRIMARY KEY,
@@ -99,7 +120,7 @@ class FieldDatabase {
     );
   }
 
-  Future<void> _createDistanceTable(Database db) async {
+  static Future<void> _createDistanceTable(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS $_distanceTable (
         id TEXT PRIMARY KEY,
