@@ -247,6 +247,30 @@ void main() {
     expect(historyRows, isEmpty);
   });
 
+  test(
+    'caller-owned SQLite transaction rolls back parcel and history',
+    () async {
+      final source = parcel();
+
+      await expectLater(
+        () => database.transaction<void>((transaction) async {
+          final scopedRepository = SqliteLandParcelRepository(transaction);
+          await scopedRepository.create(source);
+          throw StateError('force caller rollback');
+        }),
+        throwsStateError,
+      );
+
+      expect(
+        await repository.getById(farmId: source.farmId, id: source.id),
+        isNull,
+      );
+      expect(
+        await database.query(SqliteLandParcelRepository.boundaryVersionTable),
+        isEmpty,
+      );
+    },
+  );
   test('disable keeps verified boundary audit history', () async {
     final source = parcel(verification: BoundaryVerificationStatus.verified);
     await repository.create(source);

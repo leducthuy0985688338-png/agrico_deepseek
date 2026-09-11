@@ -7,7 +7,7 @@ import '../../domain/repositories/land_parcel_repository.dart';
 import '../models/land_parcel_mapper.dart';
 
 class SqliteLandParcelRepository implements LandParcelRepository {
-  SqliteLandParcelRepository(Database database) : _executor = database;
+  SqliteLandParcelRepository(DatabaseExecutor executor) : _executor = executor;
 
   SqliteLandParcelRepository._(this._executor);
 
