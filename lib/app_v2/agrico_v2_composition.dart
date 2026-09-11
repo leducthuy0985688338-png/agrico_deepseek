@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../core/localization/app_localizations.dart';
 import '../core/permissions/authorization.dart';
+import '../core/spatial/data/spatial_persistence_composition.dart';
 import '../features/farm/application/land_parcel_application_service.dart';
 import '../features/farm/application/land_parcel_use_cases.dart';
 import '../features/farm/data/legacy/land_parcel_legacy_migration.dart';
@@ -49,6 +50,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
   Future<_V2Dependencies> _bootstrap() async {
     final sharedDatabase = FieldDatabase();
     final database = await sharedDatabase.database;
+    final spatial = SpatialPersistenceComposition(database);
     await SqliteLandSurveyRepository.createSchema(database);
     final parcels = SqliteLandParcelRepository(database);
     final legacyFields = await sharedDatabase.getAll();
@@ -80,6 +82,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     const platform = MobileLandParcelPlatformGateway();
     return _V2Dependencies(
       subject: subject,
+      spatial: spatial,
       controller: LandParcelController(
         subject: subject,
         parcels: parcels,
@@ -434,10 +437,12 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
 class _V2Dependencies {
   const _V2Dependencies({
     required this.subject,
+    required this.spatial,
     required this.controller,
     required this.platform,
   });
   final AuthorizationSubject subject;
+  final SpatialPersistenceComposition spatial;
   final LandParcelController controller;
   final MobileLandParcelPlatformGateway platform;
 }
