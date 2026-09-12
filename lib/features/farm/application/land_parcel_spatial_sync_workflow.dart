@@ -58,6 +58,58 @@ class LandParcelSpatialSyncWorkflow {
     });
   }
 
+  /// Adopts an already-persisted legacy LandParcel into Spatial Core without
+  /// recreating or mutating the LandParcel itself.
+  Future<void> bootstrapExisting({
+    required String farmId,
+    required String landParcelId,
+    required String spatialLinkId,
+    required String spatialFeatureId,
+    required String spatialRevisionId,
+    required SpatialTemporalState temporalState,
+  }) {
+    return transaction.run<void>((parcels, links, spatial) async {
+      final parcel = await parcels.getById(farmId: farmId, id: landParcelId);
+
+      if (parcel == null) {
+        throw StateError(
+          'Land parcel $landParcelId does not exist in farm $farmId.',
+        );
+      }
+
+      final existingLink = await links.findByLandParcelId(landParcelId);
+
+      if (existingLink != null) {
+        throw StateError(
+          'Land parcel $landParcelId already has a persisted SpatialFeature link.',
+        );
+      }
+
+      final projected = projection.project(
+        parcel: parcel,
+        spatialFeatureId: spatialFeatureId,
+        spatialRevisionId: spatialRevisionId,
+        spatialRevision: 1,
+        temporalState: temporalState,
+      );
+
+      final link = LandParcelSpatialLink(
+        id: spatialLinkId,
+        landParcelId: parcel.id,
+        spatialFeatureId: spatialFeatureId,
+        createdAt: parcel.createdAt,
+        createdBy: parcel.createdBy,
+      );
+
+      await spatial.createFeature.execute(
+        feature: projected.feature,
+        initialRevision: projected.revision,
+      );
+
+      await links.create(link);
+    });
+  }
+
   Future<void> update({
     required LandParcel parcel,
     required String spatialRevisionId,

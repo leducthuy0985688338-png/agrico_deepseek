@@ -581,4 +581,195 @@ void main() {
       expect(revisions, isEmpty);
     },
   );
+
+  test(
+    'bootstrapExisting adopts a persisted legacy LandParcel without mutating it',
+    () async {
+      final parcel = createParcel();
+      await parcels.create(parcel);
+
+      await workflow.bootstrapExisting(
+        farmId: parcel.farmId,
+        landParcelId: parcel.id,
+        spatialLinkId: 'bootstrap-link-1',
+        spatialFeatureId: 'bootstrap-feature-1',
+        spatialRevisionId: 'bootstrap-revision-1',
+        temporalState: SpatialTemporalState.operational,
+      );
+
+      final storedParcel = await parcels.getById(
+        farmId: parcel.farmId,
+        id: parcel.id,
+      );
+      final link = await links.findByLandParcelId(parcel.id);
+      final feature = await spatial.featureRepository.findById(
+        'bootstrap-feature-1',
+      );
+      final revisions = await spatial.revisionRepository.findByFeatureId(
+        'bootstrap-feature-1',
+      );
+
+      expect(storedParcel, isNotNull);
+      expect(storedParcel!.id, parcel.id);
+      expect(storedParcel.parcelCode, parcel.parcelCode);
+      expect(storedParcel.name, parcel.name);
+      expect(storedParcel.updatedAt, parcel.updatedAt);
+      expect(storedParcel.updatedBy, parcel.updatedBy);
+      expect(
+        storedParcel.boundaryHistory.length,
+        parcel.boundaryHistory.length,
+      );
+
+      expect(link, isNotNull);
+      expect(link!.id, 'bootstrap-link-1');
+      expect(link.landParcelId, parcel.id);
+      expect(link.spatialFeatureId, 'bootstrap-feature-1');
+
+      expect(feature, isNotNull);
+      expect(feature!.id, 'bootstrap-feature-1');
+      expect(feature.featureType, SpatialFeatureTypes.landParcel);
+      expect(feature.code, parcel.parcelCode);
+      expect(feature.name, parcel.name);
+
+      expect(revisions, hasLength(1));
+      expect(revisions.single.id, 'bootstrap-revision-1');
+      expect(revisions.single.revision, 1);
+      expect(revisions.single.featureId, 'bootstrap-feature-1');
+    },
+  );
+
+  test('bootstrapExisting rejects a missing LandParcel', () async {
+    await expectLater(
+      () => workflow.bootstrapExisting(
+        farmId: 'farm-1',
+        landParcelId: 'missing-parcel',
+        spatialLinkId: 'missing-link',
+        spatialFeatureId: 'missing-feature',
+        spatialRevisionId: 'missing-revision',
+        temporalState: SpatialTemporalState.operational,
+      ),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('does not exist'),
+        ),
+      ),
+    );
+
+    expect(await links.findByLandParcelId('missing-parcel'), isNull);
+    expect(await spatial.featureRepository.findById('missing-feature'), isNull);
+    expect(
+      await spatial.revisionRepository.findByFeatureId('missing-feature'),
+      isEmpty,
+    );
+  });
+
+  test(
+    'bootstrapExisting rejects a LandParcel that already has a link',
+    () async {
+      final parcel = createParcel();
+      await parcels.create(parcel);
+
+      await workflow.bootstrapExisting(
+        farmId: parcel.farmId,
+        landParcelId: parcel.id,
+        spatialLinkId: 'bootstrap-link-1',
+        spatialFeatureId: 'bootstrap-feature-1',
+        spatialRevisionId: 'bootstrap-revision-1',
+        temporalState: SpatialTemporalState.operational,
+      );
+
+      await expectLater(
+        () => workflow.bootstrapExisting(
+          farmId: parcel.farmId,
+          landParcelId: parcel.id,
+          spatialLinkId: 'bootstrap-link-2',
+          spatialFeatureId: 'bootstrap-feature-2',
+          spatialRevisionId: 'bootstrap-revision-2',
+          temporalState: SpatialTemporalState.operational,
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            contains('already has a persisted SpatialFeature link'),
+          ),
+        ),
+      );
+
+      final link = await links.findByLandParcelId(parcel.id);
+
+      expect(link, isNotNull);
+      expect(link!.id, 'bootstrap-link-1');
+      expect(link.spatialFeatureId, 'bootstrap-feature-1');
+      expect(
+        await spatial.featureRepository.findById('bootstrap-feature-2'),
+        isNull,
+      );
+      expect(
+        await spatial.revisionRepository.findByFeatureId('bootstrap-feature-2'),
+        isEmpty,
+      );
+    },
+  );
+
+  test(
+    'bootstrapExisting link failure rolls back Spatial feature and revision',
+    () async {
+      final firstParcel = createParcel(id: 'parcel-1', code: 'P-001');
+      final legacyParcel = createParcel(id: 'parcel-2', code: 'P-002');
+
+      await parcels.create(firstParcel);
+      await parcels.create(legacyParcel);
+
+      await workflow.bootstrapExisting(
+        farmId: firstParcel.farmId,
+        landParcelId: firstParcel.id,
+        spatialLinkId: 'shared-bootstrap-link',
+        spatialFeatureId: 'bootstrap-feature-1',
+        spatialRevisionId: 'bootstrap-revision-1',
+        temporalState: SpatialTemporalState.operational,
+      );
+
+      await expectLater(
+        () => workflow.bootstrapExisting(
+          farmId: legacyParcel.farmId,
+          landParcelId: legacyParcel.id,
+          spatialLinkId: 'shared-bootstrap-link',
+          spatialFeatureId: 'bootstrap-feature-2',
+          spatialRevisionId: 'bootstrap-revision-2',
+          temporalState: SpatialTemporalState.operational,
+        ),
+        throwsA(anything),
+      );
+
+      final storedLegacy = await parcels.getById(
+        farmId: legacyParcel.farmId,
+        id: legacyParcel.id,
+      );
+
+      expect(storedLegacy, isNotNull);
+      expect(storedLegacy!.parcelCode, legacyParcel.parcelCode);
+      expect(storedLegacy.name, legacyParcel.name);
+
+      expect(await links.findByLandParcelId(legacyParcel.id), isNull);
+      expect(
+        await spatial.featureRepository.findById('bootstrap-feature-2'),
+        isNull,
+      );
+      expect(
+        await spatial.revisionRepository.findByFeatureId('bootstrap-feature-2'),
+        isEmpty,
+      );
+
+      final firstLink = await links.findByLandParcelId(firstParcel.id);
+      expect(firstLink, isNotNull);
+      expect(firstLink!.id, 'shared-bootstrap-link');
+      expect(
+        await spatial.featureRepository.findById('bootstrap-feature-1'),
+        isNotNull,
+      );
+    },
+  );
 }
