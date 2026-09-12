@@ -11,6 +11,9 @@ import 'package:agrico_deepseek/features/farm/domain/entities/land_parcel.dart';
 import 'package:agrico_deepseek/features/farm/domain/geometry/wgs84_geometry.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_feature.dart';
+import 'package:agrico_deepseek/features/farm/domain/entities/land_parcel_spatial_link.dart';
+import 'package:agrico_deepseek/core/spatial/domain/geometry/spatial_geometry_type.dart';
 
 void main() {
   sqfliteFfiInit();
@@ -506,6 +509,76 @@ void main() {
       expect(feature.name, parcel.name);
       expect(revisions, hasLength(1));
       expect(revisions.single.revision, 1);
+    },
+  );
+
+  test(
+    'update rejects a persisted link to a non-LandParcel SpatialFeature',
+    () async {
+      final parcel = createParcel();
+      await parcels.create(parcel);
+
+      final roadFeature = SpatialFeature(
+        id: 'spatial-road-1',
+        featureType: SpatialFeatureTypes.road,
+        geometryType: SpatialGeometryType.polygon,
+        lifecycleStatus: SpatialFeatureLifecycleStatus.active,
+        createdAt: createdAt,
+        createdBy: 'member-1',
+        updatedAt: createdAt,
+        updatedBy: 'member-1',
+      );
+
+      await spatial.featureRepository.create(roadFeature);
+
+      await links.create(
+        LandParcelSpatialLink(
+          id: 'link-parcel-to-road',
+          landParcelId: parcel.id,
+          spatialFeatureId: roadFeature.id,
+          createdAt: createdAt,
+          createdBy: 'member-1',
+        ),
+      );
+
+      final updated = parcel.updateMetadata(
+        name: 'Must not persist',
+        actorMembershipId: 'member-2',
+        occurredAt: DateTime.utc(2026, 9, 11, 9),
+      );
+
+      await expectLater(
+        () => workflow.update(
+          parcel: updated,
+          spatialRevisionId: 'revision-must-not-exist',
+          temporalState: SpatialTemporalState.operational,
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            contains('must be a LandParcel feature'),
+          ),
+        ),
+      );
+
+      final storedParcel = await parcels.getById(
+        farmId: parcel.farmId,
+        id: parcel.id,
+      );
+      final storedRoad = await spatial.featureRepository.findById(
+        roadFeature.id,
+      );
+      final revisions = await spatial.revisionRepository.findByFeatureId(
+        roadFeature.id,
+      );
+
+      expect(storedParcel, isNotNull);
+      expect(storedParcel!.name, parcel.name);
+      expect(storedRoad, isNotNull);
+      expect(storedRoad!.featureType, SpatialFeatureTypes.road);
+      expect(storedRoad.updatedAt, createdAt);
+      expect(revisions, isEmpty);
     },
   );
 }

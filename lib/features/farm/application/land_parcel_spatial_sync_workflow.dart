@@ -1,3 +1,4 @@
+import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_feature.dart';
 import '../../../core/spatial/domain/entities/spatial_temporal.dart';
 import '../data/adapters/land_parcel_spatial_projection.dart';
 import '../data/adapters/land_parcel_spatial_transaction.dart';
@@ -80,6 +81,13 @@ class LandParcelSpatialSyncWorkflow {
       if (existingFeature == null) {
         throw StateError(
           'Linked Spatial feature $spatialFeatureId does not exist.',
+        );
+      }
+
+      if (existingFeature.featureType != SpatialFeatureTypes.landParcel) {
+        throw StateError(
+          'Linked Spatial feature $spatialFeatureId must be a LandParcel feature, '
+          'but was ${existingFeature.featureType}.',
         );
       }
 
