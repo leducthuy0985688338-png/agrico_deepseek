@@ -6,6 +6,7 @@ import 'package:agrico_deepseek/features/farm/application/land_parcel_spatial_sy
 import 'package:agrico_deepseek/features/farm/data/adapters/default_land_parcel_spatial_projection.dart';
 import 'package:agrico_deepseek/features/farm/data/adapters/land_parcel_spatial_transaction.dart';
 import 'package:agrico_deepseek/features/farm/data/local/sqlite_land_parcel_repository.dart';
+import 'package:agrico_deepseek/features/farm/data/local/sqlite_land_parcel_spatial_link_repository.dart';
 import 'package:agrico_deepseek/features/farm/domain/entities/land_parcel.dart';
 import 'package:agrico_deepseek/features/farm/domain/geometry/wgs84_geometry.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -38,6 +39,7 @@ void main() {
 
   late Database database;
   late SqliteLandParcelRepository parcels;
+  late SqliteLandParcelSpatialLinkRepository links;
   late SpatialPersistenceComposition spatial;
   late LandParcelSpatialSyncWorkflow workflow;
 
@@ -46,8 +48,10 @@ void main() {
     await database.execute('PRAGMA foreign_keys = ON');
     await SqliteLandParcelRepository.createSchema(database);
     await SqliteSpatialSchema.createSchema(database);
+    await SqliteLandParcelSpatialLinkRepository.createSchema(database);
 
     parcels = SqliteLandParcelRepository(database);
+    links = SqliteLandParcelSpatialLinkRepository(database);
     spatial = SpatialPersistenceComposition(database);
 
     workflow = LandParcelSpatialSyncWorkflow(
@@ -63,6 +67,7 @@ void main() {
 
     await workflow.create(
       parcel: parcel,
+      spatialLinkId: 'link-spatial-parcel-1',
       spatialFeatureId: 'spatial-parcel-1',
       spatialRevisionId: 'spatial-parcel-1-revision-1',
       temporalState: SpatialTemporalState.operational,
@@ -101,6 +106,7 @@ void main() {
 
       await workflow.create(
         parcel: parcel,
+        spatialLinkId: 'link-spatial-existing',
         spatialFeatureId: 'spatial-existing',
         spatialRevisionId: 'spatial-existing-revision-1',
         temporalState: SpatialTemporalState.operational,
@@ -111,6 +117,7 @@ void main() {
       await expectLater(
         () => workflow.create(
           parcel: conflictingParcel,
+          spatialLinkId: 'link-spatial-existing',
           spatialFeatureId: 'spatial-existing',
           spatialRevisionId: 'another-revision-1',
           temporalState: SpatialTemporalState.operational,
@@ -144,6 +151,7 @@ void main() {
     await expectLater(
       () => workflow.create(
         parcel: conflictingParcel,
+        spatialLinkId: 'link-spatial-parcel-2',
         spatialFeatureId: 'spatial-parcel-2',
         spatialRevisionId: 'spatial-parcel-2-revision-1',
         temporalState: SpatialTemporalState.operational,
@@ -168,6 +176,7 @@ void main() {
 
       await workflow.create(
         parcel: parcel,
+        spatialLinkId: 'link-spatial-parcel-1',
         spatialFeatureId: 'spatial-parcel-1',
         spatialRevisionId: 'spatial-parcel-1-revision-1',
         temporalState: SpatialTemporalState.operational,
@@ -181,7 +190,6 @@ void main() {
 
       await workflow.update(
         parcel: updated,
-        spatialFeatureId: 'spatial-parcel-1',
         spatialRevisionId: 'spatial-parcel-1-revision-2',
         temporalState: SpatialTemporalState.operational,
       );
@@ -210,6 +218,7 @@ void main() {
 
       await workflow.create(
         parcel: parcel,
+        spatialLinkId: 'link-spatial-parcel-1',
         spatialFeatureId: 'spatial-parcel-1',
         spatialRevisionId: 'spatial-parcel-1-revision-1',
         temporalState: SpatialTemporalState.operational,
@@ -223,7 +232,6 @@ void main() {
 
       await workflow.update(
         parcel: updated,
-        spatialFeatureId: 'spatial-parcel-1',
         spatialRevisionId: 'spatial-parcel-1-revision-2',
         temporalState: SpatialTemporalState.operational,
       );
@@ -236,7 +244,6 @@ void main() {
 
       await workflow.update(
         parcel: updatedAgain,
-        spatialFeatureId: 'spatial-parcel-1',
         spatialRevisionId: 'spatial-parcel-1-revision-3',
         temporalState: SpatialTemporalState.operational,
       );
@@ -264,7 +271,6 @@ void main() {
       await expectLater(
         () => workflow.update(
           parcel: updated,
-          spatialFeatureId: 'missing-spatial-feature',
           spatialRevisionId: 'missing-revision-2',
           temporalState: SpatialTemporalState.operational,
         ),
@@ -289,6 +295,7 @@ void main() {
 
     await workflow.create(
       parcel: parcel,
+      spatialLinkId: 'link-spatial-parcel-1',
       spatialFeatureId: 'spatial-parcel-1',
       spatialRevisionId: 'shared-revision-id',
       temporalState: SpatialTemporalState.operational,
@@ -303,7 +310,6 @@ void main() {
     await expectLater(
       () => workflow.update(
         parcel: updated,
-        spatialFeatureId: 'spatial-parcel-1',
         spatialRevisionId: 'shared-revision-id',
         temporalState: SpatialTemporalState.operational,
       ),
@@ -328,12 +334,137 @@ void main() {
   });
 
   test(
+    'create persists stable LandParcel SpatialFeature link atomically',
+    () async {
+      final parcel = createParcel();
+
+      await workflow.create(
+        parcel: parcel,
+        spatialLinkId: 'link-spatial-parcel-1',
+        spatialFeatureId: 'spatial-parcel-1',
+        spatialRevisionId: 'spatial-parcel-1-revision-1',
+        temporalState: SpatialTemporalState.operational,
+      );
+
+      final storedLink = await links.findByLandParcelId(parcel.id);
+
+      expect(storedLink, isNotNull);
+      expect(storedLink!.id, 'link-spatial-parcel-1');
+      expect(storedLink.landParcelId, parcel.id);
+      expect(storedLink.spatialFeatureId, 'spatial-parcel-1');
+    },
+  );
+
+  test('failed create leaves no persistent Spatial link', () async {
+    final existing = createParcel(id: 'existing', code: 'P-001');
+    await parcels.create(existing);
+
+    final conflictingParcel = createParcel(id: 'parcel-2', code: 'P-001');
+
+    await expectLater(
+      () => workflow.create(
+        parcel: conflictingParcel,
+        spatialLinkId: 'link-spatial-parcel-2',
+        spatialFeatureId: 'spatial-parcel-2',
+        spatialRevisionId: 'spatial-parcel-2-revision-1',
+        temporalState: SpatialTemporalState.operational,
+      ),
+      throwsA(anything),
+    );
+
+    expect(await links.findByLandParcelId(conflictingParcel.id), isNull);
+    expect(await links.findBySpatialFeatureId('spatial-parcel-2'), isNull);
+  });
+
+  test('link insertion failure rolls back parcel and Spatial data', () async {
+    final firstParcel = createParcel(id: 'parcel-1', code: 'P-001');
+
+    await workflow.create(
+      parcel: firstParcel,
+      spatialLinkId: 'link-shared',
+      spatialFeatureId: 'spatial-parcel-1',
+      spatialRevisionId: 'spatial-parcel-1-revision-1',
+      temporalState: SpatialTemporalState.operational,
+    );
+
+    final secondParcel = createParcel(id: 'parcel-2', code: 'P-002');
+
+    await expectLater(
+      () => workflow.create(
+        parcel: secondParcel,
+        spatialLinkId: 'link-shared',
+        spatialFeatureId: 'spatial-parcel-2',
+        spatialRevisionId: 'spatial-parcel-2-revision-1',
+        temporalState: SpatialTemporalState.operational,
+      ),
+      throwsA(anything),
+    );
+
+    final storedSecondParcel = await parcels.getById(
+      farmId: secondParcel.farmId,
+      id: secondParcel.id,
+    );
+    final secondFeature = await spatial.featureRepository.findById(
+      'spatial-parcel-2',
+    );
+    final secondRevisions = await spatial.revisionRepository.findByFeatureId(
+      'spatial-parcel-2',
+    );
+    final firstLink = await links.findByLandParcelId(firstParcel.id);
+    final secondLink = await links.findByLandParcelId(secondParcel.id);
+
+    expect(storedSecondParcel, isNull);
+    expect(secondFeature, isNull);
+    expect(secondRevisions, isEmpty);
+    expect(firstLink, isNotNull);
+    expect(firstLink!.id, 'link-shared');
+    expect(firstLink.spatialFeatureId, 'spatial-parcel-1');
+    expect(secondLink, isNull);
+    expect(
+      (await links.findBySpatialFeatureId('spatial-parcel-1'))!.id,
+      'link-shared',
+    );
+    expect(await links.findBySpatialFeatureId('spatial-parcel-2'), isNull);
+  });
+
+  test('update without persistent Spatial link is rejected', () async {
+    final parcel = createParcel();
+    await parcels.create(parcel);
+
+    final updated = parcel.updateMetadata(
+      name: 'Must not persist',
+      actorMembershipId: 'member-2',
+      occurredAt: DateTime.utc(2026, 9, 11, 9),
+    );
+
+    await expectLater(
+      () => workflow.update(
+        parcel: updated,
+        spatialRevisionId: 'revision-must-not-exist',
+        temporalState: SpatialTemporalState.operational,
+      ),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('no persisted SpatialFeature link'),
+        ),
+      ),
+    );
+
+    final stored = await parcels.getById(farmId: parcel.farmId, id: parcel.id);
+
+    expect(stored!.name, parcel.name);
+  });
+
+  test(
     'LandParcel update failure leaves Spatial feature and revisions unchanged',
     () async {
       final parcel = createParcel(id: 'parcel-1', code: 'P-001');
 
       await workflow.create(
         parcel: parcel,
+        spatialLinkId: 'link-spatial-parcel-1',
         spatialFeatureId: 'spatial-parcel-1',
         spatialRevisionId: 'spatial-parcel-1-revision-1',
         temporalState: SpatialTemporalState.operational,
@@ -352,7 +483,6 @@ void main() {
       await expectLater(
         () => workflow.update(
           parcel: conflicting,
-          spatialFeatureId: 'spatial-parcel-1',
           spatialRevisionId: 'spatial-parcel-1-revision-2',
           temporalState: SpatialTemporalState.operational,
         ),

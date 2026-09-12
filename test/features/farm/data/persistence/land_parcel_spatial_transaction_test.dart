@@ -94,7 +94,7 @@ void main() {
     final sourceParcel = parcel();
     final sourceFeature = feature(sourceParcel.id);
 
-    await coordinator.run((scopedParcels, scopedSpatial) async {
+    await coordinator.run((scopedParcels, _, scopedSpatial) async {
       await scopedParcels.create(sourceParcel);
       await scopedSpatial.createFeature.execute(
         feature: sourceFeature,
@@ -121,7 +121,7 @@ void main() {
     final sourceFeature = feature(sourceParcel.id);
 
     await expectLater(
-      () => coordinator.run<void>((scopedParcels, scopedSpatial) async {
+      () => coordinator.run<void>((scopedParcels, _, scopedSpatial) async {
         await scopedParcels.create(sourceParcel);
 
         await scopedSpatial.createFeature.execute(
@@ -160,7 +160,7 @@ void main() {
     final sourceFeature = feature(sourceParcel.id);
 
     await expectLater(
-      () => coordinator.run<void>((scopedParcels, scopedSpatial) async {
+      () => coordinator.run<void>((scopedParcels, _, scopedSpatial) async {
         await scopedSpatial.createFeature.execute(
           feature: sourceFeature,
           initialRevision: revision(sourceFeature.id),

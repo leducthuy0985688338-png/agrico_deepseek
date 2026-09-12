@@ -9,6 +9,7 @@ import '../models/distance_measurement.dart';
 import '../models/field_measurement_history.dart';
 import '../models/field_model.dart';
 import '../features/farm/data/local/sqlite_land_parcel_repository.dart';
+import '../features/farm/data/local/sqlite_land_parcel_spatial_link_repository.dart';
 import '../features/farm/data/local/sqlite_land_survey_repository.dart';
 import '../core/spatial/data/sqlite_spatial_schema.dart';
 
@@ -18,7 +19,7 @@ class FieldDatabase {
   static final FieldDatabase _instance = FieldDatabase._();
 
   static const _databaseName = 'agrico.db';
-  static const databaseVersion = 7;
+  static const databaseVersion = 8;
   static const _table = 'fields';
   static const _historyTable = 'field_measurement_history';
   static const _distanceTable = 'distance_measurements';
@@ -68,6 +69,9 @@ class FieldDatabase {
     if (version >= 7) {
       await SqliteSpatialSchema.createSchema(database);
     }
+    if (version >= 8) {
+      await SqliteLandParcelSpatialLinkRepository.createSchema(database);
+    }
   }
 
   static Future<void> upgradeSchema(
@@ -97,6 +101,9 @@ class FieldDatabase {
     }
     if (oldVersion < 7) {
       await SqliteSpatialSchema.createSchema(database);
+    }
+    if (oldVersion < 8) {
+      await SqliteLandParcelSpatialLinkRepository.createSchema(database);
     }
   }
 

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:agrico_deepseek/core/spatial/data/sqlite_spatial_schema.dart';
 import 'package:agrico_deepseek/features/farm/data/local/sqlite_land_parcel_repository.dart';
+import 'package:agrico_deepseek/features/farm/data/local/sqlite_land_parcel_spatial_link_repository.dart';
 import 'package:agrico_deepseek/features/farm/data/local/sqlite_land_survey_repository.dart';
 import 'package:agrico_deepseek/services/field_database.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -46,11 +47,11 @@ void main() {
   Future<int> pragma(Database database, String name) async =>
       (await database.rawQuery('PRAGMA $name')).single.values.single! as int;
 
-  test('fresh authoritative database creates complete v7 schema', () async {
+  test('fresh authoritative database creates complete v8 schema', () async {
     final database = await openAuthoritative(FieldDatabase.databaseVersion);
     addTearDown(database.close);
 
-    expect(await pragma(database, 'user_version'), 7);
+    expect(await pragma(database, 'user_version'), 8);
     expect(await pragma(database, 'foreign_keys'), 1);
     expect(
       await tableNames(database),
@@ -67,6 +68,7 @@ void main() {
         SqliteLandSurveyRepository.attachmentsTable,
         SqliteSpatialSchema.featuresTable,
         SqliteSpatialSchema.revisionsTable,
+        SqliteLandParcelSpatialLinkRepository.table,
       }),
     );
     final indexes = await database.query(
@@ -127,7 +129,7 @@ void main() {
     expect(await database.rawQuery('PRAGMA foreign_key_check'), isEmpty);
   });
 
-  test('representative v1 database reaches complete v7 schema', () async {
+  test('representative v1 database reaches complete v8 schema', () async {
     var database = await databaseFactoryFfi.openDatabase(
       path,
       options: OpenDatabaseOptions(
@@ -160,9 +162,9 @@ void main() {
     );
     await database.close();
 
-    database = await openAuthoritative(7);
+    database = await openAuthoritative(8);
     addTearDown(database.close);
-    expect(await pragma(database, 'user_version'), 7);
+    expect(await pragma(database, 'user_version'), 8);
     expect((await database.query('fields')).single['id'], 'legacy-field');
     expect(
       await tableNames(database),
@@ -173,9 +175,84 @@ void main() {
         SqliteLandSurveyRepository.surveysTable,
         SqliteSpatialSchema.featuresTable,
         SqliteSpatialSchema.revisionsTable,
+        SqliteLandParcelSpatialLinkRepository.table,
       }),
     );
   });
+
+  test(
+    'v7 to v8 adds persistent LandParcel Spatial links without guessing associations',
+    () async {
+      var database = await openAuthoritative(7);
+
+      await database.insert(SqliteLandParcelRepository.parcelTable, {
+        'id': 'parcel-v7',
+        'farm_id': 'farm-v7',
+        'parcel_code': 'P-V7',
+        'active': 1,
+        'boundary_version': 1,
+        'schema_version': 1,
+        'payload_json': '{"legacy":"parcel-kept"}',
+      });
+
+      await database.insert(SqliteSpatialSchema.featuresTable, {
+        'id': 'feature-v7',
+        'feature_type': 'landParcel',
+        'geometry_type': 'polygon',
+        'lifecycle_status': 'active',
+        'created_at': '2026-01-01T00:00:00.000Z',
+        'created_by': 'migration-test',
+        'updated_at': '2026-01-01T00:00:00.000Z',
+        'updated_by': 'migration-test',
+        'schema_version': 1,
+        'payload_json': '{"legacy":"feature-kept"}',
+      });
+
+      await database.close();
+
+      database = await openAuthoritative(8);
+      addTearDown(database.close);
+
+      expect(await pragma(database, 'user_version'), 8);
+      expect(await pragma(database, 'foreign_keys'), 1);
+      expect(
+        await tableNames(database),
+        contains(SqliteLandParcelSpatialLinkRepository.table),
+      );
+
+      final parcelRows = await database.query(
+        SqliteLandParcelRepository.parcelTable,
+        where: 'id = ?',
+        whereArgs: ['parcel-v7'],
+      );
+
+      final featureRows = await database.query(
+        SqliteSpatialSchema.featuresTable,
+        where: 'id = ?',
+        whereArgs: ['feature-v7'],
+      );
+
+      final linkRows = await database.query(
+        SqliteLandParcelSpatialLinkRepository.table,
+      );
+
+      expect(parcelRows, hasLength(1));
+      expect(
+        parcelRows.single,
+        containsPair('payload_json', '{"legacy":"parcel-kept"}'),
+      );
+      expect(featureRows, hasLength(1));
+      expect(
+        featureRows.single,
+        containsPair('payload_json', '{"legacy":"feature-kept"}'),
+      );
+
+      // v8 creates the association structure only. Legacy records must not
+      // be linked by guessing business or Spatial identities.
+      expect(linkRows, isEmpty);
+      expect(await database.rawQuery('PRAGMA foreign_key_check'), isEmpty);
+    },
+  );
 
   test(
     'migrated Spatial constraints enforce PK UNIQUE and FK RESTRICT',
