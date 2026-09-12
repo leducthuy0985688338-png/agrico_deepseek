@@ -1,4 +1,5 @@
 import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_feature.dart';
+import 'package:agrico_deepseek/core/spatial/domain/identity/spatial_identity_generator.dart';
 import '../../../core/spatial/domain/entities/spatial_temporal.dart';
 import '../data/adapters/land_parcel_spatial_projection.dart';
 import '../data/adapters/land_parcel_spatial_transaction.dart';
@@ -12,24 +13,27 @@ import '../domain/entities/land_parcel_spatial_link.dart';
 /// Updates resolve SpatialFeature identity from that persisted association
 /// rather than trusting a caller-supplied SpatialFeature id.
 ///
-/// Spatial revision identities remain caller supplied while revision numbers
+/// Spatial identities are generated internally while revision numbers are
 /// are derived from persisted Spatial Core state.
 class LandParcelSpatialSyncWorkflow {
   const LandParcelSpatialSyncWorkflow({
     required this.transaction,
     required this.projection,
+    required this.identityGenerator,
   });
 
   final LandParcelSpatialTransaction transaction;
   final LandParcelSpatialProjection projection;
+  final SpatialIdentityGenerator identityGenerator;
 
   Future<void> create({
     required LandParcel parcel,
-    required String spatialLinkId,
-    required String spatialFeatureId,
-    required String spatialRevisionId,
     required SpatialTemporalState temporalState,
   }) {
+    final spatialLinkId = identityGenerator.newId('spatial-link');
+    final spatialFeatureId = identityGenerator.newId('spatial-feature');
+    final spatialRevisionId = identityGenerator.newId('spatial-revision');
+
     return transaction.run<void>((parcels, links, spatial) async {
       final projected = projection.project(
         parcel: parcel,
@@ -63,9 +67,6 @@ class LandParcelSpatialSyncWorkflow {
   Future<void> bootstrapExisting({
     required String farmId,
     required String landParcelId,
-    required String spatialLinkId,
-    required String spatialFeatureId,
-    required String spatialRevisionId,
     required SpatialTemporalState temporalState,
   }) {
     return transaction.run<void>((parcels, links, spatial) async {
@@ -84,6 +85,10 @@ class LandParcelSpatialSyncWorkflow {
           'Land parcel $landParcelId already has a persisted SpatialFeature link.',
         );
       }
+
+      final spatialLinkId = identityGenerator.newId('spatial-link');
+      final spatialFeatureId = identityGenerator.newId('spatial-feature');
+      final spatialRevisionId = identityGenerator.newId('spatial-revision');
 
       final projected = projection.project(
         parcel: parcel,
@@ -112,7 +117,6 @@ class LandParcelSpatialSyncWorkflow {
 
   Future<void> update({
     required LandParcel parcel,
-    required String spatialRevisionId,
     required SpatialTemporalState temporalState,
   }) {
     return transaction.run<void>((parcels, links, spatial) async {
@@ -151,6 +155,8 @@ class LandParcelSpatialSyncWorkflow {
           'Linked Spatial feature $spatialFeatureId has no persisted revision.',
         );
       }
+
+      final spatialRevisionId = identityGenerator.newId('spatial-revision');
 
       final projected = projection.project(
         parcel: parcel,
