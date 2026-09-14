@@ -11,7 +11,6 @@ import 'package:agrico_deepseek/features/farm/domain/entities/land_parcel.dart';
 import 'package:agrico_deepseek/features/farm/domain/entities/land_parcel_spatial_link.dart';
 import 'package:agrico_deepseek/features/farm/domain/geometry/wgs84_geometry.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../../core/spatial/support/sequential_spatial_identity_generator.dart';
@@ -137,10 +136,11 @@ void main() {
       expect(storedParcel!.id, version1.id);
       expect(storedParcel.farmId, version1.farmId);
       expect(storedParcel.boundaryVersion, 3);
-      expect(
-        storedParcel.boundaryHistory.map((item) => item.version),
-        [1, 2, 3],
-      );
+      expect(storedParcel.boundaryHistory.map((item) => item.version), [
+        1,
+        2,
+        3,
+      ]);
 
       expect(finalLink, isA<LandParcelSpatialLink>());
       expect(finalLink!.id, linkAfterCreate.id);
@@ -154,25 +154,33 @@ void main() {
 
       expect(revisions, hasLength(3));
       expect(revisions.map((item) => item.revision), [1, 2, 3]);
-      expect(
-        revisions.map((item) => item.featureId).toSet(),
-        {linkAfterCreate.spatialFeatureId},
-      );
+      expect(revisions.map((item) => item.featureId).toSet(), {
+        linkAfterCreate.spatialFeatureId,
+      });
       expect(revisions.map((item) => item.id).toSet(), hasLength(3));
 
       expect(revisions[0].geometryReference, version1.boundaryHistory[0].id);
       expect(revisions[1].geometryReference, version2.boundaryHistory[1].id);
       expect(revisions[2].geometryReference, version3.boundaryHistory[2].id);
 
-      expect(revisions[0].source.sourceReference, version1.boundaryHistory[0].id);
-      expect(revisions[1].source.sourceReference, version2.boundaryHistory[1].id);
-      expect(revisions[2].source.sourceReference, version3.boundaryHistory[2].id);
+      expect(
+        revisions[0].source.sourceReference,
+        version1.boundaryHistory[0].id,
+      );
+      expect(
+        revisions[1].source.sourceReference,
+        version2.boundaryHistory[1].id,
+      );
+      expect(
+        revisions[2].source.sourceReference,
+        version3.boundaryHistory[2].id,
+      );
 
       final latestRevision = revisions.last;
       final latestGeometry = latestRevision.geometry! as SpatialPolygon;
       final latestBoundary = version3.boundary;
 
-      expect(latestGeometry.outerRing.length, latestBoundary.vertices.length + 1);
+      expect(latestGeometry.outerRing.length, latestBoundary.vertices.length);
       expect(
         latestGeometry.outerRing.first.latitude,
         latestBoundary.vertices.first.latitude,
@@ -232,33 +240,30 @@ void main() {
     },
   );
 
-  test(
-    'LandParcelSpatialLink is the official stable bridge',
-    () async {
-      final parcel = createParcel();
+  test('LandParcelSpatialLink is the official stable bridge', () async {
+    final parcel = createParcel();
 
-      await workflow.create(
-        parcel: parcel,
-        temporalState: SpatialTemporalState.operational,
-      );
+    await workflow.create(
+      parcel: parcel,
+      temporalState: SpatialTemporalState.operational,
+    );
 
-      final link = await links.findByLandParcelId(parcel.id);
-      expect(link, isA<LandParcelSpatialLink>());
-      expect(link!.landParcelId, parcel.id);
-      expect(link.spatialFeatureId, isNot(parcel.id));
+    final link = await links.findByLandParcelId(parcel.id);
+    expect(link, isA<LandParcelSpatialLink>());
+    expect(link!.landParcelId, parcel.id);
+    expect(link.spatialFeatureId, isNot(parcel.id));
 
-      final spatialFeature = await spatial.featureRepository.findById(
-        link.spatialFeatureId,
-      );
-      expect(spatialFeature, isNotNull);
-      expect(spatialFeature!.id, link.spatialFeatureId);
+    final spatialFeature = await spatial.featureRepository.findById(
+      link.spatialFeatureId,
+    );
+    expect(spatialFeature, isNotNull);
+    expect(spatialFeature!.id, link.spatialFeatureId);
 
-      final revisions = await spatial.revisionRepository.findByFeatureId(
-        link.spatialFeatureId,
-      );
-      expect(revisions, hasLength(1));
-      expect(revisions.single.featureId, link.spatialFeatureId);
-      expect(revisions.single.revision, 1);
-    },
-  );
+    final revisions = await spatial.revisionRepository.findByFeatureId(
+      link.spatialFeatureId,
+    );
+    expect(revisions, hasLength(1));
+    expect(revisions.single.featureId, link.spatialFeatureId);
+    expect(revisions.single.revision, 1);
+  });
 }

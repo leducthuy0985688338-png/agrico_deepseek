@@ -45,6 +45,7 @@ void main() {
       spatialRevisionId: 'spatial-land-99-r7',
       spatialRevision: 7,
       temporalState: SpatialTemporalState.operational,
+      effectiveFrom: parcel().updatedAt,
     );
 
     expect(result.feature.id, 'spatial-land-99');
@@ -68,6 +69,7 @@ void main() {
       spatialRevisionId: 'spatial-1-r1',
       spatialRevision: 1,
       temporalState: SpatialTemporalState.operational,
+      effectiveFrom: parcel().updatedAt,
     );
 
     final featureGeometry = result.feature.geometry;
@@ -107,6 +109,7 @@ void main() {
       spatialRevisionId: 'spatial-active-r1',
       spatialRevision: 1,
       temporalState: SpatialTemporalState.operational,
+      effectiveFrom: parcel().updatedAt,
     );
 
     final inactiveResult = projection.project(
@@ -115,6 +118,7 @@ void main() {
       spatialRevisionId: 'spatial-inactive-r1',
       spatialRevision: 1,
       temporalState: SpatialTemporalState.operational,
+      effectiveFrom: parcel().updatedAt,
     );
 
     expect(
@@ -136,6 +140,7 @@ void main() {
       spatialRevisionId: 'spatial-1-r1',
       spatialRevision: 1,
       temporalState: SpatialTemporalState.operational,
+      effectiveFrom: parcel().updatedAt,
     );
 
     expect(result.feature.createdAt, sourceParcel.createdAt);
@@ -160,6 +165,7 @@ void main() {
         spatialRevisionId: 'revision-${entry.key.name}',
         spatialRevision: 1,
         temporalState: SpatialTemporalState.operational,
+        effectiveFrom: parcel().updatedAt,
       );
 
       expect(
@@ -179,6 +185,7 @@ void main() {
       spatialRevisionId: 'spatial-1-r1',
       spatialRevision: 1,
       temporalState: SpatialTemporalState.operational,
+      effectiveFrom: parcel().updatedAt,
     );
 
     final boundaryVersion = sourceParcel.boundaryHistory.single;
@@ -195,11 +202,29 @@ void main() {
       boundaryVersion.horizontalAccuracyM,
     );
     expect(result.revision.source.notes, boundaryVersion.note);
+    expect(result.revision.effectivePeriod.validFrom, sourceParcel.updatedAt);
+    expect(result.revision.effectivePeriod.validTo, isNull);
+  });
+
+  test('keeps boundary notes separate from Spatial revision change reason', () {
+    final sourceParcel = parcel();
+
+    final result = projection.project(
+      parcel: sourceParcel,
+      spatialFeatureId: 'spatial-change-reason',
+      spatialRevisionId: 'revision-change-reason',
+      spatialRevision: 2,
+      temporalState: SpatialTemporalState.operational,
+      effectiveFrom: DateTime.utc(2026, 9, 12, 9),
+      changeReason: 'metadata-updated',
+    );
+
+    expect(result.revision.source.notes, 'Initial survey');
+    expect(result.revision.changeReason, 'metadata-updated');
     expect(
       result.revision.effectivePeriod.validFrom,
-      boundaryVersion.occurredAt,
+      DateTime.utc(2026, 9, 12, 9),
     );
-    expect(result.revision.effectivePeriod.validTo, isNull);
   });
 
   test('Spatial revision sequence is independent of boundary version', () {
@@ -213,6 +238,7 @@ void main() {
       spatialRevisionId: 'spatial-1-r9',
       spatialRevision: 9,
       temporalState: SpatialTemporalState.operational,
+      effectiveFrom: parcel().updatedAt,
     );
 
     expect(result.revision.revision, 9);
@@ -227,6 +253,7 @@ void main() {
         spatialRevisionId: 'revision-${state.name}',
         spatialRevision: 1,
         temporalState: state,
+        effectiveFrom: parcel().updatedAt,
       );
 
       expect(result.revision.temporalState, state);
@@ -241,6 +268,7 @@ void main() {
         spatialRevisionId: 'revision-1',
         spatialRevision: 1,
         temporalState: SpatialTemporalState.operational,
+        effectiveFrom: parcel().updatedAt,
       ),
       throwsFormatException,
     );
@@ -252,6 +280,7 @@ void main() {
         spatialRevisionId: ' ',
         spatialRevision: 1,
         temporalState: SpatialTemporalState.operational,
+        effectiveFrom: parcel().updatedAt,
       ),
       throwsFormatException,
     );
@@ -263,6 +292,7 @@ void main() {
         spatialRevisionId: 'revision-1',
         spatialRevision: 0,
         temporalState: SpatialTemporalState.operational,
+        effectiveFrom: parcel().updatedAt,
       ),
       throwsFormatException,
     );

@@ -28,5 +28,7 @@ abstract interface class LandParcelSpatialProjection {
     required String spatialRevisionId,
     required int spatialRevision,
     required SpatialTemporalState temporalState,
+    required DateTime effectiveFrom,
+    String? changeReason,
   });
 }

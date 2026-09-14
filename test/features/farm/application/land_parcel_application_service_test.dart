@@ -191,10 +191,7 @@ void main() {
 
       expect(result.isSuccess, isTrue);
 
-      final stored = await repository.getById(
-        farmId: 'farm-1',
-        id: 'parcel-1',
-      );
+      final stored = await repository.getById(farmId: 'farm-1', id: 'parcel-1');
 
       expect(stored?.boundaryHistory, hasLength(2));
       expect(stored?.boundaryHistory.last.version, 2);
@@ -324,6 +321,230 @@ void main() {
       expect(exported.value?.bytes, isNotEmpty);
     },
   );
+
+  test(
+    'transaction-scoped application service commits with outer transaction',
+    () async {
+      final command = CreateLandParcelCommand(
+        id: 'scoped-commit',
+        farmId: 'farm-1',
+        parcelCode: 'SCOPED-COMMIT',
+        name: 'Scoped commit',
+        vertices: vertices,
+        source: BoundarySource.gps,
+        actorMembershipId: 'member-1',
+        occurredAt: now,
+      );
+
+      await database.transaction((transaction) async {
+        final scopedRepository = SqliteLandParcelRepository(transaction);
+        final scopedApplication = application.withRepository(scopedRepository);
+
+        final result = await scopedApplication.createLandParcel(
+          subject(),
+          command,
+        );
+
+        expect(result.isSuccess, isTrue);
+      });
+
+      final stored = await repository.getById(
+        farmId: 'farm-1',
+        id: 'scoped-commit',
+      );
+
+      expect(stored, isNotNull);
+      expect(stored?.boundaryHistory, hasLength(1));
+    },
+  );
+
+  test(
+    'outer transaction failure rolls back scoped application create',
+    () async {
+      final command = CreateLandParcelCommand(
+        id: 'scoped-rollback',
+        farmId: 'farm-1',
+        parcelCode: 'SCOPED-ROLLBACK',
+        name: 'Scoped rollback',
+        vertices: vertices,
+        source: BoundarySource.gps,
+        actorMembershipId: 'member-1',
+        occurredAt: now,
+      );
+
+      await expectLater(
+        () => database.transaction<void>((transaction) async {
+          final scopedRepository = SqliteLandParcelRepository(transaction);
+          final scopedApplication = application.withRepository(
+            scopedRepository,
+          );
+
+          final result = await scopedApplication.createLandParcel(
+            subject(),
+            command,
+          );
+
+          expect(result.isSuccess, isTrue);
+          throw StateError('force outer rollback');
+        }),
+        throwsA(isA<StateError>()),
+      );
+
+      final stored = await repository.getById(
+        farmId: 'farm-1',
+        id: 'scoped-rollback',
+      );
+      final boundaryRows = await database.query(
+        SqliteLandParcelRepository.boundaryVersionTable,
+        where: 'parcel_id = ?',
+        whereArgs: const ['scoped-rollback'],
+      );
+
+      expect(stored, isNull);
+      expect(boundaryRows, isEmpty);
+    },
+  );
+
+  test(
+    'outer transaction failure rolls back scoped application update',
+    () async {
+      await repository.create(parcel(id: 'scoped-update'));
+
+      final before = await repository.getById(
+        farmId: 'farm-1',
+        id: 'scoped-update',
+      );
+
+      expect(before, isNotNull);
+
+      await expectLater(
+        () => database.transaction<void>((transaction) async {
+          final scopedRepository = SqliteLandParcelRepository(transaction);
+          final scopedApplication = application.withRepository(
+            scopedRepository,
+          );
+
+          final result = await scopedApplication.updateLandParcelMetadata(
+            subject(),
+            UpdateLandParcelMetadataCommand(
+              farmId: 'farm-1',
+              parcelId: 'scoped-update',
+              actorMembershipId: 'member-1',
+              occurredAt: now.add(const Duration(hours: 1)),
+              name: 'Changed inside transaction',
+            ),
+          );
+
+          expect(result.isSuccess, isTrue);
+          throw StateError('force outer rollback');
+        }),
+        throwsA(isA<StateError>()),
+      );
+
+      final after = await repository.getById(
+        farmId: 'farm-1',
+        id: 'scoped-update',
+      );
+
+      expect(after, isNotNull);
+      expect(after?.name, before?.name);
+      expect(after?.updatedAt, before?.updatedAt);
+      expect(after?.updatedBy, before?.updatedBy);
+      expect(after?.boundaryHistory, hasLength(1));
+    },
+  );
+
+  test('atomic persistence guard ignores non-persistence failure', () {
+    const result = LandParcelApplicationResult<LandParcel>.failure(
+      LandParcelApplicationStatus.validationFailed,
+      'landParcel.geometry.invalid',
+    );
+
+    expect(result.requireSuccessForAtomicPersistence, returnsNormally);
+  });
+
+  test('atomic persistence guard rethrows persistence failure', () {
+    const result = LandParcelApplicationResult<LandParcel>.failure(
+      LandParcelApplicationStatus.persistenceFailed,
+      'landParcel.persistence.failed',
+    );
+
+    expect(
+      result.requireSuccessForAtomicPersistence,
+      throwsA(
+        isA<LandParcelAtomicPersistenceException>()
+            .having(
+              (error) => error.result.status,
+              'status',
+              LandParcelApplicationStatus.persistenceFailed,
+            )
+            .having(
+              (error) => error.result.messageKey,
+              'messageKey',
+              'landParcel.persistence.failed',
+            ),
+      ),
+    );
+  });
+
+  test('atomic persistence guard rolls back outer transaction', () async {
+    final command = CreateLandParcelCommand(
+      id: 'atomic-guard-rollback',
+      farmId: 'farm-1',
+      parcelCode: 'ATOMIC-GUARD',
+      name: 'Atomic guard rollback',
+      vertices: vertices,
+      source: BoundarySource.gps,
+      actorMembershipId: 'member-1',
+      occurredAt: now,
+    );
+
+    LandParcelApplicationResult<LandParcel>? capturedResult;
+
+    await expectLater(
+      () => database.transaction<void>((transaction) async {
+        final scopedRepository = SqliteLandParcelRepository(transaction);
+        final scopedApplication = application.withRepository(scopedRepository);
+
+        final created = await scopedApplication.createLandParcel(
+          subject(),
+          command,
+        );
+
+        expect(created.isSuccess, isTrue);
+
+        final persistenceFailure =
+            LandParcelApplicationResult<LandParcel>.failure(
+              LandParcelApplicationStatus.persistenceFailed,
+              'landParcel.persistence.failed',
+              error: StateError('simulated downstream persistence failure'),
+            );
+
+        capturedResult = persistenceFailure;
+        persistenceFailure.requireSuccessForAtomicPersistence();
+      }),
+      throwsA(isA<LandParcelAtomicPersistenceException>()),
+    );
+
+    expect(
+      capturedResult?.status,
+      LandParcelApplicationStatus.persistenceFailed,
+    );
+
+    final stored = await repository.getById(
+      farmId: 'farm-1',
+      id: 'atomic-guard-rollback',
+    );
+
+    final boundaryRows = await database.query(
+      SqliteLandParcelRepository.boundaryVersionTable,
+      where: 'parcel_id = ?',
+      whereArgs: const ['atomic-guard-rollback'],
+    );
+
+    expect(stored, isNull);
+    expect(boundaryRows, isEmpty);
+  });
 }
 
 class _RepositorySpy implements LandParcelRepository {

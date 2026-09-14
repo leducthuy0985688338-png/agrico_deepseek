@@ -43,6 +43,26 @@ class LandParcelApplicationResult<T> {
   final Object? error;
 
   bool get isSuccess => status == LandParcelApplicationStatus.success;
+
+  /// Forces an atomic persistence boundary to roll back when persistence
+  /// has already been converted into an application result.
+  void requireSuccessForAtomicPersistence() {
+    if (status == LandParcelApplicationStatus.persistenceFailed) {
+      throw LandParcelAtomicPersistenceException(this);
+    }
+  }
+}
+
+/// Internal signal used to make an outer atomic transaction roll back while
+/// preserving the application result that should be returned to the caller.
+class LandParcelAtomicPersistenceException implements Exception {
+  const LandParcelAtomicPersistenceException(this.result);
+
+  final LandParcelApplicationResult<Object?> result;
+
+  @override
+  String toString() =>
+      'LandParcelAtomicPersistenceException: ${result.messageKey}';
 }
 
 class CreateLandParcelCommand {
@@ -163,7 +183,60 @@ class LandParcelExport {
   final Uint8List? bytes;
 }
 
-class LandParcelApplicationService {
+abstract interface class LandParcelApplication {
+  Future<LandParcelApplicationResult<LandParcel>> createLandParcel(
+    AuthorizationSubject subject,
+    CreateLandParcelCommand command,
+  );
+
+  Future<LandParcelApplicationResult<LandParcel>> updateLandParcelMetadata(
+    AuthorizationSubject subject,
+    UpdateLandParcelMetadataCommand command,
+  );
+
+  Future<LandParcelApplicationResult<LandParcel>> replaceBoundary(
+    AuthorizationSubject subject,
+    ReplaceBoundaryCommand command,
+  );
+
+  Future<LandParcelApplicationResult<LandParcel>> verifyBoundary(
+    AuthorizationSubject subject,
+    VerifyBoundaryCommand command,
+  );
+
+  LandParcelApplicationResult<KmlImportDocument> importKmlPreview(
+    AuthorizationSubject subject, {
+    required String farmId,
+    required String kml,
+  });
+
+  LandParcelApplicationResult<KmlImportDocument> importKmzPreview(
+    AuthorizationSubject subject, {
+    required String farmId,
+    required Uint8List kmz,
+  });
+
+  Future<LandParcelApplicationResult<LandParcel>> applyImportedBoundary(
+    AuthorizationSubject subject, {
+    required String farmId,
+    required String parcelId,
+    required LandParcelImportPreview preview,
+    required String actorMembershipId,
+    required DateTime occurredAt,
+    bool confirmVerifiedReplacement = false,
+    String? sourceFileName,
+    String? sourceFileHash,
+  });
+
+  Future<LandParcelApplicationResult<LandParcelExport>> exportKmlKmz(
+    AuthorizationSubject subject, {
+    required String farmId,
+    required String parcelId,
+    required LandParcelInterchangeFormat format,
+  });
+}
+
+class LandParcelApplicationService implements LandParcelApplication {
   const LandParcelApplicationService({
     required this.repository,
     this.authorization = const AuthorizationService(),
@@ -174,6 +247,19 @@ class LandParcelApplicationService {
   final AuthorizationService authorization;
   final KmlInterchangeCodec interchange;
 
+  /// Reuses the same application policy with a transaction-scoped repository.
+  ///
+  /// This does not open or own a transaction. The supplied repository decides
+  /// whether persistence joins an existing transaction or creates its own.
+  LandParcelApplicationService withRepository(
+    LandParcelRepository scopedRepository,
+  ) => LandParcelApplicationService(
+    repository: scopedRepository,
+    authorization: authorization,
+    interchange: interchange,
+  );
+
+  @override
   Future<LandParcelApplicationResult<LandParcel>> createLandParcel(
     AuthorizationSubject subject,
     CreateLandParcelCommand command,
@@ -222,6 +308,7 @@ class LandParcelApplicationService {
     }
   }
 
+  @override
   Future<LandParcelApplicationResult<LandParcel>> updateLandParcelMetadata(
     AuthorizationSubject subject,
     UpdateLandParcelMetadataCommand command,
@@ -242,6 +329,7 @@ class LandParcelApplicationService {
     successKey: 'landParcel.update.success',
   );
 
+  @override
   Future<LandParcelApplicationResult<LandParcel>> replaceBoundary(
     AuthorizationSubject subject,
     ReplaceBoundaryCommand command,
@@ -302,6 +390,7 @@ class LandParcelApplicationService {
     }
   }
 
+  @override
   Future<LandParcelApplicationResult<LandParcel>> verifyBoundary(
     AuthorizationSubject subject,
     VerifyBoundaryCommand command,
@@ -318,6 +407,7 @@ class LandParcelApplicationService {
     successKey: 'landParcel.boundary.verifySuccess',
   );
 
+  @override
   LandParcelApplicationResult<KmlImportDocument> importKmlPreview(
     AuthorizationSubject subject, {
     required String farmId,
@@ -344,6 +434,7 @@ class LandParcelApplicationService {
     }
   }
 
+  @override
   LandParcelApplicationResult<KmlImportDocument> importKmzPreview(
     AuthorizationSubject subject, {
     required String farmId,
@@ -370,6 +461,7 @@ class LandParcelApplicationService {
     }
   }
 
+  @override
   Future<LandParcelApplicationResult<LandParcel>> applyImportedBoundary(
     AuthorizationSubject subject, {
     required String farmId,
@@ -395,6 +487,7 @@ class LandParcelApplicationService {
     ),
   );
 
+  @override
   Future<LandParcelApplicationResult<LandParcelExport>> exportKmlKmz(
     AuthorizationSubject subject, {
     required String farmId,

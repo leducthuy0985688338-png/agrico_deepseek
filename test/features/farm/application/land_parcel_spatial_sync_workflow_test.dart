@@ -831,4 +831,262 @@ void main() {
       );
     },
   );
+
+  test(
+    'createScoped joins caller transaction and rolls back atomically',
+    () async {
+      final parcel = createParcel(
+        id: 'scoped-create-rollback',
+        code: 'SCOPED-CREATE',
+      );
+
+      await expectLater(
+        () => LandParcelSpatialTransaction(database).run<void>((
+          scopedParcels,
+          scopedLinks,
+          scopedSpatial,
+        ) async {
+          await workflow.createScoped(
+            parcels: scopedParcels,
+            links: scopedLinks,
+            spatial: scopedSpatial,
+            parcel: parcel,
+            temporalState: SpatialTemporalState.operational,
+            spatialLinkId: 'scoped-link-create',
+            spatialFeatureId: 'scoped-feature-create',
+            spatialRevisionId: 'scoped-revision-create',
+          );
+
+          throw StateError('force outer rollback');
+        }),
+        throwsA(isA<StateError>()),
+      );
+
+      expect(
+        await parcels.getById(farmId: parcel.farmId, id: parcel.id),
+        isNull,
+      );
+      expect(await links.findByLandParcelId(parcel.id), isNull);
+      expect(
+        await spatial.featureRepository.findById('scoped-feature-create'),
+        isNull,
+      );
+      expect(
+        await spatial.revisionRepository.findByFeatureId(
+          'scoped-feature-create',
+        ),
+        isEmpty,
+      );
+    },
+  );
+
+  test(
+    'updateScoped joins caller transaction and rolls back atomically',
+    () async {
+      final parcel = createParcel(
+        id: 'scoped-update-rollback',
+        code: 'SCOPED-UPDATE',
+      );
+
+      await workflow.create(
+        parcel: parcel,
+        temporalState: SpatialTemporalState.operational,
+      );
+
+      final linkBefore = await links.findByLandParcelId(parcel.id);
+      expect(linkBefore, isNotNull);
+
+      final featureId = linkBefore!.spatialFeatureId;
+      final featureBefore = await spatial.featureRepository.findById(featureId);
+      final revisionsBefore = await spatial.revisionRepository.findByFeatureId(
+        featureId,
+      );
+
+      expect(featureBefore, isNotNull);
+      expect(revisionsBefore, hasLength(1));
+
+      final updated = parcel.updateMetadata(
+        name: 'Scoped update must roll back',
+        actorMembershipId: 'member-2',
+        occurredAt: DateTime.utc(2026, 9, 12, 8),
+      );
+
+      await expectLater(
+        () => LandParcelSpatialTransaction(database).run<void>((
+          scopedParcels,
+          scopedLinks,
+          scopedSpatial,
+        ) async {
+          await workflow.updateScoped(
+            parcels: scopedParcels,
+            links: scopedLinks,
+            spatial: scopedSpatial,
+            parcel: updated,
+            temporalState: SpatialTemporalState.operational,
+          );
+
+          throw StateError('force outer rollback');
+        }),
+        throwsA(isA<StateError>()),
+      );
+
+      final storedAfter = await parcels.getById(
+        farmId: parcel.farmId,
+        id: parcel.id,
+      );
+      final featureAfter = await spatial.featureRepository.findById(featureId);
+      final revisionsAfter = await spatial.revisionRepository.findByFeatureId(
+        featureId,
+      );
+
+      expect(storedAfter, isNotNull);
+      expect(storedAfter!.name, parcel.name);
+      expect(featureAfter, isNotNull);
+      expect(featureAfter!.name, featureBefore!.name);
+      expect(featureAfter.updatedAt, featureBefore.updatedAt);
+      expect(revisionsAfter, hasLength(1));
+      expect(revisionsAfter.single.id, revisionsBefore.single.id);
+      expect(revisionsAfter.single.revision, 1);
+    },
+  );
+  test(
+    'createSpatialForParcelScoped creates Spatial state without persisting LandParcel',
+    () async {
+      final parcel = createParcel(
+        id: 'spatial-only-create',
+        code: 'SPATIAL-ONLY-CREATE',
+      );
+
+      // The Spatial link has a foreign key to LandParcel, so the business
+      // record must already exist before the Spatial-only operation.
+      await parcels.create(parcel);
+
+      final storedBefore = await parcels.getById(
+        farmId: parcel.farmId,
+        id: parcel.id,
+      );
+
+      expect(storedBefore, isNotNull);
+      expect(storedBefore!.name, parcel.name);
+      expect(storedBefore.updatedAt, parcel.updatedAt);
+
+      await LandParcelSpatialTransaction(database).run<void>((
+        scopedParcels,
+        scopedLinks,
+        scopedSpatial,
+      ) async {
+        await workflow.createSpatialForParcelScoped(
+          links: scopedLinks,
+          spatial: scopedSpatial,
+          parcel: parcel,
+          temporalState: SpatialTemporalState.operational,
+          spatialLinkId: 'spatial-only-link',
+          spatialFeatureId: 'spatial-only-feature',
+          spatialRevisionId: 'spatial-only-revision-1',
+          changeReason: 'landParcel.created',
+        );
+      });
+
+      final storedAfter = await parcels.getById(
+        farmId: parcel.farmId,
+        id: parcel.id,
+      );
+      final link = await links.findByLandParcelId(parcel.id);
+      final feature = await spatial.featureRepository.findById(
+        'spatial-only-feature',
+      );
+      final revisions = await spatial.revisionRepository.findByFeatureId(
+        'spatial-only-feature',
+      );
+
+      // The Spatial-only primitive must not mutate the LandParcel.
+      expect(storedAfter, isNotNull);
+      expect(storedAfter!.name, storedBefore.name);
+      expect(storedAfter.updatedAt, storedBefore.updatedAt);
+
+      expect(link, isNotNull);
+      expect(link!.spatialFeatureId, 'spatial-only-feature');
+
+      expect(feature, isNotNull);
+      expect(feature!.name, parcel.name);
+
+      expect(revisions, hasLength(1));
+      expect(revisions.single.id, 'spatial-only-revision-1');
+      expect(revisions.single.revision, 1);
+      expect(revisions.single.changeReason, 'landParcel.created');
+    },
+  );
+
+  test(
+    'updateSpatialForParcelScoped appends Spatial revision without mutating LandParcel',
+    () async {
+      final parcel = createParcel(
+        id: 'spatial-only-update',
+        code: 'SPATIAL-ONLY-UPDATE',
+      );
+
+      await workflow.create(
+        parcel: parcel,
+        temporalState: SpatialTemporalState.operational,
+      );
+
+      final storedBefore = await parcels.getById(
+        farmId: parcel.farmId,
+        id: parcel.id,
+      );
+      final link = await links.findByLandParcelId(parcel.id);
+
+      expect(storedBefore, isNotNull);
+      expect(link, isNotNull);
+
+      final featureId = link!.spatialFeatureId;
+      final revisionsBefore = await spatial.revisionRepository.findByFeatureId(
+        featureId,
+      );
+
+      expect(revisionsBefore, hasLength(1));
+
+      final updatedSnapshot = parcel.updateMetadata(
+        name: 'Spatial-only updated name',
+        actorMembershipId: 'member-2',
+        occurredAt: DateTime.utc(2026, 9, 12, 9),
+      );
+
+      await LandParcelSpatialTransaction(database).run<void>((
+        scopedParcels,
+        scopedLinks,
+        scopedSpatial,
+      ) async {
+        await workflow.updateSpatialForParcelScoped(
+          links: scopedLinks,
+          spatial: scopedSpatial,
+          parcel: updatedSnapshot,
+          temporalState: SpatialTemporalState.operational,
+          changeReason: 'landParcel.metadataUpdated',
+        );
+      });
+
+      final storedAfter = await parcels.getById(
+        farmId: parcel.farmId,
+        id: parcel.id,
+      );
+      final featureAfter = await spatial.featureRepository.findById(featureId);
+      final revisionsAfter = await spatial.revisionRepository.findByFeatureId(
+        featureId,
+      );
+
+      expect(storedAfter, isNotNull);
+      expect(storedAfter!.name, parcel.name);
+      expect(storedAfter.updatedAt, parcel.updatedAt);
+
+      expect(featureAfter, isNotNull);
+      expect(featureAfter!.name, updatedSnapshot.name);
+      expect(featureAfter.updatedAt, updatedSnapshot.updatedAt);
+
+      expect(revisionsAfter, hasLength(2));
+      expect(revisionsAfter[0].revision, 1);
+      expect(revisionsAfter[1].revision, 2);
+      expect(revisionsAfter[1].changeReason, 'landParcel.metadataUpdated');
+    },
+  );
 }

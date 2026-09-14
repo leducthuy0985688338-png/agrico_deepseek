@@ -23,6 +23,8 @@ class DefaultLandParcelSpatialProjection
     required String spatialRevisionId,
     required int spatialRevision,
     required SpatialTemporalState temporalState,
+    required DateTime effectiveFrom,
+    String? changeReason,
   }) {
     if (spatialFeatureId.trim().isEmpty) {
       throw const FormatException('Spatial feature id cannot be blank.');
@@ -74,9 +76,7 @@ class DefaultLandParcelSpatialProjection
       geometryType: SpatialGeometryType.polygon,
       geometry: geometry,
       temporalState: temporalState,
-      effectivePeriod: SpatialEffectivePeriod(
-        validFrom: boundaryVersion.occurredAt,
-      ),
+      effectivePeriod: SpatialEffectivePeriod(validFrom: effectiveFrom),
       source: SpatialSource(
         type: _mapSource(boundaryVersion.source),
         surveyedAt: boundaryVersion.occurredAt,
@@ -88,7 +88,7 @@ class DefaultLandParcelSpatialProjection
         notes: boundaryVersion.note,
       ),
       geometryReference: boundaryVersion.id,
-      changeReason: boundaryVersion.note,
+      changeReason: changeReason,
       createdAt: parcel.updatedAt,
       createdBy: parcel.updatedBy,
     );

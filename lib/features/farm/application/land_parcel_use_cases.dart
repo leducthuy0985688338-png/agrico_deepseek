@@ -8,7 +8,7 @@ import 'land_parcel_application_service.dart';
 
 class CreateLandParcel {
   const CreateLandParcel(this.application);
-  final LandParcelApplicationService application;
+  final LandParcelApplication application;
 
   Future<LandParcelApplicationResult<LandParcel>> call(
     AuthorizationSubject subject,
@@ -18,7 +18,7 @@ class CreateLandParcel {
 
 class UpdateLandParcelMetadata {
   const UpdateLandParcelMetadata(this.application);
-  final LandParcelApplicationService application;
+  final LandParcelApplication application;
 
   Future<LandParcelApplicationResult<LandParcel>> call(
     AuthorizationSubject subject,
@@ -28,7 +28,7 @@ class UpdateLandParcelMetadata {
 
 class ReplaceBoundary {
   const ReplaceBoundary(this.application);
-  final LandParcelApplicationService application;
+  final LandParcelApplication application;
 
   Future<LandParcelApplicationResult<LandParcel>> call(
     AuthorizationSubject subject,
@@ -38,7 +38,7 @@ class ReplaceBoundary {
 
 class VerifyBoundary {
   const VerifyBoundary(this.application);
-  final LandParcelApplicationService application;
+  final LandParcelApplication application;
 
   Future<LandParcelApplicationResult<LandParcel>> call(
     AuthorizationSubject subject,
@@ -48,7 +48,7 @@ class VerifyBoundary {
 
 class ImportKmlKmzPreview {
   const ImportKmlKmzPreview(this.application);
-  final LandParcelApplicationService application;
+  final LandParcelApplication application;
 
   LandParcelApplicationResult<KmlImportDocument> kml(
     AuthorizationSubject subject, {
@@ -65,7 +65,7 @@ class ImportKmlKmzPreview {
 
 class ApplyImportedBoundary {
   const ApplyImportedBoundary(this.application);
-  final LandParcelApplicationService application;
+  final LandParcelApplication application;
 
   Future<LandParcelApplicationResult<LandParcel>> call(
     AuthorizationSubject subject, {
@@ -92,7 +92,7 @@ class ApplyImportedBoundary {
 
 class ExportKmlKmz {
   const ExportKmlKmz(this.application);
-  final LandParcelApplicationService application;
+  final LandParcelApplication application;
 
   Future<LandParcelApplicationResult<LandParcelExport>> call(
     AuthorizationSubject subject, {
@@ -111,7 +111,7 @@ class ExportKmlKmz {
 /// create audit history until the existing measurement workflow confirms save.
 class CompleteGpsMeasurement {
   const CompleteGpsMeasurement(this.application);
-  final LandParcelApplicationService application;
+  final LandParcelApplication application;
 
   Future<LandParcelApplicationResult<LandParcel>> create(
     AuthorizationSubject subject, {
