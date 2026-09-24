@@ -213,7 +213,7 @@ void main() {
     });
 
     test('rejects missing feature', () async {
-      final missing = feature('missing');
+      final missing = feature('missing', geometry: updatedPoint);
 
       final transaction = SqliteSpatialFeatureRevisionUpdateTransaction(db);
 
