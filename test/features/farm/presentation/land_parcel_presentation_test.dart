@@ -173,6 +173,24 @@ void main() {
     expect(find.text('Create parcel'), findsNothing);
   });
 
+  testWidgets('boundary status filter narrows visible parcels and counts', (
+    tester,
+  ) async {
+    final value = controller();
+    await tester.pumpWidget(app(LandParcelListScreen(controller: value)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('boundary-consistency-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Synchronized').last);
+    await tester.pumpAndSettle();
+    expect(find.text('No land parcels yet.'), findsOneWidget);
+    expect(find.byKey(const Key('boundary-audit-unlinked')), findsNothing);
+    value.setBoundaryConsistencyFilter(null);
+    await tester.pump();
+    expect(find.text('Not linked to spatial data: 1'), findsOneWidget);
+    expect(find.byKey(const Key('parcel-parcel-1')), findsOneWidget);
+  });
+
   for (final language in {
     'vi': 'Danh sách lô đất',
     'lo': 'ລາຍການແປງດິນ',
