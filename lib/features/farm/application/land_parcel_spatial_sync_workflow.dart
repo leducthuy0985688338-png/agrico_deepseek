@@ -4,6 +4,7 @@ import '../../../core/spatial/domain/entities/spatial_temporal.dart';
 import '../data/adapters/land_parcel_spatial_projection.dart';
 import '../data/adapters/land_parcel_spatial_transaction.dart';
 import '../domain/entities/land_parcel.dart';
+import '../domain/entities/land_survey.dart';
 import '../domain/entities/land_parcel_spatial_link.dart';
 import '../domain/repositories/land_parcel_repository.dart';
 import '../domain/repositories/land_parcel_spatial_link_repository.dart';
@@ -66,6 +67,7 @@ class LandParcelSpatialSyncWorkflow {
   Future<void> create({
     required LandParcel parcel,
     required SpatialTemporalState temporalState,
+    List<CropRecord> crops = const [],
   }) {
     // Sprint 8 correction: reuse parcel.spatialFeatureId when provided.
     final providedSpatialFeatureId = parcel.spatialFeatureId;
@@ -92,6 +94,13 @@ class LandParcelSpatialSyncWorkflow {
         spatialFeatureId: spatialFeatureId,
         spatialRevisionId: spatialRevisionId,
       ),
+      afterCreate: crops.isEmpty
+          ? null
+          : (surveys) async {
+              for (final crop in crops) {
+                await surveys.createCrop(crop);
+              }
+            },
     );
   }
 
