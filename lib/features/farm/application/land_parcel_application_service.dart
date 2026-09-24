@@ -276,6 +276,13 @@ abstract interface class LandParcelApplication {
     required LandParcelInterchangeFormat format,
   });
 
+  /// Explicit, permission-gated repair for an otherwise consistent legacy row.
+  Future<LandParcelApplicationResult<LandParcel>> reconcileLegacySpatialIdentity(
+    AuthorizationSubject subject, {
+    required String farmId,
+    required String parcelId,
+  });
+
   /// Sprint 11: business metadata update.
   ///
   /// Updates LandUseProfile ONLY. Does NOT touch Spatial Core:
@@ -643,8 +650,9 @@ class LandParcelApplicationService implements LandParcelApplication {
     final parcel = await repository.getById(farmId: farmId, id: parcelId);
     if (parcel == null) return _notFound();
     try {
-      if (await boundaryConsistencyQueries?.check(parcel) ==
-          LandParcelBoundaryConsistency.needsReconciliation) {
+      final consistency = await boundaryConsistencyQueries?.check(parcel);
+      if (consistency == LandParcelBoundaryConsistency.needsReconciliation ||
+          consistency == LandParcelBoundaryConsistency.repairableLegacyIdentity) {
         return const LandParcelApplicationResult.failure(
           LandParcelApplicationStatus.validationFailed,
           'boundary.reconciliation.required',
@@ -671,6 +679,46 @@ class LandParcelApplicationService implements LandParcelApplication {
         'landParcel.export.failed',
         error: error,
       );
+    }
+  }
+
+  @override
+  Future<LandParcelApplicationResult<LandParcel>> reconcileLegacySpatialIdentity(
+    AuthorizationSubject subject, {
+    required String farmId,
+    required String parcelId,
+  }) async {
+    final resource = ResourceContext(farmId: farmId, fieldId: parcelId);
+    if (!_canAll(subject, resource, [
+      PermissionCodes.fieldEdit,
+      PermissionCodes.fieldBoundaryVerify,
+    ])) {
+      return _denied();
+    }
+    final workflow = spatialWorkflow;
+    if (workflow == null) {
+      return const LandParcelApplicationResult.failure(
+        LandParcelApplicationStatus.persistenceFailed,
+        'landParcel.spatial.workflowRequired',
+      );
+    }
+    try {
+      final parcel = await workflow.reconcileLegacySpatialIdentity(
+        farmId: farmId,
+        landParcelId: parcelId,
+      );
+      return LandParcelApplicationResult.success(
+        parcel,
+        'boundary.reconciliation.success',
+      );
+    } on StateError catch (error) {
+      return LandParcelApplicationResult.failure(
+        LandParcelApplicationStatus.validationFailed,
+        'boundary.reconciliation.manual',
+        error: error,
+      );
+    } catch (error) {
+      return _persistence(error);
     }
   }
 

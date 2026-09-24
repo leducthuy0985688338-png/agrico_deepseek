@@ -7,7 +7,12 @@ import '../domain/entities/land_parcel.dart';
 import '../domain/repositories/land_parcel_spatial_link_repository.dart';
 
 /// A read-only diagnosis. The parcel remains the source for display and KML.
-enum LandParcelBoundaryConsistency { unlinked, consistent, needsReconciliation }
+enum LandParcelBoundaryConsistency {
+  unlinked,
+  consistent,
+  repairableLegacyIdentity,
+  needsReconciliation,
+}
 
 class LandParcelBoundaryConsistencyQueries {
   const LandParcelBoundaryConsistencyQueries({
@@ -25,7 +30,9 @@ class LandParcelBoundaryConsistencyQueries {
     if (link == null && parcel.spatialFeatureId == null) {
       return LandParcelBoundaryConsistency.unlinked;
     }
-    if (link == null || link.spatialFeatureId != parcel.spatialFeatureId) {
+    if (link == null ||
+        (parcel.spatialFeatureId != null &&
+            link.spatialFeatureId != parcel.spatialFeatureId)) {
       return LandParcelBoundaryConsistency.needsReconciliation;
     }
     final feature = await features.findById(link.spatialFeatureId);
@@ -50,6 +57,8 @@ class LandParcelBoundaryConsistencyQueries {
             parcel.boundary) {
       return LandParcelBoundaryConsistency.needsReconciliation;
     }
-    return LandParcelBoundaryConsistency.consistent;
+    return parcel.spatialFeatureId == null
+        ? LandParcelBoundaryConsistency.repairableLegacyIdentity
+        : LandParcelBoundaryConsistency.consistent;
   }
 }

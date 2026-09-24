@@ -30,6 +30,7 @@ class LandParcelDetailScreen extends StatefulWidget {
 
 class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
   bool _isVerifying = false;
+  bool _isReconciling = false;
 
   @override
   void initState() {
@@ -97,6 +98,32 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Text(l10n.text('boundary.reconciliation.required')),
+              ),
+            ),
+          if (data.boundaryConsistency ==
+              LandParcelBoundaryConsistency.repairableLegacyIdentity)
+            Card(
+              key: const Key('legacy-identity-repair'),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(l10n.text('boundary.reconciliation.eligible')),
+                    if (controller.reconcileLegacySpatialIdentity != null &&
+                        controller.can(PermissionCodes.fieldEdit,
+                            parcelId: parcel.id) &&
+                        controller.can(PermissionCodes.fieldBoundaryVerify,
+                            parcelId: parcel.id))
+                      FilledButton.tonal(
+                        key: const Key('repair-legacy-spatial-identity'),
+                        onPressed: _isReconciling
+                            ? null
+                            : () => _confirmReconciliation(parcel.id),
+                        child: Text(l10n.text('boundary.reconciliation.action')),
+                      ),
+                  ],
+                ),
               ),
             ),
           Text(
@@ -315,6 +342,47 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _confirmReconciliation(String parcelId) async {
+    if (_isReconciling) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(AppLocalizations.of(dialogContext)
+            .text('boundary.reconciliation.action')),
+        content: Text(AppLocalizations.of(dialogContext)
+            .text('boundary.reconciliation.confirm')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(AppLocalizations.of(dialogContext).text('common.cancel')),
+          ),
+          FilledButton(
+            key: const Key('confirm-repair-legacy-spatial-identity'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(AppLocalizations.of(dialogContext).text('common.confirm')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _isReconciling = true);
+    try {
+      final result = await widget.controller.reconcileLegacyIdentity(parcelId);
+      if (!mounted) return;
+      if (!result.isSuccess) {
+        await widget.controller.loadDetail(parcelId);
+        if (!mounted) return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppLocalizations.of(context).text(result.messageKey)),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isReconciling = false);
+    }
   }
 
   Future<void> _confirmVerification(String parcelId) async {

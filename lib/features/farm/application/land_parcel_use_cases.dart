@@ -108,6 +108,21 @@ class ExportKmlKmz {
   );
 }
 
+class ReconcileLegacySpatialIdentity {
+  const ReconcileLegacySpatialIdentity(this.application);
+  final LandParcelApplication application;
+
+  Future<LandParcelApplicationResult<LandParcel>> call(
+    AuthorizationSubject subject, {
+    required String farmId,
+    required String parcelId,
+  }) => application.reconcileLegacySpatialIdentity(
+    subject,
+    farmId: farmId,
+    parcelId: parcelId,
+  );
+}
+
 /// Receives only a completed GPS ring. Live points remain ephemeral and cannot
 /// create audit history until the existing measurement workflow confirms save.
 class CompleteGpsMeasurement {

@@ -118,6 +118,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         fileOpener: platform,
         googleEarthOpener: platform,
         boundaryConsistencyQueries: boundaryConsistencyQueries,
+        reconcileLegacySpatialIdentity: ReconcileLegacySpatialIdentity(application),
       ),
       platform: platform,
     );

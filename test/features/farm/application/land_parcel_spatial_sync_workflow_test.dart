@@ -151,6 +151,60 @@ void main() {
     expect(stored.boundary, parcel.boundary);
   });
 
+  test('application gates legacy repair and restores KML export after success', () async {
+    final parcel = await seedLegacyLinked();
+    final queries = LandParcelBoundaryConsistencyQueries(
+      links: links,
+      features: spatial.featureRepository,
+      revisions: spatial.revisionRepository,
+    );
+    expect(await queries.check(parcel),
+        LandParcelBoundaryConsistency.repairableLegacyIdentity);
+    final application = LandParcelApplicationService(
+      repository: parcels,
+      spatialWorkflow: workflow,
+      boundaryConsistencyQueries: queries,
+    );
+    AuthorizationSubject subject(Set<String> permissions) => AuthorizationSubject(
+      userId: 'user-1',
+      membershipId: 'member-1',
+      farmId: 'farm-1',
+      permissionCodes: permissions,
+      dataScopes: const {DataScope.allFarm},
+    );
+    final denied = await application.reconcileLegacySpatialIdentity(
+      subject({PermissionCodes.fieldEdit}),
+      farmId: parcel.farmId,
+      parcelId: parcel.id,
+    );
+    expect(denied.status, LandParcelApplicationStatus.permissionDenied);
+    expect((await parcels.getById(farmId: parcel.farmId, id: parcel.id))!
+        .spatialFeatureId, isNull);
+    final beforeExport = await application.exportKmlKmz(
+      subject(PermissionCodes.values),
+      farmId: parcel.farmId,
+      parcelId: parcel.id,
+      format: LandParcelInterchangeFormat.kml,
+    );
+    expect(beforeExport.status, LandParcelApplicationStatus.validationFailed);
+
+    final success = await application.reconcileLegacySpatialIdentity(
+      subject({PermissionCodes.fieldEdit, PermissionCodes.fieldBoundaryVerify}),
+      farmId: parcel.farmId,
+      parcelId: parcel.id,
+    );
+    expect(success.isSuccess, isTrue);
+    final after = (await parcels.getById(farmId: parcel.farmId, id: parcel.id))!;
+    expect(await queries.check(after), LandParcelBoundaryConsistency.consistent);
+    final afterExport = await application.exportKmlKmz(
+      subject(PermissionCodes.values),
+      farmId: parcel.farmId,
+      parcelId: parcel.id,
+      format: LandParcelInterchangeFormat.kml,
+    );
+    expect(afterExport.isSuccess, isTrue);
+  });
+
   test('read diagnosis distinguishes unlinked, aligned and legacy missing geometry', () async {
     final queries = LandParcelBoundaryConsistencyQueries(
       links: links,
@@ -170,7 +224,7 @@ void main() {
     ))!;
     expect(
       await queries.check(storedOld),
-      LandParcelBoundaryConsistency.needsReconciliation,
+      LandParcelBoundaryConsistency.repairableLegacyIdentity,
     );
 
     final generated = createParcel(id: 'generated', code: 'P-GEN');
