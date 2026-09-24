@@ -86,6 +86,7 @@ class CreateLandParcelCommand {
     this.horizontalAccuracyM,
     this.boundaryConfidence,
     this.legacyMetadata = const {},
+    this.crops = const [],
   });
 
   final String id;
@@ -102,6 +103,7 @@ class CreateLandParcelCommand {
   final double? horizontalAccuracyM;
   final double? boundaryConfidence;
   final Map<String, Object?> legacyMetadata;
+  final List<CropRecord> crops;
 }
 
 class UpdateLandParcelMetadataCommand {
@@ -359,6 +361,35 @@ class LandParcelApplicationService implements LandParcelApplication {
       return _denied();
     }
     try {
+      final crops = <CropRecord>[];
+      for (var index = 0; index < command.crops.length; index++) {
+        final draft = command.crops[index];
+        if (draft.cropType.trim().isEmpty ||
+            draft.unit.trim().isEmpty ||
+            !draft.quantity.isFinite ||
+            draft.quantity <= 0) {
+          throw const FormatException('Invalid crop type, unit, or quantity.');
+        }
+        crops.add(
+          CropRecord(
+            id: 'crop-${command.id}-$index',
+            parcelId: command.id,
+            cropType: draft.cropType.trim(),
+            quantity: draft.quantity,
+            unit: draft.unit.trim(),
+            variety: draft.variety,
+            plantingYear: draft.plantingYear,
+            plantingDate: draft.plantingDate,
+            condition: draft.condition,
+            notes: draft.notes,
+            active: draft.active,
+            createdAt: command.occurredAt,
+            createdBy: command.actorMembershipId,
+            updatedAt: command.occurredAt,
+            updatedBy: command.actorMembershipId,
+          ),
+        );
+      }
       final workflow = spatialWorkflow;
       if (workflow != null) {
         final spatialFeatureId = workflow.identityGenerator.newId(
@@ -387,6 +418,7 @@ class LandParcelApplicationService implements LandParcelApplication {
         await workflow.create(
           parcel: parcel,
           temporalState: SpatialTemporalState.baseline,
+          crops: crops,
         );
 
         return LandParcelApplicationResult.success(
@@ -395,6 +427,11 @@ class LandParcelApplicationService implements LandParcelApplication {
         );
       }
 
+      if (crops.isNotEmpty) {
+        return _persistence(
+          StateError('Atomic crop creation requires spatial workflow.'),
+        );
+      }
       final parcel = LandParcel.create(
         id: command.id,
         farmId: command.farmId,
