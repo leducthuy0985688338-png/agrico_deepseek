@@ -140,7 +140,7 @@ void main() {
       occurredAt: createdAt.add(const Duration(hours: 1)),
     );
     await expectLater(
-      LandParcelSpatialTransaction(database).run<void>((scoped, _, __) async {
+      LandParcelSpatialTransaction(database).run<void>((scoped, _, _) async {
         await scoped.update(changed);
       }),
       throwsStateError,
