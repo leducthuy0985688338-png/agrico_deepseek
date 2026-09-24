@@ -77,6 +77,80 @@ void main() {
 
   tearDown(() => database.close());
 
+  Future<LandParcel> seedLegacyLinked() async {
+    final parcel = createParcel(id: 'old-linked', code: 'P-OLD');
+    await parcels.create(parcel);
+    await workflow.createSpatialForParcelScoped(
+      links: links,
+      spatial: spatial,
+      parcel: parcel,
+      temporalState: SpatialTemporalState.operational,
+      spatialLinkId: 'old-link',
+      spatialFeatureId: 'old-feature',
+      spatialRevisionId: 'old-revision',
+    );
+    return parcel;
+  }
+
+  test('repairs only the parcel ID when persisted legacy geometry matches', () async {
+    final parcel = await seedLegacyLinked();
+    final before = await spatial.revisionRepository.findByFeatureId('old-feature');
+    final repaired = await workflow.reconcileLegacySpatialIdentity(
+      farmId: parcel.farmId,
+      landParcelId: parcel.id,
+    );
+    final stored = (await parcels.getById(farmId: parcel.farmId, id: parcel.id))!;
+    expect(repaired.spatialFeatureId, 'old-feature');
+    expect(stored.spatialFeatureId, 'old-feature');
+    expect(stored.boundary, parcel.boundary);
+    expect(stored.boundaryHistory.map((version) => version.id),
+        parcel.boundaryHistory.map((version) => version.id));
+    final after = await spatial.revisionRepository.findByFeatureId('old-feature');
+    expect(after.map((revision) => revision.id),
+        before.map((revision) => revision.id));
+    expect(after.map((revision) => revision.revision),
+        before.map((revision) => revision.revision));
+    expect(
+      await LandParcelBoundaryConsistencyQueries(
+        links: links,
+        features: spatial.featureRepository,
+        revisions: spatial.revisionRepository,
+      ).check(stored),
+      LandParcelBoundaryConsistency.consistent,
+    );
+  });
+
+  test('refuses legacy repair when current revision points to another boundary', () async {
+    final parcel = await seedLegacyLinked();
+    final rows = await database.query(
+      SqliteSpatialSchema.revisionsTable,
+      where: 'feature_id = ?',
+      whereArgs: ['old-feature'],
+    );
+    final payload = jsonDecode(rows.single['payload_json']! as String)
+        as Map<String, dynamic>;
+    payload['geometryReference'] = 'different-boundary';
+    await database.update(
+      SqliteSpatialSchema.revisionsTable,
+      {
+        'geometry_reference': 'different-boundary',
+        'payload_json': jsonEncode(payload),
+      },
+      where: 'feature_id = ?',
+      whereArgs: ['old-feature'],
+    );
+    await expectLater(
+      workflow.reconcileLegacySpatialIdentity(
+        farmId: parcel.farmId,
+        landParcelId: parcel.id,
+      ),
+      throwsStateError,
+    );
+    final stored = await parcels.getById(farmId: parcel.farmId, id: parcel.id);
+    expect(stored!.spatialFeatureId, isNull);
+    expect(stored.boundary, parcel.boundary);
+  });
+
   test('read diagnosis distinguishes unlinked, aligned and legacy missing geometry', () async {
     final queries = LandParcelBoundaryConsistencyQueries(
       links: links,
@@ -87,19 +161,9 @@ void main() {
     await parcels.create(legacy);
     expect(await queries.check(legacy), LandParcelBoundaryConsistency.unlinked);
 
-    final oldLinked = createParcel(id: 'old-linked', code: 'P-OLD');
-    await parcels.create(oldLinked);
+    final oldLinked = await seedLegacyLinked();
     // Historical fixture: the link and feature exist, but the parcel payload
     // predates the stable ID assignment now enforced for new creations.
-    await workflow.createSpatialForParcelScoped(
-      links: links,
-      spatial: spatial,
-      parcel: oldLinked,
-      temporalState: SpatialTemporalState.operational,
-      spatialLinkId: 'old-link',
-      spatialFeatureId: 'old-feature',
-      spatialRevisionId: 'old-revision',
-    );
     final storedOld = (await parcels.getById(
       farmId: oldLinked.farmId,
       id: oldLinked.id,
