@@ -424,6 +424,68 @@ void main() {
     expect(find.byType(TextField), findsNothing);
   });
 
+  testWidgets('new parcel import requires selection and confirmation', (
+    tester,
+  ) async {
+    LandParcelImportPreview preview(String name, int index) {
+      final value = parcel();
+      return LandParcelImportPreview(
+        name: name,
+        boundary: value.boundary,
+        centroid: value.centroid,
+        areaM2: value.areaM2,
+        perimeterM: value.perimeterM,
+        metadata: AgricoKmlMetadata(const {}),
+        geometryIndex: index,
+        warnings: const [ImportPreviewWarning.missingAgricoMetadata],
+      );
+    }
+
+    final first = preview('First parcel', 0);
+    final second = preview('Second parcel', 1);
+    LandParcelImportPreview? accepted;
+    await tester.pumpWidget(
+      app(
+        Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async {
+                accepted = await showDialog<LandParcelImportPreview>(
+                  context: context,
+                  builder: (_) => KmlCreateBoundaryPicker(
+                    previews: [first, second],
+                  ),
+                );
+              },
+              child: const Text('Open preview'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open preview'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<FilledButton>(
+        find.byKey(const Key('confirm-create-import-preview')),
+      ).onPressed,
+      isNull,
+    );
+    await tester.tap(find.text('Second parcel'));
+    await tester.pumpAndSettle();
+    expect(find.text('This file has no AGRICO metadata.'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('confirm-create-import-preview')));
+    await tester.pumpAndSettle();
+    expect(accepted, same(second));
+
+    accepted = null;
+    await tester.tap(find.text('Open preview'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(accepted, isNull);
+  });
+
   testWidgets('invalid GPS polygon disables apply', (tester) async {
     final value = parcel();
     await tester.pumpWidget(
