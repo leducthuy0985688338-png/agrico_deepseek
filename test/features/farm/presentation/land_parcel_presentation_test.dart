@@ -452,7 +452,7 @@ void main() {
               onPressed: () async {
                 accepted = await showDialog<LandParcelImportPreview>(
                   context: context,
-                  builder: (_) => KmlCreateBoundaryPicker(
+                  builder: (_) => KmlBoundaryPicker(
                     previews: [first, second],
                   ),
                 );
