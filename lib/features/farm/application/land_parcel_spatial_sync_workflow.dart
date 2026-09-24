@@ -8,6 +8,7 @@ import '../domain/entities/land_parcel_spatial_link.dart';
 import '../domain/repositories/land_parcel_repository.dart';
 import '../domain/repositories/land_parcel_spatial_link_repository.dart';
 import '../../../core/spatial/data/spatial_persistence_composition.dart';
+import 'land_parcel_boundary_consistency_queries.dart';
 
 /// Atomically synchronizes one LandParcel state with its stable Spatial Core
 /// projection.
@@ -28,6 +29,39 @@ class LandParcelSpatialSyncWorkflow {
   final LandParcelSpatialTransaction transaction;
   final LandParcelSpatialProjection projection;
   final SpatialIdentityGenerator identityGenerator;
+
+  /// Explicitly restores a missing parcel-side ID on a historical linked row.
+  ///
+  /// Geometry, the immutable boundary history, the link, Feature and Revision
+  /// must already agree. This does not create a revision or alter geometry.
+  /// The shared transaction rechecks the invariant before committing.
+  Future<LandParcel> reconcileLegacySpatialIdentity({
+    required String farmId,
+    required String landParcelId,
+  }) => transaction.run<LandParcel>((parcels, links, spatial) async {
+    final parcel = await parcels.getById(farmId: farmId, id: landParcelId);
+    if (parcel == null || parcel.spatialFeatureId != null) {
+      throw StateError(
+        'Parcel is missing or does not need legacy identity repair.',
+      );
+    }
+    final link = await links.findByLandParcelId(parcel.id);
+    if (link == null) {
+      throw StateError('Legacy parcel has no persisted spatial link.');
+    }
+    final repaired = parcel.assignSpatialFeatureId(link.spatialFeatureId);
+    final diagnosis = LandParcelBoundaryConsistencyQueries(
+      links: links,
+      features: spatial.featureRepository,
+      revisions: spatial.revisionRepository,
+    );
+    if (await diagnosis.check(repaired) !=
+        LandParcelBoundaryConsistency.consistent) {
+      throw StateError('Legacy parcel boundary needs manual reconciliation.');
+    }
+    await parcels.update(repaired);
+    return repaired;
+  });
 
   Future<void> create({
     required LandParcel parcel,
