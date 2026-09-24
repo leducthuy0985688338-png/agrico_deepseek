@@ -88,9 +88,17 @@ void main() {
     expect(await queries.check(legacy), LandParcelBoundaryConsistency.unlinked);
 
     final oldLinked = createParcel(id: 'old-linked', code: 'P-OLD');
-    await workflow.create(
+    await parcels.create(oldLinked);
+    // Historical fixture: the link and feature exist, but the parcel payload
+    // predates the stable ID assignment now enforced for new creations.
+    await workflow.createSpatialForParcelScoped(
+      links: links,
+      spatial: spatial,
       parcel: oldLinked,
       temporalState: SpatialTemporalState.operational,
+      spatialLinkId: 'old-link',
+      spatialFeatureId: 'old-feature',
+      spatialRevisionId: 'old-revision',
     );
     final storedOld = (await parcels.getById(
       farmId: oldLinked.farmId,
@@ -99,6 +107,21 @@ void main() {
     expect(
       await queries.check(storedOld),
       LandParcelBoundaryConsistency.needsReconciliation,
+    );
+
+    final generated = createParcel(id: 'generated', code: 'P-GEN');
+    await workflow.create(
+      parcel: generated,
+      temporalState: SpatialTemporalState.operational,
+    );
+    final storedGenerated = (await parcels.getById(
+      farmId: generated.farmId,
+      id: generated.id,
+    ))!;
+    expect(storedGenerated.spatialFeatureId, isNotNull);
+    expect(
+      await queries.check(storedGenerated),
+      LandParcelBoundaryConsistency.consistent,
     );
 
     final parcel = createParcel(spatialFeatureId: 'spatial-aligned');
