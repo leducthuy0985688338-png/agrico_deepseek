@@ -1,5 +1,6 @@
 import 'package:agrico_deepseek/core/spatial/data/spatial_persistence_composition.dart';
 import '../../../core/spatial/support/sequential_spatial_identity_generator.dart';
+import 'dart:convert';
 import '../../../core/spatial/support/scripted_spatial_identity_generator.dart';
 import 'package:agrico_deepseek/core/spatial/data/sqlite_spatial_schema.dart';
 import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_temporal.dart';
@@ -72,6 +73,25 @@ void main() {
   });
 
   tearDown(() => database.close());
+
+  Future<void> seedCorruptSpatialIdentity(LandParcel parcel) async {
+    await parcels.create(createParcel(id: parcel.id, code: parcel.parcelCode));
+    final rows = await database.query(
+      SqliteLandParcelRepository.parcelTable,
+      columns: ['payload_json'],
+      where: 'id = ?',
+      whereArgs: [parcel.id],
+    );
+    final payload = jsonDecode(rows.single['payload_json']! as String)
+        as Map<String, dynamic>;
+    payload['spatialFeatureId'] = parcel.spatialFeatureId;
+    await database.update(
+      SqliteLandParcelRepository.parcelTable,
+      {'payload_json': jsonEncode(payload)},
+      where: 'id = ?',
+      whereArgs: [parcel.id],
+    );
+  }
 
   test('creates LandParcel and projected polygon atomically', () async {
     final parcel = createParcel();
@@ -283,7 +303,7 @@ void main() {
     () async {
       const X = 'missing-spatial-feature';
       final parcel = createParcel(spatialFeatureId: X);
-      await parcels.create(parcel);
+      await seedCorruptSpatialIdentity(parcel);
 
       // Deliberately model corrupted persisted state so the workflow reaches
       // its missing-feature guard instead of being stopped by SQLite first.
@@ -578,7 +598,7 @@ void main() {
       // Sprint 12 fixture rule: identity must be internally consistent.
       // The ONLY intended invalid condition is featureType = road.
       final parcel = createParcel(spatialFeatureId: X);
-      await parcels.create(parcel);
+      await seedCorruptSpatialIdentity(parcel);
 
       final roadFeature = SpatialFeature(
         id: 'spatial-road-1',

@@ -76,6 +76,91 @@ void main() {
     await database.close();
   });
 
+  test('direct spatial creation is rejected without a parcel row', () async {
+    final source = createParcel(spatialFeatureId: 'SPF-DIRECT');
+    await expectLater(parcels.create(source), throwsStateError);
+    expect(await parcels.getById(farmId: source.farmId, id: source.id), isNull);
+  });
+
+  test('direct boundary write and history append cannot bypass Spatial Core', () async {
+    const id = 'SPF-BOUNDARY-GUARD';
+    final source = createParcel(spatialFeatureId: id);
+    await workflow.create(parcel: source, temporalState: SpatialTemporalState.baseline);
+    final changed = source.replaceBoundary(
+      boundary: boundary(east: 104.702),
+      source: BoundarySource.gps,
+      verificationStatus: BoundaryVerificationStatus.measured,
+      actorMembershipId: 'member-2',
+      occurredAt: createdAt.add(const Duration(hours: 1)),
+    );
+    await expectLater(parcels.update(changed), throwsStateError);
+    await expectLater(parcels.saveBoundaryVersion(changed.boundaryHistory.last), throwsStateError);
+    expect((await parcels.getById(farmId: source.farmId, id: source.id))!.boundaryVersion, 1);
+    expect(await spatial.revisionRepository.findByFeatureId(id), hasLength(1));
+
+    final metadata = source.updateMetadata(
+      name: 'Metadata only',
+      actorMembershipId: 'member-2',
+      occurredAt: createdAt.add(const Duration(hours: 1)),
+    );
+    await parcels.update(metadata);
+    expect((await parcels.getById(farmId: source.farmId, id: source.id))!.name, 'Metadata only');
+    expect(await spatial.revisionRepository.findByFeatureId(id), hasLength(1));
+  });
+
+  test('shared transaction rolls back an unpaired spatial boundary write', () async {
+    const id = 'SPF-SCOPED-GUARD';
+    final source = createParcel(spatialFeatureId: id);
+    await workflow.create(parcel: source, temporalState: SpatialTemporalState.baseline);
+    final changed = source.replaceBoundary(
+      boundary: boundary(east: 104.702),
+      source: BoundarySource.gps,
+      verificationStatus: BoundaryVerificationStatus.measured,
+      actorMembershipId: 'member-2',
+      occurredAt: createdAt.add(const Duration(hours: 1)),
+    );
+    await expectLater(
+      LandParcelSpatialTransaction(database).run<void>((scoped, _, __) async {
+        await scoped.update(changed);
+      }),
+      throwsStateError,
+    );
+    expect((await parcels.getById(farmId: source.farmId, id: source.id))!.boundaryVersion, 1);
+    expect(await spatial.revisionRepository.findByFeatureId(id), hasLength(1));
+  });
+
+  test('persisted link also blocks direct writes when parcel identity is null', () async {
+    final source = createParcel();
+    await workflow.create(parcel: source, temporalState: SpatialTemporalState.baseline);
+    final changed = source.replaceBoundary(
+      boundary: boundary(east: 104.702),
+      source: BoundarySource.gps,
+      verificationStatus: BoundaryVerificationStatus.measured,
+      actorMembershipId: 'member-2',
+      occurredAt: createdAt.add(const Duration(hours: 1)),
+    );
+    await expectLater(parcels.update(changed), throwsStateError);
+    expect((await parcels.getById(farmId: source.farmId, id: source.id))!.boundaryVersion, 1);
+  });
+
+  test('legacy identity establishment requires atomic spatial bootstrap', () async {
+    final legacy = createParcel();
+    await parcels.create(legacy);
+    await expectLater(
+      parcels.update(legacy.assignSpatialFeatureId('SPF-ORPHAN')),
+      throwsStateError,
+    );
+    expect((await parcels.getById(farmId: legacy.farmId, id: legacy.id))!.spatialFeatureId, isNull);
+    await workflow.bootstrapExisting(
+      farmId: legacy.farmId,
+      landParcelId: legacy.id,
+      temporalState: SpatialTemporalState.baseline,
+    );
+    final stored = (await parcels.getById(farmId: legacy.farmId, id: legacy.id))!;
+    expect(stored.spatialFeatureId, isNotNull);
+    expect((await links.findByLandParcelId(legacy.id))!.spatialFeatureId, stored.spatialFeatureId);
+  });
+
   test(
     'stable LandParcel, link and SpatialFeature identities survive boundary revisions',
     () async {
