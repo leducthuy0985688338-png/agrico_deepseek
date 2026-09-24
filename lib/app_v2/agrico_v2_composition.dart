@@ -27,7 +27,6 @@ import '../features/farm/presentation/screens/land_parcel_form_screen.dart';
 import '../features/farm/presentation/screens/land_parcel_list_screen.dart';
 import '../features/farm/presentation/widgets/boundary_workflow_widgets.dart';
 import '../models/field_model.dart';
-import '../providers/field_provider.dart';
 import '../providers/production_season_provider.dart';
 import '../providers/task_provider.dart';
 import '../screens/ai_chat_screen.dart';
@@ -101,25 +100,27 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       boundaryConsistencyQueries: boundaryConsistencyQueries,
     );
     const platform = MobileLandParcelPlatformGateway();
+    final controller = LandParcelController(
+      subject: subject,
+      parcels: parcels,
+      surveys: SqliteLandSurveyRepository(database),
+      createLandParcel: CreateLandParcel(application),
+      updateMetadata: UpdateLandParcelMetadata(application),
+      completeGpsMeasurement: CompleteGpsMeasurement(application),
+      verifyBoundary: VerifyBoundary(application),
+      importPreview: ImportKmlKmzPreview(application),
+      applyImportedBoundary: ApplyImportedBoundary(application),
+      exportKmlKmz: ExportKmlKmz(application),
+      fileOpener: platform,
+      googleEarthOpener: platform,
+      boundaryConsistencyQueries: boundaryConsistencyQueries,
+      reconcileLegacySpatialIdentity: ReconcileLegacySpatialIdentity(application),
+    );
+    await controller.loadList();
     return _V2Dependencies(
       subject: subject,
       spatial: spatial,
-      controller: LandParcelController(
-        subject: subject,
-        parcels: parcels,
-        surveys: SqliteLandSurveyRepository(database),
-        createLandParcel: CreateLandParcel(application),
-        updateMetadata: UpdateLandParcelMetadata(application),
-        completeGpsMeasurement: CompleteGpsMeasurement(application),
-        verifyBoundary: VerifyBoundary(application),
-        importPreview: ImportKmlKmzPreview(application),
-        applyImportedBoundary: ApplyImportedBoundary(application),
-        exportKmlKmz: ExportKmlKmz(application),
-        fileOpener: platform,
-        googleEarthOpener: platform,
-        boundaryConsistencyQueries: boundaryConsistencyQueries,
-        reconcileLegacySpatialIdentity: ReconcileLegacySpatialIdentity(application),
-      ),
+      controller: controller,
       platform: platform,
     );
   }
@@ -163,19 +164,22 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         'reports': () => push(const ReportScreen()),
         'settings': () => push(const SettingsPage()),
       };
-      return AgricoAppShell(
-        subject: deps.subject,
-        landParcelController: deps.controller,
-        openLandParcels: openParcels,
-        openCreateParcel: () => _createParcel(context, deps),
-        legacyRoutes: legacy,
-        parcelCount: context.watch<FieldProvider>().isLoading
-            ? null
-            : context.watch<FieldProvider>().fields.length,
-        seasonCount: context.watch<ProductionSeasonProvider>().isLoading
-            ? null
-            : context.watch<ProductionSeasonProvider>().allSeasons.length,
-        taskCount: context.watch<TaskProvider>().tasks.length,
+      return AnimatedBuilder(
+        animation: deps.controller,
+        builder: (context, _) => AgricoAppShell(
+          subject: deps.subject,
+          landParcelController: deps.controller,
+          openLandParcels: openParcels,
+          openCreateParcel: () => _createParcel(context, deps),
+          legacyRoutes: legacy,
+          parcelCount: deps.controller.phase == ParcelPresentationPhase.persistenceError
+              ? null
+              : deps.controller.items.length,
+          seasonCount: context.watch<ProductionSeasonProvider>().isLoading
+              ? null
+              : context.watch<ProductionSeasonProvider>().allSeasons.length,
+          taskCount: context.watch<TaskProvider>().tasks.length,
+        ),
       );
     },
   );
