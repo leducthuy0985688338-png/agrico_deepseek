@@ -73,12 +73,15 @@ class LandParcelSpatialSyncWorkflow {
     required String spatialFeatureId,
     required String spatialRevisionId,
   }) async {
-    await parcels.create(parcel);
+    // Persist the stable identity with the first parcel row. A later link
+    // must never leave a newly created parcel without its Spatial Core ID.
+    final linkedParcel = parcel.assignSpatialFeatureId(spatialFeatureId);
+    await parcels.create(linkedParcel);
 
     await createSpatialForParcelScoped(
       links: links,
       spatial: spatial,
-      parcel: parcel,
+      parcel: linkedParcel,
       temporalState: temporalState,
       spatialLinkId: spatialLinkId,
       spatialFeatureId: spatialFeatureId,
