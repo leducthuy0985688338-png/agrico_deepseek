@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   fast:
-    if: github.event_name == 'push' || github.event_name == 'pull_request' || inputs.gate == 'fast'
+    if: github.event_name == 'push' || inputs.gate == 'fast'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
