@@ -103,6 +103,7 @@ class LandParcelController extends ChangeNotifier {
   String search = '';
   bool? activeFilter;
   BoundaryVerificationStatus? verificationFilter;
+  LandParcelBoundaryConsistency? boundaryConsistencyFilter;
   String? villageFilter;
 
   bool can(String permission, {String? parcelId}) => authorization.can(
@@ -121,6 +122,8 @@ class LandParcelController extends ChangeNotifier {
             (activeFilter == null || item.parcel.active == activeFilter) &&
             (verificationFilter == null ||
                 item.parcel.verificationStatus == verificationFilter) &&
+            (boundaryConsistencyFilter == null ||
+                item.boundaryConsistency == boundaryConsistencyFilter) &&
             (villageFilter == null || item.village == villageFilter);
       })
       .toList(growable: false);
@@ -210,6 +213,11 @@ class LandParcelController extends ChangeNotifier {
 
   void setVerificationFilter(BoundaryVerificationStatus? value) {
     verificationFilter = value;
+    notifyListeners();
+  }
+
+  void setBoundaryConsistencyFilter(LandParcelBoundaryConsistency? value) {
+    boundaryConsistencyFilter = value;
     notifyListeners();
   }
 

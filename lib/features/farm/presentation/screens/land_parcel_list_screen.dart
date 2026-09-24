@@ -139,6 +139,24 @@ class _LandParcelListScreenState extends State<LandParcelListScreen> {
               ],
               onChanged: controller.setVerificationFilter,
             ),
+            DropdownButton<LandParcelBoundaryConsistency?>(
+              key: const Key('boundary-consistency-filter'),
+              value: controller.boundaryConsistencyFilter,
+              hint: Text(l10n.text('boundary.audit.filter')),
+              items: [
+                DropdownMenuItem(
+                  value: null,
+                  child: Text(l10n.text('common.all')),
+                ),
+                ...LandParcelBoundaryConsistency.values.map(
+                  (status) => DropdownMenuItem(
+                    value: status,
+                    child: Text(l10n.text('boundary.audit.${status.name}')),
+                  ),
+                ),
+              ],
+              onChanged: controller.setBoundaryConsistencyFilter,
+            ),
           ],
         ),
         if (items.isNotEmpty) ...[
