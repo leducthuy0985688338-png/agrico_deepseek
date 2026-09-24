@@ -7,14 +7,33 @@ import '../../domain/repositories/land_parcel_repository.dart';
 import '../models/land_parcel_mapper.dart';
 
 class SqliteLandParcelRepository implements LandParcelRepository {
-  SqliteLandParcelRepository(DatabaseExecutor executor) : _executor = executor;
+  SqliteLandParcelRepository(DatabaseExecutor executor)
+    : _executor = executor,
+      _spatialWriteScope = false,
+      _onSpatialWrite = null;
 
-  SqliteLandParcelRepository._(this._executor);
+  /// Only the shared LandParcel/Spatial transaction coordinator uses this
+  /// scope; direct repository transactions cannot authorize spatial writes.
+  SqliteLandParcelRepository.spatialTransactionScope(
+    Transaction transaction,
+    void Function(String farmId, String parcelId) onSpatialWrite,
+  )
+    : _executor = transaction,
+      _spatialWriteScope = true,
+      _onSpatialWrite = onSpatialWrite;
+
+  SqliteLandParcelRepository._(
+    this._executor,
+    this._spatialWriteScope,
+    this._onSpatialWrite,
+  );
 
   static const parcelTable = 'land_parcels';
   static const boundaryVersionTable = 'land_parcel_boundary_versions';
 
   final DatabaseExecutor _executor;
+  final bool _spatialWriteScope;
+  final void Function(String farmId, String parcelId)? _onSpatialWrite;
 
   static Future<void> createSchema(DatabaseExecutor db) async {
     await db.execute('PRAGMA foreign_keys = ON');
@@ -118,6 +137,38 @@ class SqliteLandParcelRepository implements LandParcelRepository {
     if (existing == null) {
       throw StateError('Land parcel ${parcel.id} does not exist.');
     }
+    if (existing.spatialFeatureId != null &&
+        parcel.spatialFeatureId != existing.spatialFeatureId) {
+      throw StateError('Established LandParcel spatial identity is immutable.');
+    }
+    if (existing.spatialFeatureId == null &&
+        parcel.spatialFeatureId != null &&
+        !sqlite._spatialWriteScope) {
+      throw StateError('Spatial identity establishment requires the shared spatial transaction.');
+    }
+    final newHistory = parcel.boundaryHistory.where(
+      (version) => version.version > existing.boundaryVersion,
+    ).toList();
+    if (newHistory.any((version) => version.version > parcel.boundaryVersion)) {
+      throw StateError('Boundary history cannot advance beyond the current boundary version.');
+    }
+    final boundaryChanged = newHistory.isNotEmpty ||
+        parcel.boundaryVersion != existing.boundaryVersion ||
+        parcel.boundary != existing.boundary ||
+        parcel.centroid != existing.centroid ||
+        parcel.areaM2 != existing.areaM2 ||
+        parcel.perimeterM != existing.perimeterM ||
+        parcel.boundarySource != existing.boundarySource ||
+        parcel.horizontalAccuracyM != existing.horizontalAccuracyM ||
+        parcel.measuredAt != existing.measuredAt ||
+        parcel.measuredBy != existing.measuredBy ||
+        parcel.boundaryConfidence != existing.boundaryConfidence;
+    if (boundaryChanged &&
+        !sqlite._spatialWriteScope &&
+        (existing.spatialFeatureId != null ||
+            await sqlite._hasPersistedSpatialLink(parcel.id))) {
+      throw StateError('Spatial-enabled LandParcel boundary write requires the shared spatial transaction.');
+    }
     if (parcel.boundaryVersion < existing.boundaryVersion) {
       throw StateError(
         'A parcel update cannot move boundary history backwards.',
@@ -139,24 +190,48 @@ class SqliteLandParcelRepository implements LandParcelRepository {
         );
       }
     }
-    for (final version in parcel.boundaryHistory.where(
-      (version) => version.version > existing.boundaryVersion,
-    )) {
+    for (final version in newHistory) {
       await sqlite._insertBoundaryVersion(version, ConflictAlgorithm.abort);
     }
     await sqlite._updateParcel(parcel);
+    if (boundaryChanged ||
+        existing.spatialFeatureId != parcel.spatialFeatureId) {
+      sqlite._onSpatialWrite?.call(parcel.farmId, parcel.id);
+    }
   });
 
   Future<void> _createWithin(LandParcel parcel) async {
+    if (parcel.spatialFeatureId != null && !_spatialWriteScope) {
+      throw StateError('Spatial-enabled LandParcel creation requires the shared spatial transaction.');
+    }
     await _insertParcel(parcel, ConflictAlgorithm.abort);
     for (final version in parcel.boundaryHistory) {
       await _insertBoundaryVersion(version, ConflictAlgorithm.abort);
     }
+    if (parcel.spatialFeatureId != null) {
+      _onSpatialWrite?.call(parcel.farmId, parcel.id);
+    }
   }
 
   @override
-  Future<void> saveBoundaryVersion(LandParcelBoundaryVersion version) =>
-      _insertBoundaryVersion(version, ConflictAlgorithm.abort);
+  Future<void> saveBoundaryVersion(LandParcelBoundaryVersion version) async {
+    final rows = await _executor.query(
+      parcelTable,
+      columns: ['payload_json'],
+      where: 'id = ?',
+      whereArgs: [version.parcelId],
+      limit: 1,
+    );
+    if (rows.isNotEmpty) {
+      final payload = jsonDecode(rows.single['payload_json']! as String)
+          as Map<String, dynamic>;
+      if (payload['spatialFeatureId'] != null ||
+          await _hasPersistedSpatialLink(version.parcelId)) {
+        throw StateError('Spatial-enabled LandParcel boundary history requires the shared spatial transaction.');
+      }
+    }
+    await _insertBoundaryVersion(version, ConflictAlgorithm.abort);
+  }
 
   @override
   Future<void> setActive({
@@ -187,7 +262,13 @@ class SqliteLandParcelRepository implements LandParcelRepository {
     if (_executor is Transaction) return action(this);
     final database = _executor as Database;
     return database.transaction(
-      (transaction) => action(SqliteLandParcelRepository._(transaction)),
+      (transaction) => action(
+        SqliteLandParcelRepository._(
+          transaction,
+          _spatialWriteScope,
+          _onSpatialWrite,
+        ),
+      ),
     );
   }
 
@@ -200,6 +281,22 @@ class SqliteLandParcelRepository implements LandParcelRepository {
       _parcelRow(parcel),
       conflictAlgorithm: conflictAlgorithm,
     );
+  }
+
+  Future<bool> _hasPersistedSpatialLink(String parcelId) async {
+    final table = await _executor.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type = 'table' "
+      "AND name = 'land_parcel_spatial_links'",
+    );
+    if (table.isEmpty) return false;
+    final links = await _executor.query(
+      'land_parcel_spatial_links',
+      columns: ['id'],
+      where: 'land_parcel_id = ?',
+      whereArgs: [parcelId],
+      limit: 1,
+    );
+    return links.isNotEmpty;
   }
 
   Future<void> _updateParcel(LandParcel parcel) async {

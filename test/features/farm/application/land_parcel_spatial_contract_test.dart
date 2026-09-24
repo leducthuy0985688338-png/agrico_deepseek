@@ -7,6 +7,7 @@ import 'package:agrico_deepseek/features/farm/data/adapters/default_land_parcel_
 import 'package:agrico_deepseek/features/farm/data/adapters/land_parcel_spatial_transaction.dart';
 import 'package:agrico_deepseek/features/farm/data/local/sqlite_land_parcel_repository.dart';
 import 'package:agrico_deepseek/features/farm/data/local/sqlite_land_parcel_spatial_link_repository.dart';
+import 'package:agrico_deepseek/features/farm/data/models/land_parcel_mapper.dart';
 import 'package:agrico_deepseek/features/farm/domain/entities/land_parcel.dart';
 import 'package:agrico_deepseek/features/farm/domain/entities/land_parcel_spatial_link.dart';
 import 'package:agrico_deepseek/features/farm/domain/geometry/wgs84_geometry.dart';
@@ -74,6 +75,110 @@ void main() {
 
   tearDown(() async {
     await database.close();
+  });
+
+  test('direct spatial creation is rejected without a parcel row', () async {
+    final source = createParcel(spatialFeatureId: 'SPF-DIRECT');
+    await expectLater(parcels.create(source), throwsStateError);
+    expect(await parcels.getById(farmId: source.farmId, id: source.id), isNull);
+  });
+
+  test('direct boundary write and history append cannot bypass Spatial Core', () async {
+    const id = 'SPF-BOUNDARY-GUARD';
+    final source = createParcel(spatialFeatureId: id);
+    await workflow.create(parcel: source, temporalState: SpatialTemporalState.baseline);
+    final changed = source.replaceBoundary(
+      boundary: boundary(east: 104.702),
+      source: BoundarySource.gps,
+      verificationStatus: BoundaryVerificationStatus.measured,
+      actorMembershipId: 'member-2',
+      occurredAt: createdAt.add(const Duration(hours: 1)),
+    );
+    await expectLater(parcels.update(changed), throwsStateError);
+    await expectLater(parcels.saveBoundaryVersion(changed.boundaryHistory.last), throwsStateError);
+    expect((await parcels.getById(farmId: source.farmId, id: source.id))!.boundaryVersion, 1);
+    expect(await spatial.revisionRepository.findByFeatureId(id), hasLength(1));
+
+    final metadata = source.updateMetadata(
+      name: 'Metadata only',
+      actorMembershipId: 'member-2',
+      occurredAt: createdAt.add(const Duration(hours: 1)),
+    );
+    await parcels.update(metadata);
+    expect((await parcels.getById(farmId: source.farmId, id: source.id))!.name, 'Metadata only');
+    expect(await spatial.revisionRepository.findByFeatureId(id), hasLength(1));
+  });
+
+  test('cannot append hidden history while leaving current boundary unchanged', () async {
+    final source = createParcel(spatialFeatureId: 'SPF-HIDDEN-HISTORY');
+    await workflow.create(parcel: source, temporalState: SpatialTemporalState.baseline);
+    final changed = source.replaceBoundary(
+      boundary: boundary(east: 104.702),
+      source: BoundarySource.gps,
+      verificationStatus: BoundaryVerificationStatus.measured,
+      actorMembershipId: 'member-2',
+      occurredAt: createdAt.add(const Duration(hours: 1)),
+    );
+    final json = LandParcelMapper.toJson(source);
+    json['boundaryHistory'] = changed.boundaryHistory
+        .map(LandParcelMapper.boundaryVersionToJson)
+        .toList();
+    final forged = LandParcelMapper.fromJson(json);
+    await expectLater(parcels.update(forged), throwsStateError);
+    expect((await parcels.getById(farmId: source.farmId, id: source.id))!.boundaryHistory, hasLength(1));
+  });
+
+  test('shared transaction rolls back an unpaired spatial boundary write', () async {
+    const id = 'SPF-SCOPED-GUARD';
+    final source = createParcel(spatialFeatureId: id);
+    await workflow.create(parcel: source, temporalState: SpatialTemporalState.baseline);
+    final changed = source.replaceBoundary(
+      boundary: boundary(east: 104.702),
+      source: BoundarySource.gps,
+      verificationStatus: BoundaryVerificationStatus.measured,
+      actorMembershipId: 'member-2',
+      occurredAt: createdAt.add(const Duration(hours: 1)),
+    );
+    await expectLater(
+      LandParcelSpatialTransaction(database).run<void>((scoped, _, _) async {
+        await scoped.update(changed);
+      }),
+      throwsStateError,
+    );
+    expect((await parcels.getById(farmId: source.farmId, id: source.id))!.boundaryVersion, 1);
+    expect(await spatial.revisionRepository.findByFeatureId(id), hasLength(1));
+  });
+
+  test('persisted link also blocks direct writes when parcel identity is null', () async {
+    final source = createParcel();
+    await workflow.create(parcel: source, temporalState: SpatialTemporalState.baseline);
+    final changed = source.replaceBoundary(
+      boundary: boundary(east: 104.702),
+      source: BoundarySource.gps,
+      verificationStatus: BoundaryVerificationStatus.measured,
+      actorMembershipId: 'member-2',
+      occurredAt: createdAt.add(const Duration(hours: 1)),
+    );
+    await expectLater(parcels.update(changed), throwsStateError);
+    expect((await parcels.getById(farmId: source.farmId, id: source.id))!.boundaryVersion, 1);
+  });
+
+  test('legacy identity establishment requires atomic spatial bootstrap', () async {
+    final legacy = createParcel();
+    await parcels.create(legacy);
+    await expectLater(
+      parcels.update(legacy.assignSpatialFeatureId('SPF-ORPHAN')),
+      throwsStateError,
+    );
+    expect((await parcels.getById(farmId: legacy.farmId, id: legacy.id))!.spatialFeatureId, isNull);
+    await workflow.bootstrapExisting(
+      farmId: legacy.farmId,
+      landParcelId: legacy.id,
+      temporalState: SpatialTemporalState.baseline,
+    );
+    final stored = (await parcels.getById(farmId: legacy.farmId, id: legacy.id))!;
+    expect(stored.spatialFeatureId, isNotNull);
+    expect((await links.findByLandParcelId(legacy.id))!.spatialFeatureId, stored.spatialFeatureId);
   });
 
   test(
