@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import '../../../../core/permissions/authorization.dart';
+import '../../application/land_parcel_boundary_consistency_queries.dart';
 import '../../application/land_parcel_application_service.dart';
 import '../../application/land_parcel_use_cases.dart';
 import '../../data/interchange/kml_interchange.dart';
@@ -31,6 +32,7 @@ class LandParcelViewData {
     this.crops = const [],
     this.surveys = const [],
     this.attachments = const [],
+    this.boundaryConsistency = LandParcelBoundaryConsistency.unlinked,
   });
   final LandParcel parcel;
   final Household? household;
@@ -38,6 +40,7 @@ class LandParcelViewData {
   final List<CropRecord> crops;
   final List<LandParcelSurvey> surveys;
   final List<ParcelAttachment> attachments;
+  final LandParcelBoundaryConsistency boundaryConsistency;
   String get village => household?.administrativeLocation.villageName ?? '';
   String get owner =>
       household?.headOfHouseholdName ?? parcel.ownerDisplayName ?? '';
@@ -70,6 +73,7 @@ class LandParcelController extends ChangeNotifier {
     this.authorization = const AuthorizationService(),
     this.fileOpener,
     this.googleEarthOpener,
+    this.boundaryConsistencyQueries,
   });
 
   final AuthorizationSubject subject;
@@ -85,6 +89,7 @@ class LandParcelController extends ChangeNotifier {
   final AuthorizationService authorization;
   final ExternalFileOpener? fileOpener;
   final GoogleEarthOpener? googleEarthOpener;
+  final LandParcelBoundaryConsistencyQueries? boundaryConsistencyQueries;
 
   ParcelPresentationPhase phase = ParcelPresentationPhase.initial;
   String? messageKey;
@@ -133,6 +138,9 @@ class LandParcelController extends ChangeNotifier {
         loaded.add(
           LandParcelViewData(
             parcel: parcel,
+            boundaryConsistency:
+                await boundaryConsistencyQueries?.check(parcel) ??
+                LandParcelBoundaryConsistency.unlinked,
             household: households[parcel.ownerHouseholdId],
             crops: await surveys.listCrops(parcel.id),
           ),
@@ -168,6 +176,9 @@ class LandParcelController extends ChangeNotifier {
       }
       detail = LandParcelViewData(
         parcel: parcel,
+        boundaryConsistency:
+            await boundaryConsistencyQueries?.check(parcel) ??
+            LandParcelBoundaryConsistency.unlinked,
         household: parcel.ownerHouseholdId == null
             ? null
             : await surveys.getHousehold(parcel.ownerHouseholdId!),

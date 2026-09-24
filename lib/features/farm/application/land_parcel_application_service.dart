@@ -9,6 +9,7 @@ import '../domain/geometry/wgs84_geometry.dart';
 import '../domain/repositories/land_parcel_repository.dart';
 import '../../../core/spatial/domain/entities/spatial_temporal.dart';
 import 'land_parcel_spatial_sync_workflow.dart';
+import 'land_parcel_boundary_consistency_queries.dart';
 
 enum LandParcelApplicationStatus {
   success,
@@ -294,11 +295,13 @@ class LandParcelApplicationService implements LandParcelApplication {
     this.interchange = const KmlInterchangeCodec(),
     this.spatialWorkflow,
     this.landSurveyRepository,
+    this.boundaryConsistencyQueries,
   });
 
   final LandParcelRepository repository;
   final AuthorizationService authorization;
   final KmlInterchangeCodec interchange;
+  final LandParcelBoundaryConsistencyQueries? boundaryConsistencyQueries;
 
   /// Optional land survey repository for business metadata writes.
   ///
@@ -325,6 +328,7 @@ class LandParcelApplicationService implements LandParcelApplication {
     interchange: interchange,
     spatialWorkflow: spatialWorkflow,
     landSurveyRepository: landSurveyRepository,
+    boundaryConsistencyQueries: boundaryConsistencyQueries,
   );
 
   @override
@@ -639,6 +643,13 @@ class LandParcelApplicationService implements LandParcelApplication {
     final parcel = await repository.getById(farmId: farmId, id: parcelId);
     if (parcel == null) return _notFound();
     try {
+      if (await boundaryConsistencyQueries?.check(parcel) ==
+          LandParcelBoundaryConsistency.needsReconciliation) {
+        return const LandParcelApplicationResult.failure(
+          LandParcelApplicationStatus.validationFailed,
+          'boundary.reconciliation.required',
+        );
+      }
       final safeCode = parcel.parcelCode.replaceAll(RegExp(r'[^\w.-]'), '_');
       return LandParcelApplicationResult.success(
         format == LandParcelInterchangeFormat.kml

@@ -3,6 +3,9 @@ import '../../../core/spatial/support/sequential_spatial_identity_generator.dart
 import 'dart:convert';
 import '../../../core/spatial/support/scripted_spatial_identity_generator.dart';
 import 'package:agrico_deepseek/core/spatial/data/sqlite_spatial_schema.dart';
+import 'package:agrico_deepseek/features/farm/application/land_parcel_boundary_consistency_queries.dart';
+import 'package:agrico_deepseek/features/farm/application/land_parcel_application_service.dart';
+import 'package:agrico_deepseek/core/permissions/authorization.dart';
 import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_temporal.dart';
 import 'package:agrico_deepseek/core/spatial/domain/geometry/spatial_polygon.dart';
 import 'package:agrico_deepseek/features/farm/application/land_parcel_spatial_sync_workflow.dart';
@@ -73,6 +76,66 @@ void main() {
   });
 
   tearDown(() => database.close());
+
+  test('read diagnosis distinguishes unlinked, aligned and legacy missing geometry', () async {
+    final queries = LandParcelBoundaryConsistencyQueries(
+      links: links,
+      features: spatial.featureRepository,
+      revisions: spatial.revisionRepository,
+    );
+    final legacy = createParcel(id: 'legacy', code: 'P-LEGACY');
+    await parcels.create(legacy);
+    expect(await queries.check(legacy), LandParcelBoundaryConsistency.unlinked);
+
+    final parcel = createParcel();
+    await workflow.create(parcel: parcel, temporalState: SpatialTemporalState.operational);
+    final stored = (await parcels.getById(farmId: parcel.farmId, id: parcel.id))!;
+    expect(await queries.check(stored), LandParcelBoundaryConsistency.consistent);
+
+    final link = (await links.findByLandParcelId(parcel.id))!;
+    final revisionRows = await database.query(
+      SqliteSpatialSchema.revisionsTable,
+      where: 'feature_id = ?',
+      whereArgs: [link.spatialFeatureId],
+    );
+    final legacyPayload = jsonDecode(revisionRows.single['payload_json']! as String)
+        as Map<String, dynamic>;
+    legacyPayload['geometry'] = null;
+    await database.update(
+      SqliteSpatialSchema.revisionsTable,
+      {'geometry_json': null, 'payload_json': jsonEncode(legacyPayload)},
+      where: 'feature_id = ?',
+      whereArgs: [link.spatialFeatureId],
+    );
+    expect(await queries.check(stored), LandParcelBoundaryConsistency.needsReconciliation);
+
+    final application = LandParcelApplicationService(
+      repository: parcels,
+      boundaryConsistencyQueries: queries,
+    );
+    final subject = AuthorizationSubject(
+      userId: 'user-1',
+      membershipId: 'member-1',
+      farmId: 'farm-1',
+      permissionCodes: PermissionCodes.values,
+      dataScopes: const {DataScope.allFarm},
+    );
+    final denied = await application.exportKmlKmz(
+      subject,
+      farmId: 'farm-1',
+      parcelId: parcel.id,
+      format: LandParcelInterchangeFormat.kml,
+    );
+    expect(denied.status, LandParcelApplicationStatus.validationFailed);
+    expect(denied.messageKey, 'boundary.reconciliation.required');
+    final legacyExport = await application.exportKmlKmz(
+      subject,
+      farmId: 'farm-1',
+      parcelId: legacy.id,
+      format: LandParcelInterchangeFormat.kml,
+    );
+    expect(legacyExport.isSuccess, isTrue);
+  });
 
   Future<void> seedCorruptSpatialIdentity(LandParcel parcel) async {
     await parcels.create(createParcel(id: parcel.id, code: parcel.parcelCode));

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/permissions/authorization.dart';
 import '../../application/land_parcel_application_service.dart';
+import '../../application/land_parcel_boundary_consistency_queries.dart';
 import '../../domain/entities/land_parcel.dart';
 import '../../domain/entities/land_survey.dart';
 import '../controllers/land_parcel_controller.dart';
@@ -89,6 +90,15 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (data.boundaryConsistency ==
+              LandParcelBoundaryConsistency.needsReconciliation)
+            Card(
+              key: const Key('boundary-reconciliation-notice'),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(l10n.text('boundary.reconciliation.required')),
+              ),
+            ),
           Text(
             '${parcel.areaHa.toStringAsFixed(2)} ha · ${l10n.text('verification.${parcel.verificationStatus.name}')}',
             style: Theme.of(context).textTheme.titleLarge,
