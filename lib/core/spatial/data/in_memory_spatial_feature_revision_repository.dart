@@ -1,6 +1,6 @@
-import '../domain/entities/spatial_feature_revision.dart';
+﻿import '../domain/entities/spatial_feature_revision.dart';
 import 'in_memory_spatial_store.dart';
-import 'spatial_feature_revision_repository.dart';
+import '../domain/repositories/spatial_feature_revision_repository.dart';
 
 class InMemorySpatialFeatureRevisionRepository
     implements SpatialFeatureRevisionRepository {

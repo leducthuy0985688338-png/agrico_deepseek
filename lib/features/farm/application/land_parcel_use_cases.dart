@@ -1,9 +1,10 @@
-import 'dart:typed_data';
+﻿import 'dart:typed_data';
 
 import '../../../core/permissions/authorization.dart';
 import '../data/interchange/kml_interchange.dart';
 import '../domain/entities/land_parcel.dart';
 import '../domain/geometry/wgs84_geometry.dart';
+import '../domain/entities/land_survey.dart';
 import 'land_parcel_application_service.dart';
 
 class CreateLandParcel {
@@ -150,4 +151,17 @@ class CompleteGpsMeasurement {
       confirmVerifiedReplacement: confirmVerifiedReplacement,
     ),
   );
+}
+
+/// Sprint 11: business metadata update for LandUseProfile.
+///
+/// Does NOT touch Spatial Core. Does NOT create SpatialFeatureRevision.
+class UpdateLandUseProfile {
+  const UpdateLandUseProfile(this.application);
+  final LandParcelApplication application;
+
+  Future<LandParcelApplicationResult<LandUseProfile>> call(
+    AuthorizationSubject subject,
+    UpdateLandUseProfileCommand command,
+  ) => application.updateLandUseProfile(subject, command);
 }

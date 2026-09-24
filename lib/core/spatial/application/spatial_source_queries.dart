@@ -1,4 +1,4 @@
-import '../data/spatial_feature_revision_repository.dart';
+﻿import '../domain/repositories/spatial_feature_revision_repository.dart';
 import '../domain/entities/spatial_feature_revision.dart';
 import '../domain/entities/spatial_source.dart';
 

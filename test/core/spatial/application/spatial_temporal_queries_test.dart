@@ -1,7 +1,7 @@
-import 'package:flutter_test/flutter_test.dart';
+﻿import 'package:flutter_test/flutter_test.dart';
 
 import '../../../../lib/core/spatial/application/spatial_temporal_queries.dart';
-import '../../../../lib/core/spatial/data/spatial_temporal_repository.dart';
+import '../../../../lib/core/spatial/domain/repositories/spatial_temporal_repository.dart';
 import '../../../../lib/core/spatial/domain/entities/spatial_temporal_record.dart';
 
 void main() {

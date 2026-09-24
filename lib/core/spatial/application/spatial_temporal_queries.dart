@@ -1,4 +1,4 @@
-import '../data/spatial_temporal_repository.dart';
+﻿import '../domain/repositories/spatial_temporal_repository.dart';
 import '../domain/entities/spatial_temporal_record.dart';
 
 /// Read-only application boundary for Spatial Core temporal history.

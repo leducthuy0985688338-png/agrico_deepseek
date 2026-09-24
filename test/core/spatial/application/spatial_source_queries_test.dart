@@ -1,7 +1,7 @@
-import 'package:flutter_test/flutter_test.dart';
+﻿import 'package:flutter_test/flutter_test.dart';
 
 import '../../../../lib/core/spatial/application/spatial_source_queries.dart';
-import '../../../../lib/core/spatial/data/spatial_feature_revision_repository.dart';
+import '../../../../lib/core/spatial/domain/repositories/spatial_feature_revision_repository.dart';
 import '../../../../lib/core/spatial/domain/entities/spatial_feature_revision.dart';
 import '../../../../lib/core/spatial/domain/entities/spatial_source.dart';
 import '../../../../lib/core/spatial/domain/entities/spatial_temporal.dart';

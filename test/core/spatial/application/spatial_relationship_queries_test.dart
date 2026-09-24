@@ -1,5 +1,5 @@
-import 'package:agrico_deepseek/core/spatial/application/spatial_relationship_queries.dart';
-import 'package:agrico_deepseek/core/spatial/data/spatial_relationship_repository.dart';
+﻿import 'package:agrico_deepseek/core/spatial/application/spatial_relationship_queries.dart';
+import 'package:agrico_deepseek/core/spatial/domain/repositories/spatial_relationship_repository.dart';
 import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_relationship.dart';
 import 'package:flutter_test/flutter_test.dart';
 

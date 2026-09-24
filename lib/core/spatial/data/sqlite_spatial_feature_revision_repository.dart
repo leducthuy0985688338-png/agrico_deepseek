@@ -1,7 +1,7 @@
-import 'package:sqflite/sqflite.dart';
+﻿import 'package:sqflite/sqflite.dart';
 
 import '../domain/entities/spatial_feature_revision.dart';
-import 'spatial_feature_revision_repository.dart';
+import '../domain/repositories/spatial_feature_revision_repository.dart';
 import 'spatial_feature_revision_sqlite_mapper.dart';
 import 'sqlite_spatial_schema.dart';
 

@@ -1,4 +1,4 @@
-import 'dart:collection';
+﻿import 'dart:collection';
 
 import '../geometry/wgs84_geometry.dart';
 
@@ -69,10 +69,16 @@ class LandParcel {
     Map<String, Object?> legacyMetadata = const {},
     this.ownerHouseholdId,
     this.ownerDisplayName,
+    this.ownerContact,
     this.horizontalAccuracyM,
     this.measuredAt,
     this.measuredBy,
     this.boundaryConfidence,
+    this.spatialFeatureId,
+    this.countryCode,
+    this.provinceCode,
+    this.districtCode,
+    this.villageCode,
   }) : boundaryHistory = UnmodifiableListView(boundaryHistory),
        legacyMetadata = UnmodifiableMapView(legacyMetadata);
 
@@ -88,13 +94,27 @@ class LandParcel {
     required DateTime occurredAt,
     String? ownerHouseholdId,
     String? ownerDisplayName,
+    String? ownerContact,
     bool active = true,
     double? horizontalAccuracyM,
     double? boundaryConfidence,
     String? note,
     Map<String, Object?> legacyMetadata = const {},
+    String? spatialFeatureId,
+    String? countryCode,
+    String? provinceCode,
+    String? districtCode,
+    String? villageCode,
   }) {
     _requireIdentity(id, farmId, parcelCode, name, actorMembershipId);
+    _requireOptionalText(spatialFeatureId, 'spatialFeatureId');
+    _requireOptionalText(ownerHouseholdId, 'ownerHouseholdId');
+    _requireOptionalText(ownerDisplayName, 'ownerDisplayName');
+    _requireOptionalText(ownerContact, 'ownerContact');
+    _requireOptionalText(countryCode, 'countryCode');
+    _requireOptionalText(provinceCode, 'provinceCode');
+    _requireOptionalText(districtCode, 'districtCode');
+    _requireOptionalText(villageCode, 'villageCode');
     final metrics = const Wgs84GeometryService().measure(boundary);
     final version = _buildVersion(
       parcelId: id,
@@ -116,7 +136,13 @@ class LandParcel {
       name: name,
       ownerHouseholdId: ownerHouseholdId,
       ownerDisplayName: ownerDisplayName,
+      ownerContact: ownerContact,
       active: active,
+      spatialFeatureId: spatialFeatureId,
+      countryCode: countryCode,
+      provinceCode: provinceCode,
+      districtCode: districtCode,
+      villageCode: villageCode,
       createdAt: occurredAt,
       createdBy: actorMembershipId,
       updatedAt: occurredAt,
@@ -159,13 +185,25 @@ class LandParcel {
     required List<LandParcelBoundaryVersion> boundaryHistory,
     String? ownerHouseholdId,
     String? ownerDisplayName,
+    String? ownerContact,
     double? horizontalAccuracyM,
     DateTime? measuredAt,
     String? measuredBy,
     double? boundaryConfidence,
     Map<String, Object?> legacyMetadata = const {},
+    String? spatialFeatureId,
+    String? countryCode,
+    String? provinceCode,
+    String? districtCode,
+    String? villageCode,
   }) {
     _requireIdentity(id, farmId, parcelCode, name, createdBy);
+    _requireOptionalText(spatialFeatureId, 'spatialFeatureId');
+    _requireOptionalText(ownerContact, 'ownerContact');
+    _requireOptionalText(countryCode, 'countryCode');
+    _requireOptionalText(provinceCode, 'provinceCode');
+    _requireOptionalText(districtCode, 'districtCode');
+    _requireOptionalText(villageCode, 'villageCode');
     if (schemaVersion <= 0 ||
         boundaryVersion <= 0 ||
         areaM2 <= 0 ||
@@ -187,7 +225,13 @@ class LandParcel {
       name: name,
       ownerHouseholdId: ownerHouseholdId,
       ownerDisplayName: ownerDisplayName,
+      ownerContact: ownerContact,
       active: active,
+      spatialFeatureId: spatialFeatureId,
+      countryCode: countryCode,
+      provinceCode: provinceCode,
+      districtCode: districtCode,
+      villageCode: villageCode,
       createdAt: createdAt,
       createdBy: createdBy,
       updatedAt: updatedAt,
@@ -237,6 +281,21 @@ class LandParcel {
   final UnmodifiableListView<LandParcelBoundaryVersion> boundaryHistory;
   final UnmodifiableMapView<String, Object?> legacyMetadata;
 
+  /// Reference to the stable Spatial Core identity.
+  ///
+  /// Sprint 6A: nullable for legacy rehydrate compatibility.
+  /// Semantic target: required for new records (SpatialFeature.id).
+  final String? spatialFeatureId;
+
+  /// Administrative identifiers (nullable for legacy records).
+  final String? countryCode;
+  final String? provinceCode;
+  final String? districtCode;
+  final String? villageCode;
+
+  /// Optional owner contact.
+  final String? ownerContact;
+
   double get areaHa => areaM2 / 10000;
 
   LandParcel updateMetadata({
@@ -244,19 +303,36 @@ class LandParcel {
     String? name,
     String? ownerHouseholdId,
     String? ownerDisplayName,
+    String? ownerContact,
     bool? active,
+    String? countryCode,
+    String? provinceCode,
+    String? districtCode,
+    String? villageCode,
     required String actorMembershipId,
     required DateTime occurredAt,
   }) {
     final nextCode = parcelCode ?? this.parcelCode;
     final nextName = name ?? this.name;
     _requireIdentity(id, farmId, nextCode, nextName, actorMembershipId);
+    _requireOptionalText(ownerHouseholdId, 'ownerHouseholdId');
+    _requireOptionalText(ownerDisplayName, 'ownerDisplayName');
+    _requireOptionalText(ownerContact, 'ownerContact');
+    _requireOptionalText(countryCode, 'countryCode');
+    _requireOptionalText(provinceCode, 'provinceCode');
+    _requireOptionalText(districtCode, 'districtCode');
+    _requireOptionalText(villageCode, 'villageCode');
     return _copyWith(
       parcelCode: nextCode,
       name: nextName,
       ownerHouseholdId: ownerHouseholdId ?? this.ownerHouseholdId,
       ownerDisplayName: ownerDisplayName ?? this.ownerDisplayName,
+      ownerContact: ownerContact ?? this.ownerContact,
       active: active ?? this.active,
+      countryCode: countryCode ?? this.countryCode,
+      provinceCode: provinceCode ?? this.provinceCode,
+      districtCode: districtCode ?? this.districtCode,
+      villageCode: villageCode ?? this.villageCode,
       updatedAt: occurredAt,
       updatedBy: actorMembershipId,
     );
@@ -328,7 +404,13 @@ class LandParcel {
       name: name,
       ownerHouseholdId: ownerHouseholdId,
       ownerDisplayName: ownerDisplayName,
+      ownerContact: ownerContact,
       active: active,
+      spatialFeatureId: spatialFeatureId,
+      countryCode: countryCode,
+      provinceCode: provinceCode,
+      districtCode: districtCode,
+      villageCode: villageCode,
       createdAt: createdAt,
       createdBy: createdBy,
       updatedAt: occurredAt,
@@ -377,15 +459,55 @@ class LandParcel {
     );
   }
 
+  /// Establishes the stable spatial identity of this LandParcel exactly once.
+  ///
+  /// Sprint 10: this is the canonical way to link a legacy LandParcel
+  /// (spatialFeatureId == null) to a SpatialFeature. Once established,
+  /// spatialFeatureId is immutable.
+  ///
+  /// Rules:
+  /// - Blank/whitespace-only ID is rejected.
+  /// - null -> X: establishes identity (returns new instance).
+  /// - X -> X: idempotent (returns instance with same identity).
+  /// - X -> Y: rejected with StateError.
+  LandParcel assignSpatialFeatureId(String spatialFeatureId) {
+    final trimmed = spatialFeatureId.trim();
+    if (trimmed.isEmpty) {
+      throw const FormatException(
+        'Land parcel spatialFeatureId cannot be blank.',
+      );
+    }
+
+    final current = this.spatialFeatureId;
+    if (current == null) {
+      return _copyWith(spatialFeatureId: trimmed);
+    }
+
+    if (current == trimmed) {
+      return this;
+    }
+
+    throw StateError(
+      'Land parcel spatialFeatureId is immutable once established. '
+      'Current: , attempted: .',
+    );
+  }
+
   LandParcel _copyWith({
     String? parcelCode,
     String? name,
     String? ownerHouseholdId,
     String? ownerDisplayName,
+    String? ownerContact,
     bool? active,
     DateTime? updatedAt,
     String? updatedBy,
     BoundaryVerificationStatus? verificationStatus,
+    String? spatialFeatureId,
+    String? countryCode,
+    String? provinceCode,
+    String? districtCode,
+    String? villageCode,
   }) => LandParcel._(
     id: id,
     farmId: farmId,
@@ -393,7 +515,13 @@ class LandParcel {
     name: name ?? this.name,
     ownerHouseholdId: ownerHouseholdId ?? this.ownerHouseholdId,
     ownerDisplayName: ownerDisplayName ?? this.ownerDisplayName,
+    ownerContact: ownerContact ?? this.ownerContact,
     active: active ?? this.active,
+    spatialFeatureId: spatialFeatureId ?? this.spatialFeatureId,
+    countryCode: countryCode ?? this.countryCode,
+    provinceCode: provinceCode ?? this.provinceCode,
+    districtCode: districtCode ?? this.districtCode,
+    villageCode: villageCode ?? this.villageCode,
     createdAt: createdAt,
     createdBy: createdBy,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -463,6 +591,14 @@ class LandParcel {
     ].any((value) => value.trim().isEmpty)) {
       throw const FormatException(
         'Land parcel identity fields cannot be empty.',
+      );
+    }
+  }
+
+  static void _requireOptionalText(String? value, String fieldName) {
+    if (value != null && value.trim().isEmpty) {
+      throw FormatException(
+        'Land parcel  cannot be blank when provided.',
       );
     }
   }

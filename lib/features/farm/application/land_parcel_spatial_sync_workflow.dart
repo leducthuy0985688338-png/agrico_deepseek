@@ -1,4 +1,4 @@
-import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_feature.dart';
+﻿import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_feature.dart';
 import 'package:agrico_deepseek/core/spatial/domain/identity/spatial_identity_generator.dart';
 import '../../../core/spatial/domain/entities/spatial_temporal.dart';
 import '../data/adapters/land_parcel_spatial_projection.dart';
@@ -33,8 +33,18 @@ class LandParcelSpatialSyncWorkflow {
     required LandParcel parcel,
     required SpatialTemporalState temporalState,
   }) {
+    // Sprint 8 correction: reuse parcel.spatialFeatureId when provided.
+    final providedSpatialFeatureId = parcel.spatialFeatureId;
+    if (providedSpatialFeatureId != null &&
+        providedSpatialFeatureId.trim().isEmpty) {
+      throw const FormatException(
+        'Land parcel spatialFeatureId cannot be blank when provided.',
+      );
+    }
+
     final spatialLinkId = identityGenerator.newId('spatial-link');
-    final spatialFeatureId = identityGenerator.newId('spatial-feature');
+    final spatialFeatureId = providedSpatialFeatureId ??
+        identityGenerator.newId('spatial-feature');
     final spatialRevisionId = identityGenerator.newId('spatial-revision');
 
     return transaction.run<void>(
@@ -51,8 +61,6 @@ class LandParcelSpatialSyncWorkflow {
     );
   }
 
-  /// Creates LandParcel and its initial Spatial projection using repositories
-  /// that already belong to the caller's atomic transaction.
   /// Creates LandParcel and its initial Spatial projection using repositories
   /// that already belong to the caller's atomic transaction.
   Future<void> createScoped({
@@ -99,8 +107,6 @@ class LandParcelSpatialSyncWorkflow {
 
   /// Adopts an existing LandParcel using repositories that already belong to
   /// the caller's atomic transaction.
-  /// Adopts an existing LandParcel using repositories that already belong to
-  /// the caller's atomic transaction.
   Future<void> bootstrapExistingScoped({
     required LandParcelRepository parcels,
     required LandParcelSpatialLinkRepository links,
@@ -138,6 +144,19 @@ class LandParcelSpatialSyncWorkflow {
       spatialFeatureId: spatialFeatureId,
       spatialRevisionId: spatialRevisionId,
     );
+
+    // Sprint 10 correction: establish LandParcel.spatialFeatureId
+    // so the canonical identity invariant holds:
+    //   LandParcel.spatialFeatureId
+    //     == LandParcelSpatialLink.spatialFeatureId
+    //     == SpatialFeature.id
+    //
+    // This runs inside the same LandParcelSpatialTransaction.run()
+    // boundary, so failure here rolls back the SpatialFeature,
+    // Revision 1, Link, and the LandParcel update together.
+    final parcelWithSpatialIdentity =
+        parcel.assignSpatialFeatureId(spatialFeatureId);
+    await parcels.update(parcelWithSpatialIdentity);
   }
 
   /// Creates Spatial revision 1 and the stable parcel link without creating or
@@ -196,6 +215,31 @@ class LandParcelSpatialSyncWorkflow {
     if (link == null) {
       throw StateError(
         'Land parcel ${parcel.id} has no persisted SpatialFeature link.',
+      );
+    }
+
+    // Sprint 12 (D1): identity guard.
+    //
+    // For a spatial-enabled LandParcel entering workflow.update():
+    // - persisted Link MUST exist;
+    // - LandParcel.spatialFeatureId MUST be established;
+    // - LandParcel.spatialFeatureId MUST match Link.spatialFeatureId.
+    //
+    // Any violation fails closed. Silent repair is forbidden.
+    final parcelSpatialFeatureId = parcel.spatialFeatureId;
+
+    if (parcelSpatialFeatureId == null) {
+      throw StateError(
+        'Spatial-enabled LandParcel ${parcel.id} has no established '
+        'spatialFeatureId. Use bootstrapExisting() for legacy adoption.',
+      );
+    }
+
+    if (parcelSpatialFeatureId != link.spatialFeatureId) {
+      throw StateError(
+        'LandParcel.spatialFeatureId ($parcelSpatialFeatureId) '
+        'does not match persisted LandParcelSpatialLink.spatialFeatureId '
+        '(${link.spatialFeatureId}) for parcel ${parcel.id}.',
       );
     }
 

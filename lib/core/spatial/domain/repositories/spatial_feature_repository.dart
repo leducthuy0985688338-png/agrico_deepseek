@@ -1,4 +1,4 @@
-import '../domain/entities/spatial_feature.dart';
+﻿import '../entities/spatial_feature.dart';
 
 abstract interface class SpatialFeatureRepository {
   Future<SpatialFeature?> findById(String id);

@@ -1,12 +1,16 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/localization/app_localizations.dart';
 import '../core/permissions/authorization.dart';
+import '../core/spatial/data/identity/default_spatial_identity_generator.dart';
 import '../core/spatial/data/spatial_persistence_composition.dart';
 import '../features/farm/application/land_parcel_application_service.dart';
+import '../features/farm/application/land_parcel_spatial_sync_workflow.dart';
+import '../features/farm/data/adapters/default_land_parcel_spatial_projection.dart';
+import '../features/farm/data/adapters/land_parcel_spatial_transaction.dart';
 import '../features/farm/application/land_parcel_use_cases.dart';
 import '../features/farm/data/legacy/land_parcel_legacy_migration.dart';
 import '../features/farm/data/legacy/legacy_field_adapter.dart';
@@ -78,7 +82,16 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       permissionCodes: PermissionCodes.values,
       dataScopes: const {DataScope.allFarm},
     );
-    final application = LandParcelApplicationService(repository: parcels);
+    final spatialSyncWorkflow = LandParcelSpatialSyncWorkflow(
+      transaction: LandParcelSpatialTransaction(database),
+      projection: const DefaultLandParcelSpatialProjection(),
+      identityGenerator: DefaultSpatialIdentityGenerator(),
+    );
+
+    final application = LandParcelApplicationService(
+      repository: parcels,
+      spatialWorkflow: spatialSyncWorkflow,
+    );
     const platform = MobileLandParcelPlatformGateway();
     return _V2Dependencies(
       subject: subject,

@@ -1,4 +1,4 @@
-import '../../domain/entities/land_parcel.dart';
+﻿import '../../domain/entities/land_parcel.dart';
 import '../../domain/geometry/wgs84_geometry.dart';
 
 abstract final class LandParcelMapper {
@@ -12,7 +12,13 @@ abstract final class LandParcelMapper {
     'name': parcel.name,
     'ownerHouseholdId': parcel.ownerHouseholdId,
     'ownerDisplayName': parcel.ownerDisplayName,
+    'ownerContact': parcel.ownerContact,
     'active': parcel.active,
+    'spatialFeatureId': parcel.spatialFeatureId,
+    'countryCode': parcel.countryCode,
+    'provinceCode': parcel.provinceCode,
+    'districtCode': parcel.districtCode,
+    'villageCode': parcel.villageCode,
     'createdAt': parcel.createdAt.toUtc().toIso8601String(),
     'createdBy': parcel.createdBy,
     'updatedAt': parcel.updatedAt.toUtc().toIso8601String(),
@@ -49,7 +55,13 @@ abstract final class LandParcelMapper {
       name: _string(json, 'name'),
       ownerHouseholdId: _optionalString(json['ownerHouseholdId']),
       ownerDisplayName: _optionalString(json['ownerDisplayName']),
+      ownerContact: _optionalString(json['ownerContact']),
       active: _bool(json['active']),
+      spatialFeatureId: _optionalString(json['spatialFeatureId']),
+      countryCode: _optionalString(json['countryCode']),
+      provinceCode: _optionalString(json['provinceCode']),
+      districtCode: _optionalString(json['districtCode']),
+      villageCode: _optionalString(json['villageCode']),
       createdAt: _date(json, 'createdAt'),
       createdBy: _string(json, 'createdBy'),
       updatedAt: _date(json, 'updatedAt'),

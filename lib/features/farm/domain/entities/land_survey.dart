@@ -1,4 +1,4 @@
-import 'land_parcel.dart';
+﻿import 'land_parcel.dart';
 
 enum LandUseType { agricultural, residential, forest, pasture, mixed, other }
 
@@ -166,6 +166,33 @@ class LandUseProfile {
   final DateTime updatedAt;
   final String updatedBy;
   final int schemaVersion;
+
+  /// Domain validation for LandUseProfile.
+  ///
+  /// Sprint 11: business metadata invariant. Enforced at domain boundary.
+  /// Application layer must NOT duplicate this validation.
+  void validate() {
+    if (parcelId.trim().isEmpty) {
+      throw const FormatException(
+        'LandUseProfile parcelId cannot be blank.',
+      );
+    }
+    if (updatedBy.trim().isEmpty) {
+      throw const FormatException(
+        'LandUseProfile updatedBy cannot be blank.',
+      );
+    }
+    if (notes != null && notes!.trim().isEmpty) {
+      throw const FormatException(
+        'LandUseProfile notes cannot be blank when provided.',
+      );
+    }
+    if (schemaVersion <= 0) {
+      throw const FormatException(
+        'LandUseProfile schemaVersion must be greater than zero.',
+      );
+    }
+  }
 }
 
 class CropRecord {

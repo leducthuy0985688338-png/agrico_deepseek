@@ -1,10 +1,14 @@
-import 'dart:typed_data';
+﻿import 'dart:typed_data';
 
 import '../../../core/permissions/authorization.dart';
 import '../data/interchange/kml_interchange.dart';
 import '../domain/entities/land_parcel.dart';
+import '../domain/entities/land_survey.dart';
+import '../domain/repositories/land_survey_repository.dart';
 import '../domain/geometry/wgs84_geometry.dart';
 import '../domain/repositories/land_parcel_repository.dart';
+import '../../../core/spatial/domain/entities/spatial_temporal.dart';
+import 'land_parcel_spatial_sync_workflow.dart';
 
 enum LandParcelApplicationStatus {
   success,
@@ -77,6 +81,7 @@ class CreateLandParcelCommand {
     required this.occurredAt,
     this.ownerHouseholdId,
     this.ownerDisplayName,
+    this.ownerContact,
     this.horizontalAccuracyM,
     this.boundaryConfidence,
     this.legacyMetadata = const {},
@@ -92,6 +97,7 @@ class CreateLandParcelCommand {
   final DateTime occurredAt;
   final String? ownerHouseholdId;
   final String? ownerDisplayName;
+  final String? ownerContact;
   final double? horizontalAccuracyM;
   final double? boundaryConfidence;
   final Map<String, Object?> legacyMetadata;
@@ -107,7 +113,12 @@ class UpdateLandParcelMetadataCommand {
     this.name,
     this.ownerHouseholdId,
     this.ownerDisplayName,
+    this.ownerContact,
     this.active,
+    this.countryCode,
+    this.provinceCode,
+    this.districtCode,
+    this.villageCode,
   });
 
   final String farmId;
@@ -118,7 +129,12 @@ class UpdateLandParcelMetadataCommand {
   final String? name;
   final String? ownerHouseholdId;
   final String? ownerDisplayName;
+  final String? ownerContact;
   final bool? active;
+  final String? countryCode;
+  final String? provinceCode;
+  final String? districtCode;
+  final String? villageCode;
 }
 
 class ReplaceBoundaryCommand {
@@ -149,6 +165,30 @@ class ReplaceBoundaryCommand {
   final String? note;
   final String? sourceFileName;
   final String? sourceFileHash;
+}
+
+class UpdateLandUseProfileCommand {
+  const UpdateLandUseProfileCommand({
+    required this.farmId,
+    required this.parcelId,
+    required this.actorMembershipId,
+    required this.occurredAt,
+    this.landUseType,
+    this.currentCondition,
+    this.clearingStatus,
+    this.readinessStatus,
+    this.notes,
+  });
+
+  final String farmId;
+  final String parcelId;
+  final String actorMembershipId;
+  final DateTime occurredAt;
+  final LandUseType? landUseType;
+  final LandCondition? currentCondition;
+  final ClearingStatus? clearingStatus;
+  final ReadinessStatus? readinessStatus;
+  final String? notes;
 }
 
 class VerifyBoundaryCommand {
@@ -234,6 +274,17 @@ abstract interface class LandParcelApplication {
     required String parcelId,
     required LandParcelInterchangeFormat format,
   });
+
+  /// Sprint 11: business metadata update.
+  ///
+  /// Updates LandUseProfile ONLY. Does NOT touch Spatial Core:
+  /// - no SpatialFeatureRevision
+  /// - no boundaryVersion increment
+  /// - no SpatialFeature identity change.
+  Future<LandParcelApplicationResult<LandUseProfile>> updateLandUseProfile(
+    AuthorizationSubject subject,
+    UpdateLandUseProfileCommand command,
+  );
 }
 
 class LandParcelApplicationService implements LandParcelApplication {
@@ -241,11 +292,26 @@ class LandParcelApplicationService implements LandParcelApplication {
     required this.repository,
     this.authorization = const AuthorizationService(),
     this.interchange = const KmlInterchangeCodec(),
+    this.spatialWorkflow,
+    this.landSurveyRepository,
   });
 
   final LandParcelRepository repository;
   final AuthorizationService authorization;
   final KmlInterchangeCodec interchange;
+
+  /// Optional land survey repository for business metadata writes.
+  ///
+  /// Sprint 11: required for [updateLandUseProfile]. If null, that
+  /// operation returns a persistence failure.
+  final LandSurveyRepository? landSurveyRepository;
+
+  /// Optional production spatial synchronization workflow.
+  ///
+  /// Production composition MUST inject a non-null workflow.
+  /// Null exists only for backward compatibility with legacy
+  /// tests/callers that pre-date spatial integration.
+  final LandParcelSpatialSyncWorkflow? spatialWorkflow;
 
   /// Reuses the same application policy with a transaction-scoped repository.
   ///
@@ -257,6 +323,8 @@ class LandParcelApplicationService implements LandParcelApplication {
     repository: scopedRepository,
     authorization: authorization,
     interchange: interchange,
+    spatialWorkflow: spatialWorkflow,
+    landSurveyRepository: landSurveyRepository,
   );
 
   @override
@@ -280,6 +348,42 @@ class LandParcelApplicationService implements LandParcelApplication {
       return _denied();
     }
     try {
+      final workflow = spatialWorkflow;
+      if (workflow != null) {
+        final spatialFeatureId = workflow.identityGenerator.newId(
+          'spatial-feature',
+        );
+
+        final parcel = LandParcel.create(
+          id: command.id,
+          farmId: command.farmId,
+          parcelCode: command.parcelCode,
+          name: command.name,
+          ownerHouseholdId: command.ownerHouseholdId,
+          ownerDisplayName: command.ownerDisplayName,
+          ownerContact: command.ownerContact,
+          boundary: Wgs84Polygon.fromVertices(command.vertices),
+          boundarySource: command.source,
+          verificationStatus: BoundaryVerificationStatus.measured,
+          actorMembershipId: command.actorMembershipId,
+          occurredAt: command.occurredAt,
+          horizontalAccuracyM: command.horizontalAccuracyM,
+          boundaryConfidence: command.boundaryConfidence,
+          legacyMetadata: command.legacyMetadata,
+          spatialFeatureId: spatialFeatureId,
+        );
+
+        await workflow.create(
+          parcel: parcel,
+          temporalState: SpatialTemporalState.baseline,
+        );
+
+        return LandParcelApplicationResult.success(
+          parcel,
+          'landParcel.create.success',
+        );
+      }
+
       final parcel = LandParcel.create(
         id: command.id,
         farmId: command.farmId,
@@ -287,6 +391,7 @@ class LandParcelApplicationService implements LandParcelApplication {
         name: command.name,
         ownerHouseholdId: command.ownerHouseholdId,
         ownerDisplayName: command.ownerDisplayName,
+        ownerContact: command.ownerContact,
         boundary: Wgs84Polygon.fromVertices(command.vertices),
         boundarySource: command.source,
         verificationStatus: BoundaryVerificationStatus.measured,
@@ -322,7 +427,12 @@ class LandParcelApplicationService implements LandParcelApplication {
       name: command.name,
       ownerHouseholdId: command.ownerHouseholdId,
       ownerDisplayName: command.ownerDisplayName,
+      ownerContact: command.ownerContact,
       active: command.active,
+      countryCode: command.countryCode,
+      provinceCode: command.provinceCode,
+      districtCode: command.districtCode,
+      villageCode: command.villageCode,
       actorMembershipId: command.actorMembershipId,
       occurredAt: command.occurredAt,
     ),
@@ -376,9 +486,37 @@ class LandParcelApplicationService implements LandParcelApplication {
         sourceFileHash: command.sourceFileHash,
         allowVerifiedReplacement: command.confirmVerifiedReplacement,
       );
-      await repository.transaction(
-        (transaction) => transaction.update(updated),
-      );
+
+      final workflow = spatialWorkflow;
+      if (workflow != null) {
+        await workflow.update(
+          parcel: updated,
+          temporalState: SpatialTemporalState.operational,
+        );
+      } else {
+        // Sprint 12 (D1): spatial-enabled LandParcel requires the
+        // spatial workflow for boundary mutation. Silent Farm-only
+        // boundary change would diverge from Spatial Core.
+        //
+        // A genuinely legacy parcel (spatialFeatureId == null) may
+        // still use the compatibility repository path.
+        if (updated.spatialFeatureId != null) {
+          return LandParcelApplicationResult.failure(
+            LandParcelApplicationStatus.persistenceFailed,
+            'landParcel.spatial.workflowRequired',
+            error: StateError(
+              'Spatial-enabled LandParcel requires '
+              'LandParcelSpatialSyncWorkflow for boundary update. '
+              'Parcel: , '
+              'spatialFeatureId: .',
+            ),
+          );
+        }
+        await repository.transaction(
+          (transaction) => transaction.update(updated),
+        );
+      }
+
       return LandParcelApplicationResult.success(
         updated,
         'landParcel.boundary.replaceSuccess',
@@ -520,6 +658,72 @@ class LandParcelApplicationService implements LandParcelApplication {
       return LandParcelApplicationResult.failure(
         LandParcelApplicationStatus.interchangeFailed,
         'landParcel.export.failed',
+        error: error,
+      );
+    }
+  }
+
+  @override
+  Future<LandParcelApplicationResult<LandUseProfile>>
+      updateLandUseProfile(
+    AuthorizationSubject subject,
+    UpdateLandUseProfileCommand command,
+  ) async {
+    final resource = ResourceContext(
+      farmId: command.farmId,
+      fieldId: command.parcelId,
+    );
+    if (!_can(subject, resource, PermissionCodes.fieldEdit)) {
+      return _denied();
+    }
+
+    final surveyRepository = landSurveyRepository;
+    if (surveyRepository == null) {
+      return const LandParcelApplicationResult.failure(
+        LandParcelApplicationStatus.persistenceFailed,
+        'landUseProfile.repositoryNotConfigured',
+      );
+    }
+
+    try {
+      final existing = await surveyRepository.getLandUseProfile(
+        command.parcelId,
+      );
+      final updated = LandUseProfile(
+        parcelId: command.parcelId,
+        landUseType: command.landUseType ??
+            existing?.landUseType ??
+            LandUseType.other,
+        currentCondition: command.currentCondition ??
+            existing?.currentCondition ??
+            LandCondition.unknown,
+        clearingStatus: command.clearingStatus ??
+            existing?.clearingStatus ??
+            ClearingStatus.unknown,
+        readinessStatus: command.readinessStatus ??
+            existing?.readinessStatus ??
+            ReadinessStatus.unknown,
+        notes: command.notes ?? existing?.notes,
+        updatedAt: command.occurredAt,
+        updatedBy: command.actorMembershipId,
+        schemaVersion: existing?.schemaVersion ?? LandUseProfile.currentSchemaVersion,
+      );
+      updated.validate();
+      await surveyRepository.saveLandUseProfile(updated);
+      return LandParcelApplicationResult.success(
+        updated,
+        'landUseProfile.update.success',
+      );
+    } on FormatException catch (error) {
+      return LandParcelApplicationResult.failure(
+        LandParcelApplicationStatus.validationFailed,
+        'landUseProfile.validation.failed',
+        error: error,
+      );
+    } catch (error) {
+      return LandParcelApplicationResult.failure(
+        LandParcelApplicationStatus.persistenceFailed,
+        'landUseProfile.persistence.failed',
         error: error,
       );
     }

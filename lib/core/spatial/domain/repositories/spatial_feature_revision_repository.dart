@@ -1,4 +1,4 @@
-import '../domain/entities/spatial_feature_revision.dart';
+﻿import '../entities/spatial_feature_revision.dart';
 
 abstract interface class SpatialFeatureRevisionRepository {
   Future<SpatialFeatureRevision?> findById(String id);

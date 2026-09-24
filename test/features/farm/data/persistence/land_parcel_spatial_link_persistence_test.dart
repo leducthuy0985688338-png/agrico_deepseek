@@ -1,4 +1,4 @@
-import 'package:agrico_deepseek/core/spatial/data/spatial_feature_repository.dart';
+﻿import 'package:agrico_deepseek/core/spatial/domain/repositories/spatial_feature_repository.dart';
 import 'package:agrico_deepseek/core/spatial/data/sqlite_spatial_feature_repository.dart';
 import 'package:agrico_deepseek/core/spatial/data/sqlite_spatial_schema.dart';
 import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_feature.dart';

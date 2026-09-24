@@ -1,5 +1,5 @@
-import 'package:agrico_deepseek/core/spatial/application/spatial_revision_history_queries.dart';
-import 'package:agrico_deepseek/core/spatial/data/spatial_feature_revision_repository.dart';
+﻿import 'package:agrico_deepseek/core/spatial/application/spatial_revision_history_queries.dart';
+import 'package:agrico_deepseek/core/spatial/domain/repositories/spatial_feature_revision_repository.dart';
 import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_feature_revision.dart';
 import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_source.dart';
 import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_temporal.dart';

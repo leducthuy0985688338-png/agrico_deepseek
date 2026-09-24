@@ -1,6 +1,6 @@
-import '../domain/entities/spatial_feature.dart';
+﻿import '../domain/entities/spatial_feature.dart';
 import 'in_memory_spatial_store.dart';
-import 'spatial_feature_repository.dart';
+import '../domain/repositories/spatial_feature_repository.dart';
 
 class InMemorySpatialFeatureRepository implements SpatialFeatureRepository {
   InMemorySpatialFeatureRepository({InMemorySpatialStore? store})

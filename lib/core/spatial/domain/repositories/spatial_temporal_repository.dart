@@ -1,4 +1,4 @@
-import '../domain/entities/spatial_temporal_record.dart';
+﻿import '../entities/spatial_temporal_record.dart';
 
 abstract interface class SpatialTemporalRepository {
   Future<SpatialTemporalRecord?> findById(String id);

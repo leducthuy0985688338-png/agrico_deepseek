@@ -1,9 +1,9 @@
-import 'package:sqflite/sqflite.dart';
+﻿import 'package:sqflite/sqflite.dart';
 
 import '../application/create_spatial_feature_with_initial_revision.dart';
 import '../application/update_spatial_feature_with_revision.dart';
-import 'spatial_feature_repository.dart';
-import 'spatial_feature_revision_repository.dart';
+import '../domain/repositories/spatial_feature_repository.dart';
+import '../domain/repositories/spatial_feature_revision_repository.dart';
 import 'sqlite_spatial_feature_creation_transaction.dart';
 import 'sqlite_spatial_feature_repository.dart';
 import 'sqlite_spatial_feature_revision_repository.dart';

@@ -22,7 +22,11 @@ void main() {
 
   final createdAt = DateTime.utc(2026, 9, 11, 8);
 
-  LandParcel createParcel({String id = 'parcel-1', String code = 'P-001'}) {
+  LandParcel createParcel({
+    String id = 'parcel-1',
+    String code = 'P-001',
+    String? spatialFeatureId,
+  }) {
     return LandParcel.create(
       id: id,
       farmId: 'farm-1',
@@ -39,6 +43,7 @@ void main() {
       actorMembershipId: 'member-1',
       occurredAt: createdAt,
       horizontalAccuracyM: 1.5,
+      spatialFeatureId: spatialFeatureId,
     );
   }
 
@@ -202,7 +207,8 @@ void main() {
   test(
     'updates LandParcel and appends next Spatial revision atomically',
     () async {
-      final parcel = createParcel();
+      const X = 'SPF-WORKFLOW-003';
+      final parcel = createParcel(spatialFeatureId: X);
 
       await workflow.create(
         parcel: parcel,
@@ -224,12 +230,8 @@ void main() {
         farmId: updated.farmId,
         id: updated.id,
       );
-      final feature = await spatial.featureRepository.findById(
-        'spatial-feature-2',
-      );
-      final revisions = await spatial.revisionRepository.findByFeatureId(
-        'spatial-feature-2',
-      );
+      final feature = await spatial.featureRepository.findById(X);
+      final revisions = await spatial.revisionRepository.findByFeatureId(X);
 
       expect(storedParcel!.name, 'Updated parcel');
       expect(feature!.name, 'Updated parcel');
@@ -240,7 +242,8 @@ void main() {
   test(
     'update derives the next Spatial revision from persisted state',
     () async {
-      final parcel = createParcel();
+      const X = 'SPF-WORKFLOW-004';
+      final parcel = createParcel(spatialFeatureId: X);
 
       await workflow.create(
         parcel: parcel,
@@ -269,9 +272,7 @@ void main() {
         temporalState: SpatialTemporalState.operational,
       );
 
-      final revisions = await spatial.revisionRepository.findByFeatureId(
-        'spatial-feature-2',
-      );
+      final revisions = await spatial.revisionRepository.findByFeatureId(X);
 
       expect(revisions.map((revision) => revision.revision), [1, 2, 3]);
     },
@@ -280,8 +281,26 @@ void main() {
   test(
     'update fails when SpatialFeature does not exist and rolls back parcel',
     () async {
-      final parcel = createParcel();
+      const X = 'missing-spatial-feature';
+      final parcel = createParcel(spatialFeatureId: X);
       await parcels.create(parcel);
+
+      // Deliberately model corrupted persisted state so the workflow reaches
+      // its missing-feature guard instead of being stopped by SQLite first.
+      await database.execute('PRAGMA foreign_keys = OFF');
+      try {
+        await links.create(
+          LandParcelSpatialLink(
+            id: 'link-to-missing-feature',
+            landParcelId: parcel.id,
+            spatialFeatureId: X,
+            createdAt: createdAt,
+            createdBy: 'member-1',
+          ),
+        );
+      } finally {
+        await database.execute('PRAGMA foreign_keys = ON');
+      }
 
       final updated = parcel.updateMetadata(
         name: 'Must roll back',
@@ -317,10 +336,6 @@ void main() {
       identityGenerator: ScriptedSpatialIdentityGenerator([
         const ScriptedSpatialIdentity(prefix: 'spatial-link', id: 'link-1'),
         const ScriptedSpatialIdentity(
-          prefix: 'spatial-feature',
-          id: 'feature-1',
-        ),
-        const ScriptedSpatialIdentity(
           prefix: 'spatial-revision',
           id: 'revision-shared',
         ),
@@ -331,7 +346,7 @@ void main() {
       ]),
     );
 
-    final parcel = createParcel();
+    final parcel = createParcel(spatialFeatureId: 'feature-1');
 
     await workflow.create(
       parcel: parcel,
@@ -559,7 +574,10 @@ void main() {
   test(
     'update rejects a persisted link to a non-LandParcel SpatialFeature',
     () async {
-      final parcel = createParcel();
+      const X = 'spatial-road-1';
+      // Sprint 12 fixture rule: identity must be internally consistent.
+      // The ONLY intended invalid condition is featureType = road.
+      final parcel = createParcel(spatialFeatureId: X);
       await parcels.create(parcel);
 
       final roadFeature = SpatialFeature(
@@ -883,9 +901,11 @@ void main() {
   test(
     'updateScoped joins caller transaction and rolls back atomically',
     () async {
+      const X = 'SPF-SCOPED-ROLLBACK';
       final parcel = createParcel(
         id: 'scoped-update-rollback',
         code: 'SCOPED-UPDATE',
+        spatialFeatureId: X,
       );
 
       await workflow.create(
@@ -911,6 +931,7 @@ void main() {
         occurredAt: DateTime.utc(2026, 9, 12, 8),
       );
 
+      var updateCompleted = false;
       await expectLater(
         () => LandParcelSpatialTransaction(database).run<void>((
           scopedParcels,
@@ -924,11 +945,13 @@ void main() {
             parcel: updated,
             temporalState: SpatialTemporalState.operational,
           );
+          updateCompleted = true;
 
           throw StateError('force outer rollback');
         }),
         throwsA(isA<StateError>()),
       );
+      expect(updateCompleted, isTrue);
 
       final storedAfter = await parcels.getById(
         farmId: parcel.farmId,
@@ -1020,9 +1043,11 @@ void main() {
   test(
     'updateSpatialForParcelScoped appends Spatial revision without mutating LandParcel',
     () async {
+      const X = 'SPF-SCOPED-UPDATE';
       final parcel = createParcel(
         id: 'spatial-only-update',
         code: 'SPATIAL-ONLY-UPDATE',
+        spatialFeatureId: X,
       );
 
       await workflow.create(

@@ -1,4 +1,4 @@
-import '../data/spatial_relationship_repository.dart';
+﻿import '../domain/repositories/spatial_relationship_repository.dart';
 import '../domain/entities/spatial_relationship.dart';
 
 /// Read-only application boundary for Spatial Core relationships.

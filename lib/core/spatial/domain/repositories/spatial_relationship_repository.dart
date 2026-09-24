@@ -1,4 +1,4 @@
-import '../domain/entities/spatial_relationship.dart';
+﻿import '../entities/spatial_relationship.dart';
 
 abstract interface class SpatialRelationshipRepository {
   Future<SpatialRelationship?> findById(String id);

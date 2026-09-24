@@ -1,4 +1,4 @@
-import 'package:agrico_deepseek/core/spatial/data/spatial_persistence_composition.dart';
+﻿import 'package:agrico_deepseek/core/spatial/data/spatial_persistence_composition.dart';
 import 'package:agrico_deepseek/core/spatial/data/sqlite_spatial_schema.dart';
 import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_temporal.dart';
 import 'package:agrico_deepseek/core/spatial/domain/geometry/spatial_polygon.dart';
@@ -29,7 +29,10 @@ void main() {
     ]);
   }
 
-  LandParcel createParcel() {
+  /// Sprint 12 fixture rule: caller-supplied spatialFeatureId must be
+  /// established at LandParcel creation time so workflow.create() persists
+  /// a consistent identity across LandParcel, Link, SpatialFeature, R1.
+  LandParcel createParcel({String? spatialFeatureId}) {
     return LandParcel.create(
       id: 'parcel-contract-1',
       farmId: 'farm-contract-1',
@@ -41,6 +44,7 @@ void main() {
       actorMembershipId: 'member-contract-1',
       occurredAt: createdAt,
       horizontalAccuracyM: 1.5,
+      spatialFeatureId: spatialFeatureId,
     );
   }
 
@@ -75,12 +79,20 @@ void main() {
   test(
     'stable LandParcel, link and SpatialFeature identities survive boundary revisions',
     () async {
-      final version1 = createParcel();
+      const X = 'SPF-CONTRACT-001';
+      final version1 = createParcel(spatialFeatureId: X);
 
       await workflow.create(
         parcel: version1,
         temporalState: SpatialTemporalState.operational,
       );
+
+      // Sprint 12: caller-established identity survives create.
+      final persistedAfterCreate = await parcels.getById(
+        farmId: version1.farmId,
+        id: version1.id,
+      );
+      expect(persistedAfterCreate!.spatialFeatureId, X);
 
       final linkAfterCreate = await links.findByLandParcelId(version1.id);
       expect(linkAfterCreate, isNotNull);
@@ -193,9 +205,10 @@ void main() {
   );
 
   test(
-    'metadata-only update keeps spatial identity and appends one revision',
+    'workflow update keeps spatial identity and appends one revision',
     () async {
-      final parcel = createParcel();
+      const X = 'SPF-CONTRACT-002';
+      final parcel = createParcel(spatialFeatureId: X);
 
       await workflow.create(
         parcel: parcel,
@@ -241,7 +254,8 @@ void main() {
   );
 
   test('LandParcelSpatialLink is the official stable bridge', () async {
-    final parcel = createParcel();
+    const X = 'SPF-CONTRACT-003';
+    final parcel = createParcel(spatialFeatureId: X);
 
     await workflow.create(
       parcel: parcel,
