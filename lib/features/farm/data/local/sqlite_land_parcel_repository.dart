@@ -146,7 +146,14 @@ class SqliteLandParcelRepository implements LandParcelRepository {
         !sqlite._spatialWriteScope) {
       throw StateError('Spatial identity establishment requires the shared spatial transaction.');
     }
-    final boundaryChanged = parcel.boundaryVersion != existing.boundaryVersion ||
+    final newHistory = parcel.boundaryHistory.where(
+      (version) => version.version > existing.boundaryVersion,
+    ).toList();
+    if (newHistory.any((version) => version.version > parcel.boundaryVersion)) {
+      throw StateError('Boundary history cannot advance beyond the current boundary version.');
+    }
+    final boundaryChanged = newHistory.isNotEmpty ||
+        parcel.boundaryVersion != existing.boundaryVersion ||
         parcel.boundary != existing.boundary ||
         parcel.centroid != existing.centroid ||
         parcel.areaM2 != existing.areaM2 ||
@@ -183,9 +190,7 @@ class SqliteLandParcelRepository implements LandParcelRepository {
         );
       }
     }
-    for (final version in parcel.boundaryHistory.where(
-      (version) => version.version > existing.boundaryVersion,
-    )) {
+    for (final version in newHistory) {
       await sqlite._insertBoundaryVersion(version, ConflictAlgorithm.abort);
     }
     await sqlite._updateParcel(parcel);

@@ -7,6 +7,7 @@ import 'package:agrico_deepseek/features/farm/data/adapters/default_land_parcel_
 import 'package:agrico_deepseek/features/farm/data/adapters/land_parcel_spatial_transaction.dart';
 import 'package:agrico_deepseek/features/farm/data/local/sqlite_land_parcel_repository.dart';
 import 'package:agrico_deepseek/features/farm/data/local/sqlite_land_parcel_spatial_link_repository.dart';
+import 'package:agrico_deepseek/features/farm/data/models/land_parcel_mapper.dart';
 import 'package:agrico_deepseek/features/farm/domain/entities/land_parcel.dart';
 import 'package:agrico_deepseek/features/farm/domain/entities/land_parcel_spatial_link.dart';
 import 'package:agrico_deepseek/features/farm/domain/geometry/wgs84_geometry.dart';
@@ -106,6 +107,25 @@ void main() {
     await parcels.update(metadata);
     expect((await parcels.getById(farmId: source.farmId, id: source.id))!.name, 'Metadata only');
     expect(await spatial.revisionRepository.findByFeatureId(id), hasLength(1));
+  });
+
+  test('cannot append hidden history while leaving current boundary unchanged', () async {
+    final source = createParcel(spatialFeatureId: 'SPF-HIDDEN-HISTORY');
+    await workflow.create(parcel: source, temporalState: SpatialTemporalState.baseline);
+    final changed = source.replaceBoundary(
+      boundary: boundary(east: 104.702),
+      source: BoundarySource.gps,
+      verificationStatus: BoundaryVerificationStatus.measured,
+      actorMembershipId: 'member-2',
+      occurredAt: createdAt.add(const Duration(hours: 1)),
+    );
+    final json = LandParcelMapper.toJson(source);
+    json['boundaryHistory'] = changed.boundaryHistory
+        .map(LandParcelMapper.boundaryVersionToJson)
+        .toList();
+    final forged = LandParcelMapper.fromJson(json);
+    await expectLater(parcels.update(forged), throwsStateError);
+    expect((await parcels.getById(farmId: source.farmId, id: source.id))!.boundaryHistory, hasLength(1));
   });
 
   test('shared transaction rolls back an unpaired spatial boundary write', () async {
