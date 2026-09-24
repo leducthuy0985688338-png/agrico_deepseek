@@ -10,6 +10,8 @@ import '../core/spatial/data/spatial_persistence_composition.dart';
 import '../features/farm/application/land_parcel_application_service.dart';
 import '../features/farm/application/land_parcel_spatial_sync_workflow.dart';
 import '../features/farm/data/adapters/default_land_parcel_spatial_projection.dart';
+import '../features/farm/application/land_parcel_boundary_consistency_queries.dart';
+import '../features/farm/data/local/sqlite_land_parcel_spatial_link_repository.dart';
 import '../features/farm/data/adapters/land_parcel_spatial_transaction.dart';
 import '../features/farm/application/land_parcel_use_cases.dart';
 import '../features/farm/data/legacy/land_parcel_legacy_migration.dart';
@@ -87,10 +89,16 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       projection: const DefaultLandParcelSpatialProjection(),
       identityGenerator: DefaultSpatialIdentityGenerator(),
     );
+    final boundaryConsistencyQueries = LandParcelBoundaryConsistencyQueries(
+      links: SqliteLandParcelSpatialLinkRepository(database),
+      features: spatial.featureRepository,
+      revisions: spatial.revisionRepository,
+    );
 
     final application = LandParcelApplicationService(
       repository: parcels,
       spatialWorkflow: spatialSyncWorkflow,
+      boundaryConsistencyQueries: boundaryConsistencyQueries,
     );
     const platform = MobileLandParcelPlatformGateway();
     return _V2Dependencies(
@@ -109,6 +117,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         exportKmlKmz: ExportKmlKmz(application),
         fileOpener: platform,
         googleEarthOpener: platform,
+        boundaryConsistencyQueries: boundaryConsistencyQueries,
       ),
       platform: platform,
     );
