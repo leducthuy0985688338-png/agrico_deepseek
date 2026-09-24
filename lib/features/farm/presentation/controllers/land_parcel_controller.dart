@@ -74,6 +74,7 @@ class LandParcelController extends ChangeNotifier {
     this.fileOpener,
     this.googleEarthOpener,
     this.boundaryConsistencyQueries,
+    this.reconcileLegacySpatialIdentity,
   });
 
   final AuthorizationSubject subject;
@@ -90,6 +91,7 @@ class LandParcelController extends ChangeNotifier {
   final ExternalFileOpener? fileOpener;
   final GoogleEarthOpener? googleEarthOpener;
   final LandParcelBoundaryConsistencyQueries? boundaryConsistencyQueries;
+  final ReconcileLegacySpatialIdentity? reconcileLegacySpatialIdentity;
 
   ParcelPresentationPhase phase = ParcelPresentationPhase.initial;
   String? messageKey;
@@ -398,6 +400,27 @@ class LandParcelController extends ChangeNotifier {
       format: format,
     );
     _result(result);
+    return result;
+  }
+
+  Future<LandParcelApplicationResult<LandParcel>> reconcileLegacyIdentity(
+    String parcelId,
+  ) async {
+    final action = reconcileLegacySpatialIdentity;
+    if (action == null) {
+      return const LandParcelApplicationResult.failure(
+        LandParcelApplicationStatus.persistenceFailed,
+        'landParcel.spatial.workflowRequired',
+      );
+    }
+    _phase(ParcelPresentationPhase.saving);
+    final result = await action(
+      subject,
+      farmId: subject.farmId,
+      parcelId: parcelId,
+    );
+    _result(result);
+    if (result.isSuccess) await loadDetail(parcelId);
     return result;
   }
 
