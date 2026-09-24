@@ -14,6 +14,25 @@ enum LandParcelBoundaryConsistency {
   needsReconciliation,
 }
 
+enum LandParcelBoundaryIssue {
+  missingLink,
+  identityMismatch,
+  missingFeature,
+  wrongFeatureType,
+  missingRevision,
+  invalidGeometry,
+  missingBoundaryVersion,
+  boundaryReferenceMismatch,
+  boundaryGeometryMismatch,
+}
+
+class LandParcelBoundaryDiagnosis {
+  const LandParcelBoundaryDiagnosis(this.consistency, [this.issue]);
+
+  final LandParcelBoundaryConsistency consistency;
+  final LandParcelBoundaryIssue? issue;
+}
+
 class LandParcelBoundaryConsistencyQueries {
   const LandParcelBoundaryConsistencyQueries({
     required this.links,
@@ -25,40 +44,85 @@ class LandParcelBoundaryConsistencyQueries {
   final SpatialFeatureRepository features;
   final SpatialFeatureRevisionRepository revisions;
 
-  Future<LandParcelBoundaryConsistency> check(LandParcel parcel) async {
+  Future<LandParcelBoundaryConsistency> check(LandParcel parcel) async =>
+      (await diagnose(parcel)).consistency;
+
+  Future<LandParcelBoundaryDiagnosis> diagnose(LandParcel parcel) async {
     final link = await links.findByLandParcelId(parcel.id);
     if (link == null && parcel.spatialFeatureId == null) {
-      return LandParcelBoundaryConsistency.unlinked;
+      return const LandParcelBoundaryDiagnosis(
+        LandParcelBoundaryConsistency.unlinked,
+      );
     }
-    if (link == null ||
-        (parcel.spatialFeatureId != null &&
-            link.spatialFeatureId != parcel.spatialFeatureId)) {
-      return LandParcelBoundaryConsistency.needsReconciliation;
+    if (link == null) {
+      return const LandParcelBoundaryDiagnosis(
+        LandParcelBoundaryConsistency.needsReconciliation,
+        LandParcelBoundaryIssue.missingLink,
+      );
+    }
+    if (parcel.spatialFeatureId != null &&
+        link.spatialFeatureId != parcel.spatialFeatureId) {
+      return const LandParcelBoundaryDiagnosis(
+        LandParcelBoundaryConsistency.needsReconciliation,
+        LandParcelBoundaryIssue.identityMismatch,
+      );
     }
     final feature = await features.findById(link.spatialFeatureId);
+    if (feature == null) {
+      return const LandParcelBoundaryDiagnosis(
+        LandParcelBoundaryConsistency.needsReconciliation,
+        LandParcelBoundaryIssue.missingFeature,
+      );
+    }
+    if (feature.featureType != SpatialFeatureTypes.landParcel) {
+      return const LandParcelBoundaryDiagnosis(
+        LandParcelBoundaryConsistency.needsReconciliation,
+        LandParcelBoundaryIssue.wrongFeatureType,
+      );
+    }
     final revision = await revisions.findLatestByFeatureId(link.spatialFeatureId);
-    if (feature == null ||
-        revision == null ||
-        feature.featureType != SpatialFeatureTypes.landParcel ||
-        revision.featureId != feature.id ||
-        feature.geometry is! SpatialPolygon ||
+    if (revision == null || revision.featureId != feature.id) {
+      return const LandParcelBoundaryDiagnosis(
+        LandParcelBoundaryConsistency.needsReconciliation,
+        LandParcelBoundaryIssue.missingRevision,
+      );
+    }
+    if (feature.geometry is! SpatialPolygon ||
         revision.geometry is! SpatialPolygon) {
-      return LandParcelBoundaryConsistency.needsReconciliation;
+      return const LandParcelBoundaryDiagnosis(
+        LandParcelBoundaryConsistency.needsReconciliation,
+        LandParcelBoundaryIssue.invalidGeometry,
+      );
     }
     final adapter = const Wgs84SpatialGeometryAdapter();
     final boundaryVersion = parcel.boundaryHistory.where(
       (version) => version.version == parcel.boundaryVersion,
     );
-    if (boundaryVersion.length != 1 ||
-        revision.geometryReference != boundaryVersion.single.id ||
-        adapter.toWgs84Polygon(feature.geometry! as SpatialPolygon) !=
+    if (boundaryVersion.length != 1) {
+      return const LandParcelBoundaryDiagnosis(
+        LandParcelBoundaryConsistency.needsReconciliation,
+        LandParcelBoundaryIssue.missingBoundaryVersion,
+      );
+    }
+    if (revision.geometryReference != boundaryVersion.single.id) {
+      return const LandParcelBoundaryDiagnosis(
+        LandParcelBoundaryConsistency.needsReconciliation,
+        LandParcelBoundaryIssue.boundaryReferenceMismatch,
+      );
+    }
+    if (adapter.toWgs84Polygon(feature.geometry! as SpatialPolygon) !=
             parcel.boundary ||
         adapter.toWgs84Polygon(revision.geometry! as SpatialPolygon) !=
             parcel.boundary) {
-      return LandParcelBoundaryConsistency.needsReconciliation;
+      return const LandParcelBoundaryDiagnosis(
+        LandParcelBoundaryConsistency.needsReconciliation,
+        LandParcelBoundaryIssue.boundaryGeometryMismatch,
+      );
     }
-    return parcel.spatialFeatureId == null
-        ? LandParcelBoundaryConsistency.repairableLegacyIdentity
-        : LandParcelBoundaryConsistency.consistent;
+    return LandParcelBoundaryDiagnosis(
+      parcel.spatialFeatureId == null
+          ? LandParcelBoundaryConsistency.repairableLegacyIdentity
+          : LandParcelBoundaryConsistency.consistent,
+    );
   }
 }

@@ -33,6 +33,7 @@ class LandParcelViewData {
     this.surveys = const [],
     this.attachments = const [],
     this.boundaryConsistency = LandParcelBoundaryConsistency.unlinked,
+    this.boundaryIssue,
   });
   final LandParcel parcel;
   final Household? household;
@@ -41,6 +42,7 @@ class LandParcelViewData {
   final List<LandParcelSurvey> surveys;
   final List<ParcelAttachment> attachments;
   final LandParcelBoundaryConsistency boundaryConsistency;
+  final LandParcelBoundaryIssue? boundaryIssue;
   String get village => household?.administrativeLocation.villageName ?? '';
   String get owner =>
       household?.headOfHouseholdName ?? parcel.ownerDisplayName ?? '';
@@ -176,11 +178,12 @@ class LandParcelController extends ChangeNotifier {
         );
         return;
       }
+      final diagnosis = await boundaryConsistencyQueries?.diagnose(parcel);
       detail = LandParcelViewData(
         parcel: parcel,
-        boundaryConsistency:
-            await boundaryConsistencyQueries?.check(parcel) ??
+        boundaryConsistency: diagnosis?.consistency ??
             LandParcelBoundaryConsistency.unlinked,
+        boundaryIssue: diagnosis?.issue,
         household: parcel.ownerHouseholdId == null
             ? null
             : await surveys.getHousehold(parcel.ownerHouseholdId!),
