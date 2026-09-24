@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/permissions/authorization.dart';
+import '../../application/land_parcel_boundary_consistency_queries.dart';
 import '../../domain/entities/land_parcel.dart';
 import '../controllers/land_parcel_controller.dart';
 import 'land_parcel_detail_screen.dart';
@@ -140,6 +141,23 @@ class _LandParcelListScreenState extends State<LandParcelListScreen> {
             ),
           ],
         ),
+        if (items.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(l10n.text('boundary.audit.visibleSummary')),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final status in LandParcelBoundaryConsistency.values)
+                Chip(
+                  key: Key('boundary-audit-${status.name}'),
+                  label: Text(
+                    '${l10n.text('boundary.audit.${status.name}')}: '
+                    '${items.where((item) => item.boundaryConsistency == status).length}',
+                  ),
+                ),
+            ],
+          ),
+        ],
         if (items.isEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 96),
@@ -158,6 +176,9 @@ class _LandParcelListScreenState extends State<LandParcelListScreen> {
                     '${item.parcel.areaHa.toStringAsFixed(2)} ha',
                     l10n.text(
                       'verification.${item.parcel.verificationStatus.name}',
+                    ),
+                    l10n.text(
+                      'boundary.audit.${item.boundaryConsistency.name}',
                     ),
                     if (item.cropSummary.isNotEmpty) item.cropSummary,
                   ].join(' · '),

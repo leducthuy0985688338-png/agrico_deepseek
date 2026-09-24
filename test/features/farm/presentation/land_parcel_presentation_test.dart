@@ -158,9 +158,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('P-001'), findsOneWidget);
     expect(find.textContaining('ບ້ານ ໃໝ່'), findsOneWidget);
+    expect(find.text('Not linked to spatial data: 1'), findsOneWidget);
+    expect(find.text('Manual reconciliation needed: 0'), findsOneWidget);
     await tester.enterText(find.byKey(const Key('parcel-search')), 'missing');
     await tester.pump();
     expect(find.text('No land parcels yet.'), findsOneWidget);
+    expect(find.byKey(const Key('boundary-audit-unlinked')), findsNothing);
   });
 
   testWidgets('create action is hidden without permission', (tester) async {
