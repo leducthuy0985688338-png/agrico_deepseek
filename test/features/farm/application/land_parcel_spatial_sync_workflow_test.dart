@@ -87,7 +87,21 @@ void main() {
     await parcels.create(legacy);
     expect(await queries.check(legacy), LandParcelBoundaryConsistency.unlinked);
 
-    final parcel = createParcel();
+    final oldLinked = createParcel(id: 'old-linked', code: 'P-OLD');
+    await workflow.create(
+      parcel: oldLinked,
+      temporalState: SpatialTemporalState.operational,
+    );
+    final storedOld = (await parcels.getById(
+      farmId: oldLinked.farmId,
+      id: oldLinked.id,
+    ))!;
+    expect(
+      await queries.check(storedOld),
+      LandParcelBoundaryConsistency.needsReconciliation,
+    );
+
+    final parcel = createParcel(spatialFeatureId: 'spatial-aligned');
     await workflow.create(parcel: parcel, temporalState: SpatialTemporalState.operational);
     final stored = (await parcels.getById(farmId: parcel.farmId, id: parcel.id))!;
     expect(await queries.check(stored), LandParcelBoundaryConsistency.consistent);
