@@ -21,6 +21,14 @@ void main() {
       id: id,
       featureType: SpatialFeatureTypes.landParcel,
       geometryType: geometryType,
+      geometry: geometryType == SpatialGeometryType.polygon
+          ? SpatialPolygon.fromOuterRing(const [
+              SpatialCoordinate(latitude: 16.5, longitude: 104.7),
+              SpatialCoordinate(latitude: 16.5, longitude: 104.8),
+              SpatialCoordinate(latitude: 16.6, longitude: 104.8),
+              SpatialCoordinate(latitude: 16.6, longitude: 104.7),
+            ])
+          : null,
       lifecycleStatus: SpatialFeatureLifecycleStatus.existing,
       createdAt: createdAt,
       createdBy: 'user-1',
