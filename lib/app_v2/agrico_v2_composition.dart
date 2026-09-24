@@ -245,6 +245,11 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
           parcel == null) {
         return;
       }
+      final preview = await showDialog<LandParcelImportPreview>(
+        context: context,
+        builder: (_) => KmlBoundaryPicker(previews: result.value!.previews),
+      );
+      if (!context.mounted || preview == null) return;
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => Scaffold(
@@ -252,7 +257,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
             body: KmlImportPreviewView(
               controller: deps.controller,
               parcel: parcel,
-              preview: result.value!.previews.first,
+              preview: preview,
             ),
           ),
         ),
@@ -446,7 +451,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
 
       final preview = await showDialog<LandParcelImportPreview>(
         context: context,
-        builder: (dialogContext) => KmlCreateBoundaryPicker(
+        builder: (dialogContext) => KmlBoundaryPicker(
           previews: result.value!.previews,
         ),
       );

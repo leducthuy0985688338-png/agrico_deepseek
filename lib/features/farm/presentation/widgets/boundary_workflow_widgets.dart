@@ -6,18 +6,18 @@ import '../../domain/entities/land_parcel.dart';
 import '../../domain/geometry/wgs84_geometry.dart';
 import '../controllers/land_parcel_controller.dart';
 
-/// Selects a single imported polygon for a new parcel without persisting it.
-/// A draft is returned only after the user has reviewed and confirmed it.
-class KmlCreateBoundaryPicker extends StatefulWidget {
-  const KmlCreateBoundaryPicker({super.key, required this.previews});
+/// Selects one imported polygon without persisting it.
+/// The caller receives a preview only after explicit selection and confirmation.
+class KmlBoundaryPicker extends StatefulWidget {
+  const KmlBoundaryPicker({super.key, required this.previews});
 
   final List<LandParcelImportPreview> previews;
 
   @override
-  State<KmlCreateBoundaryPicker> createState() => _KmlCreateBoundaryPickerState();
+  State<KmlBoundaryPicker> createState() => _KmlBoundaryPickerState();
 }
 
-class _KmlCreateBoundaryPickerState extends State<KmlCreateBoundaryPicker> {
+class _KmlBoundaryPickerState extends State<KmlBoundaryPicker> {
   int? selected;
 
   @override
