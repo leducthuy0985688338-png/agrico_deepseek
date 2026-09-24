@@ -13,6 +13,7 @@ import '../features/farm/data/adapters/default_land_parcel_spatial_projection.da
 import '../features/farm/application/land_parcel_boundary_consistency_queries.dart';
 import '../features/farm/data/local/sqlite_land_parcel_spatial_link_repository.dart';
 import '../features/farm/data/adapters/land_parcel_spatial_transaction.dart';
+import '../features/farm/data/interchange/kml_interchange.dart';
 import '../features/farm/application/land_parcel_use_cases.dart';
 import '../features/farm/data/legacy/land_parcel_legacy_migration.dart';
 import '../features/farm/data/legacy/legacy_field_adapter.dart';
@@ -443,7 +444,13 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         return null;
       }
 
-      final preview = result.value!.previews.first;
+      final preview = await showDialog<LandParcelImportPreview>(
+        context: context,
+        builder: (dialogContext) => KmlCreateBoundaryPicker(
+          previews: result.value!.previews,
+        ),
+      );
+      if (!context.mounted || preview == null) return null;
       return LandParcelBoundaryDraft(
         boundary: preview.boundary,
         source: BoundarySource.googleEarth,
