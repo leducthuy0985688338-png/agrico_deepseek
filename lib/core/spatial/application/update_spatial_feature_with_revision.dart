@@ -1,5 +1,6 @@
 import '../domain/entities/spatial_feature.dart';
 import '../domain/entities/spatial_feature_revision.dart';
+import '../domain/geometry/spatial_geometry_pair.dart';
 import 'spatial_feature_revision_update_transaction.dart';
 
 class UpdateSpatialFeatureWithRevision {
@@ -12,7 +13,7 @@ class UpdateSpatialFeatureWithRevision {
     required SpatialFeatureRevision revision,
   }) async {
     feature.validate();
-    revision.validateAgainstFeature(feature);
+    validateSpatialGeometryPair(feature, revision);
 
     if (revision.revision < 2) {
       throw StateError(

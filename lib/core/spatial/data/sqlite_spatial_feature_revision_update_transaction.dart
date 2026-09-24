@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import '../application/spatial_feature_revision_update_transaction.dart';
 import '../domain/entities/spatial_feature.dart';
 import '../domain/entities/spatial_feature_revision.dart';
+import '../domain/geometry/spatial_geometry_pair.dart';
 import 'sqlite_spatial_feature_repository.dart';
 import 'sqlite_spatial_feature_revision_repository.dart';
 
@@ -24,7 +25,7 @@ class SqliteSpatialFeatureRevisionUpdateTransaction
     required SpatialFeatureRevision revision,
   }) async {
     feature.validate();
-    revision.validateAgainstFeature(feature);
+    validateSpatialGeometryPair(feature, revision);
 
     if (revision.revision < 2) {
       throw StateError(

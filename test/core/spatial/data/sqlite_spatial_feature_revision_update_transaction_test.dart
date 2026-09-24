@@ -25,7 +25,7 @@ void main() {
 
   SpatialFeature feature(
     String id, {
-    SpatialPoint geometry = initialPoint,
+    SpatialPoint? geometry = initialPoint,
     String? featureType,
     DateTime? createdAt,
     String? createdBy,
@@ -49,6 +49,7 @@ void main() {
 
   SpatialFeature updatedFeature(
     SpatialFeature source, {
+    SpatialPoint? geometry = updatedPoint,
     String? featureType,
     DateTime? createdAt,
     String? createdBy,
@@ -56,7 +57,7 @@ void main() {
     id: source.id,
     featureType: featureType ?? source.featureType,
     geometryType: source.geometryType,
-    geometry: updatedPoint,
+    geometry: geometry,
     lifecycleStatus: SpatialFeatureLifecycleStatus.inactive,
     projectId: source.projectId,
     businessUnitId: source.businessUnitId,
@@ -73,13 +74,14 @@ void main() {
     String id,
     String featureId,
     int number, {
-    SpatialPoint geometry = initialPoint,
+    SpatialPoint? geometry,
+    bool nullGeometry = false,
   }) => SpatialFeatureRevision(
     id: id,
     featureId: featureId,
     revision: number,
     geometryType: SpatialGeometryType.point,
-    geometry: geometry,
+    geometry: nullGeometry ? null : geometry ?? (number == 1 ? initialPoint : updatedPoint),
     geometryReference: 'ref/$id',
     temporalState: SpatialTemporalState.asBuilt,
     effectivePeriod: SpatialEffectivePeriod(
@@ -124,6 +126,39 @@ void main() {
   }
 
   group('SqliteSpatialFeatureRevisionUpdateTransaction', () {
+    test('rejects unequal and one-null pairs without mutation or new revision', () async {
+      final original = await seedFeature('pair');
+      const different = SpatialPoint(coordinate: SpatialCoordinate(latitude: 17, longitude: 105));
+      final pairs = [
+        (updatedFeature(original), revision('wrong-r2', original.id, 2, geometry: different)),
+        (updatedFeature(original, geometry: null), revision('feature-null-r2', original.id, 2)),
+        (updatedFeature(original), revision('revision-null-r2', original.id, 2, nullGeometry: true)),
+      ];
+      for (final (changed, next) in pairs) {
+        await expectLater(
+          SqliteSpatialFeatureRevisionUpdateTransaction(db).update(feature: changed, revision: next),
+          throwsFormatException,
+        );
+        expect((await features.findById(original.id))!.name, original.name);
+        expect(
+          ((await features.findById(original.id))!.geometry as SpatialPoint).coordinate,
+          initialPoint.coordinate,
+        );
+        expect((await revisions.findByFeatureId(original.id)).length, 1);
+      }
+    });
+
+    test('accepts null/null legacy update', () async {
+      final original = feature('legacy', geometry: null);
+      await features.create(original);
+      await revisions.create(revision('legacy-r1', original.id, 1, nullGeometry: true));
+      await SqliteSpatialFeatureRevisionUpdateTransaction(db).update(
+        feature: updatedFeature(original, geometry: null),
+        revision: revision('legacy-r2', original.id, 2, nullGeometry: true),
+      );
+      expect((await features.findById(original.id))!.geometry, isNull);
+      expect((await revisions.findByFeatureId(original.id)).length, 2);
+    });
     test(
       'updates snapshot and appends exact next revision atomically',
       () async {

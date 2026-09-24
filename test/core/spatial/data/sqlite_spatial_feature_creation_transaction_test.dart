@@ -19,11 +19,11 @@ void main() {
     coordinate: SpatialCoordinate(latitude: 16.5, longitude: 104.7),
   );
 
-  SpatialFeature feature(String id) => SpatialFeature(
+  SpatialFeature feature(String id, {SpatialPoint? geometry = point}) => SpatialFeature(
     id: id,
     featureType: SpatialFeatureTypes.landParcel,
     geometryType: SpatialGeometryType.point,
-    geometry: point,
+    geometry: geometry,
     lifecycleStatus: SpatialFeatureLifecycleStatus.active,
     projectId: 'project-1',
     businessUnitId: 'unit-1',
@@ -35,13 +35,14 @@ void main() {
     updatedBy: 'user-2',
   );
 
-  SpatialFeatureRevision revision(String id, String featureId, int number) =>
+  SpatialFeatureRevision revision(String id, String featureId, int number,
+          {SpatialPoint? geometry = point}) =>
       SpatialFeatureRevision(
         id: id,
         featureId: featureId,
         revision: number,
         geometryType: SpatialGeometryType.point,
-        geometry: point,
+        geometry: geometry,
         geometryReference: 'ref/$id',
         temporalState: SpatialTemporalState.asBuilt,
         effectivePeriod: SpatialEffectivePeriod(
@@ -79,6 +80,32 @@ void main() {
   tearDown(() => db.close());
 
   group('SqliteSpatialFeatureCreationTransaction', () {
+    test('rejects unequal and one-null pairs without persistence', () async {
+      const different = SpatialPoint(coordinate: SpatialCoordinate(latitude: 17, longitude: 105));
+      final pairs = [
+        (feature('different'), revision('different-r1', 'different', 1, geometry: different)),
+        (feature('feature-null', geometry: null), revision('feature-null-r1', 'feature-null', 1)),
+        (feature('revision-null'), revision('revision-null-r1', 'revision-null', 1, geometry: null)),
+      ];
+      for (final (source, initial) in pairs) {
+        await expectLater(
+          SqliteSpatialFeatureCreationTransaction(db).create(feature: source, initialRevision: initial),
+          throwsFormatException,
+        );
+        expect(await features.findById(source.id), isNull);
+        expect(await revisions.findByFeatureId(source.id), isEmpty);
+      }
+    });
+
+    test('accepts null/null legacy creation and persistence round-trip', () async {
+      final source = feature('legacy', geometry: null);
+      await SqliteSpatialFeatureCreationTransaction(db).create(
+        feature: source,
+        initialRevision: revision('legacy-r1', source.id, 1, geometry: null),
+      );
+      expect((await features.findById(source.id))!.geometry, isNull);
+      expect((await revisions.findByFeatureId(source.id)).single.geometry, isNull);
+    });
     test('creates feature and revision 1 atomically', () async {
       final sourceFeature = feature('feature-1');
       final sourceRevision = revision('revision-1', sourceFeature.id, 1);

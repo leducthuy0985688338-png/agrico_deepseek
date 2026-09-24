@@ -21,6 +21,8 @@ void main() {
     String id = 'parcel-1',
     String featureType = SpatialFeatureTypes.landParcel,
     SpatialGeometryType geometryType = SpatialGeometryType.polygon,
+    SpatialGeometry? geometry,
+    bool noGeometry = false,
     DateTime? creationTime,
     String createdBy = 'user-1',
     SpatialFeatureLifecycleStatus lifecycleStatus =
@@ -35,6 +37,12 @@ void main() {
       id: id,
       featureType: featureType,
       geometryType: geometryType,
+      geometry: noGeometry ? null : geometry ?? SpatialPolygon.fromOuterRing(const [
+        SpatialCoordinate(latitude: 16.5, longitude: 104.7),
+        SpatialCoordinate(latitude: 16.5, longitude: 104.8),
+        SpatialCoordinate(latitude: 16.6, longitude: 104.8),
+        SpatialCoordinate(latitude: 16.6, longitude: 104.7),
+      ]),
       lifecycleStatus: lifecycleStatus,
       name: name,
       createdAt: featureCreatedAt,
@@ -50,6 +58,7 @@ void main() {
     int revision = 1,
     SpatialGeometryType geometryType = SpatialGeometryType.polygon,
     SpatialGeometry? geometry,
+    bool noGeometry = false,
   }) {
     final revisionId = id.isEmpty ? '$featureId-revision-$revision' : id;
 
@@ -59,7 +68,7 @@ void main() {
       revision: revision,
       geometryType: geometryType,
       geometry:
-          geometry ??
+          noGeometry ? null : geometry ??
           SpatialPolygon.fromOuterRing(const [
             SpatialCoordinate(latitude: 16.5, longitude: 104.7),
             SpatialCoordinate(latitude: 16.5, longitude: 104.8),
@@ -79,6 +88,21 @@ void main() {
   }
 
   group('InMemorySpatialFeatureRevisionUpdateTransaction', () {
+    test('rejects mismatched update without changing store', () async {
+      final store = InMemorySpatialStore();
+      final features = InMemorySpatialFeatureRepository(store: store);
+      final revisions = InMemorySpatialFeatureRevisionRepository(store: store);
+      final original = buildFeature();
+      await features.create(original);
+      await revisions.create(buildRevision());
+      final transaction = InMemorySpatialFeatureRevisionUpdateTransaction(store: store);
+      await expectLater(
+        transaction.update(feature: buildFeature(updateTime: updatedAt), revision: buildRevision(revision: 2, noGeometry: true)),
+        throwsFormatException,
+      );
+      expect(await features.findById(original.id), same(original));
+      expect(await revisions.findByFeatureId(original.id), hasLength(1));
+    });
     test('updates feature and appends revision 2 atomically', () async {
       final store = InMemorySpatialStore();
       final featureRepository = InMemorySpatialFeatureRepository(store: store);
@@ -179,6 +203,7 @@ void main() {
         transaction.update(
           feature: buildFeature(
             geometryType: SpatialGeometryType.lineString,
+            geometry: line,
             updateTime: updatedAt,
           ),
           revision: buildRevision(

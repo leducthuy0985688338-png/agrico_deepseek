@@ -14,11 +14,17 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   final createdAt = DateTime.utc(2026, 1, 1);
 
-  SpatialFeature buildFeature({String id = 'parcel-1'}) {
+  SpatialFeature buildFeature({String id = 'parcel-1', bool noGeometry = false}) {
     return SpatialFeature(
       id: id,
       featureType: SpatialFeatureTypes.landParcel,
       geometryType: SpatialGeometryType.polygon,
+      geometry: noGeometry ? null : SpatialPolygon.fromOuterRing(const [
+        SpatialCoordinate(latitude: 16.5, longitude: 104.7),
+        SpatialCoordinate(latitude: 16.5, longitude: 104.8),
+        SpatialCoordinate(latitude: 16.6, longitude: 104.8),
+        SpatialCoordinate(latitude: 16.6, longitude: 104.7),
+      ]),
       lifecycleStatus: SpatialFeatureLifecycleStatus.existing,
       createdAt: createdAt,
       createdBy: 'user-1',
@@ -31,13 +37,14 @@ void main() {
     String id = 'parcel-1-revision-1',
     String featureId = 'parcel-1',
     int revision = 1,
+    bool noGeometry = false,
   }) {
     return SpatialFeatureRevision(
       id: id,
       featureId: featureId,
       revision: revision,
       geometryType: SpatialGeometryType.polygon,
-      geometry: SpatialPolygon.fromOuterRing(const [
+      geometry: noGeometry ? null : SpatialPolygon.fromOuterRing(const [
         SpatialCoordinate(latitude: 16.5, longitude: 104.7),
         SpatialCoordinate(latitude: 16.5, longitude: 104.8),
         SpatialCoordinate(latitude: 16.6, longitude: 104.8),
@@ -52,6 +59,25 @@ void main() {
   }
 
   group('InMemorySpatialFeatureCreationTransaction', () {
+    test('rejects one-null pair before changing store', () async {
+      final store = InMemorySpatialStore();
+      final transaction = InMemorySpatialFeatureCreationTransaction(store: store);
+      await expectLater(
+        transaction.create(feature: buildFeature(), initialRevision: buildRevision(noGeometry: true)),
+        throwsFormatException,
+      );
+      expect(await InMemorySpatialFeatureRepository(store: store).findById('parcel-1'), isNull);
+      expect(await InMemorySpatialFeatureRevisionRepository(store: store).findByFeatureId('parcel-1'), isEmpty);
+    });
+
+    test('accepts null/null pair', () async {
+      final store = InMemorySpatialStore();
+      await InMemorySpatialFeatureCreationTransaction(store: store).create(
+        feature: buildFeature(noGeometry: true),
+        initialRevision: buildRevision(noGeometry: true),
+      );
+      expect(await InMemorySpatialFeatureRepository(store: store).findById('parcel-1'), isNotNull);
+    });
     test('creates feature and initial revision together', () async {
       final store = InMemorySpatialStore();
       final featureRepository = InMemorySpatialFeatureRepository(store: store);

@@ -1,6 +1,7 @@
 import '../application/spatial_feature_creation_transaction.dart';
 import '../domain/entities/spatial_feature.dart';
 import '../domain/entities/spatial_feature_revision.dart';
+import '../domain/geometry/spatial_geometry_pair.dart';
 import 'in_memory_spatial_feature_repository.dart';
 import 'in_memory_spatial_feature_revision_repository.dart';
 import 'in_memory_spatial_store.dart';
@@ -17,7 +18,7 @@ class InMemorySpatialFeatureCreationTransaction
     required SpatialFeatureRevision initialRevision,
   }) async {
     feature.validate();
-    initialRevision.validateAgainstFeature(feature);
+    validateSpatialGeometryPair(feature, initialRevision);
 
     if (initialRevision.revision != 1) {
       throw StateError(
