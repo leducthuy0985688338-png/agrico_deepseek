@@ -6,6 +6,76 @@ import '../../domain/entities/land_parcel.dart';
 import '../../domain/geometry/wgs84_geometry.dart';
 import '../controllers/land_parcel_controller.dart';
 
+/// Selects a single imported polygon for a new parcel without persisting it.
+/// A draft is returned only after the user has reviewed and confirmed it.
+class KmlCreateBoundaryPicker extends StatefulWidget {
+  const KmlCreateBoundaryPicker({super.key, required this.previews});
+
+  final List<LandParcelImportPreview> previews;
+
+  @override
+  State<KmlCreateBoundaryPicker> createState() => _KmlCreateBoundaryPickerState();
+}
+
+class _KmlCreateBoundaryPickerState extends State<KmlCreateBoundaryPicker> {
+  int? selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final preview = selected == null ? null : widget.previews[selected!];
+    return AlertDialog(
+      title: Text(l10n.text('import.preview.title')),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var index = 0; index < widget.previews.length; index++)
+                ListTile(
+                  key: Key('create-import-preview-$index'),
+                  selected: selected == index,
+                  title: Text(widget.previews[index].name ?? '#${index + 1}'),
+                  subtitle: Text(
+                    '${widget.previews[index].areaM2.toStringAsFixed(1)} m²',
+                  ),
+                  onTap: () => setState(() => selected = index),
+                ),
+              if (preview != null) ...[
+                const Divider(),
+                Text(
+                  '${preview.areaM2.toStringAsFixed(1)} m² · '
+                  '${preview.areaHa.toStringAsFixed(3)} ha',
+                ),
+                Text('${preview.perimeterM.toStringAsFixed(1)} m'),
+                Text(
+                  '${preview.centroid.latitude.toStringAsFixed(6)}, '
+                  '${preview.centroid.longitude.toStringAsFixed(6)}',
+                ),
+                for (final warning in preview.warnings)
+                  Text(l10n.text('import.warning.${warning.name}')),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(l10n.text('common.cancel')),
+        ),
+        FilledButton(
+          key: const Key('confirm-create-import-preview'),
+          onPressed: preview == null ? null : () => Navigator.pop(context, preview),
+          child: Text(l10n.text('common.confirm')),
+        ),
+      ],
+    );
+  }
+}
+
 class GpsBoundaryPreview extends StatefulWidget {
   const GpsBoundaryPreview({
     super.key,
