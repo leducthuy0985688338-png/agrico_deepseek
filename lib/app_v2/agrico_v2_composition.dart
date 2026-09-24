@@ -350,6 +350,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
             name: value.name,
             vertices: draft.boundary.vertices.toList(),
             source: draft.source,
+            crops: value.crops,
             ownerDisplayName: value.ownerName.isEmpty ? null : value.ownerName,
             legacyMetadata: {
               'active': value.active,
