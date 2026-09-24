@@ -5,8 +5,10 @@ import '../../../../core/spatial/domain/entities/spatial_feature.dart';
 import '../../../../core/spatial/domain/geometry/spatial_polygon.dart';
 import '../../domain/repositories/land_parcel_repository.dart';
 import '../../domain/repositories/land_parcel_spatial_link_repository.dart';
+import '../../domain/repositories/land_survey_repository.dart';
 import '../local/sqlite_land_parcel_repository.dart';
 import '../local/sqlite_land_parcel_spatial_link_repository.dart';
+import '../local/sqlite_land_survey_repository.dart';
 import 'wgs84_spatial_geometry_adapter.dart';
 
 /// Coordinates Land Parcel, its stable Spatial link, and Spatial Core
@@ -25,8 +27,9 @@ class LandParcelSpatialTransaction {
       LandParcelSpatialLinkRepository links,
       SpatialPersistenceComposition spatial,
     )
-    action,
-  ) {
+    action, {
+    Future<void> Function(LandSurveyRepository surveys)? afterCreate,
+  }) {
     return database.transaction((transaction) async {
       final changed = <(String, String)>{};
       final parcels = SqliteLandParcelRepository.spatialTransactionScope(
@@ -37,6 +40,11 @@ class LandParcelSpatialTransaction {
       final spatial = SpatialPersistenceComposition(transaction);
 
       final result = await action(parcels, links, spatial);
+      if (afterCreate != null) {
+        await afterCreate(
+          SqliteLandSurveyRepository.transactionScope(transaction),
+        );
+      }
 
       // Verify the resulting state before SQLite commits the shared write.
       for (final (farmId, parcelId) in changed) {

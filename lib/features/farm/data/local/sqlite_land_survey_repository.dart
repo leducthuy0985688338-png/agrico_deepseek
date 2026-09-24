@@ -9,6 +9,8 @@ import 'sqlite_land_parcel_repository.dart';
 
 class SqliteLandSurveyRepository implements LandSurveyRepository {
   SqliteLandSurveyRepository(Database database) : _executor = database;
+  SqliteLandSurveyRepository.transactionScope(Transaction transaction)
+    : _executor = transaction;
   SqliteLandSurveyRepository._(this._executor);
 
   static const schemaVersion = 1;

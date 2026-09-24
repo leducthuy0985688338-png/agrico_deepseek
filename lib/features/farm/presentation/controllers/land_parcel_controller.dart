@@ -237,6 +237,7 @@ class LandParcelController extends ChangeNotifier {
     double? horizontalAccuracyM,
     double? boundaryConfidence,
     Map<String, Object?> legacyMetadata = const {},
+    List<CropRecord> crops = const [],
   }) async {
     if (vertices.length < 3) {
       return const LandParcelApplicationResult.failure(
@@ -263,6 +264,7 @@ class LandParcelController extends ChangeNotifier {
         horizontalAccuracyM: horizontalAccuracyM,
         boundaryConfidence: boundaryConfidence,
         legacyMetadata: legacyMetadata,
+        crops: crops,
       ),
     );
 

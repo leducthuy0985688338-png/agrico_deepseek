@@ -13,7 +13,9 @@ import 'package:agrico_deepseek/features/farm/data/adapters/default_land_parcel_
 import 'package:agrico_deepseek/features/farm/data/adapters/land_parcel_spatial_transaction.dart';
 import 'package:agrico_deepseek/features/farm/data/local/sqlite_land_parcel_repository.dart';
 import 'package:agrico_deepseek/features/farm/data/local/sqlite_land_parcel_spatial_link_repository.dart';
+import 'package:agrico_deepseek/features/farm/data/local/sqlite_land_survey_repository.dart';
 import 'package:agrico_deepseek/features/farm/domain/entities/land_parcel.dart';
+import 'package:agrico_deepseek/features/farm/domain/entities/land_survey.dart';
 import 'package:agrico_deepseek/features/farm/domain/geometry/wgs84_geometry.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -61,6 +63,7 @@ void main() {
     database = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
     await database.execute('PRAGMA foreign_keys = ON');
     await SqliteLandParcelRepository.createSchema(database);
+    await SqliteLandSurveyRepository.createSchema(database);
     await SqliteSpatialSchema.createSchema(database);
     await SqliteLandParcelSpatialLinkRepository.createSchema(database);
 
@@ -76,6 +79,73 @@ void main() {
   });
 
   tearDown(() => database.close());
+
+  test('new parcel and crop commit together or both roll back', () async {
+    final surveys = SqliteLandSurveyRepository(database);
+    final subject = AuthorizationSubject(
+      userId: 'user-1',
+      membershipId: 'member-1',
+      farmId: 'farm-1',
+      permissionCodes: PermissionCodes.values,
+      dataScopes: const {DataScope.allFarm},
+    );
+    final application = LandParcelApplicationService(
+      repository: parcels,
+      spatialWorkflow: workflow,
+    );
+    final draft = CropRecord(
+      id: 'draft-crop',
+      parcelId: 'draft',
+      cropType: 'ມັນຕົ້ນ',
+      quantity: 12,
+      unit: 'plants',
+      condition: CropCondition.unknown,
+      active: true,
+      createdAt: createdAt,
+      createdBy: 'draft',
+      updatedAt: createdAt,
+      updatedBy: 'draft',
+    );
+    CreateLandParcelCommand command(String id) => CreateLandParcelCommand(
+      id: id,
+      farmId: 'farm-1',
+      parcelCode: id,
+      name: id,
+      vertices: createParcel().boundary.vertices.toList(),
+      source: BoundarySource.manual,
+      actorMembershipId: 'member-1',
+      occurredAt: createdAt,
+      crops: [draft],
+    );
+
+    final saved = await application.createLandParcel(
+      subject,
+      command('with-crop'),
+    );
+    expect(saved.isSuccess, isTrue);
+    final crops = await surveys.listCrops('with-crop');
+    expect(crops, hasLength(1));
+    expect(crops.single.cropType, 'ມັນຕົ້ນ');
+    expect(crops.single.parcelId, 'with-crop');
+    expect(crops.single.createdBy, 'member-1');
+    expect(
+      (await parcels.getById(farmId: 'farm-1', id: 'with-crop'))!
+          .spatialFeatureId,
+      isNotNull,
+    );
+
+    await database.execute('''CREATE TRIGGER reject_crop BEFORE INSERT ON
+      ${SqliteLandSurveyRepository.cropsTable} BEGIN
+      SELECT RAISE(ABORT, 'crop write failed'); END''');
+    final failed = await application.createLandParcel(
+      subject,
+      command('rollback'),
+    );
+    expect(failed.status, LandParcelApplicationStatus.persistenceFailed);
+    expect(await parcels.getById(farmId: 'farm-1', id: 'rollback'), isNull);
+    expect(await links.findByLandParcelId('rollback'), isNull);
+    expect(await surveys.listCrops('rollback'), isEmpty);
+  });
 
   Future<LandParcel> seedLegacyLinked() async {
     final parcel = createParcel(id: 'old-linked', code: 'P-OLD');
