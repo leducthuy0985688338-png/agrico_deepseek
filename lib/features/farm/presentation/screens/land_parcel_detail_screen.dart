@@ -97,7 +97,16 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
               key: const Key('boundary-reconciliation-notice'),
               child: Padding(
                 padding: const EdgeInsets.all(12),
-                child: Text(l10n.text('boundary.reconciliation.required')),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(l10n.text('boundary.reconciliation.required')),
+                    if (data.boundaryIssue != null)
+                      Text(l10n.text(
+                        'boundary.issue.${data.boundaryIssue!.name}',
+                      )),
+                  ],
+                ),
               ),
             ),
           if (data.boundaryConsistency ==

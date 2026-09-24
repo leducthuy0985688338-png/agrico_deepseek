@@ -139,6 +139,15 @@ void main() {
       where: 'feature_id = ?',
       whereArgs: ['old-feature'],
     );
+    final diagnosis = await LandParcelBoundaryConsistencyQueries(
+      links: links,
+      features: spatial.featureRepository,
+      revisions: spatial.revisionRepository,
+    ).diagnose(parcel);
+    expect(diagnosis.consistency,
+        LandParcelBoundaryConsistency.needsReconciliation);
+    expect(diagnosis.issue,
+        LandParcelBoundaryIssue.boundaryReferenceMismatch);
     await expectLater(
       workflow.reconcileLegacySpatialIdentity(
         farmId: parcel.farmId,
@@ -262,7 +271,10 @@ void main() {
       where: 'feature_id = ?',
       whereArgs: [link.spatialFeatureId],
     );
-    expect(await queries.check(stored), LandParcelBoundaryConsistency.needsReconciliation);
+    final diagnosis = await queries.diagnose(stored);
+    expect(diagnosis.consistency,
+        LandParcelBoundaryConsistency.needsReconciliation);
+    expect(diagnosis.issue, LandParcelBoundaryIssue.invalidGeometry);
 
     final application = LandParcelApplicationService(
       repository: parcels,
