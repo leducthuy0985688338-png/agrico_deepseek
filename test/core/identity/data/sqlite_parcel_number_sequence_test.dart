@@ -44,6 +44,14 @@ void main() {
     expect(await parcel('OTHER', 3), 'LA-SVK-NONG-OTHER-H003-001');
   });
 
+  test('a different farm has an independent H001', () async {
+    expect(await household(), 'H001');
+    final other = await db.transaction((tx) => numbers.saveHousehold(
+      tx: tx, farmId: 'other-farm', save: (code) async => code,
+    ));
+    expect(other, 'H001');
+  });
+
   test('failed save rolls back number and its record', () async {
     await expectLater(db.transaction((tx) => numbers.saveHousehold(
       tx: tx, farmId: 'farm',
