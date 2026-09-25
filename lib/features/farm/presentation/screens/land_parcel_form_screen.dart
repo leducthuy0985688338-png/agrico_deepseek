@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../../core/localization/app_localizations.dart';
 import '../../domain/entities/land_parcel.dart';
 import '../../domain/entities/land_survey.dart';
 import '../../domain/geometry/wgs84_geometry.dart';
+import '../widgets/crop_age_label.dart';
 
 class LandParcelBoundaryDraft {
   LandParcelBoundaryDraft({required this.boundary, required this.source})
@@ -12,6 +14,133 @@ class LandParcelBoundaryDraft {
   final Wgs84Polygon boundary;
   final BoundarySource source;
   final Wgs84PolygonMetrics metrics;
+}
+
+class _CropEditorDialog extends StatefulWidget {
+  const _CropEditorDialog({required this.original, required this.parcelId});
+
+  final CropRecord? original;
+  final String parcelId;
+
+  @override
+  State<_CropEditorDialog> createState() => _CropEditorDialogState();
+}
+
+class _CropEditorDialogState extends State<_CropEditorDialog> {
+  late final type = TextEditingController(text: widget.original?.cropType);
+  late final quantity = TextEditingController(
+    text: widget.original?.quantity.toString(),
+  );
+  late final unit = TextEditingController(text: widget.original?.unit);
+  late final ageYears = TextEditingController(
+    text: widget.original?.ageMonths == null
+        ? ''
+        : '${widget.original!.ageMonths! ~/ 12}',
+  );
+  late final ageRemainder = TextEditingController(
+    text: widget.original?.ageMonths == null
+        ? ''
+        : '${widget.original!.ageMonths! % 12}',
+  );
+
+  @override
+  void dispose() {
+    type.dispose();
+    quantity.dispose();
+    unit.dispose();
+    ageYears.dispose();
+    ageRemainder.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final l10n = AppLocalizations.of(context);
+    final yearsText = ageYears.text.trim();
+    final monthsText = ageRemainder.text.trim();
+    final years = yearsText.isEmpty ? 0 : int.tryParse(yearsText);
+    final months = monthsText.isEmpty ? 0 : int.tryParse(monthsText);
+    if (years == null || months == null || months > 11) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.text('crop.age.invalid'))),
+      );
+      return;
+    }
+    final original = widget.original;
+    final now = DateTime.now().toUtc();
+    Navigator.of(context).pop(CropRecord(
+      id: original?.id ?? 'draft-${now.microsecondsSinceEpoch}',
+      parcelId: widget.parcelId,
+      cropType: type.text.trim(),
+      quantity: double.tryParse(quantity.text) ?? 0,
+      unit: unit.text.trim(),
+      ageMonths: yearsText.isEmpty && monthsText.isEmpty
+          ? null
+          : years * 12 + months,
+      variety: original?.variety,
+      plantingYear: original?.plantingYear,
+      plantingDate: original?.plantingDate,
+      notes: original?.notes,
+      condition: original?.condition ?? CropCondition.unknown,
+      active: true,
+      createdAt: original?.createdAt ?? now,
+      createdBy: original?.createdBy ?? 'draft',
+      updatedAt: now,
+      updatedBy: 'draft',
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return AlertDialog(
+      title: Text(l10n.text(widget.original == null ? 'crop.add' : 'crop.edit')),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: type,
+              decoration: InputDecoration(labelText: l10n.text('crop.type')),
+            ),
+            TextField(
+              controller: quantity,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(labelText: l10n.text('crop.quantity')),
+            ),
+            TextField(
+              controller: unit,
+              decoration: InputDecoration(labelText: l10n.text('crop.unit')),
+            ),
+            TextField(
+              key: const Key('crop-age-years'),
+              controller: ageYears,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: InputDecoration(labelText: l10n.text('crop.age.yearsInput')),
+            ),
+            TextField(
+              key: const Key('crop-age-months'),
+              controller: ageRemainder,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: InputDecoration(labelText: l10n.text('crop.age.monthsInput')),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.text('common.cancel')),
+        ),
+        FilledButton(
+          key: const Key('save-crop'),
+          onPressed: _save,
+          child: Text(l10n.text('common.save')),
+        ),
+      ],
+    );
+  }
 }
 
 class LandParcelFormValue {
@@ -271,7 +400,10 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
                   key: Key('crop-${entry.value.id}'),
                   contentPadding: EdgeInsets.zero,
                   title: Text(entry.value.cropType),
-                  subtitle: Text('${entry.value.quantity} ${entry.value.unit}'),
+                  subtitle: Text(
+                    '${entry.value.quantity} ${entry.value.unit}'
+                    '${cropAgeSuffix(l10n, entry.value)}',
+                  ),
                   trailing: Wrap(
                     children: [
                       IconButton(
@@ -422,68 +554,14 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
 
   Future<void> _editCrop(int? index) async {
     final original = index == null ? null : crops[index];
-    final type = TextEditingController(text: original?.cropType);
-    final quantity = TextEditingController(text: original?.quantity.toString());
-    final unit = TextEditingController(text: original?.unit);
-    final accepted = await showDialog<bool>(
+    final value = await showDialog<CropRecord>(
       context: context,
-      builder: (context) {
-        final l10n = AppLocalizations.of(context);
-        return AlertDialog(
-          title: Text(l10n.text(index == null ? 'crop.add' : 'crop.edit')),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: type,
-                  decoration: InputDecoration(
-                    labelText: l10n.text('crop.type'),
-                  ),
-                ),
-                TextField(
-                  controller: quantity,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    labelText: l10n.text('crop.quantity'),
-                  ),
-                ),
-                TextField(
-                  controller: unit,
-                  decoration: InputDecoration(
-                    labelText: l10n.text('crop.unit'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: Text(l10n.text('common.cancel')),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: Text(l10n.text('common.save')),
-            ),
-          ],
-        );
-      },
-    );
-    if (accepted == true && mounted) {
-      final value = CropRecord(
-        id: original?.id ?? 'draft-${DateTime.now().microsecondsSinceEpoch}',
+      builder: (_) => _CropEditorDialog(
+        original: original,
         parcelId: widget.parcel?.id ?? 'draft',
-        cropType: type.text.trim(),
-        quantity: double.tryParse(quantity.text) ?? 0,
-        unit: unit.text.trim(),
-        condition: original?.condition ?? CropCondition.unknown,
-        active: true,
-        createdAt: original?.createdAt ?? DateTime.now().toUtc(),
-        createdBy: original?.createdBy ?? 'draft',
-        updatedAt: DateTime.now().toUtc(),
-        updatedBy: 'draft',
-      );
+      ),
+    );
+    if (value != null && mounted) {
       setState(() {
         if (index == null) {
           crops.add(value);
@@ -492,9 +570,6 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
         }
       });
     }
-    type.dispose();
-    quantity.dispose();
-    unit.dispose();
   }
 
   Future<void> _save() async {

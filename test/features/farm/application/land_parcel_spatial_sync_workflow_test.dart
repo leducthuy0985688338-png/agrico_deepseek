@@ -97,6 +97,7 @@ void main() {
       id: 'draft-crop',
       parcelId: 'draft',
       cropType: 'ມັນຕົ້ນ',
+      ageMonths: 18,
       quantity: 12,
       unit: 'plants',
       condition: CropCondition.unknown,
@@ -126,6 +127,7 @@ void main() {
     final crops = await surveys.listCrops('with-crop');
     expect(crops, hasLength(1));
     expect(crops.single.cropType, 'ມັນຕົ້ນ');
+    expect(crops.single.ageMonths, 18);
     expect(crops.single.parcelId, 'with-crop');
     expect(crops.single.createdBy, 'member-1');
     expect(
@@ -154,10 +156,11 @@ void main() {
       temporalState: SpatialTemporalState.operational,
     );
     final surveys = SqliteLandSurveyRepository(database);
-    CropRecord crop(String id, String type) => CropRecord(
+    CropRecord crop(String id, String type, {int? ageMonths}) => CropRecord(
       id: id,
       parcelId: parcel.id,
       cropType: type,
+      ageMonths: ageMonths,
       quantity: 12,
       unit: 'plants',
       condition: CropCondition.unknown,
@@ -195,10 +198,11 @@ void main() {
 
     final result = await application.updateLandParcelMetadata(
       subject,
-      command([crop('crop-existing', 'ຢາງພາລາ')]),
+      command([crop('crop-existing', 'ຢາງພາລາ', ageMonths: 42)]),
     );
     expect(result.isSuccess, isTrue);
     expect((await surveys.listCrops(parcel.id)).single.cropType, 'ຢາງພາລາ');
+    expect((await surveys.listCrops(parcel.id)).single.ageMonths, 42);
     final after = (await parcels.getById(farmId: parcel.farmId, id: parcel.id))!;
     expect(after.boundary, before.boundary);
     expect(after.boundaryVersion, before.boundaryVersion);
