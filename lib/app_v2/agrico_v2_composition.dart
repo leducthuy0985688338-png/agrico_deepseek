@@ -136,6 +136,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       controller: controller,
       finance: finance,
       administrativeUnits: administrativeUnits,
+      surveyRepository: SqliteLandSurveyRepository(database),
       platform: platform,
     );
   }
@@ -343,10 +344,14 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
   void _createParcel(
     BuildContext context,
     _V2Dependencies deps,
-  ) => Navigator.of(context).push(
+  ) async {
+    final households = await deps.surveyRepository.listHouseholds(deps.subject.farmId);
+    if (!context.mounted) return;
+    Navigator.of(context).push(
     MaterialPageRoute(
       builder: (_) => LandParcelFormScreen(
         administrativeUnits: deps.administrativeUnits,
+        availableHouseholds: households,
         onGpsRequested: () => _measureGpsForCreate(context),
         onImportRequested: () => _importForCreate(context, deps),
         onSubmit: (value) async {
@@ -371,6 +376,9 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
             source: draft.source,
             crops: value.crops,
             ownerDisplayName: value.ownerName.isEmpty ? null : value.ownerName,
+            ownerHouseholdId: value.ownerHouseholdId,
+            autoNumber: value.autoNumber,
+            villageId: value.villageId,
             countryCode: value.countryCode,
             provinceCode: value.provinceCode,
             districtCode: value.districtCode,
@@ -418,6 +426,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       ),
     ),
   );
+  }
 
   Future<LandParcelBoundaryDraft?> _measureGpsForCreate(
     BuildContext context,
@@ -508,6 +517,7 @@ class _V2Dependencies {
     required this.controller,
     required this.finance,
     required this.administrativeUnits,
+    required this.surveyRepository,
     required this.platform,
   });
   final AuthorizationSubject subject;
@@ -515,6 +525,7 @@ class _V2Dependencies {
   final LandParcelController controller;
   final SqliteFinanceDocumentRepository finance;
   final List<AdministrativeUnit> administrativeUnits;
+  final SqliteLandSurveyRepository surveyRepository;
   final MobileLandParcelPlatformGateway platform;
 }
 
