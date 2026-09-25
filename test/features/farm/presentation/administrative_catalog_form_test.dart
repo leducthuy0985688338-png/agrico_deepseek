@@ -35,13 +35,17 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextFormField).first, 'LA-SVK-NONG-TAKO-H001-001');
-    await tester.enterText(find.byType(TextFormField).at(1), 'Test parcel');
+    await tester.enterText(find.byType(TextFormField).first, 'Test parcel');
+    await tester.ensureVisible(find.byType(TextFormField).at(1));
+    await tester.enterText(find.byType(TextFormField).at(1), 'Somphon');
     await tester.dragUntilVisible(find.byKey(const Key('save-parcel')),
         find.byType(ListView), const Offset(0, -300));
     await tester.tap(find.byKey(const Key('save-parcel')));
     await tester.pumpAndSettle();
     expect(submitted?.village, 'Ta Ko');
+    expect(submitted?.autoNumber, isTrue);
+    expect(submitted?.villageId, 'tako');
+    expect(submitted?.ownerHouseholdId, isNull);
     expect([submitted?.countryCode, submitted?.provinceCode,
       submitted?.districtCode, submitted?.villageCode],
       ['LA', 'SVK', 'NONG', 'TAKO']);
