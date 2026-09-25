@@ -122,6 +122,7 @@ class UpdateLandParcelMetadataCommand {
     this.provinceCode,
     this.districtCode,
     this.villageCode,
+    this.crops,
   });
 
   final String farmId;
@@ -138,6 +139,8 @@ class UpdateLandParcelMetadataCommand {
   final String? provinceCode;
   final String? districtCode;
   final String? villageCode;
+  /// Null leaves crops untouched; a list replaces the active crop set.
+  final List<CropRecord>? crops;
 }
 
 class ReplaceBoundaryCommand {
@@ -465,27 +468,16 @@ class LandParcelApplicationService implements LandParcelApplication {
   Future<LandParcelApplicationResult<LandParcel>> updateLandParcelMetadata(
     AuthorizationSubject subject,
     UpdateLandParcelMetadataCommand command,
-  ) => _mutateExisting(
-    subject: subject,
-    farmId: command.farmId,
-    parcelId: command.parcelId,
-    permissions: const [PermissionCodes.fieldEdit],
-    mutation: (parcel) => parcel.updateMetadata(
-      parcelCode: command.parcelCode,
-      name: command.name,
-      ownerHouseholdId: command.ownerHouseholdId,
-      ownerDisplayName: command.ownerDisplayName,
-      ownerContact: command.ownerContact,
-      active: command.active,
-      countryCode: command.countryCode,
-      provinceCode: command.provinceCode,
-      districtCode: command.districtCode,
-      villageCode: command.villageCode,
-      actorMembershipId: command.actorMembershipId,
-      occurredAt: command.occurredAt,
-    ),
-    successKey: 'landParcel.update.success',
-  );
+  ) => command.crops == null
+      ? _mutateExisting(
+          subject: subject,
+          farmId: command.farmId,
+          parcelId: command.parcelId,
+          permissions: const [PermissionCodes.fieldEdit],
+          mutation: (parcel) => _updatedMetadata(parcel, command),
+          successKey: 'landParcel.update.success',
+        )
+      : _updateMetadataWithCrops(subject, command);
 
   @override
   Future<LandParcelApplicationResult<LandParcel>> replaceBoundary(
@@ -822,6 +814,132 @@ class LandParcelApplicationService implements LandParcelApplication {
         'landUseProfile.persistence.failed',
         error: error,
       );
+    }
+  }
+
+  static LandParcel _updatedMetadata(
+    LandParcel parcel,
+    UpdateLandParcelMetadataCommand command,
+  ) => parcel.updateMetadata(
+    parcelCode: command.parcelCode,
+    name: command.name,
+    ownerHouseholdId: command.ownerHouseholdId,
+    ownerDisplayName: command.ownerDisplayName,
+    ownerContact: command.ownerContact,
+    active: command.active,
+    countryCode: command.countryCode,
+    provinceCode: command.provinceCode,
+    districtCode: command.districtCode,
+    villageCode: command.villageCode,
+    actorMembershipId: command.actorMembershipId,
+    occurredAt: command.occurredAt,
+  );
+
+  Future<LandParcelApplicationResult<LandParcel>> _updateMetadataWithCrops(
+    AuthorizationSubject subject,
+    UpdateLandParcelMetadataCommand command,
+  ) async {
+    final resource = ResourceContext(
+      farmId: command.farmId,
+      fieldId: command.parcelId,
+    );
+    if (!_can(subject, resource, PermissionCodes.fieldEdit)) return _denied();
+    final workflow = spatialWorkflow;
+    if (workflow == null) {
+      return _persistence(StateError('Shared spatial transaction required.'));
+    }
+    try {
+      final requested = command.crops!;
+      final updated = await workflow.transaction.runBusiness<LandParcel>(
+        (parcels, surveys) async {
+          final stored = await parcels.getById(
+            farmId: command.farmId,
+            id: command.parcelId,
+          );
+          if (stored == null) throw StateError('Parcel not found.');
+          final next = _updatedMetadata(stored, command);
+          await parcels.update(next);
+          final current = await surveys.listCrops(command.parcelId);
+          final byId = {for (final crop in current) crop.id: crop};
+          final retained = <String>{};
+          for (var index = 0; index < requested.length; index++) {
+            final value = requested[index];
+            if (value.cropType.trim().isEmpty ||
+                value.unit.trim().isEmpty ||
+                !value.quantity.isFinite ||
+                value.quantity <= 0) {
+              throw const FormatException('Invalid crop type, unit or quantity.');
+            }
+            final original = byId[value.id];
+            if (original == null && !value.id.startsWith('draft-')) {
+              throw const FormatException('Crop does not belong to this parcel.');
+            }
+            final id = original?.id ??
+                'crop-${command.parcelId}-${command.occurredAt.microsecondsSinceEpoch}-$index';
+            if (!retained.add(id)) {
+              throw const FormatException('Duplicate crop identity.');
+            }
+            final crop = CropRecord(
+              id: id,
+              parcelId: command.parcelId,
+              cropType: value.cropType.trim(),
+              quantity: value.quantity,
+              unit: value.unit.trim(),
+              condition: value.condition,
+              active: true,
+              variety: value.variety,
+              plantingYear: value.plantingYear,
+              plantingDate: value.plantingDate,
+              notes: value.notes,
+              createdAt: original?.createdAt ?? command.occurredAt,
+              createdBy: original?.createdBy ?? command.actorMembershipId,
+              updatedAt: command.occurredAt,
+              updatedBy: command.actorMembershipId,
+            );
+            if (original == null) {
+              await surveys.createCrop(crop);
+            } else {
+              await surveys.updateCrop(crop);
+            }
+          }
+          for (final crop in current) {
+            if (!retained.contains(crop.id)) {
+              await surveys.updateCrop(
+                CropRecord(
+                  id: crop.id,
+                  parcelId: crop.parcelId,
+                  cropType: crop.cropType,
+                  quantity: crop.quantity,
+                  unit: crop.unit,
+                  condition: crop.condition,
+                  active: false,
+                  variety: crop.variety,
+                  plantingYear: crop.plantingYear,
+                  plantingDate: crop.plantingDate,
+                  notes: crop.notes,
+                  createdAt: crop.createdAt,
+                  createdBy: crop.createdBy,
+                  updatedAt: command.occurredAt,
+                  updatedBy: command.actorMembershipId,
+                ),
+              );
+            }
+          }
+          return next;
+        },
+      );
+      return LandParcelApplicationResult.success(
+        updated,
+        'landParcel.update.success',
+      );
+    } on FormatException catch (error) {
+      return LandParcelApplicationResult.failure(
+        LandParcelApplicationStatus.validationFailed,
+        'crop.validation.failed',
+        error: error,
+      );
+    } catch (error) {
+      return _persistence(error);
     }
   }
 
