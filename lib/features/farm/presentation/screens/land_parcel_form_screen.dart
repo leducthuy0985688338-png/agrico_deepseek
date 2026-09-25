@@ -618,6 +618,9 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
           selectedAdministrativeIds[level] = id;
           selectedExistingHouseholdId = null;
           fields['householdCode']!.clear();
+          fields['owner']!.clear();
+          fields['phone']!.clear();
+          fields['contact']!.clear();
           final levels = [AdministrativeLevel.country, AdministrativeLevel.province,
             AdministrativeLevel.district, AdministrativeLevel.village];
           for (final child in levels.skip(levels.indexOf(level) + 1)) {
