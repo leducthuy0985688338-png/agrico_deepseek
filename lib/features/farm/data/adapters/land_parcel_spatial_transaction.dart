@@ -82,4 +82,18 @@ class LandParcelSpatialTransaction {
       return result;
     });
   }
+
+  /// Business metadata and crop edits share one transaction. The ordinary
+  /// parcel repository still rejects boundary and spatial identity writes.
+  Future<T> runBusiness<T>(
+    Future<T> Function(
+      LandParcelRepository parcels,
+      LandSurveyRepository surveys,
+    ) action,
+  ) => database.transaction(
+    (transaction) => action(
+      SqliteLandParcelRepository(transaction),
+      SqliteLandSurveyRepository.transactionScope(transaction),
+    ),
+  );
 }
