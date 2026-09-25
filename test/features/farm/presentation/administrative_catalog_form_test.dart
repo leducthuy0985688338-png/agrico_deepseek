@@ -89,7 +89,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('parcel-field-name')), 'Second parcel');
     final picker = find.byKey(const Key('household-tako'));
-    await tester.ensureVisible(picker);
+    await tester.dragUntilVisible(picker,
+        find.byType(ListView), const Offset(0, -300));
     await tester.tap(picker);
     await tester.pumpAndSettle();
     await tester.tap(find.textContaining('H00001').last);
