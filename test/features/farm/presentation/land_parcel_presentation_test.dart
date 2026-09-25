@@ -413,6 +413,42 @@ void main() {
     },
   );
 
+  testWidgets('crop age can be edited in years and months', (tester) async {
+    LandParcelFormValue? submitted;
+    await tester.pumpWidget(app(LandParcelFormScreen(
+      parcel: parcel(),
+      household: household(),
+      crops: [crop('c-1', 'Coffee')],
+      onSubmit: (value) async {
+        submitted = value;
+      },
+    )));
+    await tester.pumpAndSettle();
+    await tester.dragUntilVisible(
+      find.byKey(const Key('crop-c-1')),
+      find.byType(ListView),
+      const Offset(0, -300),
+    );
+    await tester.tap(find.descendant(
+      of: find.byKey(const Key('crop-c-1')),
+      matching: find.byIcon(Icons.edit),
+    ));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('crop-age-years')), '3');
+    await tester.enterText(find.byKey(const Key('crop-age-months')), '6');
+    await tester.tap(find.byKey(const Key('save-crop')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('3 years 6 months'), findsOneWidget);
+    await tester.dragUntilVisible(
+      find.byKey(const Key('save-parcel')),
+      find.byType(ListView),
+      const Offset(0, -300),
+    );
+    await tester.tap(find.byKey(const Key('save-parcel')));
+    await tester.pumpAndSettle();
+    expect(submitted?.crops.single.ageMonths, 42);
+  });
+
   testWidgets('boundary history is read-only and renders multiple versions', (
     tester,
   ) async {
