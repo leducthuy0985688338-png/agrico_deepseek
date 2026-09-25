@@ -83,6 +83,21 @@ void main() {
     expect(await household(), 'H01000');
   });
 
+  test('existing household numbers advance the farm counter without going back', () async {
+    await db.execute('CREATE TABLE households '
+        '(farm_id TEXT NOT NULL, household_code TEXT NOT NULL)');
+    await db.insert('households', {
+      'farm_id': 'farm', 'household_code': 'H00008',
+    });
+    await db.insert('households', {
+      'farm_id': 'other-farm', 'household_code': 'H00200',
+    });
+    await SqliteParcelNumberSequence.reconcileExistingHouseholds(db);
+    expect(await household(), 'H00009');
+    await SqliteParcelNumberSequence.reconcileExistingHouseholds(db);
+    expect(await household(), 'H00010');
+  });
+
   test('exhaustion fails without wrapping', () async {
     await db.insert(SqliteParcelNumberSequence.table, {
       'farm_id': 'farm', 'village_id': '',
