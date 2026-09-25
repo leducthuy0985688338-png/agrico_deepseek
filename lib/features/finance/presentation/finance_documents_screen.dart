@@ -36,7 +36,9 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
       ),
     );
     if (!mounted || saved == null) return;
-    setState(() => documents = _load());
+    setState(() {
+      documents = _load();
+    });
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(saved.code)));
   }
 
