@@ -1,18 +1,13 @@
 import 'package:agrico_deepseek/core/localization/app_localizations.dart';
-import 'package:agrico_deepseek/features/finance/data/local/sqlite_finance_document_repository.dart';
+import 'package:agrico_deepseek/core/identity/domain/business_reference_code.dart';
+import 'package:agrico_deepseek/features/finance/domain/finance_document.dart';
 import 'package:agrico_deepseek/features/finance/presentation/finance_documents_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
-  sqfliteFfiInit();
-
   testWidgets('saved payment shows its generated code after reopening', (tester) async {
-    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
-    await SqliteFinanceDocumentRepository.createSchema(db);
-    final repository = SqliteFinanceDocumentRepository(db);
+    final repository = _MemoryFinanceStore();
 
     Widget app() => MaterialApp(
       locale: const Locale('vi'),
@@ -40,6 +35,38 @@ void main() {
     expect(find.textContaining('CHI-'), findsWidgets);
     expect((await repository.listByOrganization('farm-a')).single.category, 'ຂາຍມັນຕົ້ນ');
     await tester.pumpWidget(const SizedBox());
-    await db.close();
   });
+}
+
+class _MemoryFinanceStore implements FinanceDocumentStore {
+  final documents = <FinanceDocument>[];
+
+  @override
+  Future<FinanceDocument> create({
+    required String id,
+    required String organizationId,
+    required BusinessDocumentKind kind,
+    required DateTime occurredAt,
+    required int amountMinor,
+    required String currency,
+    required String category,
+    String? parcelId,
+    String? description,
+  }) async {
+    final document = FinanceDocument(
+      id: id, organizationId: organizationId,
+      code: BusinessReferenceCode.forDate(
+        kind: kind, date: occurredAt, sequence: documents.length + 1,
+      ).toString(),
+      kind: kind, occurredAt: occurredAt, amountMinor: amountMinor,
+      currency: currency, category: category,
+      parcelId: parcelId, description: description,
+    );
+    documents.add(document);
+    return document;
+  }
+
+  @override
+  Future<List<FinanceDocument>> listByOrganization(String organizationId) async =>
+      documents.where((doc) => doc.organizationId == organizationId).toList();
 }
