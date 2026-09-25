@@ -10,14 +10,14 @@ void main() {
   setUp(() async {
     db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
     await SqliteParcelNumberSequence.createSchema(db);
-    await db.execute('CREATE TABLE references (code TEXT PRIMARY KEY)');
+    await db.execute('CREATE TABLE saved_codes (code TEXT PRIMARY KEY)');
   });
   tearDown(() async => db.close());
 
   Future<String> household(String village) => db.transaction((tx) =>
       numbers.saveHousehold(tx: tx, farmId: 'farm', villageId: village,
           save: (code) async {
-        await tx.insert('references', {'code': '$village/$code'});
+        await tx.insert('saved_codes', {'code': '$village/$code'});
         return code;
       }));
 
@@ -28,7 +28,7 @@ void main() {
         countryCode: 'LA', provinceCode: 'SVK', districtCode: 'NONG',
         villageCode: village,
         save: (code) async {
-          await tx.insert('references', {'code': code});
+          await tx.insert('saved_codes', {'code': code});
           return code;
         },
       ));
@@ -65,6 +65,6 @@ void main() {
       'household_number': 0, 'last_sequence': 999,
     });
     await expectLater(household('TAKO'), throwsFormatException);
-    expect(await db.query('references'), isEmpty);
+    expect(await db.query('saved_codes'), isEmpty);
   });
 }
