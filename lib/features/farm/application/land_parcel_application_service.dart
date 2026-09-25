@@ -1,6 +1,7 @@
 ﻿import 'dart:typed_data';
 
 import '../../../core/permissions/authorization.dart';
+import '../../../core/identity/data/sqlite_parcel_number_sequence.dart';
 import '../data/interchange/kml_interchange.dart';
 import '../domain/entities/land_parcel.dart';
 import '../domain/entities/land_survey.dart';
@@ -90,6 +91,8 @@ class CreateLandParcelCommand {
     this.horizontalAccuracyM,
     this.boundaryConfidence,
     this.legacyMetadata = const {},
+    this.autoNumber = false,
+    this.villageId,
     this.crops = const [],
   });
 
@@ -111,6 +114,8 @@ class CreateLandParcelCommand {
   final double? horizontalAccuracyM;
   final double? boundaryConfidence;
   final Map<String, Object?> legacyMetadata;
+  final bool autoNumber;
+  final String? villageId;
   final List<CropRecord> crops;
 }
 
@@ -404,6 +409,102 @@ class LandParcelApplicationService implements LandParcelApplication {
         );
       }
       final workflow = spatialWorkflow;
+      if (command.autoNumber) {
+        if (workflow == null || command.villageId == null ||
+            command.villageId!.trim().isEmpty ||
+            command.countryCode == null || command.provinceCode == null ||
+            command.districtCode == null || command.villageCode == null) {
+          throw const FormatException('Catalogued administrative location is required.');
+        }
+        final numbers = SqliteParcelNumberSequence();
+        final saved = await workflow.createPrepared(
+          temporalState: SpatialTemporalState.baseline,
+          crops: crops,
+          prepare: (tx, surveys) async {
+            Future<LandParcel> forHousehold(Household household) async {
+              final match = RegExp(r'^H([0-9]{5})$').firstMatch(household.householdCode);
+              if (match == null || household.farmId != command.farmId ||
+                  household.administrativeLocation.countryCode != command.countryCode ||
+                  household.administrativeLocation.provinceCode != command.provinceCode ||
+                  household.administrativeLocation.districtCode != command.districtCode ||
+                  household.administrativeLocation.villageCode != command.villageCode) {
+                throw const FormatException('Selected household does not match the parcel location.');
+              }
+              return numbers.saveParcel(
+                tx: tx, farmId: command.farmId,
+                villageId: command.villageId!,
+                householdNumber: int.parse(match.group(1)!),
+                countryCode: command.countryCode!,
+                provinceCode: command.provinceCode!,
+                districtCode: command.districtCode!,
+                villageCode: command.villageCode!,
+                save: (code) async => LandParcel.create(
+                  id: command.id, farmId: command.farmId,
+                  parcelCode: code, name: command.name,
+                  ownerHouseholdId: household.id,
+                  ownerDisplayName: household.headOfHouseholdName,
+                  ownerContact: household.phone,
+                  countryCode: command.countryCode,
+                  provinceCode: command.provinceCode,
+                  districtCode: command.districtCode,
+                  villageCode: command.villageCode,
+                  boundary: Wgs84Polygon.fromVertices(command.vertices),
+                  boundarySource: command.source,
+                  verificationStatus: BoundaryVerificationStatus.measured,
+                  actorMembershipId: command.actorMembershipId,
+                  occurredAt: command.occurredAt,
+                  horizontalAccuracyM: command.horizontalAccuracyM,
+                  boundaryConfidence: command.boundaryConfidence,
+                  legacyMetadata: command.legacyMetadata,
+                ),
+              );
+            }
+
+            if (command.ownerHouseholdId != null) {
+              final existing = await surveys.getHousehold(command.ownerHouseholdId!);
+              if (existing == null || !existing.active) {
+                throw const FormatException('Selected household is unavailable.');
+              }
+              return forHousehold(existing);
+            }
+            final name = command.ownerDisplayName?.trim() ?? '';
+            if (name.isEmpty) throw const FormatException('Household head is required.');
+            return numbers.saveHousehold(
+              tx: tx, farmId: command.farmId,
+              save: (code) async {
+                final location = AdministrativeLocation(
+                  countryName: command.legacyMetadata['country'] as String? ?? '',
+                  countryCode: command.countryCode,
+                  provinceName: command.legacyMetadata['province'] as String? ?? '',
+                  provinceCode: command.provinceCode,
+                  districtName: command.legacyMetadata['district'] as String? ?? '',
+                  districtCode: command.districtCode,
+                  villageName: command.legacyMetadata['village'] as String? ?? '',
+                  villageCode: command.villageCode,
+                );
+                final household = Household(
+                  id: 'household-${command.id}',
+                  farmId: command.farmId,
+                  householdCode: code,
+                  headOfHouseholdName: name,
+                  administrativeLocation: location,
+                  active: true,
+                  createdAt: command.occurredAt,
+                  createdBy: command.actorMembershipId,
+                  updatedAt: command.occurredAt,
+                  updatedBy: command.actorMembershipId,
+                  phone: command.legacyMetadata['phone'] as String?,
+                  alternativeContact: command.legacyMetadata['alternativeContact'] as String?,
+                );
+                household.validate();
+                await surveys.createHousehold(household);
+                return forHousehold(household);
+              },
+            );
+          },
+        );
+        return LandParcelApplicationResult.success(saved, 'landParcel.create.success');
+      }
       if (workflow != null) {
         final spatialFeatureId = workflow.identityGenerator.newId(
           'spatial-feature',
