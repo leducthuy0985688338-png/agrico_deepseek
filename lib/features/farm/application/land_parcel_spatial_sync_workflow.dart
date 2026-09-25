@@ -1,4 +1,6 @@
 ﻿import 'package:sqflite/sqflite.dart';
+import '../../../core/identity/domain/parcel_number_allocator.dart';
+import '../../../core/identity/data/sqlite_scoped_parcel_number_allocator.dart';
 
 import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_feature.dart';
 import 'package:agrico_deepseek/core/spatial/domain/identity/spatial_identity_generator.dart';
@@ -150,6 +152,22 @@ class LandParcelSpatialSyncWorkflow {
       },
     );
   }
+
+  /// Exposes only the numbering port to application code; SQLite stays in the
+  /// transaction adapter and the same transaction owns both code and parcel.
+  Future<LandParcel> createPreparedWithAllocator({
+    required Future<LandParcel> Function(
+      ParcelNumberAllocator numbers,
+      LandSurveyRepository surveys,
+    ) prepare,
+    required SpatialTemporalState temporalState,
+    List<CropRecord> crops = const [],
+  }) => createPrepared(
+    temporalState: temporalState,
+    crops: crops,
+    prepare: (tx, surveys) =>
+        prepare(SqliteScopedParcelNumberAllocator(tx), surveys),
+  );
 
   /// Creates LandParcel and its initial Spatial projection using repositories
   /// that already belong to the caller's atomic transaction.
