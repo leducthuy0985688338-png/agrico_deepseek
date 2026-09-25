@@ -13,6 +13,7 @@ import 'package:agrico_deepseek/features/farm/data/local/sqlite_land_parcel_repo
 import 'package:agrico_deepseek/features/farm/domain/entities/land_parcel.dart';
 import 'package:agrico_deepseek/features/farm/domain/geometry/wgs84_geometry.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sqflite/sqflite.dart' show Transaction;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
