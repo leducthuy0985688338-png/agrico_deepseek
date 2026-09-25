@@ -10,5 +10,5 @@
 ## Mã nội bộ AGRICO đã duyệt
 
 - Địa bàn khởi tạo: Lào `LA` → Savannakhet `SVK` → Nong `NONG` → Ta Ko `TAKO`. `SVK`, `NONG`, `TAKO` là mã quản trị nội bộ, không phải mã hành chính chính thức. Mỗi địa bàn mới được thêm vào danh mục theo cấp cha; mã duy nhất trong cùng cha và cấp, giữ nguyên khi thay đổi tên hiển thị.
-- Hộ trong mỗi trang trại: `H001`–`H999`. Dãy số duy nhất và tăng dần trong cả trang trại, không phụ thuộc tỉnh/huyện/bản; tối đa 999 hộ trước khi phải duyệt mở rộng quy tắc. Không quay vòng hoặc tái sử dụng số khi hộ chuyển bản. Thửa trong mỗi hộ: `001`–`999`.
-- Mã thửa: `LA-SVK-NONG-TAKO-H001-001`. `LandParcelReferenceCode` định dạng và kiểm tra dải, không tự cấp số hoặc thay thế `LandParcel.id`. Cấp số hộ/thửa cần giao dịch lưu và ràng buộc duy nhất trước khi nối vào biểu mẫu. Mã cũ không tự thay đổi.
+- Hộ trong mỗi trang trại: `H00001`–`H99999`. Dãy số duy nhất và tăng dần trong cả trang trại, không phụ thuộc tỉnh/huyện/bản; tối đa 99999 hộ trước khi phải duyệt mở rộng quy tắc. Không quay vòng hoặc tái sử dụng số khi hộ chuyển bản. Thửa trong mỗi hộ: `001`–`999`.
+- Mã thửa: `LA-SVK-NONG-TAKO-H00001-001`. `LandParcelReferenceCode` định dạng và kiểm tra dải, không tự cấp số hoặc thay thế `LandParcel.id`. Cấp số hộ/thửa cần giao dịch lưu và ràng buộc duy nhất trước khi nối vào biểu mẫu. Mã cũ không tự thay đổi.
