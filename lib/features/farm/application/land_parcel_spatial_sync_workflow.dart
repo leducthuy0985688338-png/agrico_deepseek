@@ -1,4 +1,6 @@
-﻿import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_feature.dart';
+﻿import 'package:sqflite/sqflite.dart';
+
+import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_feature.dart';
 import 'package:agrico_deepseek/core/spatial/domain/identity/spatial_identity_generator.dart';
 import '../../../core/spatial/domain/entities/spatial_temporal.dart';
 import '../data/adapters/land_parcel_spatial_projection.dart';
@@ -7,6 +9,7 @@ import '../domain/entities/land_parcel.dart';
 import '../domain/entities/land_survey.dart';
 import '../domain/entities/land_parcel_spatial_link.dart';
 import '../domain/repositories/land_parcel_repository.dart';
+import '../domain/repositories/land_survey_repository.dart';
 import '../domain/repositories/land_parcel_spatial_link_repository.dart';
 import '../../../core/spatial/data/spatial_persistence_composition.dart';
 import 'land_parcel_boundary_consistency_queries.dart';
@@ -101,6 +104,50 @@ class LandParcelSpatialSyncWorkflow {
                 await surveys.createCrop(crop);
               }
             },
+    );
+  }
+
+  /// Build a new parcel and its household within the same transaction used
+  /// for SpatialFeature, initial revision, link and optional crops.
+  ///
+  /// [prepare] may reserve business numbers and write a new Household via the
+  /// transaction-scoped survey repository. A failure anywhere rolls them back.
+  Future<LandParcel> createPrepared({
+    required Future<LandParcel> Function(Transaction tx, LandSurveyRepository surveys)
+        prepare,
+    required SpatialTemporalState temporalState,
+    List<CropRecord> crops = const [],
+  }) async {
+    final spatialLinkId = identityGenerator.newId('spatial-link');
+    final spatialFeatureId = identityGenerator.newId('spatial-feature');
+    final spatialRevisionId = identityGenerator.newId('spatial-revision');
+    LandParcel? prepared;
+    return transaction.run<LandParcel>(
+      (parcels, links, spatial) async {
+        final parcel = prepared!;
+        await createScoped(
+          parcels: parcels,
+          links: links,
+          spatial: spatial,
+          parcel: parcel,
+          temporalState: temporalState,
+          spatialLinkId: spatialLinkId,
+          spatialFeatureId: spatialFeatureId,
+          spatialRevisionId: spatialRevisionId,
+        );
+        return parcel.assignSpatialFeatureId(spatialFeatureId);
+      },
+      beforeCreate: (tx, surveys) async {
+        prepared = await prepare(tx, surveys);
+        if (prepared!.spatialFeatureId != null) {
+          throw const FormatException('Prepared parcel must not already have a spatial identity.');
+        }
+      },
+      afterCreate: crops.isEmpty ? null : (surveys) async {
+        for (final crop in crops) {
+          await surveys.createCrop(crop);
+        }
+      },
     );
   }
 
