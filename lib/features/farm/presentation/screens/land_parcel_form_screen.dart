@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../../core/localization/app_localizations.dart';
 import '../../domain/entities/land_parcel.dart';
 import '../../domain/entities/land_survey.dart';
 import '../../domain/geometry/wgs84_geometry.dart';
+import '../widgets/crop_age_label.dart';
 
 class LandParcelBoundaryDraft {
   LandParcelBoundaryDraft({required this.boundary, required this.source})
@@ -271,7 +273,10 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
                   key: Key('crop-${entry.value.id}'),
                   contentPadding: EdgeInsets.zero,
                   title: Text(entry.value.cropType),
-                  subtitle: Text('${entry.value.quantity} ${entry.value.unit}'),
+                  subtitle: Text(
+                    '${entry.value.quantity} ${entry.value.unit}'
+                    '${cropAgeSuffix(l10n, entry.value)}',
+                  ),
                   trailing: Wrap(
                     children: [
                       IconButton(
@@ -425,6 +430,12 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
     final type = TextEditingController(text: original?.cropType);
     final quantity = TextEditingController(text: original?.quantity.toString());
     final unit = TextEditingController(text: original?.unit);
+    final ageYears = TextEditingController(
+      text: original?.ageMonths == null ? '' : '${original!.ageMonths! ~/ 12}',
+    );
+    final ageRemainder = TextEditingController(
+      text: original?.ageMonths == null ? '' : '${original!.ageMonths! % 12}',
+    );
     final accepted = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -454,6 +465,20 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
                     labelText: l10n.text('crop.unit'),
                   ),
                 ),
+                TextField(
+                  key: const Key('crop-age-years'),
+                  controller: ageYears,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: InputDecoration(labelText: l10n.text('crop.age.yearsInput')),
+                ),
+                TextField(
+                  key: const Key('crop-age-months'),
+                  controller: ageRemainder,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: InputDecoration(labelText: l10n.text('crop.age.monthsInput')),
+                ),
               ],
             ),
           ),
@@ -463,7 +488,20 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
               child: Text(l10n.text('common.cancel')),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(context, true),
+              key: const Key('save-crop'),
+              onPressed: () {
+                final yearsText = ageYears.text.trim();
+                final monthsText = ageRemainder.text.trim();
+                final years = yearsText.isEmpty ? 0 : int.tryParse(yearsText);
+                final months = monthsText.isEmpty ? 0 : int.tryParse(monthsText);
+                if (years == null || months == null || months > 11) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(l10n.text('crop.age.invalid'))),
+                  );
+                  return;
+                }
+                Navigator.pop(context, true);
+              },
               child: Text(l10n.text('common.save')),
             ),
           ],
@@ -471,12 +509,23 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
       },
     );
     if (accepted == true && mounted) {
+      final enteredAge = ageYears.text.trim().isNotEmpty ||
+          ageRemainder.text.trim().isNotEmpty;
+      final ageMonths = enteredAge
+          ? int.parse(ageYears.text.trim().isEmpty ? '0' : ageYears.text.trim()) * 12 +
+              int.parse(ageRemainder.text.trim().isEmpty ? '0' : ageRemainder.text.trim())
+          : null;
       final value = CropRecord(
         id: original?.id ?? 'draft-${DateTime.now().microsecondsSinceEpoch}',
         parcelId: widget.parcel?.id ?? 'draft',
         cropType: type.text.trim(),
         quantity: double.tryParse(quantity.text) ?? 0,
         unit: unit.text.trim(),
+        ageMonths: ageMonths,
+        variety: original?.variety,
+        plantingYear: original?.plantingYear,
+        plantingDate: original?.plantingDate,
+        notes: original?.notes,
         condition: original?.condition ?? CropCondition.unknown,
         active: true,
         createdAt: original?.createdAt ?? DateTime.now().toUtc(),
@@ -495,6 +544,8 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
     type.dispose();
     quantity.dispose();
     unit.dispose();
+    ageYears.dispose();
+    ageRemainder.dispose();
   }
 
   Future<void> _save() async {
