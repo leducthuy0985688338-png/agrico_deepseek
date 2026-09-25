@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 
 import '../../../core/identity/domain/business_reference_code.dart';
 import '../../../core/localization/app_localizations.dart';
-import '../data/local/sqlite_finance_document_repository.dart';
 import '../domain/finance_document.dart';
 
 class FinanceDocumentsScreen extends StatefulWidget {
@@ -15,7 +14,7 @@ class FinanceDocumentsScreen extends StatefulWidget {
     required this.organizationId,
   });
 
-  final SqliteFinanceDocumentRepository repository;
+  final FinanceDocumentStore repository;
   final String organizationId;
 
   @override
@@ -91,7 +90,7 @@ class _FinanceDocumentDialog extends StatefulWidget {
     required this.organizationId,
   });
 
-  final SqliteFinanceDocumentRepository repository;
+  final FinanceDocumentStore repository;
   final String organizationId;
 
   @override
