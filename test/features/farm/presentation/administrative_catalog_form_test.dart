@@ -36,9 +36,10 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextFormField).first, 'Test parcel');
-    await tester.ensureVisible(find.byType(TextFormField).at(1));
-    await tester.enterText(find.byType(TextFormField).at(1), 'Somphon');
+    await tester.enterText(find.byKey(const Key('parcel-field-name')), 'Test parcel');
+    await tester.dragUntilVisible(find.byKey(const Key('parcel-field-owner')),
+        find.byType(ListView), const Offset(0, -300));
+    await tester.enterText(find.byKey(const Key('parcel-field-owner')), 'Somphon');
     await tester.dragUntilVisible(find.byKey(const Key('save-parcel')),
         find.byType(ListView), const Offset(0, -300));
     await tester.tap(find.byKey(const Key('save-parcel')));
@@ -86,7 +87,7 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextFormField).first, 'Second parcel');
+    await tester.enterText(find.byKey(const Key('parcel-field-name')), 'Second parcel');
     final picker = find.byKey(const Key('household-tako'));
     await tester.ensureVisible(picker);
     await tester.tap(picker);
