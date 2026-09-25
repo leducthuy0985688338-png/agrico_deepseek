@@ -147,6 +147,139 @@ void main() {
     expect(await surveys.listCrops('rollback'), isEmpty);
   });
 
+  test('editing crop type preserves parcel boundary and spatial revisions', () async {
+    final parcel = createParcel(spatialFeatureId: 'feature-edit-crop');
+    await workflow.create(
+      parcel: parcel,
+      temporalState: SpatialTemporalState.operational,
+    );
+    final surveys = SqliteLandSurveyRepository(database);
+    CropRecord crop(String id, String type) => CropRecord(
+      id: id,
+      parcelId: parcel.id,
+      cropType: type,
+      quantity: 12,
+      unit: 'plants',
+      condition: CropCondition.unknown,
+      active: true,
+      createdAt: createdAt,
+      createdBy: 'member-1',
+      updatedAt: createdAt,
+      updatedBy: 'member-1',
+    );
+    await surveys.createCrop(crop('crop-existing', 'ມັນຕົ້ນ'));
+    final before = (await parcels.getById(farmId: parcel.farmId, id: parcel.id))!;
+    final revisions = await spatial.revisionRepository.findByFeatureId(
+      'feature-edit-crop',
+    );
+    final application = LandParcelApplicationService(
+      repository: parcels,
+      spatialWorkflow: workflow,
+    );
+    final subject = AuthorizationSubject(
+      userId: 'user-1',
+      membershipId: 'member-1',
+      farmId: parcel.farmId,
+      permissionCodes: PermissionCodes.values,
+      dataScopes: const {DataScope.allFarm},
+    );
+    UpdateLandParcelMetadataCommand command(List<CropRecord> crops) =>
+        UpdateLandParcelMetadataCommand(
+          farmId: parcel.farmId,
+          parcelId: parcel.id,
+          actorMembershipId: 'member-1',
+          occurredAt: createdAt.add(const Duration(days: 1)),
+          name: 'Changed crop parcel',
+          crops: crops,
+        );
+
+    final result = await application.updateLandParcelMetadata(
+      subject,
+      command([crop('crop-existing', 'ຢາງພາລາ')]),
+    );
+    expect(result.isSuccess, isTrue);
+    expect((await surveys.listCrops(parcel.id)).single.cropType, 'ຢາງພາລາ');
+    final after = (await parcels.getById(farmId: parcel.farmId, id: parcel.id))!;
+    expect(after.boundary, before.boundary);
+    expect(after.boundaryVersion, before.boundaryVersion);
+    expect(after.boundaryHistory.map((v) => v.id),
+        before.boundaryHistory.map((v) => v.id));
+    expect((await spatial.revisionRepository.findByFeatureId('feature-edit-crop'))
+            .map((v) => v.id),
+        revisions.map((v) => v.id));
+
+    final rejected = await application.updateLandParcelMetadata(
+      subject,
+      UpdateLandParcelMetadataCommand(
+        farmId: parcel.farmId,
+        parcelId: parcel.id,
+        actorMembershipId: 'member-1',
+        occurredAt: createdAt.add(const Duration(days: 2)),
+        name: 'Must roll back',
+        crops: [crop('crop-from-another-parcel', 'invalid')],
+      ),
+    );
+    expect(rejected.status, LandParcelApplicationStatus.validationFailed);
+    expect((await surveys.listCrops(parcel.id)).single.cropType, 'ຢາງພາລາ');
+    expect((await parcels.getById(farmId: parcel.farmId, id: parcel.id))!.name,
+        'Changed crop parcel');
+  });
+
+  test('legacy unlinked parcel may edit crops without creating a spatial link', () async {
+    final parcel = createParcel(id: 'legacy-crops', code: 'P-LEGACY-CROP');
+    await parcels.create(parcel);
+    final surveys = SqliteLandSurveyRepository(database);
+    await surveys.createCrop(CropRecord(
+      id: 'legacy-crop',
+      parcelId: parcel.id,
+      cropType: 'Cassava',
+      quantity: 10,
+      unit: 'plants',
+      condition: CropCondition.unknown,
+      active: true,
+      createdAt: createdAt,
+      createdBy: 'member-1',
+      updatedAt: createdAt,
+      updatedBy: 'member-1',
+    ));
+    final result = await LandParcelApplicationService(
+      repository: parcels,
+      spatialWorkflow: workflow,
+    ).updateLandParcelMetadata(
+      AuthorizationSubject(
+        userId: 'user-1',
+        membershipId: 'member-1',
+        farmId: parcel.farmId,
+        permissionCodes: PermissionCodes.values,
+        dataScopes: const {DataScope.allFarm},
+      ),
+      UpdateLandParcelMetadataCommand(
+        farmId: parcel.farmId,
+        parcelId: parcel.id,
+        actorMembershipId: 'member-1',
+        occurredAt: createdAt.add(const Duration(days: 1)),
+        crops: [CropRecord(
+          id: 'legacy-crop',
+          parcelId: parcel.id,
+          cropType: 'Rubber',
+          quantity: 10,
+          unit: 'plants',
+          condition: CropCondition.unknown,
+          active: true,
+          createdAt: createdAt,
+          createdBy: 'member-1',
+          updatedAt: createdAt,
+          updatedBy: 'member-1',
+        )],
+      ),
+    );
+    expect(result.isSuccess, isTrue);
+    expect((await surveys.listCrops(parcel.id)).single.cropType, 'Rubber');
+    expect(await links.findByLandParcelId(parcel.id), isNull);
+    expect((await parcels.getById(farmId: parcel.farmId, id: parcel.id))!
+        .boundaryVersion, parcel.boundaryVersion);
+  });
+
   Future<LandParcel> seedLegacyLinked() async {
     final parcel = createParcel(id: 'old-linked', code: 'P-OLD');
     await parcels.create(parcel);
