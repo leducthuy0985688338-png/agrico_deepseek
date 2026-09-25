@@ -83,6 +83,10 @@ class CreateLandParcelCommand {
     this.ownerHouseholdId,
     this.ownerDisplayName,
     this.ownerContact,
+    this.countryCode,
+    this.provinceCode,
+    this.districtCode,
+    this.villageCode,
     this.horizontalAccuracyM,
     this.boundaryConfidence,
     this.legacyMetadata = const {},
@@ -100,6 +104,10 @@ class CreateLandParcelCommand {
   final String? ownerHouseholdId;
   final String? ownerDisplayName;
   final String? ownerContact;
+  final String? countryCode;
+  final String? provinceCode;
+  final String? districtCode;
+  final String? villageCode;
   final double? horizontalAccuracyM;
   final double? boundaryConfidence;
   final Map<String, Object?> legacyMetadata;
@@ -409,6 +417,10 @@ class LandParcelApplicationService implements LandParcelApplication {
           ownerHouseholdId: command.ownerHouseholdId,
           ownerDisplayName: command.ownerDisplayName,
           ownerContact: command.ownerContact,
+          countryCode: command.countryCode,
+          provinceCode: command.provinceCode,
+          districtCode: command.districtCode,
+          villageCode: command.villageCode,
           boundary: Wgs84Polygon.fromVertices(command.vertices),
           boundarySource: command.source,
           verificationStatus: BoundaryVerificationStatus.measured,
@@ -445,6 +457,10 @@ class LandParcelApplicationService implements LandParcelApplication {
         ownerHouseholdId: command.ownerHouseholdId,
         ownerDisplayName: command.ownerDisplayName,
         ownerContact: command.ownerContact,
+        countryCode: command.countryCode,
+        provinceCode: command.provinceCode,
+        districtCode: command.districtCode,
+        villageCode: command.villageCode,
         boundary: Wgs84Polygon.fromVertices(command.vertices),
         boundarySource: command.source,
         verificationStatus: BoundaryVerificationStatus.measured,
