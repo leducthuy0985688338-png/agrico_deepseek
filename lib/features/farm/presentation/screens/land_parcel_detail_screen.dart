@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/crop_age_label.dart';
 
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/permissions/authorization.dart';
@@ -225,7 +226,8 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
                           contentPadding: EdgeInsets.zero,
                           title: Text(crop.cropType),
                           subtitle: Text(
-                            '${crop.quantity} ${crop.unit} · ${l10n.text('crop.condition.${crop.condition.name}')}',
+                            '${crop.quantity} ${crop.unit} · ${l10n.text('crop.condition.${crop.condition.name}')}'
+                            '${cropAgeSuffix(l10n, crop)}',
                           ),
                         ),
                       )
