@@ -123,6 +123,7 @@ void main() {
         saved.parcelCode);
     expect((await SqliteLandSurveyRepository(database).getHousehold('household-1'))!
         .householdCode, 'H00001');
+    expect(saved.ownerHouseholdId, 'household-1');
     expect(await links.findByLandParcelId(saved.id), isNotNull);
   });
 
