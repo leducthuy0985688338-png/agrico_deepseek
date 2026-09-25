@@ -21,9 +21,9 @@ class LandParcelReferenceCode {
         throw const FormatException('Invalid catalogued administrative code.');
       }
     }
-    if (householdNumber < 1 || householdNumber > 999 ||
+    if (householdNumber < 1 || householdNumber > 99999 ||
         parcelNumber < 1 || parcelNumber > 999) {
-      throw const FormatException('Household or parcel number exceeds 001–999.');
+      throw const FormatException('Household number must be 00001–99999 and parcel number 001–999.');
     }
   }
 
@@ -37,6 +37,6 @@ class LandParcelReferenceCode {
   @override
   String toString() =>
       '$countryCode-$provinceCode-$districtCode-$villageCode-'
-      'H${householdNumber.toString().padLeft(3, '0')}-'
+      'H${householdNumber.toString().padLeft(5, '0')}-'
       '${parcelNumber.toString().padLeft(3, '0')}';
 }
