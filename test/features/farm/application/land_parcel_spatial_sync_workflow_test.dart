@@ -33,12 +33,14 @@ void main() {
     String id = 'parcel-1',
     String code = 'P-001',
     String? spatialFeatureId,
+    String? ownerHouseholdId,
   }) {
     return LandParcel.create(
       id: id,
       farmId: 'farm-1',
       parcelCode: code,
       name: 'Parcel $id',
+      ownerHouseholdId: ownerHouseholdId,
       boundary: Wgs84Polygon.fromVertices(const [
         Wgs84Vertex(latitude: 16.5000, longitude: 104.7000),
         Wgs84Vertex(latitude: 16.5000, longitude: 104.7010),
@@ -108,7 +110,9 @@ void main() {
             householdNumber: int.parse(houseCode.substring(1)),
             countryCode: 'LA', provinceCode: 'SVK',
             districtCode: 'NONG', villageCode: 'TAKO',
-            save: (code) async => createParcel(code: code),
+            save: (code) async => createParcel(
+              code: code, ownerHouseholdId: 'household-1',
+            ),
           );
         },
       ),
