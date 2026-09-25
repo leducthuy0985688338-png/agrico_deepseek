@@ -285,6 +285,7 @@ class LandParcelController extends ChangeNotifier {
     String? ownerHouseholdId,
     String? ownerDisplayName,
     required bool active,
+    List<CropRecord>? crops,
   }) async {
     _phase(ParcelPresentationPhase.saving);
 
@@ -300,6 +301,7 @@ class LandParcelController extends ChangeNotifier {
         ownerHouseholdId: ownerHouseholdId,
         ownerDisplayName: ownerDisplayName,
         active: active,
+        crops: crops,
       ),
     );
 
