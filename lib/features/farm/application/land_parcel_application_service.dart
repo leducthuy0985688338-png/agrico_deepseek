@@ -493,8 +493,11 @@ class LandParcelApplicationService implements LandParcelApplication {
                   createdBy: command.actorMembershipId,
                   updatedAt: command.occurredAt,
                   updatedBy: command.actorMembershipId,
-                  phone: command.legacyMetadata['phone'] as String?,
-                  alternativeContact: command.legacyMetadata['alternativeContact'] as String?,
+                  phone: (command.legacyMetadata['phone'] as String?)?.trim().isEmpty == true
+                      ? null : (command.legacyMetadata['phone'] as String?)?.trim(),
+                  alternativeContact:
+                      (command.legacyMetadata['alternativeContact'] as String?)?.trim().isEmpty == true
+                          ? null : (command.legacyMetadata['alternativeContact'] as String?)?.trim(),
                 );
                 household.validate();
                 await surveys.createHousehold(household);
