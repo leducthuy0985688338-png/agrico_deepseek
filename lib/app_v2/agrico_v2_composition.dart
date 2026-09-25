@@ -302,6 +302,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
                   ? null
                   : value.ownerName,
               active: value.active,
+              crops: value.crops,
             );
 
             if (!editContext.mounted) return;
