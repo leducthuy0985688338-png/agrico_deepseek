@@ -28,6 +28,8 @@ class LandParcelSpatialTransaction {
       SpatialPersistenceComposition spatial,
     )
     action, {
+    Future<void> Function(Transaction tx, LandSurveyRepository surveys)?
+        beforeCreate,
     Future<void> Function(LandSurveyRepository surveys)? afterCreate,
   }) {
     return database.transaction((transaction) async {
@@ -39,6 +41,12 @@ class LandParcelSpatialTransaction {
       final links = SqliteLandParcelSpatialLinkRepository(transaction);
       final spatial = SpatialPersistenceComposition(transaction);
 
+      if (beforeCreate != null) {
+        await beforeCreate(
+          transaction,
+          SqliteLandSurveyRepository.transactionScope(transaction),
+        );
+      }
       final result = await action(parcels, links, spatial);
       if (afterCreate != null) {
         await afterCreate(

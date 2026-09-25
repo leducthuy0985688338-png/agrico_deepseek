@@ -1,3 +1,4 @@
+import 'package:agrico_deepseek/core/identity/data/sqlite_parcel_number_sequence.dart';
 import 'package:agrico_deepseek/core/spatial/data/spatial_persistence_composition.dart';
 import 'package:agrico_deepseek/core/spatial/data/sqlite_spatial_schema.dart';
 import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_feature.dart';
@@ -12,6 +13,7 @@ import 'package:agrico_deepseek/features/farm/data/local/sqlite_land_parcel_repo
 import 'package:agrico_deepseek/features/farm/domain/entities/land_parcel.dart';
 import 'package:agrico_deepseek/features/farm/domain/geometry/wgs84_geometry.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sqflite/sqflite.dart' show Transaction;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
@@ -89,6 +91,33 @@ void main() {
   });
 
   tearDown(() => database.close());
+
+  test('failed spatial create rolls back its household number and row',
+      () async {
+    await SqliteParcelNumberSequence.createSchema(database);
+    await database.execute('CREATE TABLE saved_households '
+        '(code TEXT PRIMARY KEY)');
+    final allocator = SqliteParcelNumberSequence();
+
+    Future<void> prepare(Transaction tx, _) =>
+        allocator.saveHousehold(tx: tx, farmId: 'farm-1',
+          save: (code) async {
+            await tx.insert('saved_households', {'code': code});
+          });
+
+    await expectLater(
+      coordinator.run<void>((_, __, ___) async {
+        throw StateError('spatial create failed');
+      }, beforeCreate: prepare),
+      throwsStateError,
+    );
+    expect(await database.query('saved_households'), isEmpty);
+    expect(await database.query(SqliteParcelNumberSequence.table), isEmpty);
+
+    await coordinator.run<void>((_, __, ___) async {},
+        beforeCreate: prepare);
+    expect((await database.query('saved_households')).single['code'], 'H00001');
+  });
 
   test('commits LandParcel and SpatialFeature together', () async {
     final sourceParcel = parcel();
