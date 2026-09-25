@@ -19,14 +19,14 @@ class SqliteParcelNumberSequence {
     ''');
   }
 
-  /// `household_number = 0` is the counter for households in this village.
+  /// `household_number = 0` and the empty village scope reserve one household
+  /// counter for the entire farm. The households table is unique per farm.
   Future<T> saveHousehold<T>({
     required Transaction tx,
     required String farmId,
-    required String villageId,
     required Future<T> Function(String householdCode) save,
   }) async {
-    final number = await _next(tx, farmId, villageId, 0);
+    final number = await _next(tx, farmId, '', 0);
     return save('H${number.toString().padLeft(3, '0')}');
   }
 
@@ -59,8 +59,9 @@ class SqliteParcelNumberSequence {
 
   Future<int> _next(Transaction tx, String farmId, String villageId,
       int householdNumber) async {
-    if (farmId.trim().isEmpty || villageId.trim().isEmpty) {
-      throw const FormatException('Farm and village are required.');
+    if (farmId.trim().isEmpty ||
+        (householdNumber != 0 && villageId.trim().isEmpty)) {
+      throw const FormatException('Farm and parcel village are required.');
     }
     final scope = [farmId, villageId, householdNumber];
     await tx.rawInsert(
