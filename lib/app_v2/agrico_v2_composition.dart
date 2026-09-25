@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../core/localization/app_localizations.dart';
 import '../core/geography/data/sqlite_administrative_catalog.dart';
+import '../core/identity/data/sqlite_parcel_number_sequence.dart';
 import '../core/geography/domain/entities/administrative_unit.dart';
 import '../core/permissions/authorization.dart';
 import '../core/spatial/data/identity/default_spatial_identity_generator.dart';
@@ -61,6 +62,8 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     final database = await sharedDatabase.database;
     final spatial = SpatialPersistenceComposition(database);
     await SqliteLandSurveyRepository.createSchema(database);
+    await SqliteParcelNumberSequence.createSchema(database);
+    await SqliteParcelNumberSequence.reconcileExistingHouseholds(database);
     await SqliteFinanceDocumentRepository.createSchema(database);
     await SqliteAdministrativeCatalog.createSchema(database);
     final administrativeCatalog = SqliteAdministrativeCatalog(database);

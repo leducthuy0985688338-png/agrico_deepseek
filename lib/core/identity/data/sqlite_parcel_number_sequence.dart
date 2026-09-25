@@ -42,6 +42,34 @@ class SqliteParcelNumberSequence {
     }
   }
 
+  /// Start above household codes already saved in this farm. Safe to repeat on
+  /// startup; never decreases an allocated number.
+  static Future<void> reconcileExistingHouseholds(Database db) async {
+    await db.transaction((tx) async {
+      final rows = await tx.rawQuery(
+        'SELECT farm_id, household_code FROM households',
+      );
+      final highest = <String, int>{};
+      for (final row in rows) {
+        final farm = row['farm_id'] as String;
+        final code = row['household_code'] as String;
+        final match = RegExp(r'^H([0-9]{3,5})$').firstMatch(code);
+        if (match == null) continue;
+        final number = int.parse(match.group(1)!);
+        if (number < 1 || number > 99999) continue;
+        if (number > (highest[farm] ?? 0)) highest[farm] = number;
+      }
+      for (final entry in highest.entries) {
+        await tx.rawInsert('INSERT OR IGNORE INTO $table '
+            '(farm_id, village_id, household_number, last_sequence) '
+            'VALUES (?, ?, 0, 0)', [entry.key, '']);
+        await tx.rawUpdate('UPDATE $table SET last_sequence = ? '
+            'WHERE farm_id = ? AND village_id = ? AND household_number = 0 '
+            'AND last_sequence < ?', [entry.value, entry.key, '', entry.value]);
+      }
+    });
+  }
+
   /// `household_number = 0` and the empty village scope reserve one household
   /// counter for the entire farm. The households table is unique per farm.
   Future<T> saveHousehold<T>({
