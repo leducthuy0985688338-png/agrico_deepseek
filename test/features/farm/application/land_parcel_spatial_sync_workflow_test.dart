@@ -1,3 +1,4 @@
+import 'package:agrico_deepseek/core/identity/data/sqlite_parcel_number_sequence.dart';
 import 'package:agrico_deepseek/core/spatial/data/spatial_persistence_composition.dart';
 import '../../../core/spatial/support/sequential_spatial_identity_generator.dart';
 import 'dart:convert';
@@ -32,12 +33,14 @@ void main() {
     String id = 'parcel-1',
     String code = 'P-001',
     String? spatialFeatureId,
+    String? ownerHouseholdId,
   }) {
     return LandParcel.create(
       id: id,
       farmId: 'farm-1',
       parcelCode: code,
       name: 'Parcel $id',
+      ownerHouseholdId: ownerHouseholdId,
       boundary: Wgs84Polygon.fromVertices(const [
         Wgs84Vertex(latitude: 16.5000, longitude: 104.7000),
         Wgs84Vertex(latitude: 16.5000, longitude: 104.7010),
@@ -79,6 +82,50 @@ void main() {
   });
 
   tearDown(() => database.close());
+
+  test('prepared household and numbered parcel share the spatial transaction',
+      () async {
+    await SqliteParcelNumberSequence.createSchema(database);
+    final numbers = SqliteParcelNumberSequence();
+    final saved = await workflow.createPrepared(
+      temporalState: SpatialTemporalState.baseline,
+      prepare: (tx, surveys) => numbers.saveHousehold(
+        tx: tx, farmId: 'farm-1',
+        save: (houseCode) async {
+          await surveys.createHousehold(Household(
+            id: 'household-1', farmId: 'farm-1',
+            householdCode: houseCode,
+            headOfHouseholdName: 'ສົມພອນ',
+            administrativeLocation: const AdministrativeLocation(
+              countryName: 'Lào', countryCode: 'LA',
+              provinceName: 'Savannakhet', provinceCode: 'SVK',
+              districtName: 'Nong', districtCode: 'NONG',
+              villageName: 'Ta Ko', villageCode: 'TAKO',
+            ),
+            active: true, createdAt: createdAt, createdBy: 'member-1',
+            updatedAt: createdAt, updatedBy: 'member-1',
+          ));
+          return numbers.saveParcel(
+            tx: tx, farmId: 'farm-1', villageId: 'village-tako',
+            householdNumber: int.parse(houseCode.substring(1)),
+            countryCode: 'LA', provinceCode: 'SVK',
+            districtCode: 'NONG', villageCode: 'TAKO',
+            save: (code) async => createParcel(
+              code: code, ownerHouseholdId: 'household-1',
+            ),
+          );
+        },
+      ),
+    );
+    expect(saved.parcelCode, 'LA-SVK-NONG-TAKO-H00001-001');
+    expect(saved.spatialFeatureId, isNotNull);
+    expect((await parcels.getById(farmId: 'farm-1', id: saved.id))!.parcelCode,
+        saved.parcelCode);
+    expect((await SqliteLandSurveyRepository(database).getHousehold('household-1'))!
+        .householdCode, 'H00001');
+    expect(saved.ownerHouseholdId, 'household-1');
+    expect(await links.findByLandParcelId(saved.id), isNotNull);
+  });
 
   test('new parcel and crop commit together or both roll back', () async {
     final surveys = SqliteLandSurveyRepository(database);
