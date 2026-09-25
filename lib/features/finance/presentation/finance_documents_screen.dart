@@ -71,12 +71,17 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
             itemCount: snapshot.data!.length,
             itemBuilder: (context, index) {
               final document = snapshot.data![index];
+              final unit = switch (document.currency) {
+                'LAK' => l10n.text('finance.currency.lak.short'),
+                'VND' => l10n.text('finance.currency.vnd.short'),
+                _ => document.currency,
+              };
               return ListTile(
                 title: Text('${document.code} · ${document.category}'),
                 subtitle: Text('${document.occurredAt.year}-'
                     '${document.occurredAt.month.toString().padLeft(2, '0')}-'
                     '${document.occurredAt.day.toString().padLeft(2, '0')}'),
-                trailing: Text('${document.amountMinor} ${document.currency == 'LAK' ? l10n.text('finance.currency.lak.short') : document.currency == 'VND' ? l10n.text('finance.currency.vnd.short') : document.currency}'),
+                trailing: Text('${document.amountMinor} $unit'),
               );
             },
           );
