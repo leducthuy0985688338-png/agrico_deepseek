@@ -211,6 +211,7 @@ class CropRecord {
     this.variety,
     this.plantingYear,
     this.plantingDate,
+    this.ageMonths,
     this.notes,
     this.schemaVersion = currentSchemaVersion,
   });
@@ -224,6 +225,8 @@ class CropRecord {
   final String? variety;
   final int? plantingYear;
   final DateTime? plantingDate;
+  /// Age recorded for this crop, in complete months; null when unknown.
+  final int? ageMonths;
   final CropCondition condition;
   final String? notes;
   final bool active;
