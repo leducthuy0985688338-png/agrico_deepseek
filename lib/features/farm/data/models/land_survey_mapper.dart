@@ -139,6 +139,7 @@ abstract final class LandSurveyMapper {
     'unit': value.unit,
     'variety': value.variety,
     'plantingYear': value.plantingYear,
+    'ageMonths': value.ageMonths,
     'plantingDate': value.plantingDate == null
         ? null
         : _date(value.plantingDate!),
@@ -160,6 +161,7 @@ abstract final class LandSurveyMapper {
     unit: json['unit']! as String,
     variety: json['variety'] as String?,
     plantingYear: json['plantingYear'] as int?,
+    ageMonths: json['ageMonths'] as int?,
     plantingDate: json['plantingDate'] == null
         ? null
         : _parse(json['plantingDate']),
