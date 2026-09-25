@@ -1,7 +1,6 @@
 ﻿import 'dart:typed_data';
 
 import '../../../core/permissions/authorization.dart';
-import '../../../core/identity/data/sqlite_parcel_number_sequence.dart';
 import '../data/interchange/kml_interchange.dart';
 import '../domain/entities/land_parcel.dart';
 import '../domain/entities/land_survey.dart';
@@ -416,11 +415,10 @@ class LandParcelApplicationService implements LandParcelApplication {
             command.districtCode == null || command.villageCode == null) {
           throw const FormatException('Catalogued administrative location is required.');
         }
-        final numbers = SqliteParcelNumberSequence();
-        final saved = await workflow.createPrepared(
+        final saved = await workflow.createPreparedWithAllocator(
           temporalState: SpatialTemporalState.baseline,
           crops: crops,
-          prepare: (tx, surveys) async {
+          prepare: (numbers, surveys) async {
             Future<LandParcel> forHousehold(Household household) async {
               final match = RegExp(r'^H([0-9]{5})$').firstMatch(household.householdCode);
               if (match == null || household.farmId != command.farmId ||
@@ -431,7 +429,7 @@ class LandParcelApplicationService implements LandParcelApplication {
                 throw const FormatException('Selected household does not match the parcel location.');
               }
               return numbers.saveParcel(
-                tx: tx, farmId: command.farmId,
+                farmId: command.farmId,
                 villageId: command.villageId!,
                 householdNumber: int.parse(match.group(1)!),
                 countryCode: command.countryCode!,
@@ -470,7 +468,7 @@ class LandParcelApplicationService implements LandParcelApplication {
             final name = command.ownerDisplayName?.trim() ?? '';
             if (name.isEmpty) throw const FormatException('Household head is required.');
             return numbers.saveHousehold(
-              tx: tx, farmId: command.farmId,
+              farmId: command.farmId,
               save: (code) async {
                 final location = AdministrativeLocation(
                   countryName: command.legacyMetadata['country'] as String? ?? '',
