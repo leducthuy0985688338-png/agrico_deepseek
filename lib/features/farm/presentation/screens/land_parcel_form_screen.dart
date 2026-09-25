@@ -652,6 +652,7 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
   Widget _field(String key, String label, {TextInputType? keyboard, bool readOnly = false}) => Padding(
     padding: const EdgeInsets.only(bottom: 10),
     child: TextFormField(
+      key: Key('parcel-field-$key'),
       controller: fields[key],
       keyboardType: keyboard,
       readOnly: readOnly,
@@ -661,6 +662,7 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
   Widget _required(String key, String label) => Padding(
     padding: const EdgeInsets.only(bottom: 10),
     child: TextFormField(
+      key: Key('parcel-field-$key'),
       controller: fields[key],
       decoration: InputDecoration(labelText: label),
       validator: (value) => value == null || value.trim().isEmpty
