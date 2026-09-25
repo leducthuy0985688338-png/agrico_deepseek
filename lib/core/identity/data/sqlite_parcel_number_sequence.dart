@@ -42,6 +42,93 @@ class SqliteParcelNumberSequence {
     }
   }
 
+  /// Start above household codes already saved in this farm. Safe to repeat on
+  /// startup; never decreases an allocated number.
+  static Future<void> reconcileExistingHouseholds(Database db) async {
+    await db.transaction((tx) async {
+      final rows = await tx.rawQuery(
+        'SELECT farm_id, household_code FROM households',
+      );
+      final highest = <String, int>{};
+      for (final row in rows) {
+        final farm = row['farm_id'] as String;
+        final code = row['household_code'] as String;
+        final match = RegExp(r'^H([0-9]{3,5})
+  /// counter for the entire farm. The households table is unique per farm.
+  Future<T> saveHousehold<T>({
+    required Transaction tx,
+    required String farmId,
+    required Future<T> Function(String householdCode) save,
+  }) async {
+    final number = await _next(tx, farmId, '', 0);
+    return save('H${number.toString().padLeft(5, '0')}');
+  }
+
+  /// Parcel numbering starts at 001 for each household inside a village.
+  Future<T> saveParcel<T>({
+    required Transaction tx,
+    required String farmId,
+    required String villageId,
+    required int householdNumber,
+    required String countryCode,
+    required String provinceCode,
+    required String districtCode,
+    required String villageCode,
+    required Future<T> Function(String parcelCode) save,
+  }) async {
+    if (householdNumber < 1 || householdNumber > 99999) {
+      throw const FormatException('Household number must be 00001–99999.');
+    }
+    final number = await _next(tx, farmId, villageId, householdNumber);
+    final code = LandParcelReferenceCode(
+      countryCode: countryCode,
+      provinceCode: provinceCode,
+      districtCode: districtCode,
+      villageCode: villageCode,
+      householdNumber: householdNumber,
+      parcelNumber: number,
+    ).toString();
+    return save(code);
+  }
+
+  Future<int> _next(Transaction tx, String farmId, String villageId,
+      int householdNumber) async {
+    if (farmId.trim().isEmpty ||
+        (householdNumber != 0 && villageId.trim().isEmpty)) {
+      throw const FormatException('Farm and parcel village are required.');
+    }
+    final scope = [farmId, villageId, householdNumber];
+    await tx.rawInsert(
+      'INSERT OR IGNORE INTO $table '
+      '(farm_id, village_id, household_number, last_sequence) '
+      'VALUES (?, ?, ?, 0)', scope);
+    final changed = await tx.rawUpdate(
+      'UPDATE $table SET last_sequence = last_sequence + 1 '
+      'WHERE farm_id = ? AND village_id = ? AND household_number = ? '
+      'AND last_sequence < ?', [...scope, householdNumber == 0 ? 99999 : 999]);
+    if (changed != 1) throw const FormatException('Parcel numbering range is full.');
+    final rows = await tx.rawQuery('SELECT last_sequence FROM $table '
+        'WHERE farm_id = ? AND village_id = ? AND household_number = ?', scope);
+    return rows.single['last_sequence']! as int;
+  }
+}
+).firstMatch(code);
+        if (match == null) continue;
+        final number = int.parse(match.group(1)!);
+        if (number < 1 || number > 99999) continue;
+        if (number > (highest[farm] ?? 0)) highest[farm] = number;
+      }
+      for (final entry in highest.entries) {
+        await tx.rawInsert('INSERT OR IGNORE INTO $table '
+            '(farm_id, village_id, household_number, last_sequence) '
+            'VALUES (?, ?, 0, 0)', [entry.key, '']);
+        await tx.rawUpdate('UPDATE $table SET last_sequence = ? '
+            'WHERE farm_id = ? AND village_id = ? AND household_number = 0 '
+            'AND last_sequence < ?', [entry.value, entry.key, '', entry.value]);
+      }
+    });
+  }
+
   /// `household_number = 0` and the empty village scope reserve one household
   /// counter for the entire farm. The households table is unique per farm.
   Future<T> saveHousehold<T>({
