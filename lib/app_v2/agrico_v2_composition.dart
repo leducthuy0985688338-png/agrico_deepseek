@@ -27,13 +27,14 @@ import '../features/farm/presentation/screens/land_parcel_detail_screen.dart';
 import '../features/farm/presentation/screens/land_parcel_form_screen.dart';
 import '../features/farm/presentation/screens/land_parcel_list_screen.dart';
 import '../features/farm/presentation/widgets/boundary_workflow_widgets.dart';
+import '../features/finance/data/local/sqlite_finance_document_repository.dart';
+import '../features/finance/presentation/finance_documents_screen.dart';
 import '../models/field_model.dart';
 import '../providers/production_season_provider.dart';
 import '../providers/task_provider.dart';
 import '../screens/ai_chat_screen.dart';
 import '../screens/employee_list_screen.dart';
 import '../screens/field_gps_measure_screen.dart';
-import '../screens/finance_screen.dart';
 import '../screens/fuel_screen.dart';
 import '../screens/machine_list_screen.dart';
 import '../screens/report_screen.dart';
@@ -58,6 +59,8 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     final database = await sharedDatabase.database;
     final spatial = SpatialPersistenceComposition(database);
     await SqliteLandSurveyRepository.createSchema(database);
+    await SqliteFinanceDocumentRepository.createSchema(database);
+    final finance = SqliteFinanceDocumentRepository(database);
     final parcels = SqliteLandParcelRepository(database);
     final legacyFields = await sharedDatabase.getAll();
     await const LandParcelLegacyMigration().migrate(
@@ -122,6 +125,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       subject: subject,
       spatial: spatial,
       controller: controller,
+      finance: finance,
       platform: platform,
     );
   }
@@ -157,7 +161,10 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       final legacy = <String, VoidCallback>{
         'machines': () => push(const MachineListScreen()),
         'employees': () => push(const EmployeeListScreen()),
-        'finance': () => push(const FinanceScreen()),
+        'finance': () => push(FinanceDocumentsScreen(
+          repository: deps.finance,
+          organizationId: deps.subject.farmId,
+        )),
         'warehouse': () => push(const WarehouseScreen()),
         'fuel': () => push(const FuelScreen()),
         'tasks': () => push(const TaskScreen()),
@@ -480,11 +487,13 @@ class _V2Dependencies {
     required this.subject,
     required this.spatial,
     required this.controller,
+    required this.finance,
     required this.platform,
   });
   final AuthorizationSubject subject;
   final SpatialPersistenceComposition spatial;
   final LandParcelController controller;
+  final SqliteFinanceDocumentRepository finance;
   final MobileLandParcelPlatformGateway platform;
 }
 
