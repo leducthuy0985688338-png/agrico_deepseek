@@ -71,12 +71,17 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
             itemCount: snapshot.data!.length,
             itemBuilder: (context, index) {
               final document = snapshot.data![index];
+              final unit = switch (document.currency) {
+                'LAK' => l10n.text('finance.currency.lak.short'),
+                'VND' => l10n.text('finance.currency.vnd.short'),
+                _ => document.currency,
+              };
               return ListTile(
                 title: Text('${document.code} · ${document.category}'),
                 subtitle: Text('${document.occurredAt.year}-'
                     '${document.occurredAt.month.toString().padLeft(2, '0')}-'
                     '${document.occurredAt.day.toString().padLeft(2, '0')}'),
-                trailing: Text('${document.amountMinor} ${document.currency}'),
+                trailing: Text('${document.amountMinor} $unit'),
               );
             },
           );
@@ -175,8 +180,10 @@ class _FinanceDocumentDialogState extends State<_FinanceDocumentDialog> {
           DropdownButtonFormField<String>(
             initialValue: currency,
             decoration: InputDecoration(labelText: l10n.text('finance.currency')),
-            items: const [DropdownMenuItem(value: 'LAK', child: Text('LAK')),
-                DropdownMenuItem(value: 'VND', child: Text('VND'))],
+            items: [
+              DropdownMenuItem(value: 'LAK', child: Text(l10n.text('finance.currency.lak'))),
+              DropdownMenuItem(value: 'VND', child: Text(l10n.text('finance.currency.vnd'))),
+            ],
             onChanged: saving ? null : (value) => setState(() => currency = value!),
           ),
           TextButton(
