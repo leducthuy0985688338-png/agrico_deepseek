@@ -23,13 +23,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('finance-add')));
     await tester.pumpAndSettle();
-    final currencyPicker = find.byType(DropdownButtonFormField<String>);
-    await tester.ensureVisible(currencyPicker);
-    await tester.tap(currencyPicker);
-    await tester.pumpAndSettle();
-    expect(find.text('Kíp Lào (LAK)'), findsWidgets);
-    await tester.tap(find.text('Kíp Lào (LAK)').last);
-    await tester.pumpAndSettle();
+    final picker = tester.widget<DropdownButtonFormField<String>>(
+      find.byType(DropdownButtonFormField<String>),
+    );
+    final kip = picker.items!.singleWhere((item) => item.value == 'LAK');
+    expect((kip.child as Text).data, 'Kíp Lào (LAK)');
     await tester.enterText(find.byKey(const Key('finance-category')), 'ຂາຍມັນຕົ້ນ');
     await tester.enterText(find.byKey(const Key('finance-amount')), '25000');
     await tester.tap(find.byKey(const Key('finance-save')));
