@@ -23,6 +23,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('finance-add')));
     await tester.pumpAndSettle();
+    expect(find.text('Kíp Lào (LAK)'), findsOneWidget);
     await tester.enterText(find.byKey(const Key('finance-category')), 'ຂາຍມັນຕົ້ນ');
     await tester.enterText(find.byKey(const Key('finance-amount')), '25000');
     await tester.tap(find.byKey(const Key('finance-save')));
