@@ -127,6 +127,52 @@ void main() {
     expect(await links.findByLandParcelId(saved.id), isNotNull);
   });
 
+  test('application generates household and parcel codes and reuses the household',
+      () async {
+    await SqliteParcelNumberSequence.createSchema(database);
+    final subject = AuthorizationSubject(
+      userId: 'user-1', membershipId: 'member-1', farmId: 'farm-1',
+      permissionCodes: PermissionCodes.values,
+      dataScopes: const {DataScope.allFarm},
+    );
+    final application = LandParcelApplicationService(
+      repository: parcels, spatialWorkflow: workflow,
+    );
+    CreateLandParcelCommand command(String id, {String? householdId}) =>
+        CreateLandParcelCommand(
+          id: id, farmId: 'farm-1', parcelCode: '', name: id,
+          vertices: createParcel().boundary.vertices.toList(),
+          source: BoundarySource.manual,
+          actorMembershipId: 'member-1', occurredAt: createdAt,
+          autoNumber: true, villageId: 'village-tako',
+          ownerHouseholdId: householdId, ownerDisplayName: 'Somphon',
+          countryCode: 'LA', provinceCode: 'SVK',
+          districtCode: 'NONG', villageCode: 'TAKO',
+          legacyMetadata: const {
+            'country': 'Lào', 'province': 'Savannakhet',
+            'district': 'Nong', 'village': 'Ta Ko',
+          },
+        );
+    final first = await application.createLandParcel(subject, command('first'));
+    expect(first.isSuccess, isTrue);
+    expect(first.value!.parcelCode, 'LA-SVK-NONG-TAKO-H00001-001');
+    final householdId = first.value!.ownerHouseholdId!;
+    expect((await SqliteLandSurveyRepository(database).getHousehold(householdId))!
+        .householdCode, 'H00001');
+
+    final second = await application.createLandParcel(subject,
+        command('second', householdId: householdId));
+    expect(second.isSuccess, isTrue);
+    expect(second.value!.parcelCode, 'LA-SVK-NONG-TAKO-H00001-002');
+    expect(second.value!.ownerHouseholdId, householdId);
+    expect(await SqliteLandSurveyRepository(database).listHouseholds('farm-1'),
+        hasLength(1));
+
+    final third = await application.createLandParcel(subject, command('third'));
+    expect(third.isSuccess, isTrue);
+    expect(third.value!.parcelCode, 'LA-SVK-NONG-TAKO-H00002-001');
+  });
+
   test('new parcel and crop commit together or both roll back', () async {
     final surveys = SqliteLandSurveyRepository(database);
     final subject = AuthorizationSubject(
