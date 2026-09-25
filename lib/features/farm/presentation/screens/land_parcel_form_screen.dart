@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../../core/geography/domain/entities/administrative_unit.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../domain/entities/land_parcel.dart';
 import '../../domain/entities/land_survey.dart';
@@ -152,6 +153,10 @@ class LandParcelFormValue {
     required this.province,
     required this.district,
     required this.village,
+    this.countryCode,
+    this.provinceCode,
+    this.districtCode,
+    this.villageCode,
     required this.householdCode,
     required this.ownerName,
     required this.phone,
@@ -166,6 +171,10 @@ class LandParcelFormValue {
   final String province;
   final String district;
   final String village;
+  final String? countryCode;
+  final String? provinceCode;
+  final String? districtCode;
+  final String? villageCode;
   final String householdCode;
   final String ownerName;
   final String phone;
@@ -180,6 +189,7 @@ class LandParcelFormScreen extends StatefulWidget {
     this.parcel,
     this.household,
     this.crops = const [],
+    this.administrativeUnits = const [],
     this.landUse,
     this.surveys = const [],
     this.attachments = const [],
@@ -192,6 +202,7 @@ class LandParcelFormScreen extends StatefulWidget {
   final LandParcel? parcel;
   final Household? household;
   final List<CropRecord> crops;
+  final List<AdministrativeUnit> administrativeUnits;
   final LandUseProfile? landUse;
   final List<LandParcelSurvey> surveys;
   final List<ParcelAttachment> attachments;
@@ -209,6 +220,7 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
   final _formKey = GlobalKey<FormState>();
   late final Map<String, TextEditingController> fields;
   late List<CropRecord> crops;
+  final Map<AdministrativeLevel, String> selectedAdministrativeIds = {};
   bool saving = false;
   late bool active;
   late LandUseType landUseType;
@@ -240,6 +252,17 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
       ),
     };
     crops = [...widget.crops];
+    if (widget.parcel == null && widget.administrativeUnits.isNotEmpty) {
+      for (final level in [
+        AdministrativeLevel.country,
+        AdministrativeLevel.province,
+        AdministrativeLevel.district,
+        AdministrativeLevel.village,
+      ]) {
+        final choices = _adminChoices(level);
+        if (choices.isNotEmpty) selectedAdministrativeIds[level] = choices.first.id;
+      }
+    }
     active = widget.parcel?.active ?? true;
     landUseType = widget.landUse?.landUseType ?? LandUseType.agricultural;
     landCondition = widget.landUse?.currentCondition ?? LandCondition.unknown;
@@ -285,10 +308,17 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
               ),
             ]),
             _section(context, l10n.text('survey.administrativeLocation'), [
-              _field('country', l10n.text('location.country')),
-              _field('province', l10n.text('location.province')),
-              _field('district', l10n.text('location.district')),
-              _field('village', l10n.text('location.village')),
+              if (parcel == null && widget.administrativeUnits.isNotEmpty) ...[
+                _adminPicker(AdministrativeLevel.country, l10n.text('location.country')),
+                _adminPicker(AdministrativeLevel.province, l10n.text('location.province')),
+                _adminPicker(AdministrativeLevel.district, l10n.text('location.district')),
+                _adminPicker(AdministrativeLevel.village, l10n.text('location.village')),
+              ] else ...[
+                _field('country', l10n.text('location.country')),
+                _field('province', l10n.text('location.province')),
+                _field('district', l10n.text('location.district')),
+                _field('village', l10n.text('location.village')),
+              ],
             ]),
             _section(context, l10n.text('survey.household'), [
               _field('householdCode', l10n.text('household.code')),
@@ -473,6 +503,59 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
     );
   }
 
+  List<AdministrativeUnit> _adminChoices(AdministrativeLevel level) {
+    final parentLevel = switch (level) {
+      AdministrativeLevel.province => AdministrativeLevel.country,
+      AdministrativeLevel.district => AdministrativeLevel.province,
+      AdministrativeLevel.village => AdministrativeLevel.district,
+      _ => null,
+    };
+    final parentId = parentLevel == null ? null : selectedAdministrativeIds[parentLevel];
+    if (parentLevel != null && parentId == null) return const [];
+    return widget.administrativeUnits.where((unit) => unit.active &&
+        unit.level == level && unit.parentId == parentId).toList();
+  }
+
+  AdministrativeUnit? _selectedAdmin(AdministrativeLevel level) {
+    final id = selectedAdministrativeIds[level];
+    for (final unit in _adminChoices(level)) {
+      if (unit.id == id) return unit;
+    }
+    return null;
+  }
+
+  Widget _adminPicker(AdministrativeLevel level, String label) {
+    final choices = _adminChoices(level);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: DropdownButtonFormField<String>(
+        key: Key('admin-${level.name}-${switch (level) {
+          AdministrativeLevel.province => selectedAdministrativeIds[AdministrativeLevel.country],
+          AdministrativeLevel.district => selectedAdministrativeIds[AdministrativeLevel.province],
+          AdministrativeLevel.village => selectedAdministrativeIds[AdministrativeLevel.district],
+          _ => 'root',
+        }}'),
+        initialValue: _selectedAdmin(level)?.id,
+        decoration: InputDecoration(labelText: label),
+        items: [for (final unit in choices)
+          DropdownMenuItem(value: unit.id, child: Text('${unit.name} (${unit.code})'))],
+        onChanged: (id) => setState(() {
+          if (id == null) return;
+          selectedAdministrativeIds[level] = id;
+          final levels = [AdministrativeLevel.country, AdministrativeLevel.province,
+            AdministrativeLevel.district, AdministrativeLevel.village];
+          for (final child in levels.skip(levels.indexOf(level) + 1)) {
+            selectedAdministrativeIds.remove(child);
+            final next = _adminChoices(child);
+            if (next.isNotEmpty) selectedAdministrativeIds[child] = next.first.id;
+          }
+        }),
+        validator: (id) => id == null
+            ? AppLocalizations.of(context).text('validation.required') : null,
+      ),
+    );
+  }
+
   Widget _section(BuildContext context, String title, List<Widget> children) =>
       Card(
         child: Padding(
@@ -581,10 +664,14 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
           parcelCode: fields['code']!.text.trim(),
           name: fields['name']!.text.trim(),
           active: active,
-          country: fields['country']!.text.trim(),
-          province: fields['province']!.text.trim(),
-          district: fields['district']!.text.trim(),
-          village: fields['village']!.text.trim(),
+          country: _selectedAdmin(AdministrativeLevel.country)?.name ?? fields['country']!.text.trim(),
+          province: _selectedAdmin(AdministrativeLevel.province)?.name ?? fields['province']!.text.trim(),
+          district: _selectedAdmin(AdministrativeLevel.district)?.name ?? fields['district']!.text.trim(),
+          village: _selectedAdmin(AdministrativeLevel.village)?.name ?? fields['village']!.text.trim(),
+          countryCode: _selectedAdmin(AdministrativeLevel.country)?.code,
+          provinceCode: _selectedAdmin(AdministrativeLevel.province)?.code,
+          districtCode: _selectedAdmin(AdministrativeLevel.district)?.code,
+          villageCode: _selectedAdmin(AdministrativeLevel.village)?.code,
           householdCode: fields['householdCode']!.text.trim(),
           ownerName: fields['owner']!.text.trim(),
           phone: fields['phone']!.text.trim(),

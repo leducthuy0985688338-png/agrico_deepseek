@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/localization/app_localizations.dart';
+import '../core/geography/data/sqlite_administrative_catalog.dart';
+import '../core/geography/domain/entities/administrative_unit.dart';
 import '../core/permissions/authorization.dart';
 import '../core/spatial/data/identity/default_spatial_identity_generator.dart';
 import '../core/spatial/data/spatial_persistence_composition.dart';
@@ -60,6 +62,10 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     final spatial = SpatialPersistenceComposition(database);
     await SqliteLandSurveyRepository.createSchema(database);
     await SqliteFinanceDocumentRepository.createSchema(database);
+    await SqliteAdministrativeCatalog.createSchema(database);
+    final administrativeCatalog = SqliteAdministrativeCatalog(database);
+    await administrativeCatalog.seedInitialLocation();
+    final administrativeUnits = await administrativeCatalog.all();
     final finance = SqliteFinanceDocumentRepository(database);
     final parcels = SqliteLandParcelRepository(database);
     final legacyFields = await sharedDatabase.getAll();
@@ -126,6 +132,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       spatial: spatial,
       controller: controller,
       finance: finance,
+      administrativeUnits: administrativeUnits,
       platform: platform,
     );
   }
@@ -336,6 +343,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
   ) => Navigator.of(context).push(
     MaterialPageRoute(
       builder: (_) => LandParcelFormScreen(
+        administrativeUnits: deps.administrativeUnits,
         onGpsRequested: () => _measureGpsForCreate(context),
         onImportRequested: () => _importForCreate(context, deps),
         onSubmit: (value) async {
@@ -360,12 +368,20 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
             source: draft.source,
             crops: value.crops,
             ownerDisplayName: value.ownerName.isEmpty ? null : value.ownerName,
+            countryCode: value.countryCode,
+            provinceCode: value.provinceCode,
+            districtCode: value.districtCode,
+            villageCode: value.villageCode,
             legacyMetadata: {
               'active': value.active,
               'country': value.country,
               'province': value.province,
               'district': value.district,
               'village': value.village,
+              'countryCode': value.countryCode,
+              'provinceCode': value.provinceCode,
+              'districtCode': value.districtCode,
+              'villageCode': value.villageCode,
               'householdCode': value.householdCode,
               'phone': value.phone,
               'alternativeContact': value.alternativeContact,
@@ -488,12 +504,14 @@ class _V2Dependencies {
     required this.spatial,
     required this.controller,
     required this.finance,
+    required this.administrativeUnits,
     required this.platform,
   });
   final AuthorizationSubject subject;
   final SpatialPersistenceComposition spatial;
   final LandParcelController controller;
   final SqliteFinanceDocumentRepository finance;
+  final List<AdministrativeUnit> administrativeUnits;
   final MobileLandParcelPlatformGateway platform;
 }
 
