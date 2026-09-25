@@ -370,7 +370,8 @@ class LandParcelApplicationService implements LandParcelApplication {
         if (draft.cropType.trim().isEmpty ||
             draft.unit.trim().isEmpty ||
             !draft.quantity.isFinite ||
-            draft.quantity <= 0) {
+            draft.quantity <= 0 ||
+            (draft.ageMonths != null && draft.ageMonths! < 0)) {
           throw const FormatException('Invalid crop type, unit, or quantity.');
         }
         crops.add(
@@ -383,6 +384,7 @@ class LandParcelApplicationService implements LandParcelApplication {
             variety: draft.variety,
             plantingYear: draft.plantingYear,
             plantingDate: draft.plantingDate,
+            ageMonths: draft.ageMonths,
             condition: draft.condition,
             notes: draft.notes,
             active: draft.active,
@@ -867,7 +869,8 @@ class LandParcelApplicationService implements LandParcelApplication {
             if (value.cropType.trim().isEmpty ||
                 value.unit.trim().isEmpty ||
                 !value.quantity.isFinite ||
-                value.quantity <= 0) {
+                value.quantity <= 0 ||
+                (value.ageMonths != null && value.ageMonths! < 0)) {
               throw const FormatException('Invalid crop type, unit or quantity.');
             }
             final original = byId[value.id];
@@ -890,6 +893,7 @@ class LandParcelApplicationService implements LandParcelApplication {
               variety: value.variety,
               plantingYear: value.plantingYear,
               plantingDate: value.plantingDate,
+              ageMonths: value.ageMonths,
               notes: value.notes,
               createdAt: original?.createdAt ?? command.occurredAt,
               createdBy: original?.createdBy ?? command.actorMembershipId,
@@ -916,6 +920,7 @@ class LandParcelApplicationService implements LandParcelApplication {
                   variety: crop.variety,
                   plantingYear: crop.plantingYear,
                   plantingDate: crop.plantingDate,
+                  ageMonths: crop.ageMonths,
                   notes: crop.notes,
                   createdAt: crop.createdAt,
                   createdBy: crop.createdBy,
