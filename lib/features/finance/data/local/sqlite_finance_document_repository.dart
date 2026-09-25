@@ -4,7 +4,7 @@ import '../../../../core/identity/data/sqlite_monthly_document_sequence.dart';
 import '../../../../core/identity/domain/business_reference_code.dart';
 import '../../domain/finance_document.dart';
 
-class SqliteFinanceDocumentRepository {
+class SqliteFinanceDocumentRepository implements FinanceDocumentStore {
   SqliteFinanceDocumentRepository(this.database,
       {SqliteMonthlyDocumentSequence? sequence})
       : _sequence = sequence ?? SqliteMonthlyDocumentSequence();
@@ -34,6 +34,7 @@ class SqliteFinanceDocumentRepository {
         'ON $table (organization_id, occurred_at)');
   }
 
+  @override
   Future<FinanceDocument> create({
     required String id,
     required String organizationId,
@@ -90,6 +91,7 @@ class SqliteFinanceDocumentRepository {
     ));
   }
 
+  @override
   Future<List<FinanceDocument>> listByOrganization(String organizationId) async {
     final rows = await database.query(table,
       where: 'organization_id = ?',

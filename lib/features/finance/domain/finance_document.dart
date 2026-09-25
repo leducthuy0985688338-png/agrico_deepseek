@@ -26,3 +26,20 @@ class FinanceDocument {
   final String? parcelId;
   final String? description;
 }
+
+/// Storage boundary used by the finance UI.
+abstract interface class FinanceDocumentStore {
+  Future<FinanceDocument> create({
+    required String id,
+    required String organizationId,
+    required BusinessDocumentKind kind,
+    required DateTime occurredAt,
+    required int amountMinor,
+    required String currency,
+    required String category,
+    String? parcelId,
+    String? description,
+  });
+
+  Future<List<FinanceDocument>> listByOrganization(String organizationId);
+}
