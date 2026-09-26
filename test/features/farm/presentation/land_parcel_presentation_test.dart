@@ -379,7 +379,7 @@ void main() {
     )));
     await tester.pumpAndSettle();
     final add = find.byKey(const Key('attach-parcel-file'));
-    await tester.ensureVisible(add);
+    await tester.scrollUntilVisible(add, 300);
     await tester.tap(add);
     expect(picked, 1);
 
