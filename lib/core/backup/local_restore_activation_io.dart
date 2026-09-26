@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
 import 'local_database_snapshot.dart';
+import 'local_media_snapshot.dart';
 import 'local_restore_preflight.dart';
 
 /// The pending file is written only after the user confirms a preflighted
@@ -21,6 +22,7 @@ class LocalRestoreActivation {
   File get _result => File(p.join(directory.path, 'agrico-restore-result.json'));
 
   Future<void> schedule(Uint8List bytes) async {
+    LocalMediaSnapshot.validate(bytes);
     final data = LocalDatabaseSnapshot.decodeDatabases(bytes);
     if (data.length != 2 || !data.containsKey('agrico_costs.db')) {
       throw const RestorePreflightException('missingCosts');
@@ -46,6 +48,7 @@ class LocalRestoreActivation {
       throw const FormatException('Invalid restore identifier.');
     }
     final bytes = base64Decode(pending['backup'] as String);
+    LocalMediaSnapshot.validate(Uint8List.fromList(bytes));
     final primaryPath = p.join(directory.path, 'agrico.db');
     final costsPath = p.join(directory.path, 'agrico_costs.db');
     final previous = File(p.join(directory.path, 'agrico-before-restore-$id.json'));
@@ -62,15 +65,16 @@ class LocalRestoreActivation {
         temporaryDirectory: directory.path,
       );
       if (!await previous.exists()) {
-        final old = await LocalDatabaseSnapshot.create(primary,
-          costsDatabase: costs);
+        final old = await LocalMediaSnapshot.create(primary, costs);
         await previous.writeAsBytes(old, flush: true);
       }
       await primary.close();
       primary = null;
       await costs.close();
       costs = null;
-      await _replaceBoth(primaryPath, costsPath, Uint8List.fromList(bytes));
+      final materialized = await LocalMediaSnapshot.materialize(
+          Uint8List.fromList(bytes), directory);
+      await _replaceBoth(primaryPath, costsPath, materialized);
       // The SQLite commit has completed. A later status-file or cleanup error
       // must not be reported as a rolled-back restore.
       try {
