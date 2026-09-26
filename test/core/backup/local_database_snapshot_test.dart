@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:agrico_deepseek/core/backup/local_database_snapshot.dart';
@@ -27,8 +28,13 @@ void main() {
   });
 
   test('snapshot includes costs in a second database', () async {
-    final primary = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
-    final costs = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    final directory = await Directory.systemTemp.createTemp('agrico-backup-');
+    final primary = await databaseFactoryFfi.openDatabase(
+      '${directory.path}/agrico.db',
+    );
+    final costs = await databaseFactoryFfi.openDatabase(
+      '${directory.path}/agrico_costs.db',
+    );
     try {
       await primary.execute('CREATE TABLE parcels (id TEXT PRIMARY KEY)');
       await costs.execute('CREATE TABLE production_costs (id TEXT PRIMARY KEY)');
@@ -44,6 +50,7 @@ void main() {
     } finally {
       await primary.close();
       await costs.close();
+      await directory.delete(recursive: true);
     }
   });
 
