@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../../services/production_cost_database.dart';
 import '../localization/app_localizations.dart';
 import 'local_database_snapshot.dart';
 
@@ -23,7 +24,10 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
   Future<void> _export() async {
     setState(() { busy = true; error = null; });
     try {
-      final bytes = await LocalDatabaseSnapshot.create(widget.database);
+      final costs = await ProductionCostDatabase().database;
+      final bytes = await LocalDatabaseSnapshot.create(
+        widget.database, costsDatabase: costs,
+      );
       final now = DateTime.now().toUtc();
       final date = '${now.year}${now.month.toString().padLeft(2, '0')}'
           '${now.day.toString().padLeft(2, '0')}';
