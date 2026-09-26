@@ -176,6 +176,16 @@ class LocalRestoreActivation {
   Future<void> _writeResult(String status) async {
     await _result.writeAsString(jsonEncode({'status': status}), flush: true);
   }
+
+  Future<Uint8List?> previousBackup() async {
+    final previous = directory.listSync().whereType<File>()
+        .where((file) => p.basename(file.path)
+            .startsWith('agrico-before-restore-') &&
+            p.basename(file.path).endsWith('.json'))
+        .toList()
+      ..sort((a, b) => b.path.compareTo(a.path));
+    return previous.isEmpty ? null : previous.first.readAsBytes();
+  }
 }
 
 Future<void> applyPendingRestore() async {
@@ -203,4 +213,9 @@ Future<String?> localRestoreStatus() async {
   if (!await file.exists()) return null;
   final value = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
   return value['status'] as String?;
+}
+
+Future<Uint8List?> previousLocalRestoreBackup() async {
+  final directory = await getApplicationDocumentsDirectory();
+  return LocalRestoreActivation(directory, databaseFactory).previousBackup();
 }
