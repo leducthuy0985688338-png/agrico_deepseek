@@ -1,5 +1,6 @@
 import 'package:agrico_deepseek/core/geography/application/manage_administrative_catalog.dart';
 import 'package:agrico_deepseek/core/geography/data/sqlite_administrative_catalog.dart';
+import 'package:agrico_deepseek/core/geography/domain/administrative_catalog_repository.dart';
 import 'package:agrico_deepseek/core/geography/domain/entities/administrative_unit.dart';
 import 'package:agrico_deepseek/core/geography/presentation/administrative_catalog_screen.dart';
 import 'package:agrico_deepseek/core/localization/app_localizations.dart';
@@ -29,8 +30,12 @@ void main() {
   });
   tearDown(() => database.close());
 
-  testWidgets('new village is saved and available after reopening the catalog',
+  testWidgets('new village is available after reopening the catalog screen',
       (tester) async {
+    // Keep widget scheduling independent of sqflite's background isolate;
+    // the repository tests below exercise real SQLite persistence.
+    final memory = _MemoryCatalog(await repository.all());
+    final widgetService = ManageAdministrativeCatalog(memory);
     Widget screen() => MaterialApp(
       locale: const Locale('vi'),
       supportedLocales: AppLocalizations.supportedLocales,
@@ -38,7 +43,7 @@ void main() {
         AppLocalizations.delegate, GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate, GlobalCupertinoLocalizations.delegate,
       ],
-      home: AdministrativeCatalogScreen(catalog: service, subject: subject),
+      home: AdministrativeCatalogScreen(catalog: widgetService, subject: subject),
     );
     await tester.pumpWidget(screen());
     await tester.pumpAndSettle();
@@ -53,7 +58,7 @@ void main() {
     await tester.tap(find.byKey(const Key('admin-save')));
     await tester.pumpAndSettle();
 
-    final created = (await repository.all()).singleWhere((u) => u.code == 'BM');
+    final created = (await memory.all()).singleWhere((u) => u.code == 'BM');
     expect(created.level, AdministrativeLevel.village);
     expect(created.parentId, 'agrico-la-svk-nong');
     expect(find.textContaining('Ban Mai'), findsOneWidget);
@@ -94,4 +99,15 @@ void main() {
     );
     expect(await repository.all(), hasLength(6));
   });
+}
+
+class _MemoryCatalog implements AdministrativeCatalogRepository {
+  _MemoryCatalog(this.units);
+  final List<AdministrativeUnit> units;
+
+  @override
+  Future<List<AdministrativeUnit>> all() async => List.of(units);
+
+  @override
+  Future<void> add(AdministrativeUnit unit) async => units.add(unit);
 }
