@@ -88,22 +88,7 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
       if (selected == null) return;
       final bytes = selected.files.single.bytes;
       if (bytes == null) throw const FormatException('Cannot read backup.');
-      final costs = await ProductionCostDatabase().database;
-      final temporary = await getTemporaryDirectory();
-      final counts = await LocalRestorePreflight.validate(
-        bytes: Uint8List.fromList(bytes),
-        primary: widget.database,
-        costs: costs,
-        factory: databaseFactory,
-        temporaryDirectory: temporary.path,
-      );
-      if (mounted) {
-        setState(() {
-          preview = counts;
-          validatedBackup = Uint8List.fromList(bytes);
-          preflightPassed = true;
-        });
-      }
+      await _validateRestoreBytes(Uint8List.fromList(bytes));
     } on RestorePreflightException catch (failure) {
       if (mounted) {
         setState(() {
@@ -117,6 +102,43 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
     } finally {
       if (mounted) setState(() => busy = false);
     }
+  }
+
+  Future<void> _loadPrevious() async {
+    setState(() { busy = true; error = null; preview = null;
+      validatedBackup = null; preflightPassed = false; });
+    try {
+      final bytes = await previousLocalRestoreBackup();
+      if (bytes == null) throw const FormatException('No previous backup.');
+      await _validateRestoreBytes(bytes);
+    } on RestorePreflightException catch (failure) {
+      if (mounted) setState(() {
+        error = 'backup.preflight.${failure.reason}';
+        errorDatabase = failure.database;
+        errorStep = failure.step;
+      });
+    } catch (_) {
+      if (mounted) setState(() => error = 'backup.preflightFailed');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _validateRestoreBytes(Uint8List bytes) async {
+    final costs = await ProductionCostDatabase().database;
+    final temporary = await getTemporaryDirectory();
+    final counts = await LocalRestorePreflight.validate(
+      bytes: bytes,
+      primary: widget.database,
+      costs: costs,
+      factory: databaseFactory,
+      temporaryDirectory: temporary.path,
+    );
+    if (mounted) setState(() {
+      preview = counts;
+      validatedBackup = bytes;
+      preflightPassed = true;
+    });
   }
 
   Future<void> _scheduleRestore() async {
@@ -176,6 +198,12 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
           icon: const Icon(Icons.verified_outlined),
           label: Text(l10n.text('backup.preflight')),
         ),
+        if (restoreStatus == 'applied')
+          OutlinedButton.icon(
+            onPressed: busy ? null : _loadPrevious,
+            icon: const Icon(Icons.history),
+            label: Text(l10n.text('backup.previous')),
+          ),
         if (preflightPassed && !restoreScheduled)
           FilledButton.icon(
             onPressed: busy ? null : _scheduleRestore,
