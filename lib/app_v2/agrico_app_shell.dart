@@ -323,6 +323,7 @@ class ModulesV2 extends StatelessWidget {
           'finance': legacyRoutes['finance'],
         }),
         _group(context, 'modules.support', {
+          'backup': legacyRoutes['backup'],
           'administrativeCatalog': legacyRoutes['administrativeCatalog'],
           'tasks': legacyRoutes['tasks'],
           'ai': legacyRoutes['ai'],
