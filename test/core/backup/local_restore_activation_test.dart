@@ -43,13 +43,13 @@ void main() {
         '${pair.directory.path}/agrico.db');
       final costs = await databaseFactoryFfi.openDatabase(
         '${pair.directory.path}/agrico_costs.db');
-      late final List<int> previousBytes;
+      late final Uint8List previousBytes;
       try {
         expect((await primary.query('parcels')).single['id'], 'backup');
         expect((await costs.query('expenses')).single['id'], 'backup');
         final previous = pair.directory.listSync().whereType<File>().singleWhere(
           (file) => file.path.contains('agrico-before-restore-'));
-        previousBytes = await previous.readAsBytes();
+        previousBytes = Uint8List.fromList(await previous.readAsBytes());
         expect(LocalDatabaseSnapshot.inspect(previousBytes), {
           'agrico.db/parcels': 1,
           'agrico_costs.db/expenses': 1,
@@ -64,7 +64,7 @@ void main() {
         await primary.close();
         await costs.close();
       }
-      await activation.schedule(Uint8List.fromList(previousBytes));
+      await activation.schedule(previousBytes);
       expect(await activation.applyPending(), isTrue);
       final restoredPrimary = await databaseFactoryFfi.openDatabase(
         '${pair.directory.path}/agrico.db');
