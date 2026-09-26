@@ -21,7 +21,23 @@ class AdministrativeCatalogScreen extends StatefulWidget {
 }
 
 class _AdministrativeCatalogScreenState extends State<AdministrativeCatalogScreen> {
-  late Future<List<AdministrativeUnit>> units = widget.catalog.all();
+  List<AdministrativeUnit>? units;
+  Object? loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final result = await widget.catalog.all();
+      if (mounted) setState(() { units = result; loadError = null; });
+    } catch (error) {
+      if (mounted) setState(() => loadError = error);
+    }
+  }
 
   Future<void> _add(List<AdministrativeUnit> current) async {
     var name = '';
@@ -122,7 +138,7 @@ class _AdministrativeCatalogScreenState extends State<AdministrativeCatalogScree
         code: draft.code, alternateName: draft.alternate,
       );
       final refreshed = await widget.catalog.all();
-      if (mounted) setState(() => units = Future.value(refreshed));
+      if (mounted) setState(() => units = refreshed);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -137,12 +153,11 @@ class _AdministrativeCatalogScreenState extends State<AdministrativeCatalogScree
     final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(title: Text(l10n.text('admin.title'))),
-      body: FutureBuilder<List<AdministrativeUnit>>(
-        future: units,
-        builder: (context, snapshot) {
-          if (snapshot.hasError) return Center(child: Text(l10n.text('admin.loadFailed')));
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-          final all = snapshot.data!;
+      body: Builder(
+        builder: (context) {
+          if (loadError != null) return Center(child: Text(l10n.text('admin.loadFailed')));
+          final all = units;
+          if (all == null) return const Center(child: CircularProgressIndicator());
           final names = {for (final unit in all) unit.id: unit.name};
           return ListView(
             key: const Key('admin-list'),
@@ -162,10 +177,7 @@ class _AdministrativeCatalogScreenState extends State<AdministrativeCatalogScree
       ),
       floatingActionButton: FloatingActionButton.extended(
         key: const Key('admin-add'),
-        onPressed: () async {
-          final current = await units;
-          if (mounted) await _add(current);
-        },
+        onPressed: units == null ? null : () => _add(units!),
         icon: const Icon(Icons.add),
         label: Text(l10n.text('admin.add')),
       ),
