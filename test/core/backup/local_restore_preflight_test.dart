@@ -44,9 +44,9 @@ void main() {
           factory: databaseFactoryFfi,
           temporaryDirectory: directory.path,
         ),
-        isA<RestorePreflightException>().having(
+        throwsA(isA<RestorePreflightException>().having(
           (error) => error.reason, 'reason', 'missingCosts',
-        ),
+        )),
       );
     } finally {
       await primary.close();
@@ -79,9 +79,9 @@ void main() {
           factory: databaseFactoryFfi,
           temporaryDirectory: directory.path,
         ),
-        isA<RestorePreflightException>().having(
+        throwsA(isA<RestorePreflightException>().having(
           (error) => error.reason, 'reason', 'foreignKeys',
-        ),
+        )),
       );
       expect((await primary.query('child')).single['parent_id'], 'missing');
     } finally {
