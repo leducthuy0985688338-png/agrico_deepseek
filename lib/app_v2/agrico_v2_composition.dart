@@ -26,6 +26,7 @@ import '../features/farm/data/legacy/legacy_field_adapter.dart';
 import '../features/farm/data/local/sqlite_land_parcel_repository.dart';
 import '../features/farm/data/local/sqlite_land_survey_repository.dart';
 import '../features/farm/domain/entities/land_parcel.dart';
+import '../features/farm/domain/entities/land_survey.dart';
 import '../features/farm/domain/geometry/wgs84_geometry.dart';
 import '../features/farm/presentation/controllers/land_parcel_controller.dart';
 import '../features/farm/presentation/platform/land_parcel_platform_io.dart';
@@ -164,6 +165,17 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         onGpsRequested: () => _measureGps(context, deps, id),
         onImportRequested: () => _import(context, deps, id),
         onEditRequested: () => _editParcel(context, deps, id),
+        onAttachRequested: () => _attachParcel(context, deps, id),
+        onOpenAttachment: (attachment) async {
+          final reference = attachment.localReference;
+          final opened = reference != null &&
+              await deps.platform.openLocalAttachment(reference);
+          if (!opened && context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(context.l10n.text('attachment.openFailed')),
+            ));
+          }
+        },
       );
       openParcels = () => push(
         LandParcelListScreen(
@@ -349,6 +361,49 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         ),
       ),
     );
+  }
+
+  Future<void> _attachParcel(
+    BuildContext context,
+    _V2Dependencies deps,
+    String parcelId,
+  ) async {
+    if (!deps.controller.can(PermissionCodes.fieldEdit,
+        parcelId: parcelId)) return;
+    try {
+      final picked = await deps.platform.pickAndStoreAttachment();
+      if (picked == null) return;
+      final name = picked.name.toLowerCase();
+      final photo = ['.jpg', '.jpeg', '.png', '.webp', '.heic']
+          .any(name.endsWith);
+      final type = photo
+          ? ParcelAttachmentType.photo
+          : ParcelAttachmentType.document;
+      final mime = photo
+          ? (name.endsWith('.png') ? 'image/png' :
+              name.endsWith('.webp') ? 'image/webp' :
+              name.endsWith('.heic') ? 'image/heic' : 'image/jpeg')
+          : name.endsWith('.pdf') ? 'application/pdf' :
+              'application/octet-stream';
+      final now = DateTime.now().toUtc();
+      await deps.surveyRepository.createAttachment(ParcelAttachment(
+        id: 'attachment-${now.microsecondsSinceEpoch}',
+        parcelId: parcelId,
+        attachmentType: type,
+        fileName: picked.name,
+        mimeType: mime,
+        localReference: picked.path,
+        createdAt: now,
+        createdBy: deps.subject.membershipId,
+      ));
+      await deps.controller.loadDetail(parcelId);
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(context.l10n.text('attachment.saveFailed')),
+        ));
+      }
+    }
   }
 
   void _createParcel(
