@@ -64,13 +64,18 @@ class LocalRestorePreflight {
       }
       final schema = await current.rawQuery(
         "SELECT type, name, sql FROM sqlite_master WHERE type IN ('table', 'index') "
-        "AND name NOT LIKE 'sqlite_%' AND sql IS NOT NULL ORDER BY type DESC, name",
+        "AND name NOT LIKE 'sqlite_%' AND name != 'android_metadata' "
+        "AND sql IS NOT NULL ORDER BY type DESC, name",
       );
       final tables = <String>{
         for (final row in schema)
           if (row['type'] == 'table') row['name']! as String,
       };
-      final saved = payload['tables'] as Map<String, dynamic>;
+      // Android owns this locale table and may create it when opening the
+      // disposable database. Older backups included it; do not recreate it.
+      final saved = Map<String, dynamic>.from(
+        payload['tables'] as Map<String, dynamic>,
+      )..remove('android_metadata');
       if (tables.length != saved.length || !tables.containsAll(saved.keys)) {
         throw RestorePreflightException('tables', database: databaseName);
       }

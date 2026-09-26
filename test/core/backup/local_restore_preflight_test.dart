@@ -1,7 +1,10 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:agrico_deepseek/core/backup/local_database_snapshot.dart';
 import 'package:agrico_deepseek/core/backup/local_restore_preflight.dart';
+import 'package:crypto/crypto.dart';
 import 'package:agrico_deepseek/core/geography/data/sqlite_administrative_catalog.dart';
 import 'package:agrico_deepseek/core/identity/data/sqlite_parcel_number_sequence.dart';
 import 'package:agrico_deepseek/features/finance/data/local/sqlite_finance_document_repository.dart';
@@ -117,6 +120,8 @@ void main() {
       await SqliteParcelNumberSequence.createSchema(primary);
       await SqliteFinanceDocumentRepository.createSchema(primary);
       await SqliteAdministrativeCatalog.createSchema(primary);
+      await primary.execute('CREATE TABLE android_metadata (locale TEXT)');
+      await primary.insert('android_metadata', {'locale': 'lo_LA'});
       await primary.insert('fields', {
         'id': 'legacy-1', 'name': 'ບ້ານຕາໂກ', 'area': 10.0,
         'crop': '', 'status': 'draft', 'polygon': '[]',
@@ -125,6 +130,9 @@ void main() {
       final backup = await LocalDatabaseSnapshot.create(
         primary, costsDatabase: costs,
       );
+      expect(LocalDatabaseSnapshot.inspect(backup).containsKey(
+        'agrico.db/android_metadata',
+      ), isFalse);
       final counts = await LocalRestorePreflight.validate(
         bytes: backup,
         primary: primary,
@@ -133,6 +141,27 @@ void main() {
         temporaryDirectory: directory.path,
       );
       expect(counts['agrico.db/fields'], 1);
+      // Backups produced before this fix may still contain Android's table.
+      final envelope = jsonDecode(utf8.decode(backup)) as Map<String, dynamic>;
+      final payload = jsonDecode(envelope['payload'] as String)
+          as Map<String, dynamic>;
+      final databases = payload['databases'] as Map<String, dynamic>;
+      final savedPrimary = databases['agrico.db'] as Map<String, dynamic>;
+      (savedPrimary['tables'] as Map<String, dynamic>)['android_metadata'] = [
+        {'locale': 'lo_LA'},
+      ];
+      final body = jsonEncode(payload);
+      envelope['payload'] = body;
+      envelope['sha256'] = sha256.convert(utf8.encode(body)).toString();
+      final olderBackup = Uint8List.fromList(utf8.encode(jsonEncode(envelope)));
+      final oldCounts = await LocalRestorePreflight.validate(
+        bytes: olderBackup,
+        primary: primary,
+        costs: costs,
+        factory: databaseFactoryFfi,
+        temporaryDirectory: directory.path,
+      );
+      expect(oldCounts['agrico.db/fields'], 1);
     } finally {
       await primary.close();
       await costs.close();

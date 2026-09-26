@@ -39,7 +39,8 @@ class LocalDatabaseSnapshot {
         final schema = await tx.rawQuery('PRAGMA user_version');
         final tables = await tx.rawQuery(
           "SELECT name FROM sqlite_master WHERE type = 'table' "
-          "AND name NOT LIKE 'sqlite_%' ORDER BY name",
+          "AND name NOT LIKE 'sqlite_%' AND name != 'android_metadata' "
+          "ORDER BY name",
         );
         final data = <String, Object?>{};
         for (final table in tables) {
@@ -67,6 +68,7 @@ class LocalDatabaseSnapshot {
     for (final entry in databases.entries) {
       final tables = entry.value['tables'] as Map<String, dynamic>;
       for (final table in tables.entries) {
+        if (table.key == 'android_metadata') continue;
         counts['${entry.key}/${table.key}'] = (table.value as List).length;
       }
     }
