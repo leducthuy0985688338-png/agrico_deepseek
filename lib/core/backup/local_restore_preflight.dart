@@ -5,6 +5,13 @@ import 'package:sqflite/sqflite.dart';
 
 import 'local_database_snapshot.dart';
 
+class RestorePreflightException implements Exception {
+  const RestorePreflightException(this.reason, {this.database});
+
+  final String reason;
+  final String? database;
+}
+
 /// Builds disposable SQLite files from a checked backup and the current
 /// schema. Live databases are only queried; they are never changed here.
 class LocalRestorePreflight {
@@ -19,7 +26,7 @@ class LocalRestorePreflight {
   }) async {
     final data = LocalDatabaseSnapshot.decodeDatabases(bytes);
     if (data.length != 2 || !data.containsKey('agrico_costs.db')) {
-      throw const FormatException('A restore requires both SQLite databases.');
+      throw const RestorePreflightException('missingCosts');
     }
     var index = 0;
     for (final entry in <String, Database>{
@@ -33,6 +40,7 @@ class LocalRestorePreflight {
         factory: factory,
         current: entry.value,
         payload: data[entry.key]!,
+        databaseName: entry.key,
       );
     }
     return LocalDatabaseSnapshot.inspect(bytes);
@@ -43,13 +51,14 @@ class LocalRestorePreflight {
     required DatabaseFactory factory,
     required Database current,
     required Map<String, dynamic> payload,
+    required String databaseName,
   }) async {
     Database? staged;
     try {
       final versionRows = await current.rawQuery('PRAGMA user_version');
       final version = versionRows.single['user_version'];
       if (payload['databaseVersion'] != version) {
-        throw const FormatException('SQLite schema version differs.');
+        throw RestorePreflightException('schemaVersion', database: databaseName);
       }
       final schema = await current.rawQuery(
         "SELECT type, name, sql FROM sqlite_master WHERE type IN ('table', 'index') "
@@ -61,7 +70,7 @@ class LocalRestorePreflight {
       };
       final saved = payload['tables'] as Map<String, dynamic>;
       if (tables.length != saved.length || !tables.containsAll(saved.keys)) {
-        throw const FormatException('SQLite tables differ from this app.');
+        throw RestorePreflightException('tables', database: databaseName);
       }
       staged = await factory.openDatabase(path);
       await staged.execute('PRAGMA foreign_keys = OFF');
@@ -92,11 +101,15 @@ class LocalRestorePreflight {
       }
       if ((await staged.rawQuery('PRAGMA integrity_check')).single.values.single
           != 'ok') {
-        throw const FormatException('SQLite integrity check failed.');
+        throw RestorePreflightException('integrity', database: databaseName);
       }
       if ((await staged.rawQuery('PRAGMA foreign_key_check')).isNotEmpty) {
-        throw const FormatException('SQLite foreign key check failed.');
+        throw RestorePreflightException('foreignKeys', database: databaseName);
       }
+    } on RestorePreflightException {
+      rethrow;
+    } on DatabaseException {
+      throw RestorePreflightException('sqlite', database: databaseName);
     } finally {
       await staged?.close();
       await factory.deleteDatabase(path);
