@@ -10,7 +10,7 @@ class LocalDatabaseSnapshot {
   const LocalDatabaseSnapshot._();
 
   static const format = 'agrico-local-sqlite';
-  static const version = 2;
+  static const version = 3;
 
   static Future<Uint8List> create(
     Database database, {
@@ -27,7 +27,7 @@ class LocalDatabaseSnapshot {
     final body = jsonEncode(payload);
     final envelope = <String, Object?>{
       'format': format,
-      'version': version,
+      'version': 2,
       'sha256': sha256.convert(utf8.encode(body)).toString(),
       'payload': body,
     };
@@ -79,7 +79,8 @@ class LocalDatabaseSnapshot {
   static Map<String, Map<String, dynamic>> decodeDatabases(Uint8List bytes) {
     final root = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
     if (root['format'] != format ||
-        (root['version'] != 1 && root['version'] != version)) {
+        (root['version'] != 1 && root['version'] != 2 &&
+            root['version'] != version)) {
       throw const FormatException('Unsupported AGRICO backup format.');
     }
     final body = root['payload'];
