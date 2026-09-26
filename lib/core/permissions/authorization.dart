@@ -23,6 +23,7 @@ abstract final class PermissionCodes {
   static const chatSend = 'chat.send';
   static const cloudSync = 'cloud.sync';
   static const cloudRestore = 'cloud.restore';
+  static const administrativeCatalogManage = 'administrative_catalog.manage';
 
   static const values = <String>{
     fieldView,
@@ -44,6 +45,7 @@ abstract final class PermissionCodes {
     chatSend,
     cloudSync,
     cloudRestore,
+    administrativeCatalogManage,
   };
 }
 

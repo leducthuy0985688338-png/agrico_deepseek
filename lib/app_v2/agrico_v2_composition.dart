@@ -5,8 +5,9 @@ import 'package:provider/provider.dart';
 
 import '../core/localization/app_localizations.dart';
 import '../core/geography/data/sqlite_administrative_catalog.dart';
+import '../core/geography/application/manage_administrative_catalog.dart';
+import '../core/geography/presentation/administrative_catalog_screen.dart';
 import '../core/identity/data/sqlite_parcel_number_sequence.dart';
-import '../core/geography/domain/entities/administrative_unit.dart';
 import '../core/permissions/authorization.dart';
 import '../core/spatial/data/identity/default_spatial_identity_generator.dart';
 import '../core/spatial/data/spatial_persistence_composition.dart';
@@ -68,7 +69,6 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     await SqliteAdministrativeCatalog.createSchema(database);
     final administrativeCatalog = SqliteAdministrativeCatalog(database);
     await administrativeCatalog.seedInitialLocation();
-    final administrativeUnits = await administrativeCatalog.all();
     final finance = SqliteFinanceDocumentRepository(database);
     final parcels = SqliteLandParcelRepository(database);
     final legacyFields = await sharedDatabase.getAll();
@@ -135,7 +135,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       spatial: spatial,
       controller: controller,
       finance: finance,
-      administrativeUnits: administrativeUnits,
+      administrativeCatalog: ManageAdministrativeCatalog(administrativeCatalog),
       surveyRepository: SqliteLandSurveyRepository(database),
       platform: platform,
     );
@@ -182,6 +182,11 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         'ai': () => push(const AiChatScreen()),
         'reports': () => push(const ReportScreen()),
         'settings': () => push(const SettingsPage()),
+        if (deps.subject.permissionCodes.contains(
+            PermissionCodes.administrativeCatalogManage))
+          'administrativeCatalog': () => push(AdministrativeCatalogScreen(
+            catalog: deps.administrativeCatalog, subject: deps.subject,
+          )),
       };
       return AnimatedBuilder(
         animation: deps.controller,
@@ -345,12 +350,13 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     BuildContext context,
     _V2Dependencies deps,
   ) async {
+    final administrativeUnits = await deps.administrativeCatalog.all();
     final households = await deps.surveyRepository.listHouseholds(deps.subject.farmId);
     if (!context.mounted) return;
     Navigator.of(context).push(
     MaterialPageRoute(
       builder: (_) => LandParcelFormScreen(
-        administrativeUnits: deps.administrativeUnits,
+        administrativeUnits: administrativeUnits,
         availableHouseholds: households,
         onGpsRequested: () => _measureGpsForCreate(context),
         onImportRequested: () => _importForCreate(context, deps),
@@ -516,7 +522,7 @@ class _V2Dependencies {
     required this.spatial,
     required this.controller,
     required this.finance,
-    required this.administrativeUnits,
+    required this.administrativeCatalog,
     required this.surveyRepository,
     required this.platform,
   });
@@ -524,7 +530,7 @@ class _V2Dependencies {
   final SpatialPersistenceComposition spatial;
   final LandParcelController controller;
   final SqliteFinanceDocumentRepository finance;
-  final List<AdministrativeUnit> administrativeUnits;
+  final ManageAdministrativeCatalog administrativeCatalog;
   final SqliteLandSurveyRepository surveyRepository;
   final MobileLandParcelPlatformGateway platform;
 }

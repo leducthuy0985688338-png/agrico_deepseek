@@ -2,9 +2,10 @@ import 'package:sqflite/sqflite.dart';
 
 import '../domain/administrative_code_catalog.dart';
 import '../domain/entities/administrative_unit.dart';
+import '../domain/administrative_catalog_repository.dart';
 
 /// AGRICO-managed administrative codes. These are not official Lao district codes.
-class SqliteAdministrativeCatalog {
+class SqliteAdministrativeCatalog implements AdministrativeCatalogRepository {
   const SqliteAdministrativeCatalog(this.database);
 
   static const table = 'agrico_administrative_units';
@@ -64,6 +65,7 @@ class SqliteAdministrativeCatalog {
     });
   }
 
+  @override
   Future<List<AdministrativeUnit>> all() async {
     final rows = await database.query(table, orderBy: 'level, name');
     return rows.map((row) => AdministrativeUnit(
@@ -83,8 +85,14 @@ class SqliteAdministrativeCatalog {
       AdministrativeCodeCatalog(await all());
 
   /// Add a province, district, or village under an existing active parent.
+  @override
   Future<void> add(AdministrativeUnit unit) async {
     unit.validate();
+    if (unit.parentId == null ||
+        !const [AdministrativeLevel.province, AdministrativeLevel.district,
+          AdministrativeLevel.village].contains(unit.level)) {
+      throw const FormatException('Only a province, district, or village can be added.');
+    }
     if (unit.code == null || !RegExp(r'^[A-Z0-9]+$').hasMatch(unit.code!)) {
       throw const FormatException('Administrative code must use A–Z and 0–9.');
     }
