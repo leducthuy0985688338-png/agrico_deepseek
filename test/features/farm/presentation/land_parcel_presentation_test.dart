@@ -181,7 +181,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('boundary-consistency-filter')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Synchronized').last);
+    await tester.tap(find.text('Spatial data consistent').last);
     await tester.pumpAndSettle();
     expect(find.text('No land parcels yet.'), findsOneWidget);
     expect(find.byKey(const Key('boundary-audit-unlinked')), findsNothing);
