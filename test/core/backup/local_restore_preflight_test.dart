@@ -35,6 +35,19 @@ void main() {
       expect(result['agrico_costs.db/production_costs'], 1);
       expect((await primary.query('parcels')).single['id'], 'P-1');
       expect((await costs.query('production_costs')).single['id'], 'C-1');
+      final older = await LocalDatabaseSnapshot.create(primary);
+      await expectLater(
+        LocalRestorePreflight.validate(
+          bytes: older,
+          primary: primary,
+          costs: costs,
+          factory: databaseFactoryFfi,
+          temporaryDirectory: directory.path,
+        ),
+        throwsA(isA<RestorePreflightException>().having(
+          (error) => error.reason, 'reason', 'missingCosts',
+        )),
+      );
     } finally {
       await primary.close();
       await costs.close();
@@ -66,7 +79,9 @@ void main() {
           factory: databaseFactoryFfi,
           temporaryDirectory: directory.path,
         ),
-        throwsFormatException,
+        throwsA(isA<RestorePreflightException>().having(
+          (error) => error.reason, 'reason', 'foreignKeys',
+        )),
       );
       expect((await primary.query('child')).single['parent_id'], 'missing');
     } finally {
