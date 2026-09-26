@@ -56,6 +56,7 @@ void main() {
           await previous.readAsBytes());
         expect((oldData['agrico.db']!['tables'] as Map<String, dynamic>)
           ['parcels'][0]['id'], 'current');
+        expect(await activation.previousBackup(), isNotNull);
         expect(await activation.applyPending(), isFalse);
       } finally {
         await primary.close();
