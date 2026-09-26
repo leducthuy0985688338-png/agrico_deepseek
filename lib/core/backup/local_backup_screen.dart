@@ -22,6 +22,7 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
   bool busy = false;
   Map<String, int>? preview;
   String? error;
+  String? errorDatabase;
   bool preflightPassed = false;
 
   Future<void> _export() async {
@@ -66,7 +67,7 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
   }
 
   Future<void> _preflight() async {
-    setState(() { busy = true; error = null; preview = null; });
+    setState(() { busy = true; error = null; errorDatabase = null; preview = null; });
     try {
       final selected = await FilePicker.platform.pickFiles(
         type: FileType.custom, allowedExtensions: ['json'], withData: true,
@@ -84,6 +85,11 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
         temporaryDirectory: temporary.path,
       );
       if (mounted) setState(() { preview = counts; preflightPassed = true; });
+    } on RestorePreflightException catch (failure) {
+      if (mounted) setState(() {
+        error = 'backup.preflight.${failure.reason}';
+        errorDatabase = failure.database;
+      });
     } catch (_) {
       if (mounted) setState(() => error = 'backup.preflightFailed');
     } finally {
@@ -117,7 +123,7 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
           label: Text(l10n.text('backup.preflight')),
         ),
         if (busy) const Center(child: CircularProgressIndicator()),
-        if (error != null) Text(l10n.text(error!),
+        if (error != null) Text('${l10n.text(error!)}${errorDatabase == null ? '' : ' ($errorDatabase)'}',
             style: TextStyle(color: Theme.of(context).colorScheme.error)),
         if (preview != null) ...[
           Text(l10n.text(preflightPassed ? 'backup.preflightValid' : 'backup.valid')),
