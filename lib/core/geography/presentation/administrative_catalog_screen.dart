@@ -30,10 +30,9 @@ class _AdministrativeCatalogScreenState extends State<AdministrativeCatalogScree
     var level = AdministrativeLevel.province;
     String? parentId;
     String? error;
-    var saving = false;
     final l10n = AppLocalizations.of(context);
 
-    await showDialog<void>(
+    final draft = await showDialog<_AdministrativeAreaDraft>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, update) {
@@ -63,7 +62,7 @@ class _AdministrativeCatalogScreenState extends State<AdministrativeCatalogScree
                       DropdownMenuItem(value: value,
                           child: Text(l10n.text('admin.${value.name}'))),
                   ],
-                  onChanged: saving ? null : (value) => update(() {
+                  onChanged: (value) => update(() {
                     level = value!;
                     parentId = null;
                     error = null;
@@ -76,7 +75,7 @@ class _AdministrativeCatalogScreenState extends State<AdministrativeCatalogScree
                   items: [for (final unit in parents)
                     DropdownMenuItem(value: unit.id,
                         child: Text('${unit.name} (${unit.code})'))],
-                  onChanged: saving ? null : (value) => update(() => parentId = value),
+                  onChanged: (value) => update(() => parentId = value),
                 ),
                 TextField(key: const Key('admin-name'),
                     onChanged: (value) => name = value,
@@ -94,36 +93,19 @@ class _AdministrativeCatalogScreenState extends State<AdministrativeCatalogScree
               ]),
             ),
             actions: [
-              TextButton(onPressed: saving ? null : () => Navigator.pop(dialogContext),
+              TextButton(onPressed: () => Navigator.pop(dialogContext),
                   child: Text(l10n.text('common.cancel'))),
               FilledButton(
                 key: const Key('admin-save'),
-                onPressed: saving ? null : () async {
+                onPressed: () {
                   if (selected == null) {
                     update(() => error = l10n.text('admin.parentRequired'));
                     return;
                   }
-                  update(() { saving = true; error = null; });
-                  try {
-                    await widget.catalog.add(
-                      subject: widget.subject, level: level, parentId: selected,
-                      name: name, code: code,
-                      alternateName: alternate,
-                    );
-                    final refreshed = await widget.catalog.all();
-                    if (!dialogContext.mounted) return;
-                    if (mounted) {
-                      setState(() => units = Future.value(refreshed));
-                    }
-                    Navigator.pop(dialogContext);
-                  } catch (_) {
-                    if (dialogContext.mounted) {
-                      update(() {
-                        saving = false;
-                        error = l10n.text('admin.saveFailed');
-                      });
-                    }
-                  }
+                  Navigator.pop(dialogContext, _AdministrativeAreaDraft(
+                    level: level, parentId: selected, name: name,
+                    code: code, alternate: alternate,
+                  ));
                 },
                 child: Text(l10n.text('common.save')),
               ),
@@ -132,6 +114,22 @@ class _AdministrativeCatalogScreenState extends State<AdministrativeCatalogScree
         },
       ),
     );
+    if (draft == null || !mounted) return;
+    try {
+      await widget.catalog.add(
+        subject: widget.subject, level: draft.level,
+        parentId: draft.parentId, name: draft.name,
+        code: draft.code, alternateName: draft.alternate,
+      );
+      final refreshed = await widget.catalog.all();
+      if (mounted) setState(() => units = Future.value(refreshed));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.text('admin.saveFailed'))),
+        );
+      }
+    }
   }
 
   @override
@@ -173,4 +171,16 @@ class _AdministrativeCatalogScreenState extends State<AdministrativeCatalogScree
       ),
     );
   }
+}
+
+class _AdministrativeAreaDraft {
+  const _AdministrativeAreaDraft({
+    required this.level, required this.parentId, required this.name,
+    required this.code, required this.alternate,
+  });
+  final AdministrativeLevel level;
+  final String parentId;
+  final String name;
+  final String code;
+  final String alternate;
 }
