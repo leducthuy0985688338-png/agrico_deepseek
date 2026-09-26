@@ -33,9 +33,13 @@ class _AdministrativeCatalogScreenState extends State<AdministrativeCatalogScree
   Future<void> _load() async {
     try {
       final result = await widget.catalog.all();
-      if (mounted) setState(() { units = result; loadError = null; });
+      if (mounted) {
+        setState(() { units = result; loadError = null; });
+      }
     } catch (error) {
-      if (mounted) setState(() => loadError = error);
+      if (mounted) {
+        setState(() => loadError = error);
+      }
     }
   }
 
@@ -130,7 +134,9 @@ class _AdministrativeCatalogScreenState extends State<AdministrativeCatalogScree
         },
       ),
     );
-    if (draft == null || !mounted) return;
+    if (draft == null || !mounted) {
+      return;
+    }
     try {
       await widget.catalog.add(
         subject: widget.subject, level: draft.level,
@@ -138,7 +144,9 @@ class _AdministrativeCatalogScreenState extends State<AdministrativeCatalogScree
         code: draft.code, alternateName: draft.alternate,
       );
       final refreshed = await widget.catalog.all();
-      if (mounted) setState(() => units = refreshed);
+      if (mounted) {
+        setState(() => units = refreshed);
+      }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -155,9 +163,13 @@ class _AdministrativeCatalogScreenState extends State<AdministrativeCatalogScree
       appBar: AppBar(title: Text(l10n.text('admin.title'))),
       body: Builder(
         builder: (context) {
-          if (loadError != null) return Center(child: Text(l10n.text('admin.loadFailed')));
+          if (loadError != null) {
+            return Center(child: Text(l10n.text('admin.loadFailed')));
+          }
           final all = units;
-          if (all == null) return const Center(child: CircularProgressIndicator());
+          if (all == null) {
+            return const Center(child: CircularProgressIndicator());
+          }
           final names = {for (final unit in all) unit.id: unit.name};
           return ListView(
             key: const Key('admin-list'),
