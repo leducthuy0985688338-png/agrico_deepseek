@@ -63,15 +63,16 @@ void main() {
     final created = (await memory.all()).singleWhere((u) => u.code == 'BM');
     expect(created.level, AdministrativeLevel.village);
     expect(created.parentId, 'agrico-la-svk-nong');
-    await tester.dragUntilVisible(find.textContaining('Ban Mai'),
+    await tester.pump();
+    await tester.dragUntilVisible(find.byKey(Key('admin-unit-${created.id}')),
         find.byKey(const Key('admin-list')), const Offset(0, -250));
-    expect(find.textContaining('Ban Mai'), findsOneWidget);
+    expect(find.byKey(Key('admin-unit-${created.id}')), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
     await tester.pumpWidget(screen());
     await tester.pumpAndSettle();
-    await tester.dragUntilVisible(find.textContaining('Ban Mai'),
+    await tester.dragUntilVisible(find.byKey(Key('admin-unit-${created.id}')),
         find.byKey(const Key('admin-list')), const Offset(0, -250));
-    expect(find.textContaining('Ban Mai'), findsOneWidget);
+    expect(find.byKey(Key('admin-unit-${created.id}')), findsOneWidget);
   });
 
   test('catalog edit requires management permission and does not change seed',
