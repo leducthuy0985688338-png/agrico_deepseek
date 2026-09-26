@@ -24,6 +24,7 @@ abstract final class PermissionCodes {
   static const cloudSync = 'cloud.sync';
   static const cloudRestore = 'cloud.restore';
   static const administrativeCatalogManage = 'administrative_catalog.manage';
+  static const localBackupExport = 'local_backup.export';
 
   static const values = <String>{
     fieldView,
@@ -46,6 +47,7 @@ abstract final class PermissionCodes {
     cloudSync,
     cloudRestore,
     administrativeCatalogManage,
+    localBackupExport,
   };
 }
 
