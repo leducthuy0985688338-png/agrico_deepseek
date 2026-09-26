@@ -15,6 +15,7 @@ void main() {
   late Database database;
   late SqliteAdministrativeCatalog repository;
   late ManageAdministrativeCatalog service;
+  late List<AdministrativeUnit> seedUnits;
   const subject = AuthorizationSubject(
     userId: 'admin', membershipId: 'admin-member', farmId: 'local-farm',
     permissionCodes: PermissionCodes.values,
@@ -27,6 +28,7 @@ void main() {
     repository = SqliteAdministrativeCatalog(database);
     await repository.seedInitialLocation();
     service = ManageAdministrativeCatalog(repository);
+    seedUnits = await repository.all();
   });
   tearDown(() => database.close());
 
@@ -34,7 +36,7 @@ void main() {
       (tester) async {
     // Keep widget scheduling independent of sqflite's background isolate;
     // the repository tests below exercise real SQLite persistence.
-    final memory = _MemoryCatalog(await repository.all());
+    final memory = _MemoryCatalog(List.of(seedUnits));
     final widgetService = ManageAdministrativeCatalog(memory);
     Widget screen() => MaterialApp(
       locale: const Locale('vi'),
