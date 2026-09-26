@@ -110,9 +110,12 @@ class _AdministrativeCatalogScreenState extends State<AdministrativeCatalogScree
                       name: name, code: code,
                       alternateName: alternate,
                     );
+                    final refreshed = await widget.catalog.all();
                     if (!dialogContext.mounted) return;
+                    if (mounted) {
+                      setState(() => units = Future.value(refreshed));
+                    }
                     Navigator.pop(dialogContext);
-                    if (mounted) setState(() => units = widget.catalog.all());
                   } catch (_) {
                     if (dialogContext.mounted) {
                       update(() {
