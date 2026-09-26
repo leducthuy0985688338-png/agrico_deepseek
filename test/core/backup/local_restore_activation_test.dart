@@ -1,9 +1,9 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:agrico_deepseek/core/backup/local_database_snapshot.dart';
 import 'package:agrico_deepseek/core/backup/local_restore_activation_io.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
@@ -43,17 +43,19 @@ void main() {
         '${pair.directory.path}/agrico.db');
       final costs = await databaseFactoryFfi.openDatabase(
         '${pair.directory.path}/agrico_costs.db');
+      late final List<int> previousBytes;
       try {
         expect((await primary.query('parcels')).single['id'], 'backup');
         expect((await costs.query('expenses')).single['id'], 'backup');
         final previous = pair.directory.listSync().whereType<File>().singleWhere(
           (file) => file.path.contains('agrico-before-restore-'));
-        expect(LocalDatabaseSnapshot.inspect(await previous.readAsBytes()), {
+        previousBytes = await previous.readAsBytes();
+        expect(LocalDatabaseSnapshot.inspect(previousBytes), {
           'agrico.db/parcels': 1,
           'agrico_costs.db/expenses': 1,
         });
         final oldData = LocalDatabaseSnapshot.decodeDatabases(
-          await previous.readAsBytes());
+          previousBytes);
         expect((oldData['agrico.db']!['tables'] as Map<String, dynamic>)
           ['parcels'][0]['id'], 'current');
         expect(await activation.previousBackup(), isNotNull);
@@ -61,6 +63,19 @@ void main() {
       } finally {
         await primary.close();
         await costs.close();
+      }
+      await activation.schedule(Uint8List.fromList(previousBytes));
+      expect(await activation.applyPending(), isTrue);
+      final restoredPrimary = await databaseFactoryFfi.openDatabase(
+        '${pair.directory.path}/agrico.db');
+      final restoredCosts = await databaseFactoryFfi.openDatabase(
+        '${pair.directory.path}/agrico_costs.db');
+      try {
+        expect((await restoredPrimary.query('parcels')).single['id'], 'current');
+        expect((await restoredCosts.query('expenses')).single['id'], 'current');
+      } finally {
+        await restoredPrimary.close();
+        await restoredCosts.close();
       }
     } finally {
       await pair.directory.delete(recursive: true);
