@@ -6,10 +6,11 @@ import 'package:sqflite/sqflite.dart';
 import 'local_database_snapshot.dart';
 
 class RestorePreflightException implements Exception {
-  const RestorePreflightException(this.reason, {this.database});
+  const RestorePreflightException(this.reason, {this.database, this.step});
 
   final String reason;
   final String? database;
+  final String? step;
 }
 
 /// Builds disposable SQLite files from a checked backup and the current
@@ -54,6 +55,7 @@ class LocalRestorePreflight {
     required String databaseName,
   }) async {
     Database? staged;
+    var step = 'schema';
     try {
       final versionRows = await current.rawQuery('PRAGMA user_version');
       final version = versionRows.single['user_version'];
@@ -75,10 +77,13 @@ class LocalRestorePreflight {
       staged = await factory.openDatabase(path);
       await staged.execute('PRAGMA foreign_keys = OFF');
       for (final row in schema.where((row) => row['type'] == 'table')) {
+        step = 'table ${row['name']}';
         await staged.execute(row['sql']! as String);
       }
+      step = 'rows';
       await staged.transaction((tx) async {
         for (final table in saved.entries) {
+          step = 'rows ${table.key}';
           if (!RegExp(r'^[a-zA-Z_][a-zA-Z_0-9]*$').hasMatch(table.key)) {
             throw const FormatException('Invalid table name.');
           }
@@ -97,8 +102,10 @@ class LocalRestorePreflight {
         }
       });
       for (final row in schema.where((row) => row['type'] == 'index')) {
+        step = 'index ${row['name']}';
         await staged.execute(row['sql']! as String);
       }
+      step = 'integrity';
       if ((await staged.rawQuery('PRAGMA integrity_check')).single.values.single
           != 'ok') {
         throw RestorePreflightException('integrity', database: databaseName);
@@ -109,7 +116,9 @@ class LocalRestorePreflight {
     } on RestorePreflightException {
       rethrow;
     } on DatabaseException {
-      throw RestorePreflightException('sqlite', database: databaseName);
+      throw RestorePreflightException(
+        'sqlite', database: databaseName, step: step,
+      );
     } finally {
       await staged?.close();
       await factory.deleteDatabase(path);
