@@ -24,7 +24,9 @@ class LocalMediaSnapshot {
     final assets = <String, String>{};
     await _rewriteRows(databases, (reference) async {
       if (reference.startsWith('http://') ||
-          reference.startsWith('https://')) return reference;
+          reference.startsWith('https://')) {
+        return reference;
+      }
       final file = File(reference);
       if (!await file.exists()) {
         throw FormatException('Missing local media file: $reference');
@@ -84,7 +86,9 @@ class LocalMediaSnapshot {
       final file = File(p.join(folder.path, item.key));
       if (await file.exists() &&
           sha256.convert(await file.readAsBytes()).toString() ==
-              item.key.substring(0, 64)) continue;
+              item.key.substring(0, 64)) {
+        continue;
+      }
       final temporary = File('${file.path}.tmp');
       await temporary.writeAsBytes(item.value, flush: true);
       await temporary.rename(file.path);
