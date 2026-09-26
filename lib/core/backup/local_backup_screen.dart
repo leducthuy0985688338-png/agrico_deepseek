@@ -112,11 +112,13 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
       if (bytes == null) throw const FormatException('No previous backup.');
       await _validateRestoreBytes(bytes);
     } on RestorePreflightException catch (failure) {
-      if (mounted) setState(() {
-        error = 'backup.preflight.${failure.reason}';
-        errorDatabase = failure.database;
-        errorStep = failure.step;
-      });
+      if (mounted) {
+        setState(() {
+          error = 'backup.preflight.${failure.reason}';
+          errorDatabase = failure.database;
+          errorStep = failure.step;
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => error = 'backup.preflightFailed');
     } finally {
@@ -134,11 +136,13 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
       factory: databaseFactory,
       temporaryDirectory: temporary.path,
     );
-    if (mounted) setState(() {
-      preview = counts;
-      validatedBackup = bytes;
-      preflightPassed = true;
-    });
+    if (mounted) {
+      setState(() {
+        preview = counts;
+        validatedBackup = bytes;
+        preflightPassed = true;
+      });
+    }
   }
 
   Future<void> _scheduleRestore() async {
