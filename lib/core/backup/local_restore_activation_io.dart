@@ -92,7 +92,7 @@ class LocalRestoreActivation {
       Uint8List bytes) async {
     final data = LocalDatabaseSnapshot.decodeDatabases(bytes);
     final db = await factory.openDatabase(mainPath);
-    var attached = false;
+    var committed = false;
     try {
       await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
       if ((await db.rawQuery('PRAGMA journal_mode=DELETE')).single.values.single
@@ -102,7 +102,6 @@ class LocalRestoreActivation {
       await db.execute('PRAGMA synchronous=FULL');
       await db.execute('PRAGMA foreign_keys=OFF');
       await db.execute('ATTACH DATABASE ? AS restore_costs', [costsPath]);
-      attached = true;
       await db.rawQuery('PRAGMA restore_costs.wal_checkpoint(TRUNCATE)');
       if ((await db.rawQuery('PRAGMA restore_costs.journal_mode=DELETE'))
           .single.values.single.toString().toLowerCase() != 'delete') {
@@ -146,9 +145,15 @@ class LocalRestoreActivation {
           }
         }
       });
+      committed = true;
     } finally {
-      if (attached) await db.execute('DETACH DATABASE restore_costs');
-      await db.close();
+      try {
+        await db.close();
+      } catch (_) {
+        // A completed transaction is already committed. Closing an attached
+        // connection must not turn that success into a reported rollback.
+        if (!committed) rethrow;
+      }
     }
   }
 
