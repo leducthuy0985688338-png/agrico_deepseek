@@ -5,6 +5,7 @@ import 'package:fl_chart/fl_chart.dart';
 
 import 'core/localization/app_locale_controller.dart';
 import 'core/localization/app_localizations.dart';
+import 'core/backup/local_restore_activation.dart';
 import 'theme/app_theme.dart';
 import 'services/cloud_service.dart';
 import 'app_v2/agrico_v2_composition.dart';
@@ -39,6 +40,7 @@ import 'providers/production_cost_provider.dart';
 // ====== ĐIỂM KHỞI ĐẦU ======
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await applyPendingRestore();
   await CloudService.initialize();
   runApp(const MyApp());
 }
