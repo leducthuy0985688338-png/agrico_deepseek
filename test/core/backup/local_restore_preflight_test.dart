@@ -2,6 +2,12 @@ import 'dart:io';
 
 import 'package:agrico_deepseek/core/backup/local_database_snapshot.dart';
 import 'package:agrico_deepseek/core/backup/local_restore_preflight.dart';
+import 'package:agrico_deepseek/core/geography/data/sqlite_administrative_catalog.dart';
+import 'package:agrico_deepseek/core/identity/data/sqlite_parcel_number_sequence.dart';
+import 'package:agrico_deepseek/features/finance/data/local/sqlite_finance_document_repository.dart';
+import 'package:agrico_deepseek/services/field_database.dart';
+import 'package:agrico_deepseek/features/farm/data/local/sqlite_land_parcel_repository.dart';
+import 'package:agrico_deepseek/features/farm/data/local/sqlite_land_parcel_spatial_link_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -84,6 +90,49 @@ void main() {
         )),
       );
       expect((await primary.query('child')).single['parent_id'], 'missing');
+    } finally {
+      await primary.close();
+      await costs.close();
+      await directory.delete(recursive: true);
+    }
+  });
+
+  test('rebuilds current AGRICO schema with a legacy field row', () async {
+    final directory = await Directory.systemTemp.createTemp('agrico-schema-');
+    final primary = await databaseFactoryFfi.openDatabase(
+      '${directory.path}/agrico.db',
+      options: OpenDatabaseOptions(version: FieldDatabase.databaseVersion,
+        onCreate: FieldDatabase.createSchema),
+    );
+    final costs = await databaseFactoryFfi.openDatabase(
+      '${directory.path}/agrico_costs.db',
+      options: OpenDatabaseOptions(version: 2,
+        onCreate: (db, _) async {
+          await db.execute('CREATE TABLE production_costs (id TEXT PRIMARY KEY)');
+        }),
+    );
+    try {
+      await SqliteLandParcelRepository.createSchema(primary);
+      await SqliteLandParcelSpatialLinkRepository.createSchema(primary);
+      await SqliteParcelNumberSequence.createSchema(primary);
+      await SqliteFinanceDocumentRepository.createSchema(primary);
+      await SqliteAdministrativeCatalog.createSchema(primary);
+      await primary.insert('fields', {
+        'id': 'legacy-1', 'name': 'ບ້ານຕາໂກ', 'area': 10.0,
+        'crop': '', 'status': 'draft', 'polygon': '[]',
+        'photo_paths': '[]', 'updated_at': '2026-09-26T00:00:00Z',
+      });
+      final backup = await LocalDatabaseSnapshot.create(
+        primary, costsDatabase: costs,
+      );
+      final counts = await LocalRestorePreflight.validate(
+        bytes: backup,
+        primary: primary,
+        costs: costs,
+        factory: databaseFactoryFfi,
+        temporaryDirectory: directory.path,
+      );
+      expect(counts['agrico.db/fields'], 1);
     } finally {
       await primary.close();
       await costs.close();
