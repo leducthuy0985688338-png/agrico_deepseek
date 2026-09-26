@@ -24,9 +24,9 @@ class _AdministrativeCatalogScreenState extends State<AdministrativeCatalogScree
   late Future<List<AdministrativeUnit>> units = widget.catalog.all();
 
   Future<void> _add(List<AdministrativeUnit> current) async {
-    final name = TextEditingController();
-    final code = TextEditingController();
-    final alternate = TextEditingController();
+    var name = '';
+    var code = '';
+    var alternate = '';
     var level = AdministrativeLevel.province;
     String? parentId;
     String? error;
@@ -78,12 +78,15 @@ class _AdministrativeCatalogScreenState extends State<AdministrativeCatalogScree
                         child: Text('${unit.name} (${unit.code})'))],
                   onChanged: saving ? null : (value) => update(() => parentId = value),
                 ),
-                TextField(key: const Key('admin-name'), controller: name,
+                TextField(key: const Key('admin-name'),
+                    onChanged: (value) => name = value,
                     decoration: InputDecoration(labelText: l10n.text('admin.name'))),
-                TextField(key: const Key('admin-code'), controller: code,
+                TextField(key: const Key('admin-code'),
+                    onChanged: (value) => code = value,
                     textCapitalization: TextCapitalization.characters,
                     decoration: InputDecoration(labelText: l10n.text('admin.code'))),
-                TextField(key: const Key('admin-alternate'), controller: alternate,
+                TextField(key: const Key('admin-alternate'),
+                    onChanged: (value) => alternate = value,
                     decoration: InputDecoration(labelText: l10n.text('admin.alternate'))),
                 if (error != null) Text(error!,
                     key: const Key('admin-error'),
@@ -104,8 +107,8 @@ class _AdministrativeCatalogScreenState extends State<AdministrativeCatalogScree
                   try {
                     await widget.catalog.add(
                       subject: widget.subject, level: level, parentId: selected,
-                      name: name.text, code: code.text,
-                      alternateName: alternate.text,
+                      name: name, code: code,
+                      alternateName: alternate,
                     );
                     if (!dialogContext.mounted) return;
                     Navigator.pop(dialogContext);
@@ -126,10 +129,6 @@ class _AdministrativeCatalogScreenState extends State<AdministrativeCatalogScree
         },
       ),
     );
-    // The dialog has been removed before its controllers are released.
-    name.dispose();
-    code.dispose();
-    alternate.dispose();
   }
 
   @override
