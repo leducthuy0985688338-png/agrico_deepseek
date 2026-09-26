@@ -2,51 +2,81 @@ name: Flutter CI
 
 on:
   push:
-    branches: ["main", "master", "feature/gps-field-measurement"]
   pull_request:
-    branches: ["main", "master"]
+    branches: [main, master, architecture/v2-foundation]
+  workflow_dispatch:
+    inputs:
+      gate:
+        description: Verification gate
+        type: choice
+        options: [fast, full, release]
+        default: fast
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flutter-${{ github.workflow }}-${{ github.ref }}-${{ inputs.gate || 'automatic' }}
+  cancel-in-progress: true
 
 jobs:
-  analyze-and-test:
+  fast:
+    if: github.event_name == 'push' || inputs.gate == 'fast'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
+      - run: flutter pub get
+      - name: Focused architecture tests
+        run: flutter test test/core/spatial test/features/farm
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Diff whitespace check
+        run: git diff --check HEAD^ HEAD
 
+  full:
+    if: github.event_name == 'pull_request' || inputs.gate == 'full' || inputs.gate == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - run: flutter test
+      - name: Diff whitespace check
+        run: git diff --check HEAD^ HEAD
+
+  release:
+    if: inputs.gate == 'release' || ((github.event_name == 'push' || github.event_name == 'pull_request') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.base_ref == 'main' || github.base_ref == 'master'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
       - name: Create Firebase config
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
           test -n "$GOOGLE_SERVICES_JSON"
           printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Analyze
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
-
-      - name: Test
-        run: flutter test
-
-      - name: Build Android APK
-        run: flutter build apk --debug
-
-      - name: Upload APK
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
+      - run: flutter pub get
+      - run: flutter build apk --debug
+      - uses: actions/upload-artifact@v4
         with:
           name: agrico-debug-apk
           path: build/app/outputs/flutter-apk/app-debug.apk
-
       - name: Remove Firebase config
         if: always()
         run: rm -f android/app/google-services.json
-
-# CI trigger: build latest main configuration
