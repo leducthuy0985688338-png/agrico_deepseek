@@ -97,17 +97,21 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
         factory: databaseFactory,
         temporaryDirectory: temporary.path,
       );
-      if (mounted) setState(() {
-        preview = counts;
-        validatedBackup = Uint8List.fromList(bytes);
-        preflightPassed = true;
-      });
+      if (mounted) {
+        setState(() {
+          preview = counts;
+          validatedBackup = Uint8List.fromList(bytes);
+          preflightPassed = true;
+        });
+      }
     } on RestorePreflightException catch (failure) {
-      if (mounted) setState(() {
-        error = 'backup.preflight.${failure.reason}';
-        errorDatabase = failure.database;
-        errorStep = failure.step;
-      });
+      if (mounted) {
+        setState(() {
+          error = 'backup.preflight.${failure.reason}';
+          errorDatabase = failure.database;
+          errorStep = failure.step;
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => error = 'backup.preflightFailed');
     } finally {
