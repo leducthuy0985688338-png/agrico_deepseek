@@ -505,11 +505,12 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
                   subtitle: Text(value.mimeType),
                 ),
               ),
-              OutlinedButton.icon(
-                onPressed: widget.onAddAttachment,
-                icon: const Icon(Icons.add),
-                label: Text(l10n.text('attachment.addMetadata')),
-              ),
+              if (widget.onAddAttachment != null)
+                OutlinedButton.icon(
+                  onPressed: widget.onAddAttachment,
+                  icon: const Icon(Icons.add),
+                  label: Text(l10n.text('attachment.addMetadata')),
+                ),
             ]),
             const SizedBox(height: 24),
             FilledButton(
