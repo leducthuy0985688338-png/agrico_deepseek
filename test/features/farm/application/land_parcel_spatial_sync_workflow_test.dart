@@ -173,6 +173,65 @@ void main() {
     expect(third.value!.parcelCode, 'LA-SVK-NONG-TAKO-H00002-001');
   });
 
+  test('failed automatic parcel save does not consume household or parcel number',
+      () async {
+    await SqliteParcelNumberSequence.createSchema(database);
+    final subject = AuthorizationSubject(
+      userId: 'user-1', membershipId: 'member-1', farmId: 'farm-1',
+      permissionCodes: PermissionCodes.values,
+      dataScopes: const {DataScope.allFarm},
+    );
+    final application = LandParcelApplicationService(
+      repository: parcels, spatialWorkflow: workflow,
+    );
+    CreateLandParcelCommand command(String id, {String? householdId}) =>
+        CreateLandParcelCommand(
+          id: id, farmId: 'farm-1', parcelCode: '', name: id,
+          vertices: createParcel().boundary.vertices.toList(),
+          source: BoundarySource.manual,
+          actorMembershipId: 'member-1', occurredAt: createdAt,
+          autoNumber: true, villageId: 'village-tako',
+          ownerHouseholdId: householdId, ownerDisplayName: 'Somphon',
+          countryCode: 'LA', provinceCode: 'SVK',
+          districtCode: 'NONG', villageCode: 'TAKO',
+          legacyMetadata: const {
+            'country': 'Lào', 'province': 'Savannakhet',
+            'district': 'Nong', 'village': 'Ta Ko',
+          },
+        );
+
+    // A legacy row with this ID causes the parcel insert to fail after the
+    // new household and both numbers have been prepared.
+    await parcels.create(createParcel(id: 'collision', code: 'LEGACY-001'));
+    final failedHousehold = await application.createLandParcel(
+      subject, command('collision'),
+    );
+    expect(failedHousehold.isSuccess, isFalse);
+    expect(await SqliteLandSurveyRepository(database).listHouseholds('farm-1'),
+        isEmpty);
+    expect((await parcels.getById(farmId: 'farm-1', id: 'collision'))!.parcelCode,
+        'LEGACY-001');
+
+    final first = await application.createLandParcel(subject, command('first'));
+    expect(first.isSuccess, isTrue);
+    expect(first.value!.parcelCode, 'LA-SVK-NONG-TAKO-H00001-001');
+    final householdId = first.value!.ownerHouseholdId!;
+
+    final failedParcel = await application.createLandParcel(
+      subject, command('first', householdId: householdId),
+    );
+    expect(failedParcel.isSuccess, isFalse);
+    expect((await SqliteLandSurveyRepository(database).listHouseholds('farm-1')),
+        hasLength(1));
+
+    final next = await application.createLandParcel(
+      subject, command('second', householdId: householdId),
+    );
+    expect(next.isSuccess, isTrue);
+    expect(next.value!.parcelCode, 'LA-SVK-NONG-TAKO-H00001-002');
+    expect(next.value!.ownerHouseholdId, householdId);
+  });
+
   test('new parcel and crop commit together or both roll back', () async {
     final surveys = SqliteLandSurveyRepository(database);
     final subject = AuthorizationSubject(
