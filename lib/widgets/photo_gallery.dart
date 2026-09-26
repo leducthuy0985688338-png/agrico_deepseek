@@ -1,6 +1,9 @@
 import 'dart:io';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 class PhotoGallery extends StatefulWidget {
   final List<String> photoPaths;
@@ -28,8 +31,17 @@ class _PhotoGalleryState extends State<PhotoGallery> {
       imageQuality: 80,
     );
     if (image != null) {
-      // Lưu đường dẫn ảnh
-      widget.onAddPhoto(image.path);
+      final bytes = await image.readAsBytes();
+      final documents = await getApplicationDocumentsDirectory();
+      final folder = Directory(p.join(documents.path, 'agrico_media'));
+      await folder.create(recursive: true);
+      final extension = p.extension(image.path).toLowerCase();
+      final safeExtension = RegExp(r'^\.[a-z0-9]{1,8}$').hasMatch(extension)
+          ? extension : '.jpg';
+      final file = File(p.join(folder.path,
+          '${sha256.convert(bytes)}$safeExtension'));
+      if (!await file.exists()) await file.writeAsBytes(bytes, flush: true);
+      widget.onAddPhoto(file.path);
     }
   }
 
