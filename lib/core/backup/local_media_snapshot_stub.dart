@@ -15,4 +15,7 @@ class LocalMediaSnapshot {
     LocalDatabaseSnapshot.decodeDatabases(bytes);
     return {};
   }
+
+  static Future<Uint8List> materialize(
+      Uint8List bytes, Object documents) async => bytes;
 }
