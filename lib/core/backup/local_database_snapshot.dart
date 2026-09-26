@@ -62,6 +62,19 @@ class LocalDatabaseSnapshot {
   /// Validate without writing to SQLite. The caller can show table counts
   /// before a separate, explicitly confirmed restore workflow is introduced.
   static Map<String, int> inspect(Uint8List bytes) {
+    final databases = decodeDatabases(bytes);
+    final counts = <String, int>{};
+    for (final entry in databases.entries) {
+      final tables = entry.value['tables'] as Map<String, dynamic>;
+      for (final table in tables.entries) {
+        counts['${entry.key}/${table.key}'] = (table.value as List).length;
+      }
+    }
+    return counts;
+  }
+
+  /// Checked data for preflight. A v1 backup intentionally lacks costs.
+  static Map<String, Map<String, dynamic>> decodeDatabases(Uint8List bytes) {
     final root = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
     if (root['format'] != format ||
         (root['version'] != 1 && root['version'] != version)) {
@@ -74,25 +87,19 @@ class LocalDatabaseSnapshot {
     }
     final payload = jsonDecode(body) as Map<String, dynamic>;
     if (root['version'] == 1) {
-      final tables = payload['tables'] as Map<String, dynamic>;
-      return tables.map((key, value) =>
-          MapEntry('agrico.db/$key', (value as List).length));
+      return {'agrico.db': payload};
     }
     final databases = payload['databases'] as Map<String, dynamic>;
     if (!databases.containsKey('agrico.db')) {
       throw const FormatException('Missing primary database.');
     }
-    final counts = <String, int>{};
+    final checked = <String, Map<String, dynamic>>{};
     for (final entry in databases.entries) {
       if (entry.key != 'agrico.db' && entry.key != 'agrico_costs.db') {
         throw const FormatException('Unknown database.');
       }
-      final tables = (entry.value as Map<String, dynamic>)['tables']
-          as Map<String, dynamic>;
-      for (final table in tables.entries) {
-        counts['${entry.key}/${table.key}'] = (table.value as List).length;
-      }
+      checked[entry.key] = entry.value as Map<String, dynamic>;
     }
-    return counts;
+    return checked;
   }
 }
