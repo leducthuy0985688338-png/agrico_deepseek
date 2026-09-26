@@ -8,6 +8,7 @@ import 'package:sqflite/sqflite.dart';
 import '../../services/production_cost_database.dart';
 import '../localization/app_localizations.dart';
 import 'local_database_snapshot.dart';
+import 'local_media_snapshot.dart';
 import 'local_restore_activation.dart';
 import 'local_restore_preflight.dart';
 
@@ -42,9 +43,7 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
     setState(() { busy = true; error = null; validatedBackup = null; preflightPassed = false; });
     try {
       final costs = await ProductionCostDatabase().database;
-      final bytes = await LocalDatabaseSnapshot.create(
-        widget.database, costsDatabase: costs,
-      );
+      final bytes = await LocalMediaSnapshot.create(widget.database, costs);
       final now = DateTime.now().toUtc();
       final date = '${now.year}${now.month.toString().padLeft(2, '0')}'
           '${now.day.toString().padLeft(2, '0')}';
@@ -70,6 +69,7 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
       if (selected == null) return;
       final bytes = selected.files.single.bytes;
       if (bytes == null) throw const FormatException('Cannot read backup.');
+      LocalMediaSnapshot.validate(Uint8List.fromList(bytes));
       final counts = LocalDatabaseSnapshot.inspect(Uint8List.fromList(bytes));
       if (mounted) setState(() { preview = counts; preflightPassed = false; });
     } catch (_) {
@@ -127,6 +127,7 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
   }
 
   Future<void> _validateRestoreBytes(Uint8List bytes) async {
+    LocalMediaSnapshot.validate(bytes);
     final costs = await ProductionCostDatabase().database;
     final temporary = await getTemporaryDirectory();
     final counts = await LocalRestorePreflight.validate(

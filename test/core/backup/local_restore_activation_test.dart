@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:agrico_deepseek/core/backup/local_database_snapshot.dart';
+import 'package:agrico_deepseek/core/backup/local_media_snapshot.dart';
 import 'package:agrico_deepseek/core/backup/local_restore_activation_io.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -111,6 +113,44 @@ void main() {
         await costs.close();
       }
     } finally {
+      await pair.directory.delete(recursive: true);
+    }
+  });
+
+  test('applies media backup with a portable photo path', () async {
+    final pair = await createPair();
+    final source = await Directory.systemTemp.createTemp('agrico-photo-');
+    final photo = File('${source.path}/plot.jpg')
+      ..writeAsBytesSync([10, 20, 30]);
+    final activation = LocalRestoreActivation(pair.directory, databaseFactoryFfi);
+    try {
+      await pair.primary.execute('CREATE TABLE fields '
+          '(id TEXT PRIMARY KEY, photo_paths TEXT NOT NULL)');
+      await pair.primary.insert('fields', {
+        'id': 'plot', 'photo_paths': jsonEncode([photo.path]),
+      });
+      final backup = await LocalMediaSnapshot.create(pair.primary, pair.costs);
+      await pair.primary.delete('fields');
+      await pair.primary.insert('fields', {
+        'id': 'plot', 'photo_paths': '[]',
+      });
+      await pair.primary.close();
+      await pair.costs.close();
+      await activation.schedule(backup);
+      expect(await activation.applyPending(), isTrue);
+      final restored = await databaseFactoryFfi.openDatabase(
+          '${pair.directory.path}/agrico.db');
+      try {
+        final paths = jsonDecode((await restored.query('fields')).single
+            ['photo_paths'] as String) as List;
+        final path = paths.single as String;
+        expect(path, startsWith(pair.directory.path));
+        expect(await File(path).readAsBytes(), [10, 20, 30]);
+      } finally {
+        await restored.close();
+      }
+    } finally {
+      await source.delete(recursive: true);
       await pair.directory.delete(recursive: true);
     }
   });
