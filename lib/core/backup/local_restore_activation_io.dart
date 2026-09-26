@@ -71,8 +71,18 @@ class LocalRestoreActivation {
       await costs.close();
       costs = null;
       await _replaceBoth(primaryPath, costsPath, Uint8List.fromList(bytes));
-      await _writeResult('applied');
-      await _pending.delete();
+      // The SQLite commit has completed. A later status-file or cleanup error
+      // must not be reported as a rolled-back restore.
+      try {
+        await _writeResult('applied');
+      } catch (_) {
+        // The committed database state remains authoritative.
+      }
+      try {
+        await _pending.delete();
+      } catch (_) {
+        // A retry on the next launch applies the same snapshot idempotently.
+      }
       return true;
     } catch (_) {
       await _writeResult('failed');
