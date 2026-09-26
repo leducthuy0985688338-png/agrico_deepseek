@@ -63,10 +63,14 @@ void main() {
     final created = (await memory.all()).singleWhere((u) => u.code == 'BM');
     expect(created.level, AdministrativeLevel.village);
     expect(created.parentId, 'agrico-la-svk-nong');
+    await tester.dragUntilVisible(find.textContaining('Ban Mai'),
+        find.byKey(const Key('admin-list')), const Offset(0, -250));
     expect(find.textContaining('Ban Mai'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
     await tester.pumpWidget(screen());
     await tester.pumpAndSettle();
+    await tester.dragUntilVisible(find.textContaining('Ban Mai'),
+        find.byKey(const Key('admin-list')), const Offset(0, -250));
     expect(find.textContaining('Ban Mai'), findsOneWidget);
   });
 
