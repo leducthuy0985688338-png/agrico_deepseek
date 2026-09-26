@@ -111,10 +111,12 @@ class _AdministrativeCatalogScreenState extends State<AdministrativeCatalogScree
                     Navigator.pop(dialogContext);
                     if (mounted) setState(() => units = widget.catalog.all());
                   } catch (_) {
-                    if (dialogContext.mounted) update(() {
-                      saving = false;
-                      error = l10n.text('admin.saveFailed');
-                    });
+                    if (dialogContext.mounted) {
+                      update(() {
+                        saving = false;
+                        error = l10n.text('admin.saveFailed');
+                      });
+                    }
                   }
                 },
                 child: Text(l10n.text('common.save')),
