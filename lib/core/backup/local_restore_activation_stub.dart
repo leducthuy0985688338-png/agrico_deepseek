@@ -7,3 +7,5 @@ Future<void> scheduleLocalRestore(Uint8List bytes) async {
 }
 
 Future<String?> localRestoreStatus() async => null;
+
+Future<Uint8List?> previousLocalRestoreBackup() async => null;
