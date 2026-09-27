@@ -369,7 +369,9 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     String parcelId,
   ) async {
     if (!deps.controller.can(PermissionCodes.fieldEdit,
-        parcelId: parcelId)) return;
+        parcelId: parcelId)) {
+      return;
+    }
     try {
       final picked = await deps.platform.pickAndStoreAttachment();
       if (picked == null) return;
