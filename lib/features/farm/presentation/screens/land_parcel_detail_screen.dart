@@ -18,12 +18,16 @@ class LandParcelDetailScreen extends StatefulWidget {
     this.onGpsRequested,
     this.onImportRequested,
     this.onEditRequested,
+    this.onAttachRequested,
+    this.onOpenAttachment,
   });
   final LandParcelController controller;
   final String parcelId;
   final VoidCallback? onGpsRequested;
   final VoidCallback? onImportRequested;
   final VoidCallback? onEditRequested;
+  final VoidCallback? onAttachRequested;
+  final Future<void> Function(ParcelAttachment)? onOpenAttachment;
 
   @override
   State<LandParcelDetailScreen> createState() => _LandParcelDetailScreenState();
@@ -253,10 +257,10 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
           _section(
             context,
             l10n.text('survey.attachment'),
-            data.attachments.isEmpty
-                ? [Text(l10n.text('attachment.empty'))]
-                : data.attachments
-                      .map(
+            [
+              if (data.attachments.isEmpty)
+                Text(l10n.text('attachment.empty')),
+              ...data.attachments.map(
                         (attachment) => ListTile(
                           contentPadding: EdgeInsets.zero,
                           leading: Icon(
@@ -264,9 +268,22 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
                           ),
                           title: Text(attachment.fileName),
                           subtitle: Text(attachment.mimeType),
+                          onTap: attachment.localReference == null ||
+                                  widget.onOpenAttachment == null
+                              ? null
+                              : () => widget.onOpenAttachment!(attachment),
                         ),
-                      )
-                      .toList(),
+                      ),
+              if (widget.onAttachRequested != null &&
+                  controller.can(PermissionCodes.fieldEdit,
+                      parcelId: parcel.id))
+                OutlinedButton.icon(
+                  key: const Key('attach-parcel-file'),
+                  onPressed: widget.onAttachRequested,
+                  icon: const Icon(Icons.attach_file),
+                  label: Text(l10n.text('attachment.addMetadata')),
+                ),
+            ],
           ),
           _section(context, l10n.text('googleEarth.title'), [
             Wrap(

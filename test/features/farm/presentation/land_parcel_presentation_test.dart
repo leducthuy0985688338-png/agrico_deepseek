@@ -369,6 +369,30 @@ void main() {
     },
   );
 
+  testWidgets('attachment action is visible only with edit permission',
+      (tester) async {
+    var picked = 0;
+    await tester.pumpWidget(app(LandParcelDetailScreen(
+      controller: controller(),
+      parcelId: 'parcel-1',
+      onAttachRequested: () => picked++,
+    )));
+    await tester.pumpAndSettle();
+    final add = find.byKey(const Key('attach-parcel-file'));
+    await tester.scrollUntilVisible(add, 300);
+    await tester.tap(add);
+    expect(picked, 1);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(app(LandParcelDetailScreen(
+      controller: controller(permissions: const {PermissionCodes.fieldView}),
+      parcelId: 'parcel-1',
+      onAttachRequested: () => picked++,
+    )));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('attach-parcel-file')), findsNothing);
+  });
+
   testWidgets(
     'form validates identity, derived geometry is read-only and crops are dynamic',
     (tester) async {

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:open_file/open_file.dart';
@@ -8,12 +9,48 @@ import 'package:path_provider/path_provider.dart';
 
 import 'land_parcel_platform.dart';
 
+class StoredParcelFile {
+  const StoredParcelFile({required this.name, required this.path});
+  final String name;
+  final String path;
+}
+
 class MobileLandParcelPlatformGateway implements LandParcelPlatformGateway {
   const MobileLandParcelPlatformGateway();
 
   static const MethodChannel _googleEarthChannel = MethodChannel(
     'com.agrico.erp/google_earth',
   );
+
+  Future<StoredParcelFile?> pickAndStoreAttachment() async {
+    final selected = await FilePicker.platform.pickFiles(withData: true);
+    if (selected == null || selected.files.isEmpty) return null;
+    final item = selected.files.single;
+    final bytes = item.bytes ??
+        (item.path == null ? null : await File(item.path!).readAsBytes());
+    if (bytes == null) throw const FormatException('Cannot read attachment.');
+    final documents = await getApplicationDocumentsDirectory();
+    final folder = Directory(path.join(documents.path, 'agrico_media'));
+    await folder.create(recursive: true);
+    final extension = path.extension(item.name).toLowerCase();
+    final safeExtension = RegExp(r'^\.[a-z0-9]{1,8}$').hasMatch(extension)
+        ? extension : '';
+    final stored = File(path.join(folder.path,
+        '${sha256.convert(bytes)}$safeExtension'));
+    if (!await stored.exists()) {
+      await stored.writeAsBytes(bytes, flush: true);
+    }
+    return StoredParcelFile(name: item.name, path: stored.path);
+  }
+
+  Future<bool> openLocalAttachment(String reference) async {
+    try {
+      if (!await File(reference).exists()) return false;
+      return (await OpenFile.open(reference)).type == ResultType.done;
+    } catch (_) {
+      return false;
+    }
+  }
 
   @override
   Future<PickedBoundaryFile?> pickKmlOrKmz() async {
