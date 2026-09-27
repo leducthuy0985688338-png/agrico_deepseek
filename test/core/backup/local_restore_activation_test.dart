@@ -130,6 +130,8 @@ void main() {
         'id': 'plot', 'photo_paths': jsonEncode([photo.path]),
       });
       final backup = await LocalMediaSnapshot.create(pair.primary, pair.costs);
+      // Simulate restoring on another device: the original file is gone.
+      await photo.delete();
       await pair.primary.delete('fields');
       await pair.primary.insert('fields', {
         'id': 'plot', 'photo_paths': '[]',

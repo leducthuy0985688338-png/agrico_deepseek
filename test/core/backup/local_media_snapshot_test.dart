@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:agrico_deepseek/core/backup/local_database_snapshot.dart';
 import 'package:agrico_deepseek/core/backup/local_media_snapshot.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -36,6 +37,9 @@ void main() {
       });
       final portable = await LocalMediaSnapshot.create(primary, costs);
       expect(LocalMediaSnapshot.validate(portable).length, 2);
+      // The backup carries both files without relying on the original paths.
+      await photo.delete();
+      await document.delete();
       final restored = await LocalMediaSnapshot.materialize(portable, destination);
       final rows = LocalDatabaseSnapshot.decodeDatabases(restored)['agrico.db']!
           ['tables'] as Map<String, dynamic>;
@@ -47,7 +51,6 @@ void main() {
           .single['payload_json'] as String) as Map<String, dynamic>;
       expect(await File(metadata['localReference'] as String).readAsBytes(),
           [4, 5, 6]);
-      await photo.delete();
       await expectLater(LocalMediaSnapshot.create(primary, costs),
           throwsA(isA<FormatException>()));
     } finally {
@@ -70,6 +73,40 @@ void main() {
       final bytes = await LocalDatabaseSnapshot.create(primary,
           costsDatabase: costs);
       expect(LocalMediaSnapshot.validate(Uint8List.fromList(bytes)), isEmpty);
+    } finally {
+      await primary.close();
+      await costs.close();
+      await directory.delete(recursive: true);
+    }
+  });
+
+  test('rejects a changed media blob even with a recomputed envelope hash',
+      () async {
+    final directory = await Directory.systemTemp.createTemp('agrico-hash-');
+    final primary = await databaseFactoryFfi.openDatabase(
+        '${directory.path}/agrico.db');
+    final costs = await databaseFactoryFfi.openDatabase(
+        '${directory.path}/agrico_costs.db');
+    try {
+      final file = File('${directory.path}/test.jpg')
+        ..writeAsBytesSync([1, 2, 3]);
+      await primary.execute('CREATE TABLE fields (id TEXT, photo_paths TEXT)');
+      await costs.execute('CREATE TABLE costs (id TEXT)');
+      await primary.insert('fields', {
+        'id': 'f1', 'photo_paths': jsonEncode([file.path]),
+      });
+      final backup = await LocalMediaSnapshot.create(primary, costs);
+      final envelope = jsonDecode(utf8.decode(backup)) as Map<String, dynamic>;
+      final payload = jsonDecode(envelope['payload'] as String)
+          as Map<String, dynamic>;
+      final assets = payload['assets'] as Map<String, dynamic>;
+      assets[assets.keys.single] = base64Encode([9, 9, 9]);
+      final body = jsonEncode(payload);
+      envelope['payload'] = body;
+      envelope['sha256'] = sha256.convert(utf8.encode(body)).toString();
+      expect(() => LocalMediaSnapshot.validate(
+          Uint8List.fromList(utf8.encode(jsonEncode(envelope)))),
+          throwsFormatException);
     } finally {
       await primary.close();
       await costs.close();
