@@ -11,12 +11,14 @@ class HouseholdDetailScreen extends StatefulWidget {
     required this.subject,
     required this.householdId,
     required this.onOpenParcel,
+    this.onEdit,
   });
 
   final HouseholdDetailQuery query;
   final AuthorizationSubject subject;
   final String householdId;
   final ValueChanged<String> onOpenParcel;
+  final Future<void> Function(HouseholdWithParcels)? onEdit;
 
   @override
   State<HouseholdDetailScreen> createState() => _HouseholdDetailScreenState();
@@ -44,6 +46,16 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
           tooltip: l10n.text('common.retry'),
           onPressed: reload,
           icon: const Icon(Icons.refresh),
+        ), if (widget.onEdit != null) IconButton(
+          key: const Key('household-edit'),
+          tooltip: l10n.text('household.edit'),
+          onPressed: () async {
+            final current = await detail;
+            if (current == null) return;
+            await widget.onEdit!(current);
+            if (mounted) reload();
+          },
+          icon: const Icon(Icons.edit),
         )]),
       body: FutureBuilder<HouseholdWithParcels?>(
         future: detail,

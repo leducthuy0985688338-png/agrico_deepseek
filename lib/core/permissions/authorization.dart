@@ -6,6 +6,7 @@ enum DataScope { allFarm, team, assignedFields, assignedTasks, own }
 abstract final class PermissionCodes {
   static const fieldView = 'field.view';
   static const householdCreate = 'household.create';
+  static const householdEdit = 'household.edit';
   static const fieldCreate = 'field.create';
   static const fieldEdit = 'field.edit';
   static const fieldDelete = 'field.delete';
@@ -30,6 +31,7 @@ abstract final class PermissionCodes {
   static const values = <String>{
     fieldView,
     householdCreate,
+    householdEdit,
     fieldCreate,
     fieldEdit,
     fieldDelete,
