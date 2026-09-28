@@ -28,12 +28,16 @@ class Wgs84SpatialGeometryAdapter {
   SpatialPolygon toSpatialPolygon(Wgs84Polygon polygon) {
     return SpatialPolygon.fromOuterRing(
       polygon.vertices.map(toSpatialCoordinate).toList(growable: false),
+      innerRings: polygon.holes.map((ring) =>
+        ring.map(toSpatialCoordinate).toList(growable: false)),
     );
   }
 
   Wgs84Polygon toWgs84Polygon(SpatialPolygon polygon) {
     return Wgs84Polygon.fromVertices(
       polygon.outerRing.map(toWgs84Vertex).toList(growable: false),
+      holes: polygon.innerRings.map((ring) =>
+        ring.map(toWgs84Vertex).toList(growable: false)),
     );
   }
 }

@@ -278,6 +278,23 @@ void main() {
       );
     });
 
+    test('polygon interior rings survive JSON without changing the outer ring', () {
+      final polygon = SpatialPolygon.fromOuterRing(const [
+        SpatialCoordinate(latitude: 16, longitude: 106),
+        SpatialCoordinate(latitude: 16, longitude: 106.004),
+        SpatialCoordinate(latitude: 16.004, longitude: 106.004),
+        SpatialCoordinate(latitude: 16.004, longitude: 106),
+      ], innerRings: const [[
+        SpatialCoordinate(latitude: 16.001, longitude: 106.001),
+        SpatialCoordinate(latitude: 16.001, longitude: 106.002),
+        SpatialCoordinate(latitude: 16.002, longitude: 106.002),
+        SpatialCoordinate(latitude: 16.002, longitude: 106.001),
+      ]]);
+      final restored = jsonRoundTrip(polygon) as SpatialPolygon;
+      expect(restored.outerRing, polygon.outerRing);
+      expect(restored.innerRings, polygon.innerRings);
+    });
+
     test('rejects an invalid LineString through domain validation', () {
       expect(
         () => SpatialGeometryJsonCodec.decode({

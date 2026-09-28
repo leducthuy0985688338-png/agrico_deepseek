@@ -89,5 +89,22 @@ void main() {
 
       expect(restored, original);
     });
+
+    test('round-trips a parcel boundary with an interior ring', () {
+      final original = Wgs84Polygon.fromVertices(const [
+        Wgs84Vertex(latitude: 16, longitude: 106),
+        Wgs84Vertex(latitude: 16, longitude: 106.004),
+        Wgs84Vertex(latitude: 16.004, longitude: 106.004),
+        Wgs84Vertex(latitude: 16.004, longitude: 106),
+      ], holes: const [[
+        Wgs84Vertex(latitude: 16.001, longitude: 106.001),
+        Wgs84Vertex(latitude: 16.001, longitude: 106.002),
+        Wgs84Vertex(latitude: 16.002, longitude: 106.002),
+        Wgs84Vertex(latitude: 16.002, longitude: 106.001),
+      ]]);
+      final spatial = adapter.toSpatialPolygon(original);
+      expect(spatial.innerRings, hasLength(1));
+      expect(adapter.toWgs84Polygon(spatial), original);
+    });
   });
 }

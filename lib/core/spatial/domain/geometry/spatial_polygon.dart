@@ -6,13 +6,17 @@ import 'spatial_geometry_type.dart';
 
 /// Polygon geometry in canonical WGS84 coordinates.
 ///
-/// Foundation v1 supports one outer ring without interior holes. The ring is
-/// automatically closed when necessary and is exposed as immutable data.
+/// The outer ring and optional interior rings are closed and immutable.
 class SpatialPolygon implements SpatialGeometry {
-  SpatialPolygon._(List<SpatialCoordinate> outerRing)
-    : outerRing = UnmodifiableListView(outerRing);
+  SpatialPolygon._(List<SpatialCoordinate> outerRing,
+      List<List<SpatialCoordinate>> innerRings)
+    : outerRing = UnmodifiableListView(outerRing),
+      innerRings = UnmodifiableListView(innerRings.map(
+        (ring) => UnmodifiableListView<SpatialCoordinate>(ring)).toList());
 
-  factory SpatialPolygon.fromOuterRing(Iterable<SpatialCoordinate> input) {
+  factory SpatialPolygon.fromOuterRing(Iterable<SpatialCoordinate> input, {
+    Iterable<Iterable<SpatialCoordinate>> innerRings = const [],
+  }) {
     final source = List<SpatialCoordinate>.of(input);
 
     for (final coordinate in source) {
@@ -45,10 +49,27 @@ class SpatialPolygon implements SpatialGeometry {
       );
     }
 
-    return SpatialPolygon._(ring);
+    final holes = <List<SpatialCoordinate>>[];
+    for (final rawHole in innerRings) {
+      final hole = SpatialPolygon.fromOuterRing(rawHole).outerRing.toList();
+      if (hole.take(hole.length - 1).any((point) =>
+          !_strictlyInside(ring, point)) || _ringsMeet(ring, hole)) {
+        throw const FormatException('Spatial Polygon hole must be inside the exterior ring.');
+      }
+      for (final other in holes) {
+        if (_ringsMeet(other, hole) ||
+            _strictlyInside(other, hole.first) ||
+            _strictlyInside(hole, other.first)) {
+          throw const FormatException('Spatial Polygon holes cannot overlap.');
+        }
+      }
+      holes.add(hole);
+    }
+    return SpatialPolygon._(ring, holes);
   }
 
   final UnmodifiableListView<SpatialCoordinate> outerRing;
+  final UnmodifiableListView<UnmodifiableListView<SpatialCoordinate>> innerRings;
 
   SpatialGeometryType get geometryType => SpatialGeometryType.polygon;
 
@@ -82,6 +103,34 @@ class SpatialPolygon implements SpatialGeometry {
         'Spatial Polygon outer ring must not self-intersect.',
       );
     }
+    SpatialPolygon.fromOuterRing(outerRing, innerRings: innerRings);
+  }
+
+  static bool _strictlyInside(List<SpatialCoordinate> ring,
+      SpatialCoordinate point) {
+    var inside = false;
+    for (var i = 0; i < ring.length - 1; i++) {
+      final a = ring[i];
+      final b = ring[i + 1];
+      if (_orientation(a, b, point).abs() < 1e-12 &&
+          _onSegment(a, point, b)) return false;
+      if ((a.latitude > point.latitude) != (b.latitude > point.latitude) &&
+          point.longitude < (b.longitude - a.longitude) *
+              (point.latitude - a.latitude) / (b.latitude - a.latitude) +
+              a.longitude) inside = !inside;
+    }
+    return inside;
+  }
+
+  static bool _ringsMeet(List<SpatialCoordinate> first,
+      List<SpatialCoordinate> second) {
+    for (var i = 0; i < first.length - 1; i++) {
+      for (var j = 0; j < second.length - 1; j++) {
+        if (_segmentsIntersect(first[i], first[i + 1],
+            second[j], second[j + 1])) return true;
+      }
+    }
+    return false;
   }
 
   static bool _hasZeroPlanarArea(List<SpatialCoordinate> ring) {

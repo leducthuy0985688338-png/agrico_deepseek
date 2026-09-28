@@ -142,8 +142,13 @@ abstract final class LandParcelMapper {
     sourceFileHash: _optionalString(json['sourceFileHash']),
   );
 
-  static List<Map<String, Object?>> _polygonToJson(Wgs84Polygon polygon) =>
-      polygon.vertices.map(_vertexToJson).toList(growable: false);
+  static Object _polygonToJson(Wgs84Polygon polygon) => polygon.holes.isEmpty
+      ? polygon.vertices.map(_vertexToJson).toList(growable: false)
+      : <String, Object?>{
+          'outerRing': polygon.vertices.map(_vertexToJson).toList(),
+          'innerRings': polygon.holes.map((ring) =>
+            ring.map(_vertexToJson).toList()).toList(),
+        };
 
   static Map<String, Object?> _vertexToJson(Wgs84Vertex vertex) => {
     'latitude': vertex.latitude,
@@ -151,8 +156,20 @@ abstract final class LandParcelMapper {
     'altitudeM': vertex.altitudeM,
   };
 
-  static Wgs84Polygon _polygon(Object? value) =>
-      Wgs84Polygon.fromVertices(_mapList(value).map(_vertex));
+  static Wgs84Polygon _polygon(Object? value) {
+    if (value is Map) {
+      final polygon = _objectMap(value);
+      final rawRings = polygon['innerRings'];
+      if (rawRings is! Iterable) {
+        throw const FormatException('Polygon inner rings must be a list.');
+      }
+      return Wgs84Polygon.fromVertices(
+        _mapList(polygon['outerRing']).map(_vertex),
+        holes: rawRings.map((ring) => _mapList(ring).map(_vertex)),
+      );
+    }
+    return Wgs84Polygon.fromVertices(_mapList(value).map(_vertex));
+  }
 
   static Wgs84Vertex _vertex(Object? value) {
     final map = _objectMap(value);

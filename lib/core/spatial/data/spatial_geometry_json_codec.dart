@@ -21,6 +21,9 @@ abstract final class SpatialGeometryJsonCodec {
       SpatialPolygon() => {
         'type': geometry.geometryType.name,
         'outerRing': geometry.outerRing.map(_encodeCoordinate).toList(),
+        if (geometry.innerRings.isNotEmpty)
+          'innerRings': geometry.innerRings.map((ring) =>
+            ring.map(_encodeCoordinate).toList()).toList(),
       },
       SpatialMultiPoint() => {
         'type': geometry.geometryType.name,
@@ -43,6 +46,9 @@ abstract final class SpatialGeometryJsonCodec {
             .map(
               (polygon) => <String, Object?>{
                 'outerRing': polygon.outerRing.map(_encodeCoordinate).toList(),
+                if (polygon.innerRings.isNotEmpty)
+                  'innerRings': polygon.innerRings.map((ring) =>
+                    ring.map(_encodeCoordinate).toList()).toList(),
               },
             )
             .toList(),
@@ -65,6 +71,7 @@ abstract final class SpatialGeometryJsonCodec {
       ),
       'polygon' => SpatialPolygon.fromOuterRing(
         _decodeCoordinates(_requiredList(json, 'outerRing')),
+        innerRings: _decodeRings(json['innerRings']),
       ),
       'multiPoint' => SpatialMultiPoint.fromPoints(
         _decodeCoordinates(
@@ -83,6 +90,7 @@ abstract final class SpatialGeometryJsonCodec {
           final polygon = _asMap(value, 'polygons item');
           return SpatialPolygon.fromOuterRing(
             _decodeCoordinates(_requiredList(polygon, 'outerRing')),
+            innerRings: _decodeRings(polygon['innerRings']),
           );
         }),
       ),
@@ -106,6 +114,12 @@ abstract final class SpatialGeometryJsonCodec {
       values.map(
         (value) => _decodeCoordinate(_asMap(value, 'coordinate item')),
       );
+
+  static Iterable<Iterable<SpatialCoordinate>> _decodeRings(Object? value) {
+    if (value == null) return const [];
+    return _asList(value, 'innerRings').map((ring) =>
+      _decodeCoordinates(_asList(ring, 'inner ring')));
+  }
 
   static SpatialCoordinate _decodeCoordinate(Map<String, Object?> json) {
     final altitude = _requiredNullableNumber(json, 'altitudeM');

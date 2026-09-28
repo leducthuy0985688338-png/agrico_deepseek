@@ -60,10 +60,15 @@ class Wgs84Vertex {
 }
 
 class Wgs84Polygon {
-  Wgs84Polygon._(List<Wgs84Vertex> vertices)
-    : vertices = UnmodifiableListView(vertices);
+  Wgs84Polygon._(List<Wgs84Vertex> vertices,
+      List<List<Wgs84Vertex>> holes)
+    : vertices = UnmodifiableListView(vertices),
+      holes = UnmodifiableListView(holes.map(
+        (ring) => UnmodifiableListView<Wgs84Vertex>(ring)).toList());
 
-  factory Wgs84Polygon.fromVertices(Iterable<Wgs84Vertex> input) {
+  factory Wgs84Polygon.fromVertices(Iterable<Wgs84Vertex> input, {
+    Iterable<Iterable<Wgs84Vertex>> holes = const [],
+  }) {
     final vertices = List<Wgs84Vertex>.of(input);
     if (vertices.any((vertex) => !vertex.isValid)) {
       throw const PolygonValidationException(
@@ -89,16 +94,59 @@ class Wgs84Polygon {
         'The polygon exterior ring intersects itself.',
       );
     }
-    return Wgs84Polygon._(vertices);
+    final innerRings = <List<Wgs84Vertex>>[];
+    for (final rawHole in holes) {
+      final ring = Wgs84Polygon.fromVertices(rawHole).vertices.toList();
+      if (ring.take(ring.length - 1)
+          .any((point) => !_strictlyInside(vertices, point)) ||
+          _ringsMeet(vertices, ring)) {
+        throw const FormatException('Interior ring must lie strictly inside the exterior ring.');
+      }
+      for (final other in innerRings) {
+        if (_ringsMeet(other, ring) ||
+            _strictlyInside(other, ring.first) ||
+            _strictlyInside(ring, other.first)) {
+          throw const FormatException('Interior rings cannot overlap or nest.');
+        }
+      }
+      innerRings.add(ring);
+    }
+    return Wgs84Polygon._(vertices, innerRings);
   }
 
   static const crsCode = 'EPSG:4326';
 
   final UnmodifiableListView<Wgs84Vertex> vertices;
+  final UnmodifiableListView<UnmodifiableListView<Wgs84Vertex>> holes;
 
   String get crs => crsCode;
   int get distinctVertexCount => vertices.length - 1;
   bool get isClosed => vertices.first == vertices.last;
+
+  static bool _strictlyInside(List<Wgs84Vertex> ring, Wgs84Vertex point) {
+    var inside = false;
+    for (var i = 0; i < ring.length - 1; i++) {
+      final a = ring[i];
+      final b = ring[i + 1];
+      if (_orientation(a, b, point).abs() < 1e-12 &&
+          _onSegment(a, point, b)) return false;
+      if ((a.latitude > point.latitude) != (b.latitude > point.latitude) &&
+          point.longitude < (b.longitude - a.longitude) *
+              (point.latitude - a.latitude) / (b.latitude - a.latitude) +
+              a.longitude) inside = !inside;
+    }
+    return inside;
+  }
+
+  static bool _ringsMeet(List<Wgs84Vertex> first, List<Wgs84Vertex> second) {
+    for (var i = 0; i < first.length - 1; i++) {
+      for (var j = 0; j < second.length - 1; j++) {
+        if (_segmentsIntersect(first[i], first[i + 1],
+            second[j], second[j + 1])) return true;
+      }
+    }
+    return false;
+  }
 
   static bool _hasSelfIntersection(List<Wgs84Vertex> ring) {
     final segmentCount = ring.length - 1;
@@ -152,17 +200,25 @@ class Wgs84Polygon {
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
-    if (other is! Wgs84Polygon || vertices.length != other.vertices.length) {
+    if (other is! Wgs84Polygon || vertices.length != other.vertices.length ||
+        holes.length != other.holes.length) {
       return false;
     }
     for (var index = 0; index < vertices.length; index++) {
       if (vertices[index] != other.vertices[index]) return false;
     }
+    for (var ring = 0; ring < holes.length; ring++) {
+      if (holes[ring].length != other.holes[ring].length) return false;
+      for (var point = 0; point < holes[ring].length; point++) {
+        if (holes[ring][point] != other.holes[ring][point]) return false;
+      }
+    }
     return true;
   }
 
   @override
-  int get hashCode => Object.hashAll(vertices);
+  int get hashCode => Object.hash(Object.hashAll(vertices),
+    Object.hashAll(holes.map((ring) => Object.hashAll(ring))));
 }
 
 class Wgs84PolygonMetrics {
@@ -185,10 +241,26 @@ class Wgs84GeometryService {
   static const earthRadiusM = 6371008.8;
 
   Wgs84PolygonMetrics measure(Wgs84Polygon polygon) {
+    final outerArea = _area(polygon.vertices);
+    final holeAreas = polygon.holes.map(_area).toList();
+    final area = outerArea - holeAreas.fold(0.0, (sum, value) => sum + value);
+    if (area <= 0) {
+      throw const FormatException('Polygon holes cannot cover its exterior.');
+    }
+    final outerCentroid = _centroid(polygon.vertices);
+    var latitude = outerCentroid.latitude * outerArea;
+    var longitude = outerCentroid.longitude * outerArea;
+    for (var i = 0; i < polygon.holes.length; i++) {
+      final center = _centroid(polygon.holes[i]);
+      latitude -= center.latitude * holeAreas[i];
+      longitude -= center.longitude * holeAreas[i];
+    }
     return Wgs84PolygonMetrics(
-      centroid: _centroid(polygon.vertices),
-      areaM2: _area(polygon.vertices),
-      perimeterM: _perimeter(polygon.vertices),
+      centroid: Wgs84Vertex(latitude: latitude / area,
+        longitude: longitude / area),
+      areaM2: area,
+      perimeterM: _perimeter(polygon.vertices) +
+        polygon.holes.fold(0.0, (sum, ring) => sum + _perimeter(ring)),
     );
   }
 

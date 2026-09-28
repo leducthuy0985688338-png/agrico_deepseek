@@ -29,7 +29,8 @@ bool _equivalent(SpatialGeometry? a, SpatialGeometry? b) {
     return _sequence(a.coordinates, b.coordinates);
   }
   if (a is SpatialPolygon && b is SpatialPolygon) {
-    return _sequence(a.outerRing, b.outerRing);
+    return _sequence(a.outerRing, b.outerRing) &&
+      _sequence(a.innerRings, b.innerRings, (x, y) => _sequence(x, y));
   }
   if (a is SpatialMultiPoint && b is SpatialMultiPoint) {
     return _sequence(a.points, b.points, _equivalent);
