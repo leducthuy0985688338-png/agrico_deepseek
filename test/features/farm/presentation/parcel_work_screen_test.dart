@@ -30,16 +30,14 @@ void main() {
     await tester.tap(find.byKey(const Key('work-add-event')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, 'Dọn thực bì');
-    tester.testTextInput.hide();
+    await tester.testTextInput.hide();
     await tester.pumpAndSettle();
     final machine = find.byType(CheckboxListTile);
     await tester.ensureVisible(machine);
     await tester.tap(machine);
     await tester.pumpAndSettle();
     expect(find.byType(AlertDialog), findsOneWidget);
-    await tester.tap(find.descendant(
-      of: find.byType(AlertDialog), matching: find.text('Lưu'),
-    ));
+    await tester.tap(find.byKey(const Key('work-save-event')));
     await tester.pumpAndSettle();
     expect(repository.savedEvents, hasLength(1));
     expect(repository.savedEvents.single.phase, ParcelWorkPhase.clearing);
