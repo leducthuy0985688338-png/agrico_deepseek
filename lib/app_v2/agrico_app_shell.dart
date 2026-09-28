@@ -308,6 +308,7 @@ class ModulesV2 extends StatelessWidget {
           'parcels': subject.permissionCodes.contains(PermissionCodes.fieldView)
               ? openLandParcels
               : null,
+          'households': legacyRoutes['households'],
           'seasons': legacyRoutes['seasons'],
           'productionLogs': legacyRoutes['productionLogs'],
           'harvest': legacyRoutes['harvest'],
