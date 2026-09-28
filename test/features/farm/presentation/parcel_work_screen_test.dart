@@ -42,7 +42,8 @@ void main() {
     expect(repository.savedEvents, hasLength(1));
     expect(repository.savedEvents.single.phase, ParcelWorkPhase.clearing);
     expect(repository.savedEvents.single.machineIds, ['m1']);
-    await tester.pump();
+    expect(repository.savedEvents.single.description, 'Dọn thực bì');
+    await tester.tap(find.byIcon(Icons.refresh));
     await tester.pumpAndSettle();
     expect(find.textContaining('Dọn thực bì'), findsOneWidget);
   });
