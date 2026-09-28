@@ -30,7 +30,7 @@ void main() {
     await tester.tap(find.byKey(const Key('work-add-event')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, 'Dọn thực bì');
-    await tester.testTextInput.hide();
+    tester.testTextInput.hide();
     await tester.pumpAndSettle();
     final machine = find.byType(CheckboxListTile);
     await tester.ensureVisible(machine);
