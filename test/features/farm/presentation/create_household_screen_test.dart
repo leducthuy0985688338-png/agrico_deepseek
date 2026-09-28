@@ -52,6 +52,8 @@ void main() {
     expect(find.byKey(const Key('household-village')), findsOneWidget);
     expect(find.textContaining('H00001'), findsOneWidget);
     await tester.enterText(find.byKey(const Key('household-head')), 'ນາງ ສົມພອນ');
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('household-save')));
     await tester.tap(find.byKey(const Key('household-save')));
     await tester.pumpAndSettle();
     expect(saved?.householdCode, 'H00001');
