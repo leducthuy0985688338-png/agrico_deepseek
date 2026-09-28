@@ -43,7 +43,30 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   int cutRevision = 0;
   bool showLandBlock = true;
   bool showFieldPlots = true;
-  LatLng? mapCenter;
+  GoogleMapController? mapController;
+  List<Offset> draftScreenPoints = const [];
+  int projectionRevision = 0;
+
+  Future<void> _refreshDraftScreenPoints() async {
+    final controller = mapController;
+    final vertices = [?start, ...waypoints];
+    final revision = ++projectionRevision;
+    if (controller == null || vertices.isEmpty) {
+      if (mounted) setState(() => draftScreenPoints = const []);
+      return;
+    }
+    try {
+      final coordinates = await Future.wait(vertices.map((vertex) =>
+        controller.getScreenCoordinate(LatLng(
+          vertex.latitude, vertex.longitude))));
+      if (!mounted || revision != projectionRevision) return;
+      final pixelRatio = MediaQuery.devicePixelRatioOf(context);
+      setState(() => draftScreenPoints = coordinates.map((coordinate) =>
+        Offset(coordinate.x / pixelRatio, coordinate.y / pixelRatio)).toList());
+    } catch (_) {
+      // The map may be rebuilding while the camera moves; retry when idle.
+    }
+  }
 
   Future<(LandParcel, String?)> _load() async {
     final parcel = await widget.service.parcels.getById(
@@ -79,6 +102,8 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
     cutRevision++;
     start = null;
     waypoints.clear();
+    projectionRevision++;
+    draftScreenPoints = const [];
     previewError = null;
   });
 
@@ -87,6 +112,8 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
       cutRevision++;
       start = null;
       waypoints.clear();
+      projectionRevision++;
+      draftScreenPoints = const [];
       cuts.clear();
       preview = null;
       previewError = null;
@@ -110,6 +137,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
         waypoints.clear();
         previewError = null;
       });
+      await _refreshDraftScreenPoints();
       return;
     }
     if (closeToStart) {
@@ -120,6 +148,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
       waypoints.add(vertex);
       previewError = null;
     });
+    await _refreshDraftScreenPoints();
   }
 
   Future<void> _finish(LandParcel parcel) async {
@@ -140,6 +169,8 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
           names.add(TextEditingController());
           start = null;
           waypoints.clear();
+          projectionRevision++;
+          draftScreenPoints = const [];
           previewError = null;
         });
       }
@@ -209,7 +240,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
         strokeColor: Colors.deepOrange, strokeWidth: 3,
         fillColor: Colors.deepOrange.withValues(alpha: 0.25)));
     }
-    return Stack(children: [
+    return LayoutBuilder(builder: (context, constraints) => Stack(children: [
       Positioned.fill(child: GoogleMap(
       key: const Key('subdivision-satellite-map'),
       mapType: MapType.satellite,
@@ -218,8 +249,10 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
       },
       initialCameraPosition: CameraPosition(
         target: point(parcel.centroid), zoom: 16),
-      onCameraMove: (position) => mapCenter = position.target,
+      onCameraIdle: _refreshDraftScreenPoints,
       onMapCreated: (controller) {
+        mapController = controller;
+        _refreshDraftScreenPoints();
         if (south < north && west < east) {
           controller.animateCamera(CameraUpdate.newLatLngBounds(
             LatLngBounds(southwest: LatLng(south, west),
@@ -254,19 +287,28 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
       myLocationButtonEnabled: false,
       zoomControlsEnabled: true,
       )),
-      const Center(child: IgnorePointer(child: Icon(Icons.add,
-        color: Colors.white70, size: 26))),
-      Positioned(bottom: 10, right: 10, child: FilledButton.tonalIcon(
-        key: const Key('subdivision-add-center-point'),
-        onPressed: () {
-          final center = mapCenter ?? point(parcel.centroid);
-          _chooseVertex(parcel, Wgs84Vertex(latitude: center.latitude,
-            longitude: center.longitude));
-        },
-        icon: const Icon(Icons.add_location_alt_outlined),
-        label: Text(AppLocalizations.of(context).text('subdivision.addCenter')),
-      )),
-    ]);
+      for (var i = 0; i < draftScreenPoints.length; i++)
+        if (draftScreenPoints[i].dx >= 0 &&
+            draftScreenPoints[i].dy >= 0 &&
+            draftScreenPoints[i].dx <= constraints.maxWidth &&
+            draftScreenPoints[i].dy <= constraints.maxHeight)
+          Positioned(
+            left: draftScreenPoints[i].dx - 14,
+            top: draftScreenPoints[i].dy - 14,
+            child: IgnorePointer(child: Container(
+              key: Key('draft-screen-point-$i'),
+              width: 28, height: 28,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: Colors.deepOrange,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 3)),
+              child: Text('${i + 1}', style: const TextStyle(
+                color: Colors.white, fontSize: 12,
+                fontWeight: FontWeight.bold)),
+            )),
+          ),
+    ]));
   }
 
   @override
@@ -334,7 +376,10 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
               ),
             if (waypoints.isNotEmpty) TextButton.icon(
               key: const Key('subdivision-undo-point'),
-              onPressed: () => setState(() => waypoints.removeLast()),
+              onPressed: () {
+                setState(() => waypoints.removeLast());
+                _refreshDraftScreenPoints();
+              },
               icon: const Icon(Icons.undo),
               label: Text(l10n.text('subdivision.undoPoint')),
             ),
