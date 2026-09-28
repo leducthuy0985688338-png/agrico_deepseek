@@ -70,7 +70,9 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
     final projection = _Projection(parcel.boundary, size);
     final candidate = projection.nearestBoundary(point);
     if (candidate == null && (start == null || end != null ||
-        !projection.contains(point))) return;
+        !projection.contains(point))) {
+      return;
+    }
     final previous = start;
     setState(() {
       cutRevision++;
@@ -156,8 +158,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                 onTapDown: (details) => _choose(parcel, details.localPosition, size),
                 child: CustomPaint(size: size,
                   painter: _CutPainter(parcel.boundary,
-                    [if (start != null) start!, ...waypoints,
-                      if (end != null) end!],
+                    [?start, ...waypoints, ?end],
                     preview?.boundaries)),
               );
             })),
