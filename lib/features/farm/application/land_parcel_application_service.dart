@@ -419,6 +419,35 @@ class LandParcelApplicationService implements LandParcelApplication {
           temporalState: SpatialTemporalState.baseline,
           crops: crops,
           prepare: (numbers, surveys) async {
+            // The land-only workflow allocates by location and never writes a
+            // household. Legacy household-based records keep their old codes.
+            if (command.ownerHouseholdId == null &&
+                (command.ownerDisplayName?.trim().isEmpty ?? true)) {
+              return numbers.saveLocationParcel(
+                farmId: command.farmId,
+                villageId: command.villageId!,
+                countryCode: command.countryCode!,
+                provinceCode: command.provinceCode!,
+                districtCode: command.districtCode!,
+                villageCode: command.villageCode!,
+                save: (code) async => LandParcel.create(
+                  id: command.id, farmId: command.farmId,
+                  parcelCode: code, name: command.name,
+                  countryCode: command.countryCode,
+                  provinceCode: command.provinceCode,
+                  districtCode: command.districtCode,
+                  villageCode: command.villageCode,
+                  boundary: Wgs84Polygon.fromVertices(command.vertices),
+                  boundarySource: command.source,
+                  verificationStatus: BoundaryVerificationStatus.measured,
+                  actorMembershipId: command.actorMembershipId,
+                  occurredAt: command.occurredAt,
+                  horizontalAccuracyM: command.horizontalAccuracyM,
+                  boundaryConfidence: command.boundaryConfidence,
+                  legacyMetadata: command.legacyMetadata,
+                ),
+              );
+            }
             Future<LandParcel> forHousehold(Household household) async {
               final match = RegExp(r'^H([0-9]{5})$').firstMatch(household.householdCode);
               if (match == null || household.farmId != command.farmId ||
