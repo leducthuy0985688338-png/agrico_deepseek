@@ -113,12 +113,6 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
     final closeToStart = waypoints.isNotEmpty &&
         (point - projection.position(start!)).distance <= 42;
     if (!closeToStart) {
-      if (waypoints.isNotEmpty && projection.nearestBoundary(
-          projection.position(waypoints.last), tolerance: 1) != null) {
-        setState(() => previewError =
-            AppLocalizations.of(context).text('subdivision.tapStart'));
-        return;
-      }
       if (candidate == null && !projection.contains(point)) return;
       setState(() {
         waypoints.add(candidate ?? projection.coordinate(point));
