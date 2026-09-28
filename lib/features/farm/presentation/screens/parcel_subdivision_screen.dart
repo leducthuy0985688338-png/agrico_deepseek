@@ -100,7 +100,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   Future<void> _choose(LandParcel parcel, Offset point, Size size) async {
     final fragment = preview?.boundaries[selectedFragment] ?? parcel.boundary;
     final projection = _Projection(fragment, size);
-    final candidate = projection.nearestBoundary(point, tolerance: 42);
+    final candidate = projection.nearestBoundary(point, tolerance: 28);
     if (start == null) {
       if (candidate == null) return;
       setState(() {
@@ -113,28 +113,30 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
     final closeToStart = waypoints.isNotEmpty &&
         (point - projection.position(start!)).distance <= 42;
     if (!closeToStart) {
-      if (!projection.contains(point)) return;
+      if (waypoints.isNotEmpty && projection.nearestBoundary(
+          projection.position(waypoints.last), tolerance: 1) != null) {
+        setState(() => previewError =
+            AppLocalizations.of(context).text('subdivision.tapStart'));
+        return;
+      }
+      if (candidate == null && !projection.contains(point)) return;
       setState(() {
-        waypoints.add(projection.coordinate(point));
+        waypoints.add(candidate ?? projection.coordinate(point));
         previewError = null;
       });
       return;
     }
-    if (candidate == null) {
-      setState(() => previewError =
-          AppLocalizations.of(context).text('subdivision.invalidCut'));
-      return;
-    }
-    final dx = start!.longitude - candidate.longitude;
-    final dy = start!.latitude - candidate.latitude;
-    if (dx * dx + dy * dy < 1e-18) {
+    final endpoint = waypoints.last;
+    if (projection.nearestBoundary(
+          projection.position(endpoint), tolerance: 1) == null ||
+        endpoint == start) {
       setState(() => previewError =
           AppLocalizations.of(context).text('subdivision.distinctEnd'));
       return;
     }
     final revision = ++cutRevision;
     final next = [...cuts, ParcelSubdivisionCut(fragmentIndex: selectedFragment,
-      path: [start!, ...waypoints, candidate])];
+      path: [start!, ...waypoints])];
     try {
       final result = await widget.service.previewPlan(
         subject: widget.subject, sourceParcelId: parcel.id, cuts: next);
