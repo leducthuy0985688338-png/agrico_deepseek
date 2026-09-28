@@ -42,6 +42,7 @@ class ParcelRingUnion {
       for (var i = 0; i < ring.length; i++) {
         final start = ring[i];
         final end = ring[(i + 1) % ring.length];
+        if (_same(start, end)) continue;
         final points = <Wgs84Vertex>[start, end,
           ...other.where((point) => _onSegment(start, point, end))];
         points.sort((x, y) => _fraction(start, end, x)
