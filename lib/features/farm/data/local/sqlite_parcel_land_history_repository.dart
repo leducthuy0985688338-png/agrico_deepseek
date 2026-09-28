@@ -73,19 +73,24 @@ class SqliteParcelLandHistoryRepository implements ParcelLandHistoryRepository {
 
   @override
   Future<void> link(ParcelDerivation derivation) async {
+    await database.transaction((tx) => linkScoped(tx, derivation));
+  }
+
+  /// Joins a caller-owned parcel/spatial transaction for atomic subdivision.
+  static Future<void> linkScoped(
+      DatabaseExecutor tx, ParcelDerivation derivation) async {
     derivation.validate();
-    await database.transaction((tx) async {
-      final parcels = SqliteLandParcelRepository(tx);
-      final source = await parcels.getById(
+    final parcels = SqliteLandParcelRepository(tx);
+    final source = await parcels.getById(
           farmId: derivation.farmId, id: derivation.sourceParcelId);
-      final target = await parcels.getById(
+    final target = await parcels.getById(
           farmId: derivation.farmId, id: derivation.targetParcelId);
-      if (source == null || target == null ||
+    if (source == null || target == null ||
           derivation.derivedAreaM2 > source.areaM2 + 0.001 ||
           derivation.derivedAreaM2 > target.areaM2 + 0.001) {
-        throw StateError('Derivation must link parcels in one farm with valid area.');
-      }
-      await tx.insert(derivationsTable, {
+      throw StateError('Derivation must link parcels in one farm with valid area.');
+    }
+    await tx.insert(derivationsTable, {
         'id': derivation.id, 'farm_id': derivation.farmId,
         'source_parcel_id': derivation.sourceParcelId,
         'target_parcel_id': derivation.targetParcelId,
@@ -93,8 +98,7 @@ class SqliteParcelLandHistoryRepository implements ParcelLandHistoryRepository {
         'derived_area_m2': derivation.derivedAreaM2,
         'occurred_at': derivation.occurredAt.toUtc().toIso8601String(),
         'actor_membership_id': derivation.actorMembershipId,
-      }, conflictAlgorithm: ConflictAlgorithm.abort);
-    });
+    }, conflictAlgorithm: ConflictAlgorithm.abort);
   }
 
   @override

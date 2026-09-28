@@ -7,7 +7,11 @@ import 'package:agrico_deepseek/core/spatial/domain/identity/spatial_identity_ge
 import '../../../core/spatial/domain/entities/spatial_temporal.dart';
 import '../data/adapters/land_parcel_spatial_projection.dart';
 import '../data/adapters/land_parcel_spatial_transaction.dart';
+import '../data/local/sqlite_parcel_land_history_repository.dart';
 import '../domain/entities/land_parcel.dart';
+import '../domain/entities/parcel_land_history.dart';
+import '../domain/geometry/parcel_boundary_splitter.dart';
+import '../domain/geometry/wgs84_geometry.dart';
 import '../domain/entities/land_survey.dart';
 import '../domain/entities/land_parcel_spatial_link.dart';
 import '../domain/repositories/land_parcel_repository.dart';
@@ -35,6 +39,102 @@ class LandParcelSpatialSyncWorkflow {
   final LandParcelSpatialTransaction transaction;
   final LandParcelSpatialProjection projection;
   final SpatialIdentityGenerator identityGenerator;
+
+  /// Creates two child parcels, their spatial identities, and their lineage
+  /// in one SQLite transaction. The source boundary and identity are retained.
+  Future<List<LandParcel>> subdivide({
+    required String farmId,
+    required String sourceParcelId,
+    required String villageId,
+    required int expectedBoundaryVersion,
+    required Wgs84Vertex cutStart,
+    required Wgs84Vertex cutEnd,
+    required String firstName,
+    required String secondName,
+    required String actorMembershipId,
+    required DateTime occurredAt,
+  }) async {
+    if (firstName.trim().isEmpty || secondName.trim().isEmpty ||
+        villageId.trim().isEmpty) {
+      throw const FormatException('Two names and a catalogued village are required.');
+    }
+    final childIds = [identityGenerator.newId('land-parcel'),
+      identityGenerator.newId('land-parcel')];
+    final linkIds = [identityGenerator.newId('spatial-link'),
+      identityGenerator.newId('spatial-link')];
+    final featureIds = [identityGenerator.newId('spatial-feature'),
+      identityGenerator.newId('spatial-feature')];
+    final revisionIds = [identityGenerator.newId('spatial-revision'),
+      identityGenerator.newId('spatial-revision')];
+    final derivationIds = [identityGenerator.newId('derivation'),
+      identityGenerator.newId('derivation')];
+    Transaction? scopedTransaction;
+    return transaction.run<List<LandParcel>>((parcels, links, spatial) async {
+      final tx = scopedTransaction!;
+      final source = await parcels.getById(farmId: farmId, id: sourceParcelId);
+      if (source == null || !source.active ||
+          source.boundaryVersion != expectedBoundaryVersion ||
+          source.countryCode == null || source.provinceCode == null ||
+          source.districtCode == null || source.villageCode == null) {
+        throw StateError('Source parcel changed or has no catalogued location.');
+      }
+      final location = await tx.rawQuery('''
+        SELECT v.id FROM agrico_administrative_units v
+        JOIN agrico_administrative_units d ON d.id = v.parent_id
+        JOIN agrico_administrative_units p ON p.id = d.parent_id
+        JOIN agrico_administrative_units c ON c.id = p.parent_id
+        WHERE v.id = ? AND v.level = 'village' AND v.active = 1
+          AND d.active = 1 AND p.active = 1 AND c.active = 1
+          AND v.code = ? AND d.code = ? AND p.code = ? AND c.code = ?
+      ''', [villageId, source.villageCode, source.districtCode,
+        source.provinceCode, source.countryCode]);
+      if (location.length != 1) {
+        throw const FormatException('Parcel village does not match the catalog.');
+      }
+      final boundaries = const ParcelBoundarySplitter()
+          .split(source.boundary, cutStart, cutEnd);
+      final numbers = SqliteScopedParcelNumberAllocator(tx);
+      final children = <LandParcel>[];
+      for (var index = 0; index < 2; index++) {
+        final child = await numbers.saveLocationParcel(
+          farmId: farmId, villageId: villageId,
+          countryCode: source.countryCode!,
+          provinceCode: source.provinceCode!,
+          districtCode: source.districtCode!,
+          villageCode: source.villageCode!,
+          save: (code) async => LandParcel.create(
+            id: childIds[index], farmId: farmId, parcelCode: code,
+            name: index == 0 ? firstName.trim() : secondName.trim(),
+            boundary: boundaries[index], boundarySource: BoundarySource.manual,
+            verificationStatus: BoundaryVerificationStatus.draft,
+            actorMembershipId: actorMembershipId, occurredAt: occurredAt,
+            countryCode: source.countryCode,
+            provinceCode: source.provinceCode,
+            districtCode: source.districtCode,
+            villageCode: source.villageCode,
+          ),
+        );
+        await createScoped(
+          parcels: parcels, links: links, spatial: spatial,
+          parcel: child, temporalState: SpatialTemporalState.underConstruction,
+          spatialLinkId: linkIds[index],
+          spatialFeatureId: featureIds[index],
+          spatialRevisionId: revisionIds[index],
+        );
+        children.add(child.assignSpatialFeatureId(featureIds[index]));
+        await SqliteParcelLandHistoryRepository.linkScoped(tx,
+          ParcelDerivation(
+            id: derivationIds[index], farmId: farmId,
+            sourceParcelId: source.id, targetParcelId: child.id,
+            kind: ParcelDerivationKind.subdivision,
+            derivedAreaM2: child.areaM2, occurredAt: occurredAt,
+            actorMembershipId: actorMembershipId,
+          ),
+        );
+      }
+      return children;
+    }, beforeCreate: (tx, _) async { scopedTransaction = tx; });
+  }
 
   /// Explicitly restores a missing parcel-side ID on a historical linked row.
   ///

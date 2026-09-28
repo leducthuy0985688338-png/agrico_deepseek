@@ -30,7 +30,9 @@ import '../features/farm/application/parcel_work_service.dart';
 import '../features/farm/presentation/screens/parcel_work_screen.dart';
 import '../features/farm/data/local/sqlite_parcel_land_history_repository.dart';
 import '../features/farm/application/parcel_land_history_service.dart';
+import '../features/farm/application/parcel_subdivision_service.dart';
 import '../features/farm/presentation/screens/parcel_land_timeline_screen.dart';
+import '../features/farm/presentation/screens/parcel_subdivision_screen.dart';
 import '../features/farm/domain/entities/land_parcel.dart';
 import '../features/farm/domain/entities/land_survey.dart';
 import '../features/farm/domain/geometry/wgs84_geometry.dart';
@@ -144,6 +146,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     return _V2Dependencies(
       subject: subject,
       spatial: spatial,
+      spatialWorkflow: spatialSyncWorkflow,
       controller: controller,
       finance: finance,
       database: database,
@@ -174,6 +177,14 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         onTimelineRequested: () => push(ParcelLandTimelineScreen(
           parcelId: id, subject: deps.subject,
           parcels: deps.controller.parcels,
+          onSubdivideRequested: () => ParcelSubdivisionScreen(
+            subject: deps.subject, sourceParcelId: id,
+            service: ParcelSubdivisionService(
+              parcels: deps.controller.parcels,
+              workflow: deps.spatialWorkflow,
+            ),
+            administrativeCatalog: SqliteAdministrativeCatalog(deps.database),
+          ),
           service: ParcelLandHistoryService(
             SqliteParcelLandHistoryRepository(deps.database),
             deps.controller.parcels,
@@ -602,6 +613,7 @@ class _V2Dependencies {
   const _V2Dependencies({
     required this.subject,
     required this.spatial,
+    required this.spatialWorkflow,
     required this.controller,
     required this.finance,
     required this.database,
@@ -611,6 +623,7 @@ class _V2Dependencies {
   });
   final AuthorizationSubject subject;
   final SpatialPersistenceComposition spatial;
+  final LandParcelSpatialSyncWorkflow spatialWorkflow;
   final LandParcelController controller;
   final SqliteFinanceDocumentRepository finance;
   final Database database;

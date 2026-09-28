@@ -11,12 +11,14 @@ class ParcelLandTimelineScreen extends StatefulWidget {
   const ParcelLandTimelineScreen({
     super.key, required this.subject, required this.parcelId,
     required this.service, required this.parcels,
+    this.onSubdivideRequested,
   });
 
   final AuthorizationSubject subject;
   final String parcelId;
   final ParcelLandHistoryService service;
   final LandParcelRepository parcels;
+  final Widget Function()? onSubdivideRequested;
 
   @override
   State<ParcelLandTimelineScreen> createState() => _ParcelLandTimelineScreenState();
@@ -35,7 +37,18 @@ class _ParcelLandTimelineScreenState extends State<ParcelLandTimelineScreen> {
     await widget.service.derivations(widget.subject, widget.parcelId),
   );
 
-  void reload() => setState(() => data = load());
+  void reload() {
+    final refreshed = load();
+    setState(() { data = refreshed; });
+  }
+
+  Future<void> subdivide() async {
+    final page = widget.onSubdivideRequested?.call();
+    if (page == null) return;
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => page));
+    if (saved == true && mounted) reload();
+  }
 
   Future<void> capture(LandParcel parcel) async {
     final l10n = AppLocalizations.of(context);
@@ -168,6 +181,10 @@ class _ParcelLandTimelineScreenState extends State<ParcelLandTimelineScreen> {
                     ? () => derive(parcel, parcels) : null,
                 icon: const Icon(Icons.account_tree),
                 label: Text(l10n.text('timeline.link'))),
+              if (widget.onSubdivideRequested != null)
+                FilledButton.tonalIcon(key: const Key('timeline-subdivide'),
+                  onPressed: subdivide, icon: const Icon(Icons.call_split),
+                  label: Text(l10n.text('subdivision.title'))),
             ]),
             if (stages.isEmpty && links.isEmpty)
               Text(l10n.text('timeline.empty')),
