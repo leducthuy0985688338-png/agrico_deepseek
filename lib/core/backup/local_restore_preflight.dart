@@ -76,7 +76,19 @@ class LocalRestorePreflight {
       final saved = Map<String, dynamic>.from(
         payload['tables'] as Map<String, dynamic>,
       )..remove('android_metadata');
-      if (tables.length != saved.length || !tables.containsAll(saved.keys)) {
+      // Backups made before land-only parcel numbering lack the empty v3
+      // counter table. Its CREATE TABLE comes from the current app schema.
+      final optionalMissing = databaseName == 'agrico.db'
+          ? {'agrico_location_parcel_sequences_v3'} : <String>{};
+      final missing = tables.difference(saved.keys.toSet());
+      if (missing.contains('agrico_location_parcel_sequences_v3') &&
+          (saved['land_parcels'] as List? ?? const []).any((row) =>
+              RegExp(r'-L[0-9]{5}$').hasMatch(
+                  (row as Map)['parcel_code']?.toString() ?? ''))) {
+        throw RestorePreflightException('tables', database: databaseName);
+      }
+      if (!tables.containsAll(saved.keys) ||
+          !optionalMissing.containsAll(missing)) {
         throw RestorePreflightException('tables', database: databaseName);
       }
       staged = await factory.openDatabase(path);
