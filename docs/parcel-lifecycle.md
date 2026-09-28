@@ -8,6 +8,12 @@
 
 Liên kết lô đã tồn tại trước đó vẫn cho nhập thủ công; luồng tách lô mới ở dưới tính diện tích từ đường cắt được xem trước. Chưa tính công/chi phí hoặc tự gộp nhiều polygon.
 
+## Vẽ các lô nhỏ trong vùng đất nguồn
+
+Luồng vẽ trên điện thoại lưu từng đa giác nhỏ độc lập, giống các Placemark Polygon trong tệp Google Earth của dự án. Đường bao được khép về điểm đầu; diện tích và chu vi của từng hình được tính xấp xỉ từ tọa độ WGS84. Các hình có thể chung cạnh, chồng lấn, hoặc vượt biên vùng nguồn; ứng dụng không tự cắt, trừ, hay gộp chúng. Tổng diện tích các hình vì vậy **không phải** diện tích đất duy nhất và không dùng làm tổng diện tích khai hoang. Chỉ hình tự cắt hoặc có ít hơn ba góc mới không lưu được. Vùng nguồn vẫn hoạt động để có thể vẽ thêm hình về sau; các hình nhỏ nhận mã, SpatialFeature và liên kết nguồn riêng. Khi xuất KML/KMZ, đường bao từng hình giữ nguyên.
+
+Phần mô tả dưới đây dành cho thuật toán chia kín cũ, không còn được màn vẽ điện thoại sử dụng.
+
 ## Tách lô bằng đường cắt
 
 Trên **Hiện trạng và phân mảnh → Tách lô theo ranh giới**, chọn mảnh đang cắt rồi vẽ đa giác khép kín như Google Earth. Mặc định chọn **Lô bên trong**: điểm chạm gần biên ngoài vẫn là điểm bên trong, không tự chuyển sang thuật toán cắt biên. Chọn **Lô sát biên ngoài** khi thực sự cần chia bằng hai điểm trên biên ngoài. Vùng nháp được tô màu và nối trực quan về điểm đầu sau mỗi lần chạm. Nếu đa giác nằm trọn bên trong lô, phần đất còn lại giữ nguyên biên ngoài và lưu vòng rỗng đúng bằng ranh giới lô mới. Lô tiếp theo có thể bám vào toàn bộ hoặc một phần cạnh của lô đã tách; các điểm chạm đủ gần cạnh cũ được bám vào chính cạnh đó để giảm sai lệch khi chạm màn hình. Phần đất còn lại gộp các đường biên kề nhau thành một vòng rỗng, còn mỗi lô con vẫn có mã và hình riêng. Nếu hình bắt đầu trên biên ngoài, đi dọc biên rồi cắt qua lô đến một điểm biên ngoài khác, ứng dụng dùng phần trong lô làm đường chia, lấy cạnh gốc để khép kín hai mảnh. Bấm **Khép kín và xem trước** sau khi vẽ; chạm lại điểm đầu cũng có thể kết thúc. Đa giác tự cắt hoặc sai lệch vượt quá khả năng bám biên vẫn cần vẽ lại để không lưu diện tích trùng.

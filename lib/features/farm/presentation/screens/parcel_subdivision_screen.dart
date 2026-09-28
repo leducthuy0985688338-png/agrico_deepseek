@@ -10,9 +10,6 @@ import '../../application/parcel_subdivision_service.dart';
 import '../../domain/entities/land_parcel.dart';
 import '../../domain/geometry/wgs84_geometry.dart';
 import '../../domain/geometry/parcel_subdivision_plan.dart';
-import '../../domain/geometry/parcel_closed_outline.dart';
-
-enum _OutlineMode { enclosed, outerEdge }
 
 class ParcelSubdivisionScreen extends StatefulWidget {
   const ParcelSubdivisionScreen({super.key, required this.subject,
@@ -30,7 +27,7 @@ class ParcelSubdivisionScreen extends StatefulWidget {
 
 class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   late final Future<(LandParcel, String?)> source = _load();
-  final names = <TextEditingController>[TextEditingController()];
+  final names = <TextEditingController>[];
   final retiredNames = <TextEditingController>[];
   final cuts = <ParcelSubdivisionCut>[];
   Wgs84Vertex? start;
@@ -38,9 +35,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   ParcelSubdivisionPreview? preview;
   String? previewError;
   bool saving = false;
-  int selectedFragment = 0;
   int cutRevision = 0;
-  _OutlineMode outlineMode = _OutlineMode.enclosed;
 
   Future<(LandParcel, String?)> _load() async {
     final parcel = await widget.service.parcels.getById(
@@ -87,81 +82,49 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
       cuts.clear();
       preview = null;
       previewError = null;
-      selectedFragment = 0;
-      retiredNames.addAll(names.skip(1));
-      names.removeRange(1, names.length);
+      retiredNames.addAll(names);
+      names.clear();
     });
   }
 
-  void _selectFragment(int index) => setState(() {
-    cutRevision++;
-    selectedFragment = index;
-    start = null;
-    waypoints.clear();
-    previewError = null;
-  });
-
-  void _selectMode(_OutlineMode mode) => setState(() {
-    cutRevision++;
-    outlineMode = mode;
-    start = null;
-    waypoints.clear();
-    previewError = null;
-  });
-
   Future<void> _choose(LandParcel parcel, Offset point, Size size) async {
-    final fragment = preview?.boundaries[selectedFragment] ?? parcel.boundary;
-    final projection = _Projection(fragment, size);
-    final candidate = outlineMode == _OutlineMode.outerEdge
-        ? projection.nearestOuterBoundary(point, tolerance: 14)
-        : projection.nearestHoleBoundary(point, tolerance: 14);
+    final projection = _Projection(parcel.boundary, size);
     if (start == null) {
-      if (outlineMode == _OutlineMode.outerEdge && candidate == null) return;
-      if (candidate == null && !projection.contains(point)) return;
       setState(() {
-        start = candidate ?? projection.coordinate(point);
+        start = projection.coordinate(point);
         waypoints.clear();
         previewError = null;
       });
       return;
     }
-    final hasInterior = outlineMode == _OutlineMode.enclosed ||
-        _hasInterior(projection);
-    final closeToStart = hasInterior && waypoints.length >= 2 &&
+    final closeToStart = waypoints.length >= 2 &&
         (point - projection.position(start!)).distance <= 24;
     if (closeToStart) {
-      await _finish(parcel, fragment);
+      await _finish(parcel);
       return;
     }
-    if (candidate == null && !projection.contains(point)) return;
     setState(() {
-      waypoints.add(candidate ?? projection.coordinate(point));
+      waypoints.add(projection.coordinate(point));
       previewError = null;
     });
   }
 
-  bool _hasInterior(_Projection projection) => waypoints.any((vertex) =>
-    projection.nearestBoundary(projection.position(vertex),
-      tolerance: 1) == null);
-
-  Future<void> _finish(LandParcel parcel, Wgs84Polygon fragment) async {
+  Future<void> _finish(LandParcel parcel) async {
     if (start == null) return;
     final revision = ++cutRevision;
     try {
       final traced = [start!, ...waypoints];
-      final operation = outlineMode == _OutlineMode.outerEdge
-          ? ParcelSubdivisionCut(fragmentIndex: selectedFragment,
-              path: const ParcelClosedOutline().interiorCut(fragment, traced))
-          : ParcelSubdivisionCut.enclosed(fragmentIndex: selectedFragment,
-              polygon: Wgs84Polygon.fromVertices(traced));
+      final operation = ParcelSubdivisionCut.enclosed(fragmentIndex: 0,
+        polygon: Wgs84Polygon.fromVertices(traced));
       final next = [...cuts, operation];
       final result = await widget.service.previewPlan(
-        subject: widget.subject, sourceParcelId: parcel.id, cuts: next);
+        subject: widget.subject, sourceParcelId: parcel.id, cuts: next,
+        independentSketches: true);
       if (mounted && revision == cutRevision) {
         setState(() {
           cuts.add(next.last);
           preview = result;
-          names.insert(selectedFragment + 1, TextEditingController());
+          names.add(TextEditingController());
           start = null;
           waypoints.clear();
           previewError = null;
@@ -188,7 +151,8 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
       await widget.service.savePlan(
         subject: widget.subject, sourceParcelId: source.id,
         villageId: villageId, expectedBoundaryVersion: source.boundaryVersion,
-        cuts: List.of(cuts), names: names.map((name) => name.text).toList());
+        cuts: List.of(cuts), names: names.map((name) => name.text).toList(),
+        independentSketches: true);
       if (mounted) {
         Navigator.of(context).pop(true);
       }
@@ -216,29 +180,11 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           final (parcel, villageId) = snapshot.data!;
-          final fragments = preview?.boundaries ?? [parcel.boundary];
+          final fragments = preview?.boundaries ?? <Wgs84Polygon>[];
           return ListView(padding: const EdgeInsets.all(16), children: [
             Text('${parcel.parcelCode} · ${parcel.areaM2.toStringAsFixed(1)} m²'),
             const SizedBox(height: 8),
             Text(l10n.text('subdivision.instruction')),
-            const SizedBox(height: 12),
-            Wrap(spacing: 8, children: [
-              ChoiceChip(key: const Key('subdivision-mode-enclosed'),
-                label: Text(l10n.text('subdivision.enclosedMode')),
-                selected: outlineMode == _OutlineMode.enclosed,
-                onSelected: (_) => _selectMode(_OutlineMode.enclosed)),
-              ChoiceChip(key: const Key('subdivision-mode-outer-edge'),
-                label: Text(l10n.text('subdivision.edgeMode')),
-                selected: outlineMode == _OutlineMode.outerEdge,
-                onSelected: (_) => _selectMode(_OutlineMode.outerEdge)),
-            ]),
-            if (cuts.isNotEmpty) Wrap(spacing: 8, children: [
-              for (var i = 0; i < fragments.length; i++)
-                ChoiceChip(key: Key('subdivision-fragment-$i'),
-                  label: Text('${l10n.text('subdivision.fragment')} ${i + 1}'),
-                  selected: i == selectedFragment,
-                  onSelected: (_) => _selectFragment(i)),
-            ]),
             Text(l10n.text('subdivision.editSelected')),
             SizedBox(height: 420, child: LayoutBuilder(builder: (context, box) {
               final size = Size(box.maxWidth, box.maxHeight);
@@ -246,8 +192,8 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                 key: const Key('subdivision-map'),
                 onTapDown: (details) => _choose(parcel, details.localPosition, size),
                 child: CustomPaint(size: size,
-                  painter: _CutPainter(fragments[selectedFragment],
-                    [?start, ...waypoints], null, 0)),
+                  painter: _CutPainter(parcel.boundary,
+                    [?start, ...waypoints], fragments, -1)),
               );
             })),
             if (preview != null) ...[
@@ -256,19 +202,9 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                 final size = Size(box.maxWidth, box.maxHeight);
                 return GestureDetector(
                   key: const Key('subdivision-overview'),
-                  onTapDown: (details) {
-                    final projection = _Projection(parcel.boundary, size);
-                    for (var i = 0; i < fragments.length; i++) {
-                      if (projection.containsPolygon(
-                          fragments[i], details.localPosition)) {
-                        _selectFragment(i);
-                        return;
-                      }
-                    }
-                  },
                   child: CustomPaint(size: size,
                     painter: _CutPainter(parcel.boundary, const [],
-                      fragments, selectedFragment)),
+                      fragments, -1)),
                 );
               })),
             ],
@@ -276,7 +212,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
             if (start != null && waypoints.length >= 2)
               TextButton.icon(
                 key: const Key('subdivision-close-outline'),
-                onPressed: () => _finish(parcel, fragments[selectedFragment]),
+              onPressed: () => _finish(parcel),
                 icon: const Icon(Icons.check_circle_outline),
                 label: Text(l10n.text('subdivision.closeOutline')),
               ),
@@ -302,10 +238,10 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
               style: TextStyle(color: Theme.of(context).colorScheme.error)),
             if (preview != null) ...[
               Text('${l10n.text('subdivision.preview')}: ${fragments.length}'),
-              Text(l10n.text('subdivision.closedBoundary')),
               for (var i = 0; i < fragments.length; i++)
                 Text('${l10n.text('subdivision.fragment')} ${i + 1}: '
-                  '${preview!.areasM2[i].toStringAsFixed(1)} m²'),
+                  '${preview!.areasM2[i].toStringAsFixed(1)} m² · '
+                  '${preview!.perimetersM[i].toStringAsFixed(1)} m'),
             ],
             if (villageId == null) Text(l10n.text('subdivision.locationRequired')),
             const SizedBox(height: 12),
@@ -449,10 +385,7 @@ class _CutPainter extends CustomPainter {
         draft.lineTo(position.dx, position.dy);
       }
       draft.close();
-      canvas.save();
-      canvas.clipPath(outline(source));
       canvas.drawPath(draft, Paint()..color = const Color(0x55ff7a32));
-      canvas.restore();
       canvas.drawPath(draft, Paint()..color = const Color(0xffe65d16)
         ..style = PaintingStyle.stroke..strokeWidth = 2);
     }

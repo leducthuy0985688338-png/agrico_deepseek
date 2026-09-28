@@ -71,10 +71,12 @@ class LandParcelSpatialSyncWorkflow {
     required int expectedBoundaryVersion,
     required List<ParcelSubdivisionCut> cuts,
     required List<String> names,
+    bool independentSketches = false,
     required String actorMembershipId,
     required DateTime occurredAt,
   }) async {
-    if (cuts.isEmpty || cuts.length > 99 || names.length != cuts.length + 1 ||
+    if (cuts.isEmpty || cuts.length > 99 ||
+        names.length != cuts.length + (independentSketches ? 0 : 1) ||
         names.any((name) => name.trim().isEmpty) || villageId.trim().isEmpty) {
       throw const FormatException('Every final fragment needs a name and catalogued village.');
     }
@@ -105,7 +107,7 @@ class LandParcelSpatialSyncWorkflow {
         columns: ['id'], where: 'farm_id = ? AND source_parcel_id = ? '
             'AND kind = ?', whereArgs: [farmId, source.id,
               ParcelDerivationKind.subdivision.name], limit: 1);
-      if (existingSplit.isNotEmpty) {
+      if (!independentSketches && existingSplit.isNotEmpty) {
         throw StateError('Source parcel has already been subdivided.');
       }
       final location = await tx.rawQuery('''
@@ -121,7 +123,9 @@ class LandParcelSpatialSyncWorkflow {
       if (location.length != 1) {
         throw const FormatException('Parcel village does not match the catalog.');
       }
-      final boundaries = const ParcelSubdivisionPlan().apply(source.boundary, cuts);
+      final plan = const ParcelSubdivisionPlan();
+      final boundaries = independentSketches
+          ? plan.sketches(cuts) : plan.apply(source.boundary, cuts);
       final numbers = SqliteScopedParcelNumberAllocator(tx);
       final children = <LandParcel>[];
       for (var index = 0; index < boundaries.length; index++) {
@@ -161,9 +165,11 @@ class LandParcelSpatialSyncWorkflow {
           ),
         );
       }
-      await parcels.update(source.updateMetadata(
-        active: false, actorMembershipId: actorMembershipId,
-        occurredAt: occurredAt));
+      if (!independentSketches) {
+        await parcels.update(source.updateMetadata(
+          active: false, actorMembershipId: actorMembershipId,
+          occurredAt: occurredAt));
+      }
       return children;
     }, beforeCreate: (tx, _) async { scopedTransaction = tx; });
   }

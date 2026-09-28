@@ -8,12 +8,13 @@ import 'land_parcel_spatial_sync_workflow.dart';
 class ParcelSubdivisionPreview {
   const ParcelSubdivisionPreview({
     required this.source, required this.boundaries,
-    required this.areasM2,
+    required this.areasM2, required this.perimetersM,
   });
 
   final LandParcel source;
   final List<Wgs84Polygon> boundaries;
   final List<double> areasM2;
+  final List<double> perimetersM;
 }
 
 class ParcelSubdivisionService {
@@ -46,6 +47,7 @@ class ParcelSubdivisionService {
     required AuthorizationSubject subject,
     required String sourceParcelId,
     required List<ParcelSubdivisionCut> cuts,
+    bool independentSketches = false,
   }) async {
     _authorize(subject, sourceParcelId, PermissionCodes.fieldView);
     final source = await parcels.getById(
@@ -53,12 +55,15 @@ class ParcelSubdivisionService {
     if (source == null || !source.active) {
       throw StateError('Source parcel is missing or inactive.');
     }
-    final boundaries = const ParcelSubdivisionPlan().apply(source.boundary, cuts);
+    final plan = const ParcelSubdivisionPlan();
+    final boundaries = independentSketches
+        ? plan.sketches(cuts) : plan.apply(source.boundary, cuts);
     final geometry = const Wgs84GeometryService();
     return ParcelSubdivisionPreview(
       source: source,
       boundaries: boundaries,
       areasM2: boundaries.map((part) => geometry.measure(part).areaM2).toList(),
+      perimetersM: boundaries.map((part) => geometry.measure(part).perimeterM).toList(),
     );
   }
 
@@ -85,6 +90,7 @@ class ParcelSubdivisionService {
     required int expectedBoundaryVersion,
     required List<ParcelSubdivisionCut> cuts,
     required List<String> names,
+    bool independentSketches = false,
   }) async {
     _authorize(subject, sourceParcelId, PermissionCodes.fieldEdit);
     _authorize(subject, sourceParcelId, PermissionCodes.fieldCreate);
@@ -92,6 +98,7 @@ class ParcelSubdivisionService {
       farmId: subject.farmId, sourceParcelId: sourceParcelId,
       villageId: villageId, expectedBoundaryVersion: expectedBoundaryVersion,
       cuts: cuts, names: names,
+      independentSketches: independentSketches,
       actorMembershipId: subject.membershipId,
       occurredAt: DateTime.now().toUtc(),
     );

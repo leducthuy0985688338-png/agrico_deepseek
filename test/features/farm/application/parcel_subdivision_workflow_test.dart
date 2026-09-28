@@ -128,6 +128,39 @@ void main() {
     expect(await parcels.listByFarm('farm'), hasLength(3));
   });
 
+  test('independent sketches keep source active and measure overlaps separately', () async {
+    Wgs84Polygon box(double west, double east) => Wgs84Polygon.fromVertices([
+      Wgs84Vertex(latitude: 16.0002, longitude: west),
+      Wgs84Vertex(latitude: 16.0002, longitude: east),
+      Wgs84Vertex(latitude: 16.0007, longitude: east),
+      Wgs84Vertex(latitude: 16.0007, longitude: west),
+    ]);
+    final first = box(106.0002, 106.0009);
+    final second = box(106.0008, 106.00205);
+    final cuts = [
+      ParcelSubdivisionCut.enclosed(fragmentIndex: 0, polygon: first),
+      ParcelSubdivisionCut.enclosed(fragmentIndex: 0, polygon: second),
+    ];
+    final preview = await service.previewPlan(subject: subject,
+      sourceParcelId: 'source', cuts: cuts, independentSketches: true);
+    expect(preview.boundaries, [first, second]);
+    expect(preview.areasM2, everyElement(greaterThan(0)));
+    expect(preview.perimetersM, everyElement(greaterThan(0)));
+    final saved = await service.savePlan(subject: subject,
+      sourceParcelId: 'source', villageId: 'agrico-la-svk-nong-tako',
+      expectedBoundaryVersion: 1, cuts: cuts, names: ['A', 'B'],
+      independentSketches: true);
+    expect(saved.map((parcel) => parcel.boundary), [first, second]);
+    expect((await parcels.getById(farmId: 'farm', id: 'source'))!.active, isTrue);
+    final more = await service.savePlan(subject: subject,
+      sourceParcelId: 'source', villageId: 'agrico-la-svk-nong-tako',
+      expectedBoundaryVersion: 1,
+      cuts: [ParcelSubdivisionCut.enclosed(fragmentIndex: 0, polygon: first)],
+      names: ['C'], independentSketches: true);
+    expect(more.single.parcelCode, 'LA-SVK-NONG-TAKO-L00003');
+    expect((await history.derivations('farm', 'source')), hasLength(3));
+  });
+
   test('enclosed polygon saves a child and a remainder with a persisted hole', () async {
     final interior = Wgs84Polygon.fromVertices(const [
       Wgs84Vertex(latitude: 16.0002, longitude: 106.0004),

@@ -12,7 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('fully enclosed polygon previews a remainder with a hole',
+  testWidgets('independent sketches allow touching and overlapping edges',
       (tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1;
@@ -66,7 +66,7 @@ void main() {
     await tester.ensureVisible(done);
     await tester.tap(done);
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('subdivision-fragment-1')), findsOneWidget);
+    expect(find.byKey(const Key('subdivision-name-0')), findsOneWidget);
     expect(find.textContaining('Đường cắt phải nằm bên trong'), findsNothing);
 
     await tester.ensureVisible(map);
@@ -83,8 +83,27 @@ void main() {
     await tester.ensureVisible(done);
     await tester.tap(done);
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('subdivision-fragment-2')), findsOneWidget);
+    expect(find.byKey(const Key('subdivision-name-1')), findsOneWidget);
     expect(find.textContaining('hai vùng đất không chồng lấn'), findsNothing);
+
+    await tester.ensureVisible(map);
+    await tester.pumpAndSettle();
+    final thirdOrigin = tester.getTopLeft(map);
+    for (final (lat, lon) in [
+      (16.0007, 105.99998), (16.0007, 106.0008),
+      (16.0012, 106.0008), (16.0012, 105.99998),
+    ]) {
+      await tester.tapAt(thirdOrigin + Offset((lon - 106.001) * scale +
+        size.width / 2, (16.001 - lat) * scale + size.height / 2));
+      await tester.pumpAndSettle();
+    }
+    await tester.ensureVisible(done);
+    await tester.tap(done);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.byKey(const Key('subdivision-name-2')),
+      180);
+    expect(find.byKey(const Key('subdivision-name-2')), findsOneWidget);
+    expect(find.textContaining(' m² · '), findsWidgets);
   });
 
   testWidgets('drawing the photographed outline previews two closed parcels',
@@ -123,8 +142,6 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('subdivision-mode-outer-edge')));
-    await tester.pumpAndSettle();
     final map = find.byKey(const Key('subdivision-map'));
     await tester.ensureVisible(map);
     await tester.pumpAndSettle();
@@ -152,7 +169,7 @@ void main() {
     await tester.tap(done);          // Explicit Google Earth style Done step.
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('subdivision-fragment-1')), findsOneWidget);
+    expect(find.byKey(const Key('subdivision-name-0')), findsOneWidget);
     expect(find.textContaining('Đường cắt phải nằm bên trong'), findsNothing);
   });
 }

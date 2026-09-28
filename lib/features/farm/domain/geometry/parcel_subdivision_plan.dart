@@ -18,6 +18,16 @@ class ParcelSubdivisionCut {
 class ParcelSubdivisionPlan {
   const ParcelSubdivisionPlan();
 
+  /// Survey sketches are independent closed outlines. Their measured areas
+  /// are not a partition of the source and may overlap each other or its edge.
+  List<Wgs84Polygon> sketches(List<ParcelSubdivisionCut> cuts) {
+    if (cuts.isEmpty || cuts.length > 99 ||
+        cuts.any((cut) => cut.enclosedPolygon == null)) {
+      throw const FormatException('Provide 1–99 closed survey outlines.');
+    }
+    return List.unmodifiable(cuts.map((cut) => cut.enclosedPolygon!));
+  }
+
   List<Wgs84Polygon> apply(
       Wgs84Polygon source, List<ParcelSubdivisionCut> cuts) {
     if (cuts.isEmpty || cuts.length > 99) {
