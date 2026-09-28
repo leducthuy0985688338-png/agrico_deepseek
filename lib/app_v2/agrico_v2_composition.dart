@@ -15,6 +15,7 @@ import '../core/spatial/data/identity/default_spatial_identity_generator.dart';
 import '../core/spatial/data/spatial_persistence_composition.dart';
 import '../features/farm/application/land_parcel_application_service.dart';
 import '../features/farm/application/household_directory_query.dart';
+import '../features/farm/application/household_detail_query.dart';
 import '../features/farm/application/land_parcel_spatial_sync_workflow.dart';
 import '../features/farm/data/adapters/default_land_parcel_spatial_projection.dart';
 import '../features/farm/application/land_parcel_boundary_consistency_queries.dart';
@@ -35,6 +36,7 @@ import '../features/farm/presentation/screens/land_parcel_detail_screen.dart';
 import '../features/farm/presentation/screens/land_parcel_form_screen.dart';
 import '../features/farm/presentation/screens/land_parcel_list_screen.dart';
 import '../features/farm/presentation/screens/household_directory_screen.dart';
+import '../features/farm/presentation/screens/household_detail_screen.dart';
 import '../features/farm/presentation/widgets/boundary_workflow_widgets.dart';
 import '../features/finance/data/local/sqlite_finance_document_repository.dart';
 import '../features/finance/presentation/finance_documents_screen.dart';
@@ -192,6 +194,13 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
           'households': () => push(HouseholdDirectoryScreen(
             query: HouseholdDirectoryQuery(deps.surveyRepository),
             subject: deps.subject,
+            onOpenHousehold: (id) => push(HouseholdDetailScreen(
+              query: HouseholdDetailQuery(
+                deps.surveyRepository, deps.controller.parcels),
+              subject: deps.subject,
+              householdId: id,
+              onOpenParcel: (parcelId) => push(detail(parcelId)),
+            )),
           )),
         'machines': () => push(const MachineListScreen()),
         'employees': () => push(const EmployeeListScreen()),
