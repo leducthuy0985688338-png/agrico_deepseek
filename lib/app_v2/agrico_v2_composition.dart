@@ -16,6 +16,7 @@ import '../core/spatial/data/spatial_persistence_composition.dart';
 import '../features/farm/application/land_parcel_application_service.dart';
 import '../features/farm/application/household_directory_query.dart';
 import '../features/farm/application/household_detail_query.dart';
+import '../features/farm/application/create_household.dart';
 import '../features/farm/application/land_parcel_spatial_sync_workflow.dart';
 import '../features/farm/data/adapters/default_land_parcel_spatial_projection.dart';
 import '../features/farm/application/land_parcel_boundary_consistency_queries.dart';
@@ -27,6 +28,7 @@ import '../features/farm/data/legacy/land_parcel_legacy_migration.dart';
 import '../features/farm/data/legacy/legacy_field_adapter.dart';
 import '../features/farm/data/local/sqlite_land_parcel_repository.dart';
 import '../features/farm/data/local/sqlite_land_survey_repository.dart';
+import '../features/farm/data/adapters/sqlite_household_creation_transaction.dart';
 import '../features/farm/domain/entities/land_parcel.dart';
 import '../features/farm/domain/entities/land_survey.dart';
 import '../features/farm/domain/geometry/wgs84_geometry.dart';
@@ -37,6 +39,7 @@ import '../features/farm/presentation/screens/land_parcel_form_screen.dart';
 import '../features/farm/presentation/screens/land_parcel_list_screen.dart';
 import '../features/farm/presentation/screens/household_directory_screen.dart';
 import '../features/farm/presentation/screens/household_detail_screen.dart';
+import '../features/farm/presentation/screens/create_household_screen.dart';
 import '../features/farm/presentation/widgets/boundary_workflow_widgets.dart';
 import '../features/finance/data/local/sqlite_finance_document_repository.dart';
 import '../features/finance/presentation/finance_documents_screen.dart';
@@ -194,6 +197,21 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
           'households': () => push(HouseholdDirectoryScreen(
             query: HouseholdDirectoryQuery(deps.surveyRepository),
             subject: deps.subject,
+            onCreate: deps.subject.permissionCodes.contains(
+                    PermissionCodes.householdCreate)
+                ? () async {
+                    await Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => CreateHouseholdScreen(
+                        create: CreateHousehold(
+                          deps.administrativeCatalog.repository,
+                          SqliteHouseholdCreationTransaction(deps.database),
+                        ),
+                        subject: deps.subject,
+                        loadUnits: deps.administrativeCatalog.all,
+                      ),
+                    ));
+                  }
+                : null,
             onOpenHousehold: (id) => push(HouseholdDetailScreen(
               query: HouseholdDetailQuery(
                 deps.surveyRepository, deps.controller.parcels),

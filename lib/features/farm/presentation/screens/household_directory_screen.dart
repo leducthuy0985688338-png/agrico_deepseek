@@ -11,11 +11,13 @@ class HouseholdDirectoryScreen extends StatefulWidget {
     required this.query,
     required this.subject,
     this.onOpenHousehold,
+    this.onCreate,
   });
 
   final HouseholdDirectoryQuery query;
   final AuthorizationSubject subject;
   final ValueChanged<String>? onOpenHousehold;
+  final Future<void> Function()? onCreate;
 
   @override
   State<HouseholdDirectoryScreen> createState() =>
@@ -48,6 +50,17 @@ class _HouseholdDirectoryScreenState extends State<HouseholdDirectoryScreen> {
           icon: const Icon(Icons.refresh),
         )],
       ),
+      floatingActionButton: widget.onCreate == null
+          ? null
+          : FloatingActionButton.extended(
+              key: const Key('household-add'),
+              onPressed: () async {
+                await widget.onCreate!();
+                if (mounted) reload();
+              },
+              icon: const Icon(Icons.add),
+              label: Text(l10n.text('household.add')),
+            ),
       body: FutureBuilder<List<Household>>(
         future: households,
         builder: (context, snapshot) {
