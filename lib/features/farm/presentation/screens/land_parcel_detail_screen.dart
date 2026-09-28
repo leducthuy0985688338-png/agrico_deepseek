@@ -208,7 +208,7 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
             ]),
             _section(context, l10n.text('survey.household'), [
               _row(l10n.text('household.code'), household.householdCode),
-              _row(l10n.text('household.head'), household.headOfHouseholdName),
+              _row(l10n.text('household.head'), data.owner),
               if (household.phone != null)
                 _row(l10n.text('household.phone'), household.phone!),
               if (household.alternativeContact != null)
