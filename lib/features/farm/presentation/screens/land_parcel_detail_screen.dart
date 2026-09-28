@@ -20,6 +20,7 @@ class LandParcelDetailScreen extends StatefulWidget {
     this.onEditRequested,
     this.onAttachRequested,
     this.onOpenAttachment,
+    this.landOnly = false,
   });
   final LandParcelController controller;
   final String parcelId;
@@ -28,6 +29,7 @@ class LandParcelDetailScreen extends StatefulWidget {
   final VoidCallback? onEditRequested;
   final VoidCallback? onAttachRequested;
   final Future<void> Function(ParcelAttachment)? onOpenAttachment;
+  final bool landOnly;
 
   @override
   State<LandParcelDetailScreen> createState() => _LandParcelDetailScreenState();
@@ -144,8 +146,8 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
             '${parcel.areaHa.toStringAsFixed(2)} ha · ${l10n.text('verification.${parcel.verificationStatus.name}')}',
             style: Theme.of(context).textTheme.titleLarge,
           ),
-          if (data.village.isNotEmpty || data.owner.isNotEmpty)
-            Text('${data.village} · ${data.owner}'),
+          if (data.village.isNotEmpty || (!widget.landOnly && data.owner.isNotEmpty))
+            Text(widget.landOnly ? data.village : '${data.village} · ${data.owner}'),
           if (parcel.verificationStatus !=
                   BoundaryVerificationStatus.verified &&
               controller.can(
@@ -195,7 +197,7 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
                 '${(parcel.boundaryConfidence! * 100).toStringAsFixed(0)}%',
               ),
           ]),
-          if (household != null) ...[
+          if (!widget.landOnly && household != null) ...[
             _section(context, l10n.text('survey.administrativeLocation'), [
               Text(
                 [
