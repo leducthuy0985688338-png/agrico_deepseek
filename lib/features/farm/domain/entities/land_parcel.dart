@@ -6,6 +6,8 @@ enum BoundarySource { gps, googleEarth, manual, cad, imported }
 
 enum BoundaryVerificationStatus { draft, measured, verified, rejected }
 
+enum ParcelLayer { landBlock, fieldPlot }
+
 class LandParcelBoundaryVersion {
   const LandParcelBoundaryVersion({
     required this.id,
@@ -280,6 +282,14 @@ class LandParcel {
   final int boundaryVersion;
   final UnmodifiableListView<LandParcelBoundaryVersion> boundaryHistory;
   final UnmodifiableMapView<String, Object?> legacyMetadata;
+
+  /// Existing parcels remain land blocks. New surveyed plots carry their
+  /// parent ID inside the persisted parcel metadata for backup compatibility.
+  ParcelLayer get layer => legacyMetadata['parcelLayer'] == 'fieldPlot'
+      ? ParcelLayer.fieldPlot : ParcelLayer.landBlock;
+
+  String? get parentLandBlockId => layer == ParcelLayer.fieldPlot
+      ? legacyMetadata['parentLandBlockId'] as String? : null;
 
   /// Reference to the stable Spatial Core identity.
   ///

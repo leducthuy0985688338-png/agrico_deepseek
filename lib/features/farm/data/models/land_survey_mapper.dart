@@ -140,6 +140,7 @@ abstract final class LandSurveyMapper {
     'variety': value.variety,
     'plantingYear': value.plantingYear,
     'ageMonths': value.ageMonths,
+    'growthStage': value.growthStage?.name,
     'plantingDate': value.plantingDate == null
         ? null
         : _date(value.plantingDate!),
@@ -162,6 +163,8 @@ abstract final class LandSurveyMapper {
     variety: json['variety'] as String?,
     plantingYear: json['plantingYear'] as int?,
     ageMonths: json['ageMonths'] as int?,
+    growthStage: json['growthStage'] == null ? null :
+      CropGrowthStage.values.byName(json['growthStage']! as String),
     plantingDate: json['plantingDate'] == null
         ? null
         : _parse(json['plantingDate']),

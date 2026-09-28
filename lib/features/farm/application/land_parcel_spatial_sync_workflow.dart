@@ -95,6 +95,9 @@ class LandParcelSpatialSyncWorkflow {
           source.districtCode == null || source.villageCode == null) {
         throw StateError('Source parcel changed or has no catalogued location.');
       }
+      if (independentSketches && source.layer != ParcelLayer.landBlock) {
+        throw StateError('Field plots must belong to a land block.');
+      }
       if (source.spatialFeatureId == null ||
           await LandParcelBoundaryConsistencyQueries(
             links: links, features: spatial.featureRepository,
@@ -141,6 +144,9 @@ class LandParcelSpatialSyncWorkflow {
             boundary: boundaries[index], boundarySource: BoundarySource.manual,
             verificationStatus: BoundaryVerificationStatus.draft,
             actorMembershipId: actorMembershipId, occurredAt: occurredAt,
+            legacyMetadata: independentSketches
+                ? {'parcelLayer': 'fieldPlot', 'parentLandBlockId': source.id}
+                : const {},
             countryCode: source.countryCode,
             provinceCode: source.provinceCode,
             districtCode: source.districtCode,

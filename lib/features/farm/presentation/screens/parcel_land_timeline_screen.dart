@@ -186,7 +186,8 @@ class _ParcelLandTimelineScreenState extends State<ParcelLandTimelineScreen> {
                     ? () => derive(parcel, parcels) : null,
                 icon: const Icon(Icons.account_tree),
                 label: Text(l10n.text('timeline.link'))),
-              if (widget.onSubdivideRequested != null)
+              if (widget.onSubdivideRequested != null &&
+                  parcel.layer == ParcelLayer.landBlock)
                 FilledButton.tonalIcon(key: const Key('timeline-subdivide'),
                   onPressed: subdivide, icon: const Icon(Icons.call_split),
                   label: Text(l10n.text('subdivision.title'))),

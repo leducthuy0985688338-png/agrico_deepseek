@@ -151,7 +151,12 @@ void main() {
       expectedBoundaryVersion: 1, cuts: cuts, names: ['A', 'B'],
       independentSketches: true);
     expect(saved.map((parcel) => parcel.boundary), [first, second]);
+    expect(saved.every((parcel) => parcel.layer == ParcelLayer.fieldPlot), isTrue);
+    expect(saved.map((parcel) => parcel.parentLandBlockId),
+      ['source', 'source']);
     expect((await parcels.getById(farmId: 'farm', id: 'source'))!.active, isTrue);
+    expect((await parcels.getById(farmId: 'farm', id: 'source'))!.layer,
+      ParcelLayer.landBlock);
     final more = await service.savePlan(subject: subject,
       sourceParcelId: 'source', villageId: 'agrico-la-svk-nong-tako',
       expectedBoundaryVersion: 1,

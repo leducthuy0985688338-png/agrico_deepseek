@@ -41,6 +41,7 @@ void main() {
       locale: const Locale('vi'),
       localizationsDelegates: const [AppLocalizations.delegate],
       home: ParcelSubdivisionScreen(
+        useSchematicMap: true,
         subject: subject, sourceParcelId: 'source',
         service: ParcelSubdivisionService(
           parcels: _ParcelRepository(parcel), workflow: _UnusedWorkflow()),
@@ -136,6 +137,7 @@ void main() {
       locale: const Locale('vi'),
       localizationsDelegates: const [AppLocalizations.delegate],
       home: ParcelSubdivisionScreen(
+        useSchematicMap: true,
         subject: subject, sourceParcelId: 'source',
         service: ParcelSubdivisionService(
           parcels: _ParcelRepository(parcel), workflow: _UnusedWorkflow()),

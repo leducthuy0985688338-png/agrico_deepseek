@@ -12,6 +12,7 @@ void main() {
       quantity: 12,
       unit: 'plants',
       ageMonths: 30,
+      growthStage: CropGrowthStage.flowering,
       condition: CropCondition.healthy,
       active: true,
       createdAt: recordedAt,
@@ -21,7 +22,11 @@ void main() {
     );
     final json = LandSurveyMapper.cropToJson(crop);
     expect(LandSurveyMapper.cropFromJson(json).ageMonths, 30);
+    expect(LandSurveyMapper.cropFromJson(json).growthStage,
+      CropGrowthStage.flowering);
     json.remove('ageMonths');
+    json.remove('growthStage');
     expect(LandSurveyMapper.cropFromJson(json).ageMonths, isNull);
+    expect(LandSurveyMapper.cropFromJson(json).growthStage, isNull);
   });
 }

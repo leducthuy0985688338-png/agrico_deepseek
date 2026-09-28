@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../../../core/geography/domain/administrative_catalog_repository.dart';
 import '../../../../core/geography/domain/entities/administrative_unit.dart';
@@ -14,12 +15,14 @@ import '../../domain/geometry/parcel_subdivision_plan.dart';
 class ParcelSubdivisionScreen extends StatefulWidget {
   const ParcelSubdivisionScreen({super.key, required this.subject,
     required this.sourceParcelId, required this.service,
-    required this.administrativeCatalog});
+    required this.administrativeCatalog, this.useSchematicMap = false});
 
   final AuthorizationSubject subject;
   final String sourceParcelId;
   final ParcelSubdivisionService service;
   final AdministrativeCatalogRepository administrativeCatalog;
+  /// The schematic canvas is used by widget tests without a platform map.
+  final bool useSchematicMap;
 
   @override
   State<ParcelSubdivisionScreen> createState() => _ParcelSubdivisionScreenState();
@@ -36,6 +39,8 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   String? previewError;
   bool saving = false;
   int cutRevision = 0;
+  bool showLandBlock = true;
+  bool showFieldPlots = true;
 
   Future<(LandParcel, String?)> _load() async {
     final parcel = await widget.service.parcels.getById(
@@ -89,22 +94,27 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
 
   Future<void> _choose(LandParcel parcel, Offset point, Size size) async {
     final projection = _Projection(parcel.boundary, size);
+    await _chooseVertex(parcel, projection.coordinate(point),
+      closeToStart: start != null && waypoints.length >= 2 &&
+        (point - projection.position(start!)).distance <= 24);
+  }
+
+  Future<void> _chooseVertex(LandParcel parcel, Wgs84Vertex vertex,
+      {bool closeToStart = false}) async {
     if (start == null) {
       setState(() {
-        start = projection.coordinate(point);
+        start = vertex;
         waypoints.clear();
         previewError = null;
       });
       return;
     }
-    final closeToStart = waypoints.length >= 2 &&
-        (point - projection.position(start!)).distance <= 24;
     if (closeToStart) {
       await _finish(parcel);
       return;
     }
     setState(() {
-      waypoints.add(projection.coordinate(point));
+      waypoints.add(vertex);
       previewError = null;
     });
   }
@@ -166,6 +176,62 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
     }
   }
 
+  Widget _satelliteMap(LandParcel parcel, List<Wgs84Polygon> sketches) {
+    LatLng point(Wgs84Vertex vertex) =>
+      LatLng(vertex.latitude, vertex.longitude);
+    final vertices = parcel.boundary.vertices;
+    final south = vertices.map((v) => v.latitude).reduce(math.min);
+    final north = vertices.map((v) => v.latitude).reduce(math.max);
+    final west = vertices.map((v) => v.longitude).reduce(math.min);
+    final east = vertices.map((v) => v.longitude).reduce(math.max);
+    final draft = [?start, ...waypoints];
+    final boundaries = <Polygon>{
+      if (showLandBlock) Polygon(polygonId: const PolygonId('source-area'),
+        points: vertices.map(point).toList(),
+        holes: parcel.boundary.holes.map((ring) =>
+          ring.map(point).toList()).toList(),
+        strokeColor: Colors.green.shade800, strokeWidth: 3,
+        fillColor: Colors.green.withValues(alpha: 0.08)),
+      for (var i = 0; showFieldPlots && i < sketches.length; i++)
+        Polygon(polygonId: PolygonId('field-plot-$i'),
+          points: sketches[i].vertices.map(point).toList(),
+          strokeColor: Colors.orange.shade900, strokeWidth: 3,
+          fillColor: Colors.orange.withValues(alpha: 0.22)),
+    };
+    if (draft.length >= 3) {
+      boundaries.add(Polygon(polygonId: const PolygonId('draft'),
+        points: draft.map(point).toList(),
+        strokeColor: Colors.deepOrange, strokeWidth: 3,
+        fillColor: Colors.deepOrange.withValues(alpha: 0.25)));
+    }
+    return GoogleMap(
+      key: const Key('subdivision-satellite-map'),
+      mapType: MapType.satellite,
+      initialCameraPosition: CameraPosition(
+        target: point(parcel.centroid), zoom: 16),
+      onMapCreated: (controller) {
+        if (south < north && west < east) {
+          controller.animateCamera(CameraUpdate.newLatLngBounds(
+            LatLngBounds(southwest: LatLng(south, west),
+              northeast: LatLng(north, east)), 48));
+        }
+      },
+      onTap: (location) => _chooseVertex(parcel,
+        Wgs84Vertex(latitude: location.latitude,
+          longitude: location.longitude),
+        closeToStart: start != null && waypoints.length >= 2 &&
+          (location.latitude - start!.latitude).abs() < 0.000015 &&
+          (location.longitude - start!.longitude).abs() < 0.000015),
+      polygons: boundaries,
+      markers: {
+        for (var i = 0; i < draft.length; i++)
+          Marker(markerId: MarkerId('draft-$i'), position: point(draft[i])),
+      },
+      myLocationButtonEnabled: false,
+      zoomControlsEnabled: true,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -186,7 +252,17 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
             const SizedBox(height: 8),
             Text(l10n.text('subdivision.instruction')),
             Text(l10n.text('subdivision.editSelected')),
-            SizedBox(height: 420, child: LayoutBuilder(builder: (context, box) {
+            if (!widget.useSchematicMap) Wrap(spacing: 8, children: [
+              FilterChip(label: Text(l10n.text('parcel.layer.landBlock')),
+                selected: showLandBlock,
+                onSelected: (value) => setState(() => showLandBlock = value)),
+              FilterChip(label: Text(l10n.text('parcel.layer.fieldPlot')),
+                selected: showFieldPlots,
+                onSelected: (value) => setState(() => showFieldPlots = value)),
+            ]),
+            if (!widget.useSchematicMap)
+              SizedBox(height: 480, child: _satelliteMap(parcel, fragments))
+            else SizedBox(height: 420, child: LayoutBuilder(builder: (context, box) {
               final size = Size(box.maxWidth, box.maxHeight);
               return GestureDetector(
                 key: const Key('subdivision-map'),
@@ -196,7 +272,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                     [?start, ...waypoints], fragments, -1)),
               );
             })),
-            if (preview != null) ...[
+            if (widget.useSchematicMap && preview != null) ...[
               Text(l10n.text('subdivision.overview')),
               SizedBox(height: 180, child: LayoutBuilder(builder: (context, box) {
                 final size = Size(box.maxWidth, box.maxHeight);

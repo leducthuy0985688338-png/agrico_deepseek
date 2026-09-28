@@ -2,13 +2,15 @@
 
 enum LandUseType { agricultural, residential, forest, pasture, mixed, other }
 
-enum LandCondition { unknown, unused, cultivated, degraded, flooded, other }
+enum LandCondition { unknown, unused, cultivated, degraded, flooded, other, resting, notCultivated }
 
-enum ClearingStatus { unknown, notRequired, notStarted, partial, completed }
+enum ClearingStatus { unknown, notRequired, notStarted, partial, completed, inProgress }
 
 enum ReadinessStatus { unknown, notReady, preparation, ready }
 
 enum CropCondition { unknown, planned, growing, healthy, stressed, harvested }
+
+enum CropGrowthStage { seedling, vegetative, flowering, fruiting, mature, dormant }
 
 enum ParcelAttachmentType { photo, document, other }
 
@@ -212,6 +214,7 @@ class CropRecord {
     this.plantingYear,
     this.plantingDate,
     this.ageMonths,
+    this.growthStage,
     this.notes,
     this.schemaVersion = currentSchemaVersion,
   });
@@ -227,6 +230,7 @@ class CropRecord {
   final DateTime? plantingDate;
   /// Age recorded for this crop, in complete months; null when unknown.
   final int? ageMonths;
+  final CropGrowthStage? growthStage;
   final CropCondition condition;
   final String? notes;
   final bool active;

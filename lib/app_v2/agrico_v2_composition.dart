@@ -124,6 +124,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       repository: parcels,
       spatialWorkflow: spatialSyncWorkflow,
       boundaryConsistencyQueries: boundaryConsistencyQueries,
+      landSurveyRepository: SqliteLandSurveyRepository(database),
     );
     const platform = MobileLandParcelPlatformGateway();
     final controller = LandParcelController(
@@ -148,6 +149,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       spatial: spatial,
       spatialWorkflow: spatialSyncWorkflow,
       controller: controller,
+      application: application,
       finance: finance,
       database: database,
       administrativeCatalog: ManageAdministrativeCatalog(administrativeCatalog),
@@ -174,6 +176,21 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         landOnly: true,
         controller: deps.controller,
         parcelId: id,
+        onDrawFieldPlots: () async {
+          final saved = await Navigator.of(context).push<bool>(
+            MaterialPageRoute(builder: (_) => ParcelSubdivisionScreen(
+              subject: deps.subject, sourceParcelId: id,
+              service: ParcelSubdivisionService(
+                parcels: deps.controller.parcels,
+                workflow: deps.spatialWorkflow,
+              ),
+              administrativeCatalog: SqliteAdministrativeCatalog(deps.database),
+            )));
+          if (saved == true) {
+            await deps.controller.loadList();
+            await deps.controller.loadDetail(id);
+          }
+        },
         onTimelineRequested: () => push(ParcelLandTimelineScreen(
           parcelId: id, subject: deps.subject,
           parcels: deps.controller.parcels,
@@ -392,6 +409,28 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
               return;
             }
 
+            final landUseResult = await deps.application.updateLandUseProfile(
+              deps.subject,
+              UpdateLandUseProfileCommand(
+                farmId: deps.subject.farmId, parcelId: parcel.id,
+                actorMembershipId: deps.subject.membershipId,
+                occurredAt: DateTime.now().toUtc(),
+                landUseType: value.landUseType,
+                currentCondition: value.landCondition,
+                clearingStatus: value.clearingStatus,
+                readinessStatus: value.readinessStatus,
+              ),
+            );
+            if (!landUseResult.isSuccess) {
+              if (editContext.mounted) {
+                ScaffoldMessenger.of(editContext).showSnackBar(SnackBar(
+                  content: Text(editContext.l10n.text(landUseResult.messageKey))));
+              }
+              return;
+            }
+            await deps.controller.loadDetail(parcel.id);
+            if (!editContext.mounted) return;
+
             Navigator.of(editContext).pop();
           },
         ),
@@ -507,6 +546,25 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
             return;
           }
 
+          final createdId = result.value!.id;
+          final landUseResult = await deps.application.updateLandUseProfile(
+            deps.subject, UpdateLandUseProfileCommand(
+              farmId: deps.subject.farmId, parcelId: createdId,
+              actorMembershipId: deps.subject.membershipId,
+              occurredAt: DateTime.now().toUtc(),
+              landUseType: value.landUseType,
+              currentCondition: value.landCondition,
+              clearingStatus: value.clearingStatus,
+              readinessStatus: value.readinessStatus,
+            ));
+          if (!landUseResult.isSuccess) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(context.l10n.text(landUseResult.messageKey))));
+            }
+            return;
+          }
+
           Navigator.of(context).pop();
           await Navigator.of(context).push(
             MaterialPageRoute(
@@ -616,6 +674,7 @@ class _V2Dependencies {
     required this.spatial,
     required this.spatialWorkflow,
     required this.controller,
+    required this.application,
     required this.finance,
     required this.database,
     required this.administrativeCatalog,
@@ -626,6 +685,7 @@ class _V2Dependencies {
   final SpatialPersistenceComposition spatial;
   final LandParcelSpatialSyncWorkflow spatialWorkflow;
   final LandParcelController controller;
+  final LandParcelApplicationService application;
   final SqliteFinanceDocumentRepository finance;
   final Database database;
   final ManageAdministrativeCatalog administrativeCatalog;

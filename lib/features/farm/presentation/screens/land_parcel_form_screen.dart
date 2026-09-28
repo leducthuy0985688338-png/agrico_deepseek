@@ -28,6 +28,13 @@ class _CropEditorDialog extends StatefulWidget {
 }
 
 class _CropEditorDialogState extends State<_CropEditorDialog> {
+  CropGrowthStage? growthStage;
+
+  @override
+  void initState() {
+    super.initState();
+    growthStage = widget.original?.growthStage;
+  }
   late final type = TextEditingController(text: widget.original?.cropType);
   late final quantity = TextEditingController(
     text: widget.original?.quantity.toString(),
@@ -77,6 +84,7 @@ class _CropEditorDialogState extends State<_CropEditorDialog> {
       ageMonths: yearsText.isEmpty && monthsText.isEmpty
           ? null
           : years * 12 + months,
+      growthStage: growthStage,
       variety: original?.variety,
       plantingYear: original?.plantingYear,
       plantingDate: original?.plantingDate,
@@ -126,6 +134,19 @@ class _CropEditorDialogState extends State<_CropEditorDialog> {
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               decoration: InputDecoration(labelText: l10n.text('crop.age.monthsInput')),
             ),
+            DropdownButtonFormField<CropGrowthStage?>(
+              key: const Key('crop-growth-stage'),
+              initialValue: growthStage,
+              decoration: InputDecoration(labelText: l10n.text('crop.growthStage')),
+              items: [
+                DropdownMenuItem<CropGrowthStage?>(value: null,
+                  child: Text(l10n.text('crop.growthStage.unknown'))),
+                for (final stage in CropGrowthStage.values)
+                  DropdownMenuItem<CropGrowthStage?>(value: stage,
+                    child: Text(l10n.text('crop.growthStage.${stage.name}'))),
+              ],
+              onChanged: (value) => setState(() => growthStage = value),
+            ),
           ],
         ),
       ),
@@ -165,6 +186,10 @@ class LandParcelFormValue {
     required this.phone,
     required this.alternativeContact,
     required this.crops,
+    this.landUseType = LandUseType.agricultural,
+    this.landCondition = LandCondition.unknown,
+    this.clearingStatus = ClearingStatus.unknown,
+    this.readinessStatus = ReadinessStatus.unknown,
     this.boundaryDraft,
   });
   final String parcelCode;
@@ -186,6 +211,10 @@ class LandParcelFormValue {
   final String phone;
   final String alternativeContact;
   final List<CropRecord> crops;
+  final LandUseType landUseType;
+  final LandCondition landCondition;
+  final ClearingStatus clearingStatus;
+  final ReadinessStatus readinessStatus;
   final LandParcelBoundaryDraft? boundaryDraft;
 }
 
@@ -766,6 +795,10 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
           phone: widget.landOnly ? '' : fields['phone']!.text.trim(),
           alternativeContact: widget.landOnly ? '' : fields['contact']!.text.trim(),
           crops: List.unmodifiable(crops),
+          landUseType: landUseType,
+          landCondition: landCondition,
+          clearingStatus: clearingStatus,
+          readinessStatus: readinessStatus,
           boundaryDraft: boundaryDraft,
         ),
       );

@@ -183,14 +183,34 @@ class _LandParcelListScreenState extends State<LandParcelListScreen> {
             padding: const EdgeInsets.only(top: 96),
             child: Center(child: Text(l10n.text('parcel.list.empty'))),
           )
-        else
-          ...items.map(
-            (item) => Card(
+        else ...[
+          if (items.any((item) => item.parcel.layer == ParcelLayer.landBlock))
+            Padding(padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(l10n.text('parcel.layer.landBlock'),
+                style: Theme.of(context).textTheme.titleMedium)),
+          ...items.where((item) => item.parcel.layer == ParcelLayer.landBlock).map(
+            (item) => _parcelCard(context, item, l10n, controller)),
+          if (items.any((item) => item.parcel.layer == ParcelLayer.fieldPlot))
+            Padding(padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(l10n.text('parcel.layer.fieldPlot'),
+                style: Theme.of(context).textTheme.titleMedium)),
+          ...items.where((item) => item.parcel.layer == ParcelLayer.fieldPlot).map(
+            (item) => _parcelCard(context, item, l10n, controller)),
+        ],
+      ],
+    );
+  }
+
+  Widget _parcelCard(BuildContext context, LandParcelViewData item,
+      AppLocalizations l10n, LandParcelController controller) =>
+          Card(
               child: ListTile(
                 key: Key('parcel-${item.parcel.id}'),
                 title: Text('${item.parcel.parcelCode} · ${item.parcel.name}'),
                 subtitle: Text(
                   [
+                    if (item.parcel.parentLandBlockId != null)
+                      l10n.text('parcel.layer.fieldPlot'),
                     if (item.village.isNotEmpty) item.village,
                     if (!widget.landOnly && item.owner.isNotEmpty) item.owner,
                     '${item.parcel.areaHa.toStringAsFixed(2)} ha',
@@ -221,9 +241,5 @@ class _LandParcelListScreenState extends State<LandParcelListScreen> {
                   ),
                 ),
               ),
-            ),
-          ),
-      ],
-    );
-  }
+            );
 }
