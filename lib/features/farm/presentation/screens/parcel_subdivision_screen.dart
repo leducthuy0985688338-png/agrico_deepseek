@@ -92,10 +92,20 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
     });
   }
 
+  void _selectFragment(int index) => setState(() {
+    cutRevision++;
+    selectedFragment = index;
+    start = null;
+    waypoints.clear();
+    choosingEnd = false;
+    previewError = null;
+  });
+
   Future<void> _choose(LandParcel parcel, Offset point, Size size) async {
     final fragment = preview?.boundaries[selectedFragment] ?? parcel.boundary;
-    final projection = _Projection(fragment, size, bounds: parcel.boundary);
-    final candidate = projection.nearestBoundary(point);
+    final projection = _Projection(fragment, size);
+    final candidate = projection.nearestBoundary(point,
+      tolerance: choosingEnd ? 42 : 28);
     if (start == null) {
       if (candidate == null) return;
       setState(() {
@@ -184,32 +194,53 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                 ChoiceChip(key: Key('subdivision-fragment-$i'),
                   label: Text('${l10n.text('subdivision.fragment')} ${i + 1}'),
                   selected: i == selectedFragment,
-                  onSelected: (_) => setState(() {
-                    cutRevision++;
-                    selectedFragment = i;
-                    start = null;
-                    waypoints.clear();
-                    choosingEnd = false;
-                    previewError = null;
-                  })),
+                  onSelected: (_) => _selectFragment(i)),
             ]),
-            SizedBox(height: 320, child: LayoutBuilder(builder: (context, box) {
+            Text(l10n.text('subdivision.editSelected')),
+            SizedBox(height: 420, child: LayoutBuilder(builder: (context, box) {
               final size = Size(box.maxWidth, box.maxHeight);
               return GestureDetector(
                 key: const Key('subdivision-map'),
                 onTapDown: (details) => _choose(parcel, details.localPosition, size),
                 child: CustomPaint(size: size,
-                  painter: _CutPainter(parcel.boundary,
-                    [?start, ...waypoints], preview?.boundaries,
-                    selectedFragment)),
+                  painter: _CutPainter(fragments[selectedFragment],
+                    [?start, ...waypoints], null, 0)),
               );
             })),
+            if (preview != null) ...[
+              Text(l10n.text('subdivision.overview')),
+              SizedBox(height: 180, child: LayoutBuilder(builder: (context, box) {
+                final size = Size(box.maxWidth, box.maxHeight);
+                return GestureDetector(
+                  key: const Key('subdivision-overview'),
+                  onTapDown: (details) {
+                    final projection = _Projection(parcel.boundary, size);
+                    for (var i = 0; i < fragments.length; i++) {
+                      if (projection.containsPolygon(
+                          fragments[i], details.localPosition)) {
+                        _selectFragment(i);
+                        return;
+                      }
+                    }
+                  },
+                  child: CustomPaint(size: size,
+                    painter: _CutPainter(parcel.boundary, const [],
+                      fragments, selectedFragment)),
+                );
+              })),
+            ],
             if (start != null && !choosingEnd) FilledButton.tonal(
               key: const Key('subdivision-choose-end'),
               onPressed: () => setState(() => choosingEnd = true),
               child: Text(l10n.text('subdivision.chooseEnd')),
             ),
             if (choosingEnd) Text(l10n.text('subdivision.tapEnd')),
+            if (waypoints.isNotEmpty && !choosingEnd) TextButton.icon(
+              key: const Key('subdivision-undo-point'),
+              onPressed: () => setState(() => waypoints.removeLast()),
+              icon: const Icon(Icons.undo),
+              label: Text(l10n.text('subdivision.undoPoint')),
+            ),
             if (start != null) TextButton.icon(
               key: const Key('subdivision-reset-cut'),
               onPressed: _resetDraft,
@@ -253,11 +284,9 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
 }
 
 class _Projection {
-  _Projection(Wgs84Polygon polygon, this.size, {Wgs84Polygon? bounds})
-      : vertices = polygon.vertices {
-    final frame = bounds?.vertices ?? vertices;
-    final lons = frame.map((v) => v.longitude);
-    final lats = frame.map((v) => v.latitude);
+  _Projection(this.polygon, this.size) : vertices = polygon.vertices {
+    final lons = vertices.map((v) => v.longitude);
+    final lats = vertices.map((v) => v.latitude);
     left = lons.reduce(math.min);
     right = lons.reduce(math.max);
     bottom = lats.reduce(math.min);
@@ -267,6 +296,7 @@ class _Projection {
   }
 
   final Size size;
+  final Wgs84Polygon polygon;
   final List<Wgs84Vertex> vertices;
   late final double left, right, bottom, top, scale;
 
@@ -280,10 +310,12 @@ class _Projection {
     latitude: (size.height / 2 - point.dy) / scale + (top + bottom) / 2,
   );
 
-  bool contains(Offset point) {
+  bool contains(Offset point) => containsPolygon(polygon, point);
+
+  bool containsPolygon(Wgs84Polygon polygon, Offset point) {
     final path = Path();
-    for (var i = 0; i < vertices.length; i++) {
-      final vertex = position(vertices[i]);
+    for (var i = 0; i < polygon.vertices.length; i++) {
+      final vertex = position(polygon.vertices[i]);
       if (i == 0) { path.moveTo(vertex.dx, vertex.dy); }
       else { path.lineTo(vertex.dx, vertex.dy); }
     }
@@ -291,7 +323,7 @@ class _Projection {
     return path.contains(point);
   }
 
-  Wgs84Vertex? nearestBoundary(Offset point) {
+  Wgs84Vertex? nearestBoundary(Offset point, {double tolerance = 24}) {
     var distance = double.infinity;
     Offset? nearest;
     for (var i = 0; i < vertices.length - 1; i++) {
@@ -306,7 +338,8 @@ class _Projection {
       final d = (candidate - point).distance;
       if (d < distance) { distance = d; nearest = candidate; }
     }
-    return distance <= 24 && nearest != null ? coordinate(nearest) : null;
+    return distance <= tolerance && nearest != null
+        ? coordinate(nearest) : null;
   }
 }
 
