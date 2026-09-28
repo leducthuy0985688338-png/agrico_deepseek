@@ -79,6 +79,7 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
       LocalMediaSnapshot.validate(plain);
       final counts = LocalDatabaseSnapshot.inspect(plain);
       if (mounted) setState(() { preview = counts; preflightPassed = false; });
+      if (legacyUnencrypted) await _showLegacyWarning();
     } on BackupPasswordException {
       if (mounted) setState(() => error = 'backup.passwordInvalid');
     } catch (_) {
@@ -100,6 +101,7 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
       final plain = await _readSelected(Uint8List.fromList(bytes));
       if (plain == null) return;
       await _validateRestoreBytes(plain);
+      if (legacyUnencrypted) await _showLegacyWarning();
     } on BackupPasswordException {
       if (mounted) setState(() => error = 'backup.passwordInvalid');
     } on RestorePreflightException catch (failure) {
@@ -158,6 +160,24 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
     context: context,
     builder: (_) => const _BackupPasswordDialog(confirm: true),
   );
+
+  Future<void> _showLegacyWarning() async {
+    if (!mounted) return;
+    final l10n = AppLocalizations.of(context);
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.text('backup.legacyTitle')),
+        content: Text(l10n.text('backup.legacyUnencrypted')),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(l10n.text('common.confirm')),
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<void> _validateRestoreBytes(Uint8List bytes) async {
     LocalMediaSnapshot.validate(bytes);
