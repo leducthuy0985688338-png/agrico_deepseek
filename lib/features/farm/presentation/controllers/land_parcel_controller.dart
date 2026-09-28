@@ -45,7 +45,7 @@ class LandParcelViewData {
   final LandParcelBoundaryIssue? boundaryIssue;
   String get village => household?.administrativeLocation.villageName ?? '';
   String get owner =>
-      household?.headOfHouseholdName ?? parcel.ownerDisplayName ?? '';
+      parcel.ownerDisplayName ?? household?.headOfHouseholdName ?? '';
   String get cropSummary => crops.map((value) => value.cropType).join(', ');
 }
 
