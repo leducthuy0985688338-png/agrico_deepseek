@@ -43,7 +43,8 @@ class LandParcelViewData {
   final List<ParcelAttachment> attachments;
   final LandParcelBoundaryConsistency boundaryConsistency;
   final LandParcelBoundaryIssue? boundaryIssue;
-  String get village => household?.administrativeLocation.villageName ?? '';
+  String get village => household?.administrativeLocation.villageName ??
+      (parcel.legacyMetadata['village'] as String? ?? '');
   String get owner =>
       parcel.ownerDisplayName ?? household?.headOfHouseholdName ?? '';
   String get cropSummary => crops.map((value) => value.cropType).join(', ');
