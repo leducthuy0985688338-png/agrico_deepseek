@@ -55,7 +55,7 @@ void main() {
     final origin = tester.getTopLeft(map);
     final scale = (size.height - 40) / 0.002;
     for (final (lat, lon) in [
-      (16.0006, 106.0006), (16.0006, 106.0014),
+      (16.0006, 106.00005), (16.0006, 106.0014),
       (16.0014, 106.0014), (16.0014, 106.0006),
     ]) {
       await tester.tapAt(origin + Offset((lon - 106.001) * scale +
@@ -122,6 +122,8 @@ void main() {
         administrativeCatalog: _EmptyCatalog(),
       ),
     ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('subdivision-mode-outer-edge')));
     await tester.pumpAndSettle();
     final map = find.byKey(const Key('subdivision-map'));
     await tester.ensureVisible(map);

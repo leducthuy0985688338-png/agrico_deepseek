@@ -12,6 +12,8 @@ import '../../domain/geometry/wgs84_geometry.dart';
 import '../../domain/geometry/parcel_subdivision_plan.dart';
 import '../../domain/geometry/parcel_closed_outline.dart';
 
+enum _OutlineMode { enclosed, outerEdge }
+
 class ParcelSubdivisionScreen extends StatefulWidget {
   const ParcelSubdivisionScreen({super.key, required this.subject,
     required this.sourceParcelId, required this.service,
@@ -38,6 +40,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   bool saving = false;
   int selectedFragment = 0;
   int cutRevision = 0;
+  _OutlineMode outlineMode = _OutlineMode.enclosed;
 
   Future<(LandParcel, String?)> _load() async {
     final parcel = await widget.service.parcels.getById(
@@ -98,11 +101,22 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
     previewError = null;
   });
 
+  void _selectMode(_OutlineMode mode) => setState(() {
+    cutRevision++;
+    outlineMode = mode;
+    start = null;
+    waypoints.clear();
+    previewError = null;
+  });
+
   Future<void> _choose(LandParcel parcel, Offset point, Size size) async {
     final fragment = preview?.boundaries[selectedFragment] ?? parcel.boundary;
     final projection = _Projection(fragment, size);
-    final candidate = projection.nearestBoundary(point, tolerance: 14);
+    final candidate = outlineMode == _OutlineMode.outerEdge
+        ? projection.nearestOuterBoundary(point, tolerance: 14)
+        : projection.nearestHoleBoundary(point, tolerance: 14);
     if (start == null) {
+      if (outlineMode == _OutlineMode.outerEdge && candidate == null) return;
       if (candidate == null && !projection.contains(point)) return;
       setState(() {
         start = candidate ?? projection.coordinate(point);
@@ -111,7 +125,8 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
       });
       return;
     }
-    final hasInterior = _hasInterior(projection);
+    final hasInterior = outlineMode == _OutlineMode.enclosed ||
+        _hasInterior(projection);
     final closeToStart = hasInterior && waypoints.length >= 2 &&
         (point - projection.position(start!)).distance <= 24;
     if (closeToStart) {
@@ -134,10 +149,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
     final revision = ++cutRevision;
     try {
       final traced = [start!, ...waypoints];
-      final projection = _Projection(fragment, const Size(360, 420));
-      final startsOnBoundary = projection.nearestOuterBoundary(
-        projection.position(start!), tolerance: 1) != null;
-      final operation = startsOnBoundary
+      final operation = outlineMode == _OutlineMode.outerEdge
           ? ParcelSubdivisionCut(fragmentIndex: selectedFragment,
               path: const ParcelClosedOutline().interiorCut(fragment, traced))
           : ParcelSubdivisionCut.enclosed(fragmentIndex: selectedFragment,
@@ -210,6 +222,16 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
             const SizedBox(height: 8),
             Text(l10n.text('subdivision.instruction')),
             const SizedBox(height: 12),
+            Wrap(spacing: 8, children: [
+              ChoiceChip(key: const Key('subdivision-mode-enclosed'),
+                label: Text(l10n.text('subdivision.enclosedMode')),
+                selected: outlineMode == _OutlineMode.enclosed,
+                onSelected: (_) => _selectMode(_OutlineMode.enclosed)),
+              ChoiceChip(key: const Key('subdivision-mode-outer-edge'),
+                label: Text(l10n.text('subdivision.edgeMode')),
+                selected: outlineMode == _OutlineMode.outerEdge,
+                onSelected: (_) => _selectMode(_OutlineMode.outerEdge)),
+            ]),
             if (cuts.isNotEmpty) Wrap(spacing: 8, children: [
               for (var i = 0; i < fragments.length; i++)
                 ChoiceChip(key: Key('subdivision-fragment-$i'),
@@ -354,6 +376,10 @@ class _Projection {
   Wgs84Vertex? nearestOuterBoundary(Offset point,
       {double tolerance = 24}) =>
     _nearestBoundary(point, [vertices], tolerance);
+
+  Wgs84Vertex? nearestHoleBoundary(Offset point,
+      {double tolerance = 24}) =>
+    _nearestBoundary(point, polygon.holes, tolerance);
 
   Wgs84Vertex? _nearestBoundary(Offset point,
       List<List<Wgs84Vertex>> rings, double tolerance) {
