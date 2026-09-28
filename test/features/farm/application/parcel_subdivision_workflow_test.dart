@@ -128,6 +128,33 @@ void main() {
     expect(await parcels.listByFarm('farm'), hasLength(3));
   });
 
+  test('enclosed polygon saves a child and a remainder with a persisted hole', () async {
+    final interior = Wgs84Polygon.fromVertices(const [
+      Wgs84Vertex(latitude: 16.0002, longitude: 106.0004),
+      Wgs84Vertex(latitude: 16.0002, longitude: 106.0008),
+      Wgs84Vertex(latitude: 16.0006, longitude: 106.0008),
+      Wgs84Vertex(latitude: 16.0006, longitude: 106.0004),
+    ]);
+    final operations = [ParcelSubdivisionCut.enclosed(
+      fragmentIndex: 0, polygon: interior)];
+    final source = (await parcels.getById(farmId: 'farm', id: 'source'))!;
+    final preview = await service.previewPlan(subject: subject,
+      sourceParcelId: source.id, cuts: operations);
+    expect(preview.boundaries.first.holes, hasLength(1));
+    expect(preview.areasM2.reduce((a, b) => a + b),
+      closeTo(source.areaM2, 0.01));
+    final created = await service.savePlan(subject: subject,
+      sourceParcelId: source.id, villageId: 'agrico-la-svk-nong-tako',
+      expectedBoundaryVersion: source.boundaryVersion,
+      cuts: operations, names: ['Còn lại', 'Lô giữa']);
+    final remainder = (await parcels.getById(
+      farmId: 'farm', id: created.first.id))!;
+    expect(remainder.boundary.holes.single, interior.vertices);
+    expect(remainder.areaM2 + created.last.areaM2,
+      closeTo(source.areaM2, 0.01));
+    expect((await history.derivations('farm', 'source')), hasLength(2));
+  });
+
   test('all split parcels round trip through Google Earth KML and KMZ', () async {
     final source = (await parcels.getById(farmId: 'farm', id: 'source'))!;
     final children = await saveThree();

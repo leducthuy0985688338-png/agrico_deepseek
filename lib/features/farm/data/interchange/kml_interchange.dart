@@ -152,6 +152,12 @@ class KmlInterchangeCodec {
                     ),
                   ),
                 );
+                for (final hole in parcel.boundary.holes) {
+                  builder.element('innerBoundaryIs', nest: () =>
+                    builder.element('LinearRing', nest: () =>
+                      builder.element('coordinates', nest:
+                        hole.map(_coordinate).join(' '))));
+                }
               },
             );
           },
@@ -291,8 +297,17 @@ class KmlInterchangeCodec {
 
     late final Wgs84Polygon boundary;
     try {
-      boundary = Wgs84Polygon.fromVertices(_parseCoordinates(coordinates));
-    } on PolygonValidationException catch (error) {
+      boundary = Wgs84Polygon.fromVertices(
+        _parseCoordinates(coordinates),
+        holes: _elements(polygonElement, 'innerBoundaryIs').map((inner) {
+          final text = _elements(inner, 'coordinates').firstOrNull?.innerText;
+          if (text == null || text.trim().isEmpty) {
+            throw const FormatException('A Polygon interior ring is missing coordinates.');
+          }
+          return _parseCoordinates(text);
+        }),
+      );
+    } on FormatException catch (error) {
       throw KmlInterchangeException(
         KmlInterchangeError.invalidGeometry,
         error.message,

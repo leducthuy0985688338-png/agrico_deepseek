@@ -12,6 +12,64 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('fully enclosed polygon previews a remainder with a hole',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final parcel = LandParcel.create(
+      id: 'source', farmId: 'farm', parcelCode: 'SOURCE', name: 'Nguồn',
+      boundary: Wgs84Polygon.fromVertices(const [
+        Wgs84Vertex(latitude: 16, longitude: 106),
+        Wgs84Vertex(latitude: 16, longitude: 106.002),
+        Wgs84Vertex(latitude: 16.002, longitude: 106.002),
+        Wgs84Vertex(latitude: 16.002, longitude: 106),
+      ]),
+      boundarySource: BoundarySource.googleEarth,
+      verificationStatus: BoundaryVerificationStatus.measured,
+      actorMembershipId: 'member', occurredAt: DateTime.utc(2026, 9, 28),
+    );
+    const subject = AuthorizationSubject(
+      userId: 'user', membershipId: 'member', farmId: 'farm',
+      permissionCodes: {PermissionCodes.fieldView},
+      dataScopes: {DataScope.allFarm},
+    );
+    await tester.pumpWidget(MaterialApp(
+      locale: const Locale('vi'),
+      localizationsDelegates: const [AppLocalizations.delegate],
+      home: ParcelSubdivisionScreen(
+        subject: subject, sourceParcelId: 'source',
+        service: ParcelSubdivisionService(
+          parcels: _ParcelRepository(parcel), workflow: _UnusedWorkflow()),
+        administrativeCatalog: _EmptyCatalog(),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final map = find.byKey(const Key('subdivision-map'));
+    await tester.ensureVisible(map);
+    await tester.pumpAndSettle();
+    final size = tester.getSize(map);
+    final origin = tester.getTopLeft(map);
+    final scale = (size.height - 40) / 0.002;
+    for (final (lat, lon) in [
+      (16.0006, 106.0006), (16.0006, 106.0014),
+      (16.0014, 106.0014), (16.0014, 106.0006),
+    ]) {
+      await tester.tapAt(origin + Offset((lon - 106.001) * scale +
+        size.width / 2, (16.001 - lat) * scale + size.height / 2));
+      await tester.pumpAndSettle();
+    }
+    final done = find.byKey(const Key('subdivision-close-outline'));
+    await tester.ensureVisible(done);
+    await tester.tap(done);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('subdivision-fragment-1')), findsOneWidget);
+    expect(find.textContaining('Đường cắt phải nằm bên trong'), findsNothing);
+  });
+
   testWidgets('drawing the photographed outline previews two closed parcels',
       (tester) async {
     tester.view.physicalSize = const Size(800, 1600);

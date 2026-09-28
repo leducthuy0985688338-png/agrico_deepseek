@@ -77,6 +77,32 @@ void main() {
         flat.boundary);
   });
 
+  test('enclosed parcel remainder exports its true interior ring to Earth', () {
+    final source = LandParcel.create(
+      id: 'remainder', farmId: 'farm-1', parcelCode: 'REM-01',
+      name: 'Phần đất còn lại',
+      boundary: Wgs84Polygon.fromVertices(const [
+        Wgs84Vertex(latitude: 16, longitude: 106),
+        Wgs84Vertex(latitude: 16, longitude: 106.004),
+        Wgs84Vertex(latitude: 16.004, longitude: 106.004),
+        Wgs84Vertex(latitude: 16.004, longitude: 106),
+      ], holes: const [[
+        Wgs84Vertex(latitude: 16.001, longitude: 106.001),
+        Wgs84Vertex(latitude: 16.001, longitude: 106.002),
+        Wgs84Vertex(latitude: 16.002, longitude: 106.002),
+        Wgs84Vertex(latitude: 16.002, longitude: 106.001),
+      ]]),
+      boundarySource: BoundarySource.manual,
+      verificationStatus: BoundaryVerificationStatus.draft,
+      actorMembershipId: 'member-1', occurredAt: timestamp,
+    );
+    final kml = codec.exportKml(source);
+    expect(kml, contains('<innerBoundaryIs>'));
+    expect(codec.importKml(kml).previews.single.boundary, source.boundary);
+    expect(codec.importKmz(codec.exportKmz(source)).previews.single.boundary,
+      source.boundary);
+  });
+
   test('imports longitude latitude order and preserves altitude', () {
     final preview = codec
         .importKml(

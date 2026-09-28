@@ -101,19 +101,18 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   Future<void> _choose(LandParcel parcel, Offset point, Size size) async {
     final fragment = preview?.boundaries[selectedFragment] ?? parcel.boundary;
     final projection = _Projection(fragment, size);
-    final candidate = projection.nearestBoundary(point,
-      tolerance: start == null ? 28 : 14);
+    final candidate = projection.nearestBoundary(point, tolerance: 14);
     if (start == null) {
-      if (candidate == null) return;
+      if (candidate == null && !projection.contains(point)) return;
       setState(() {
-        start = candidate;
+        start = candidate ?? projection.coordinate(point);
         waypoints.clear();
         previewError = null;
       });
       return;
     }
     final hasInterior = _hasInterior(projection);
-    final closeToStart = hasInterior &&
+    final closeToStart = hasInterior && waypoints.length >= 2 &&
         (point - projection.position(start!)).distance <= 24;
     if (closeToStart) {
       await _finish(parcel, fragment);
@@ -134,10 +133,16 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
     if (start == null) return;
     final revision = ++cutRevision;
     try {
-      final path = const ParcelClosedOutline()
-        .interiorCut(fragment, [start!, ...waypoints]);
-      final next = [...cuts, ParcelSubdivisionCut(fragmentIndex: selectedFragment,
-        path: path)];
+      final traced = [start!, ...waypoints];
+      final projection = _Projection(fragment, const Size(360, 420));
+      final startsOnBoundary = projection.nearestBoundary(
+        projection.position(start!), tolerance: 1) != null;
+      final operation = startsOnBoundary
+          ? ParcelSubdivisionCut(fragmentIndex: selectedFragment,
+              path: const ParcelClosedOutline().interiorCut(fragment, traced))
+          : ParcelSubdivisionCut.enclosed(fragmentIndex: selectedFragment,
+              polygon: Wgs84Polygon.fromVertices(traced));
+      final next = [...cuts, operation];
       final result = await widget.service.previewPlan(
         subject: widget.subject, sourceParcelId: parcel.id, cuts: next);
       if (mounted && revision == cutRevision) {
@@ -331,13 +336,15 @@ class _Projection {
   bool contains(Offset point) => containsPolygon(polygon, point);
 
   bool containsPolygon(Wgs84Polygon polygon, Offset point) {
-    final path = Path();
-    for (var i = 0; i < polygon.vertices.length; i++) {
-      final vertex = position(polygon.vertices[i]);
-      if (i == 0) { path.moveTo(vertex.dx, vertex.dy); }
-      else { path.lineTo(vertex.dx, vertex.dy); }
+    final path = Path()..fillType = PathFillType.evenOdd;
+    for (final ring in [polygon.vertices, ...polygon.holes]) {
+      for (var i = 0; i < ring.length; i++) {
+        final vertex = position(ring[i]);
+        if (i == 0) { path.moveTo(vertex.dx, vertex.dy); }
+        else { path.lineTo(vertex.dx, vertex.dy); }
+      }
+      path.close();
     }
-    path.close();
     return path.contains(point);
   }
 
@@ -372,13 +379,15 @@ class _CutPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final projection = _Projection(source, size);
     Path outline(Wgs84Polygon polygon) {
-      final path = Path();
-      for (var i = 0; i < polygon.vertices.length; i++) {
-        final point = projection.position(polygon.vertices[i]);
-        if (i == 0) { path.moveTo(point.dx, point.dy); }
-        else { path.lineTo(point.dx, point.dy); }
+      final path = Path()..fillType = PathFillType.evenOdd;
+      for (final ring in [polygon.vertices, ...polygon.holes]) {
+        for (var i = 0; i < ring.length; i++) {
+          final point = projection.position(ring[i]);
+          if (i == 0) { path.moveTo(point.dx, point.dy); }
+          else { path.lineTo(point.dx, point.dy); }
+        }
+        path.close();
       }
-      path.close();
       return path;
     }
     canvas.drawColor(const Color(0xfff1f6ee), BlendMode.src);

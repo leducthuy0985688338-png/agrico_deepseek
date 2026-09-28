@@ -19,6 +19,9 @@ class ParcelBoundarySplitter {
     Wgs84Polygon parent,
     List<Wgs84Vertex> path,
   ) {
+    if (parent.holes.isNotEmpty) {
+      throw const FormatException('Boundary cuts on a parcel with holes are not supported.');
+    }
     if (path.length < 2 || path.any((point) => !point.isValid)) {
       throw const FormatException('A cut needs valid WGS84 points.');
     }
