@@ -14,10 +14,6 @@ import '../core/permissions/authorization.dart';
 import '../core/spatial/data/identity/default_spatial_identity_generator.dart';
 import '../core/spatial/data/spatial_persistence_composition.dart';
 import '../features/farm/application/land_parcel_application_service.dart';
-import '../features/farm/application/household_directory_query.dart';
-import '../features/farm/application/household_detail_query.dart';
-import '../features/farm/application/create_household.dart';
-import '../features/farm/application/update_household_contact.dart';
 import '../features/farm/application/land_parcel_spatial_sync_workflow.dart';
 import '../features/farm/data/adapters/default_land_parcel_spatial_projection.dart';
 import '../features/farm/application/land_parcel_boundary_consistency_queries.dart';
@@ -29,7 +25,6 @@ import '../features/farm/data/legacy/land_parcel_legacy_migration.dart';
 import '../features/farm/data/legacy/legacy_field_adapter.dart';
 import '../features/farm/data/local/sqlite_land_parcel_repository.dart';
 import '../features/farm/data/local/sqlite_land_survey_repository.dart';
-import '../features/farm/data/adapters/sqlite_household_creation_transaction.dart';
 import '../features/farm/domain/entities/land_parcel.dart';
 import '../features/farm/domain/entities/land_survey.dart';
 import '../features/farm/domain/geometry/wgs84_geometry.dart';
@@ -38,10 +33,6 @@ import '../features/farm/presentation/platform/land_parcel_platform_io.dart';
 import '../features/farm/presentation/screens/land_parcel_detail_screen.dart';
 import '../features/farm/presentation/screens/land_parcel_form_screen.dart';
 import '../features/farm/presentation/screens/land_parcel_list_screen.dart';
-import '../features/farm/presentation/screens/household_directory_screen.dart';
-import '../features/farm/presentation/screens/household_detail_screen.dart';
-import '../features/farm/presentation/screens/create_household_screen.dart';
-import '../features/farm/presentation/screens/edit_household_contact_screen.dart';
 import '../features/farm/presentation/widgets/boundary_workflow_widgets.dart';
 import '../features/finance/data/local/sqlite_finance_document_repository.dart';
 import '../features/finance/presentation/finance_documents_screen.dart';
@@ -169,6 +160,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
           Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
       late final VoidCallback openParcels;
       Widget detail(String id) => LandParcelDetailScreen(
+        landOnly: true,
         controller: deps.controller,
         parcelId: id,
         onGpsRequested: () => _measureGps(context, deps, id),
@@ -188,57 +180,13 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       );
       openParcels = () => push(
         LandParcelListScreen(
+          landOnly: true,
           controller: deps.controller,
           onCreate: () => _createParcel(context, deps),
           detailBuilder: (_, id) => detail(id),
         ),
       );
       final legacy = <String, VoidCallback>{
-        if (deps.subject.permissionCodes.contains(PermissionCodes.fieldView) &&
-            deps.subject.dataScopes.contains(DataScope.allFarm))
-          'households': () => push(HouseholdDirectoryScreen(
-            query: HouseholdDirectoryQuery(deps.surveyRepository),
-            subject: deps.subject,
-            onCreate: deps.subject.permissionCodes.contains(
-                    PermissionCodes.householdCreate)
-                ? () async {
-                    await Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => CreateHouseholdScreen(
-                        create: CreateHousehold(
-                          deps.administrativeCatalog.repository,
-                          SqliteHouseholdCreationTransaction(deps.database),
-                        ),
-                        subject: deps.subject,
-                        loadUnits: deps.administrativeCatalog.all,
-                      ),
-                    ));
-                  }
-                : null,
-            onOpenHousehold: (id) async {
-              await Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => HouseholdDetailScreen(
-                  query: HouseholdDetailQuery(
-                    deps.surveyRepository, deps.controller.parcels),
-                  subject: deps.subject,
-                  householdId: id,
-                  onOpenParcel: (parcelId) => push(detail(parcelId)),
-                  onEdit: deps.subject.permissionCodes.contains(
-                          PermissionCodes.householdEdit)
-                      ? (data) async {
-                          await Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) => EditHouseholdContactScreen(
-                              household: data.household,
-                              subject: deps.subject,
-                              update: UpdateHouseholdContact(
-                                  deps.surveyRepository),
-                            ),
-                          ));
-                        }
-                      : null,
-                ),
-              ));
-            },
-          )),
         'machines': () => push(const MachineListScreen()),
         'employees': () => push(const EmployeeListScreen()),
         'finance': () => push(FinanceDocumentsScreen(
@@ -380,6 +328,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (editContext) => LandParcelFormScreen(
+          landOnly: true,
           parcel: parcel,
           household: data.household,
           crops: data.crops,
@@ -467,13 +416,12 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     _V2Dependencies deps,
   ) async {
     final administrativeUnits = await deps.administrativeCatalog.all();
-    final households = await deps.surveyRepository.listHouseholds(deps.subject.farmId);
     if (!context.mounted) return;
     Navigator.of(context).push(
     MaterialPageRoute(
       builder: (_) => LandParcelFormScreen(
+        landOnly: true,
         administrativeUnits: administrativeUnits,
-        availableHouseholds: households,
         onGpsRequested: () => _measureGpsForCreate(context),
         onImportRequested: () => _importForCreate(context, deps),
         onSubmit: (value) async {
@@ -497,8 +445,8 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
             vertices: draft.boundary.vertices.toList(),
             source: draft.source,
             crops: value.crops,
-            ownerDisplayName: value.ownerName.isEmpty ? null : value.ownerName,
-            ownerHouseholdId: value.ownerHouseholdId,
+            ownerDisplayName: null,
+            ownerHouseholdId: null,
             autoNumber: value.autoNumber,
             villageId: value.villageId,
             countryCode: value.countryCode,
@@ -515,9 +463,6 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
               'provinceCode': value.provinceCode,
               'districtCode': value.districtCode,
               'villageCode': value.villageCode,
-              'householdCode': value.householdCode,
-              'phone': value.phone,
-              'alternativeContact': value.alternativeContact,
             },
           );
 
