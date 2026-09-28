@@ -35,7 +35,6 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   ParcelSubdivisionPreview? preview;
   String? previewError;
   bool saving = false;
-  bool choosingEnd = false;
   int selectedFragment = 0;
   int cutRevision = 0;
 
@@ -73,7 +72,6 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
     cutRevision++;
     start = null;
     waypoints.clear();
-    choosingEnd = false;
     previewError = null;
   });
 
@@ -82,7 +80,6 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
       cutRevision++;
       start = null;
       waypoints.clear();
-      choosingEnd = false;
       cuts.clear();
       preview = null;
       previewError = null;
@@ -97,15 +94,13 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
     selectedFragment = index;
     start = null;
     waypoints.clear();
-    choosingEnd = false;
     previewError = null;
   });
 
   Future<void> _choose(LandParcel parcel, Offset point, Size size) async {
     final fragment = preview?.boundaries[selectedFragment] ?? parcel.boundary;
     final projection = _Projection(fragment, size);
-    final candidate = projection.nearestBoundary(point,
-      tolerance: choosingEnd ? 42 : 28);
+    final candidate = projection.nearestBoundary(point, tolerance: 42);
     if (start == null) {
       if (candidate == null) return;
       setState(() {
@@ -115,12 +110,28 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
       });
       return;
     }
-    if (!choosingEnd) {
+    final closeToStart = waypoints.isNotEmpty &&
+        (point - projection.position(start!)).distance <= 42;
+    if (!closeToStart) {
       if (!projection.contains(point)) return;
-      setState(() => waypoints.add(projection.coordinate(point)));
+      setState(() {
+        waypoints.add(projection.coordinate(point));
+        previewError = null;
+      });
       return;
     }
-    if (candidate == null) return;
+    if (candidate == null) {
+      setState(() => previewError =
+          AppLocalizations.of(context).text('subdivision.invalidCut'));
+      return;
+    }
+    final dx = start!.longitude - candidate.longitude;
+    final dy = start!.latitude - candidate.latitude;
+    if (dx * dx + dy * dy < 1e-18) {
+      setState(() => previewError =
+          AppLocalizations.of(context).text('subdivision.distinctEnd'));
+      return;
+    }
     final revision = ++cutRevision;
     final next = [...cuts, ParcelSubdivisionCut(fragmentIndex: selectedFragment,
       path: [start!, ...waypoints, candidate])];
@@ -134,7 +145,6 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
           names.insert(selectedFragment + 1, TextEditingController());
           start = null;
           waypoints.clear();
-          choosingEnd = false;
           previewError = null;
         });
       }
@@ -229,13 +239,8 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                 );
               })),
             ],
-            if (start != null && !choosingEnd) FilledButton.tonal(
-              key: const Key('subdivision-choose-end'),
-              onPressed: () => setState(() => choosingEnd = true),
-              child: Text(l10n.text('subdivision.chooseEnd')),
-            ),
-            if (choosingEnd) Text(l10n.text('subdivision.tapEnd')),
-            if (waypoints.isNotEmpty && !choosingEnd) TextButton.icon(
+            if (start != null) Text(l10n.text('subdivision.autoFinish')),
+            if (waypoints.isNotEmpty) TextButton.icon(
               key: const Key('subdivision-undo-point'),
               onPressed: () => setState(() => waypoints.removeLast()),
               icon: const Icon(Icons.undo),
