@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
@@ -41,6 +43,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   int cutRevision = 0;
   bool showLandBlock = true;
   bool showFieldPlots = true;
+  LatLng? mapCenter;
 
   Future<(LandParcel, String?)> _load() async {
     final parcel = await widget.service.parcels.getById(
@@ -206,11 +209,16 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
         strokeColor: Colors.deepOrange, strokeWidth: 3,
         fillColor: Colors.deepOrange.withValues(alpha: 0.25)));
     }
-    return GoogleMap(
+    return Stack(children: [
+      Positioned.fill(child: GoogleMap(
       key: const Key('subdivision-satellite-map'),
       mapType: MapType.satellite,
+      gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+        Factory<OneSequenceGestureRecognizer>(() => EagerGestureRecognizer()),
+      },
       initialCameraPosition: CameraPosition(
         target: point(parcel.centroid), zoom: 16),
+      onCameraMove: (position) => mapCenter = position.target,
       onMapCreated: (controller) {
         if (south < north && west < east) {
           controller.animateCamera(CameraUpdate.newLatLngBounds(
@@ -227,11 +235,38 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
       polygons: boundaries,
       markers: {
         for (var i = 0; i < draft.length; i++)
-          Marker(markerId: MarkerId('draft-$i'), position: point(draft[i])),
+          Marker(markerId: MarkerId('draft-$i'), position: point(draft[i]),
+            infoWindow: InfoWindow(title: '${i + 1}')),
+      },
+      circles: {
+        for (var i = 0; i < draft.length; i++)
+          Circle(circleId: CircleId('draft-point-$i'),
+            center: point(draft[i]), radius: 2,
+            strokeWidth: 3, strokeColor: Colors.white,
+            fillColor: Colors.deepOrange),
+      },
+      polylines: {
+        if (draft.length >= 2)
+          Polyline(polylineId: const PolylineId('draft-edges'),
+            points: draft.map(point).toList(),
+            color: Colors.deepOrange, width: 4),
       },
       myLocationButtonEnabled: false,
       zoomControlsEnabled: true,
-    );
+      )),
+      const Center(child: IgnorePointer(child: Icon(Icons.add,
+        color: Colors.white70, size: 26))),
+      Positioned(bottom: 10, right: 10, child: FilledButton.tonalIcon(
+        key: const Key('subdivision-add-center-point'),
+        onPressed: () {
+          final center = mapCenter ?? point(parcel.centroid);
+          _chooseVertex(parcel, Wgs84Vertex(latitude: center.latitude,
+            longitude: center.longitude));
+        },
+        icon: const Icon(Icons.add_location_alt_outlined),
+        label: Text(AppLocalizations.of(context).text('subdivision.addCenter')),
+      )),
+    ]);
   }
 
   @override
@@ -274,6 +309,9 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                     [?start, ...waypoints], fragments, -1)),
               );
             })),
+            if (start != null)
+              Text('${l10n.text('subdivision.pointCount')}: '
+                '${waypoints.length + 1}'),
             if (widget.useSchematicMap && preview != null) ...[
               Text(l10n.text('subdivision.overview')),
               SizedBox(height: 180, child: LayoutBuilder(builder: (context, box) {
