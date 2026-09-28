@@ -118,7 +118,8 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
           actions: [
             TextButton(onPressed: () => Navigator.pop(dialogContext, false),
               child: Text(l10n.text('common.cancel'))),
-            FilledButton(onPressed: () => Navigator.pop(dialogContext, true),
+            FilledButton(key: const Key('work-save-event'),
+              onPressed: () => Navigator.pop(dialogContext, true),
               child: Text(l10n.text('common.save'))),
           ],
         ),
