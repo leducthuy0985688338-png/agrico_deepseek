@@ -34,6 +34,20 @@ void main() {
       closeTo(geometry.measure(source).areaM2, 0.01));
   });
 
+  test('second boundary tap completes the screenshot trace without returning to start', () {
+    final trace = [
+      p(16.002, 106), p(16.002, 106.001), p(16.002, 106.002),
+      p(16.0015, 106.002), p(16.00135, 106.0016),
+      p(16.0013, 106.001), p(16.0014, 106.0003),
+      p(16.0017, 106),
+    ];
+    final cut = outline.interiorCut(source, trace);
+    expect(cut.first, trace[3]);
+    expect(cut.last, trace.last);
+    expect(const ParcelBoundarySplitter().splitAlongPath(source, cut),
+      hasLength(2));
+  });
+
   test('interior first and boundary last closes at the original start', () {
     final left = p(16.0017, 106);
     final right = p(16.0015, 106.002);

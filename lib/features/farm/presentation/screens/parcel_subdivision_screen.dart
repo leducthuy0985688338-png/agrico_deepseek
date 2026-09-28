@@ -101,7 +101,8 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   Future<void> _choose(LandParcel parcel, Offset point, Size size) async {
     final fragment = preview?.boundaries[selectedFragment] ?? parcel.boundary;
     final projection = _Projection(fragment, size);
-    final candidate = projection.nearestBoundary(point, tolerance: 28);
+    final candidate = projection.nearestBoundary(point,
+      tolerance: start == null ? 28 : 14);
     if (start == null) {
       if (candidate == null) return;
       setState(() {
@@ -111,9 +112,15 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
       });
       return;
     }
-    final closeToStart = waypoints.isNotEmpty &&
-        (point - projection.position(start!)).distance <= 42;
-    if (!closeToStart) {
+    final hasInterior = waypoints.any((vertex) =>
+      projection.nearestBoundary(projection.position(vertex),
+        tolerance: 1) == null);
+    final closeToStart = hasInterior &&
+        (point - projection.position(start!)).distance <= 24;
+    final finishesAtBoundary = hasInterior && candidate != null &&
+        (projection.position(candidate) - projection.position(start!))
+          .distance > 24;
+    if (!closeToStart && !finishesAtBoundary) {
       if (candidate == null && !projection.contains(point)) return;
       setState(() {
         waypoints.add(candidate ?? projection.coordinate(point));
@@ -123,8 +130,9 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
     }
     final revision = ++cutRevision;
     try {
-      final path = const ParcelClosedOutline()
-          .interiorCut(fragment, [start!, ...waypoints]);
+      final traced = [start!, ...waypoints];
+      if (finishesAtBoundary) traced.add(candidate!);
+      final path = const ParcelClosedOutline().interiorCut(fragment, traced);
       final next = [...cuts, ParcelSubdivisionCut(fragmentIndex: selectedFragment,
         path: path)];
       final result = await widget.service.previewPlan(
