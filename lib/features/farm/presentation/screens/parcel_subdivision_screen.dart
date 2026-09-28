@@ -10,6 +10,7 @@ import '../../application/parcel_subdivision_service.dart';
 import '../../domain/entities/land_parcel.dart';
 import '../../domain/geometry/wgs84_geometry.dart';
 import '../../domain/geometry/parcel_subdivision_plan.dart';
+import '../../domain/geometry/parcel_closed_outline.dart';
 
 class ParcelSubdivisionScreen extends StatefulWidget {
   const ParcelSubdivisionScreen({super.key, required this.subject,
@@ -120,18 +121,12 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
       });
       return;
     }
-    final endpoint = waypoints.last;
-    if (projection.nearestBoundary(
-          projection.position(endpoint), tolerance: 1) == null ||
-        endpoint == start) {
-      setState(() => previewError =
-          AppLocalizations.of(context).text('subdivision.distinctEnd'));
-      return;
-    }
     final revision = ++cutRevision;
-    final next = [...cuts, ParcelSubdivisionCut(fragmentIndex: selectedFragment,
-      path: [start!, ...waypoints])];
     try {
+      final path = const ParcelClosedOutline()
+          .interiorCut(fragment, [start!, ...waypoints]);
+      final next = [...cuts, ParcelSubdivisionCut(fragmentIndex: selectedFragment,
+        path: path)];
       final result = await widget.service.previewPlan(
         subject: widget.subject, sourceParcelId: parcel.id, cuts: next);
       if (mounted && revision == cutRevision) {
