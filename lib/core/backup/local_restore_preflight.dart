@@ -79,8 +79,24 @@ class LocalRestorePreflight {
       // Backups made before land-only parcel numbering lack the empty v3
       // counter table. Its CREATE TABLE comes from the current app schema.
       final optionalMissing = databaseName == 'agrico.db'
-          ? {'agrico_location_parcel_sequences_v3'} : <String>{};
+          ? {'agrico_location_parcel_sequences_v3',
+              'parcel_work_resources', 'parcel_work_events',
+              'parcel_work_assignments', 'parcel_stage_snapshots',
+              'parcel_derivations'} : <String>{};
       final missing = tables.difference(saved.keys.toSet());
+      if (missing.intersection({'parcel_work_resources',
+          'parcel_work_events', 'parcel_work_assignments'}).isNotEmpty &&
+          ['parcel_work_resources', 'parcel_work_events',
+            'parcel_work_assignments'].any((name) =>
+              (saved[name] as List? ?? const []).isNotEmpty)) {
+        throw RestorePreflightException('tables', database: databaseName);
+      }
+      if (missing.intersection({'parcel_stage_snapshots',
+          'parcel_derivations'}).isNotEmpty &&
+          ['parcel_stage_snapshots', 'parcel_derivations'].any((name) =>
+              (saved[name] as List? ?? const []).isNotEmpty)) {
+        throw RestorePreflightException('tables', database: databaseName);
+      }
       if (missing.contains('agrico_location_parcel_sequences_v3') &&
           (saved['land_parcels'] as List? ?? const []).any((row) =>
               RegExp(r'-L[0-9]{5}$').hasMatch(

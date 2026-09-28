@@ -21,6 +21,8 @@ class LandParcelDetailScreen extends StatefulWidget {
     this.onAttachRequested,
     this.onOpenAttachment,
     this.landOnly = false,
+    this.onWorkRequested,
+    this.onTimelineRequested,
   });
   final LandParcelController controller;
   final String parcelId;
@@ -30,6 +32,8 @@ class LandParcelDetailScreen extends StatefulWidget {
   final VoidCallback? onAttachRequested;
   final Future<void> Function(ParcelAttachment)? onOpenAttachment;
   final bool landOnly;
+  final VoidCallback? onWorkRequested;
+  final VoidCallback? onTimelineRequested;
 
   @override
   State<LandParcelDetailScreen> createState() => _LandParcelDetailScreenState();
@@ -85,6 +89,20 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
       appBar: AppBar(
         title: Text('${parcel.parcelCode} · ${parcel.name}'),
         actions: [
+          if (widget.onTimelineRequested != null)
+            IconButton(
+              key: const Key('parcel-timeline'),
+              onPressed: widget.onTimelineRequested,
+              tooltip: l10n.text('timeline.title'),
+              icon: const Icon(Icons.timeline),
+            ),
+          if (widget.onWorkRequested != null)
+            IconButton(
+              key: const Key('parcel-work'),
+              onPressed: widget.onWorkRequested,
+              tooltip: l10n.text('work.title'),
+              icon: const Icon(Icons.construction),
+            ),
           if (widget.onEditRequested != null &&
               controller.can(PermissionCodes.fieldEdit, parcelId: parcel.id))
             IconButton(
