@@ -13,10 +13,12 @@ class LandParcelListScreen extends StatefulWidget {
     required this.controller,
     this.onCreate,
     this.detailBuilder,
+    this.landOnly = false,
   });
   final LandParcelController controller;
   final VoidCallback? onCreate;
   final Widget Function(BuildContext context, String parcelId)? detailBuilder;
+  final bool landOnly;
 
   @override
   State<LandParcelListScreen> createState() => _LandParcelListScreenState();
@@ -190,7 +192,7 @@ class _LandParcelListScreenState extends State<LandParcelListScreen> {
                 subtitle: Text(
                   [
                     if (item.village.isNotEmpty) item.village,
-                    if (item.owner.isNotEmpty) item.owner,
+                    if (!widget.landOnly && item.owner.isNotEmpty) item.owner,
                     '${item.parcel.areaHa.toStringAsFixed(2)} ha',
                     l10n.text(
                       'verification.${item.parcel.verificationStatus.name}',
@@ -212,6 +214,7 @@ class _LandParcelListScreenState extends State<LandParcelListScreen> {
                           item.parcel.id,
                         ) ??
                         LandParcelDetailScreen(
+                          landOnly: widget.landOnly,
                           controller: controller,
                           parcelId: item.parcel.id,
                         ),

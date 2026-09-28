@@ -9,6 +9,22 @@ class SqliteScopedParcelNumberAllocator implements ParcelNumberAllocator {
   final Transaction transaction;
 
   @override
+  Future<T> saveLocationParcel<T>({
+    required String farmId,
+    required String villageId,
+    required String countryCode,
+    required String provinceCode,
+    required String districtCode,
+    required String villageCode,
+    required Future<T> Function(String parcelCode) save,
+  }) => SqliteParcelNumberSequence().saveLocationParcel(
+    tx: transaction, farmId: farmId, villageId: villageId,
+    countryCode: countryCode, provinceCode: provinceCode,
+    districtCode: districtCode, villageCode: villageCode,
+    save: save,
+  );
+
+  @override
   Future<T> saveHousehold<T>({
     required String farmId,
     required Future<T> Function(String householdCode) save,

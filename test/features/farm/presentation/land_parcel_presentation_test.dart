@@ -496,6 +496,18 @@ void main() {
     expect(submitted?.crops.single.ageMonths, 42);
   });
 
+  testWidgets('land-only form does not render stored household information',
+      (tester) async {
+    await tester.pumpWidget(app(LandParcelFormScreen(
+      landOnly: true, parcel: parcel(), household: household(),
+      onSubmit: (_) async {},
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('ນາງ ສົມພອນ'), findsNothing);
+    expect(find.text('H-01'), findsNothing);
+    expect(find.text('020123'), findsNothing);
+  });
+
   testWidgets('boundary history is read-only and renders multiple versions', (
     tester,
   ) async {

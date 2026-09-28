@@ -162,6 +162,19 @@ void main() {
         temporaryDirectory: directory.path,
       );
       expect(oldCounts['agrico.db/fields'], 1);
+      // A backup from before L-numbering has no v3 counter table.
+      (savedPrimary['tables'] as Map<String, dynamic>)
+          .remove(SqliteParcelNumberSequence.locationTable);
+      final preLocationBody = jsonEncode(payload);
+      envelope['payload'] = preLocationBody;
+      envelope['sha256'] = sha256.convert(utf8.encode(preLocationBody)).toString();
+      final preLocationBackup = Uint8List.fromList(
+          utf8.encode(jsonEncode(envelope)));
+      final preLocationCounts = await LocalRestorePreflight.validate(
+        bytes: preLocationBackup, primary: primary, costs: costs,
+        factory: databaseFactoryFfi, temporaryDirectory: directory.path,
+      );
+      expect(preLocationCounts['agrico.db/fields'], 1);
     } finally {
       await primary.close();
       await costs.close();

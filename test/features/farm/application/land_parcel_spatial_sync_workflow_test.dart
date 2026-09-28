@@ -232,6 +232,37 @@ void main() {
     expect(next.value!.ownerHouseholdId, householdId);
   });
 
+  test('land-only parcel allocates without creating household', () async {
+    await SqliteParcelNumberSequence.createSchema(database);
+    final subject = AuthorizationSubject(
+      userId: 'user-1', membershipId: 'member-1', farmId: 'farm-1',
+      permissionCodes: PermissionCodes.values,
+      dataScopes: const {DataScope.allFarm},
+    );
+    final application = LandParcelApplicationService(
+      repository: parcels, spatialWorkflow: workflow,
+    );
+    Future<LandParcelApplicationResult<LandParcel>> create(String id) =>
+        application.createLandParcel(subject, CreateLandParcelCommand(
+          id: id, farmId: 'farm-1', parcelCode: '', name: id,
+          vertices: createParcel().boundary.vertices.toList(),
+          source: BoundarySource.manual,
+          actorMembershipId: 'member-1', occurredAt: createdAt,
+          autoNumber: true, villageId: 'village-tako',
+          countryCode: 'LA', provinceCode: 'SVK',
+          districtCode: 'NONG', villageCode: 'TAKO',
+          legacyMetadata: const {'village': 'Ta Ko'},
+        ));
+    expect((await create('first')).value!.parcelCode,
+        'LA-SVK-NONG-TAKO-L00001');
+    expect((await create('second')).value!.parcelCode,
+        'LA-SVK-NONG-TAKO-L00002');
+    expect(await SqliteLandSurveyRepository(database).listHouseholds('farm-1'),
+        isEmpty);
+    expect((await parcels.getById(farmId: 'farm-1', id: 'first'))!
+        .ownerHouseholdId, isNull);
+  });
+
   test('new parcel and crop commit together or both roll back', () async {
     final surveys = SqliteLandSurveyRepository(database);
     final subject = AuthorizationSubject(

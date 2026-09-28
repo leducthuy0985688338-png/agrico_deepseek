@@ -33,6 +33,30 @@ void main() {
         },
       ));
 
+  Future<String> landOnly(String village) => db.transaction((tx) =>
+      numbers.saveLocationParcel(
+        tx: tx, farmId: 'farm', villageId: village,
+        countryCode: 'LA', provinceCode: 'SVK', districtCode: 'NONG',
+        villageCode: village,
+        save: (code) async {
+          await tx.insert('saved_codes', {'code': code});
+          return code;
+        },
+      ));
+
+  test('land-only parcel codes are isolated by village and roll back', () async {
+    expect(await landOnly('TAKO'), 'LA-SVK-NONG-TAKO-L00001');
+    expect(await landOnly('TAKO'), 'LA-SVK-NONG-TAKO-L00002');
+    expect(await landOnly('OTHER'), 'LA-SVK-NONG-OTHER-L00001');
+    await expectLater(db.transaction((tx) => numbers.saveLocationParcel(
+      tx: tx, farmId: 'farm', villageId: 'TAKO',
+      countryCode: 'LA', provinceCode: 'SVK', districtCode: 'NONG',
+      villageCode: 'TAKO', save: (_) async => throw StateError('write failed'),
+    )), throwsStateError);
+    expect(await landOnly('TAKO'), 'LA-SVK-NONG-TAKO-L00003');
+    expect(await db.query(SqliteParcelNumberSequence.table), isEmpty);
+  });
+
   test('households increment across villages; parcels restart in each household',
       () async {
     expect(await household(), 'H00001');

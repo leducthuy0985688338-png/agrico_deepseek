@@ -1,14 +1,20 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../domain/land_parcel_reference_code.dart';
+import '../domain/location_parcel_reference_code.dart';
 
 /// Allocates household/parcel display numbers inside the caller's save
 /// transaction. Callbacks must write the corresponding record with [tx].
 class SqliteParcelNumberSequence {
   static const table = 'agrico_parcel_number_sequences_v2';
   static const previousTable = 'agrico_parcel_number_sequences';
+  static const locationTable = 'agrico_location_parcel_sequences_v3';
 
   static Future<void> createSchema(DatabaseExecutor db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS $locationTable (
+      farm_id TEXT NOT NULL, village_id TEXT NOT NULL,
+      last_sequence INTEGER NOT NULL CHECK(last_sequence BETWEEN 0 AND 99999),
+      PRIMARY KEY(farm_id, village_id))''');
     await db.execute('''
       CREATE TABLE IF NOT EXISTS $table (
         farm_id TEXT NOT NULL,
@@ -40,6 +46,40 @@ class SqliteParcelNumberSequence {
           household_number
       ''');
     }
+  }
+
+  /// Allocates the land-only code inside the caller's parcel save transaction.
+  Future<T> saveLocationParcel<T>({
+    required Transaction tx,
+    required String farmId,
+    required String villageId,
+    required String countryCode,
+    required String provinceCode,
+    required String districtCode,
+    required String villageCode,
+    required Future<T> Function(String parcelCode) save,
+  }) async {
+    if (farmId.trim().isEmpty || villageId.trim().isEmpty) {
+      throw const FormatException('Farm and village are required.');
+    }
+    await tx.rawInsert('INSERT OR IGNORE INTO $locationTable '
+        '(farm_id, village_id, last_sequence) VALUES (?, ?, 0)',
+        [farmId, villageId]);
+    final changed = await tx.rawUpdate('UPDATE $locationTable '
+        'SET last_sequence = last_sequence + 1 '
+        'WHERE farm_id = ? AND village_id = ? AND last_sequence < 99999',
+        [farmId, villageId]);
+    if (changed != 1) {
+      throw const FormatException('Location parcel numbering range is full.');
+    }
+    final rows = await tx.rawQuery('SELECT last_sequence FROM $locationTable '
+        'WHERE farm_id = ? AND village_id = ?', [farmId, villageId]);
+    final code = LocationParcelReferenceCode(
+      countryCode: countryCode, provinceCode: provinceCode,
+      districtCode: districtCode, villageCode: villageCode,
+      number: rows.single['last_sequence']! as int,
+    ).toString();
+    return save(code);
   }
 
   /// Start above household codes already saved in this farm. Safe to repeat on
