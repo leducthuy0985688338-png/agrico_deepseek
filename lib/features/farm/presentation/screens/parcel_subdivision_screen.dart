@@ -94,7 +94,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
 
   Future<void> _choose(LandParcel parcel, Offset point, Size size) async {
     final fragment = preview?.boundaries[selectedFragment] ?? parcel.boundary;
-    final projection = _Projection(fragment, size);
+    final projection = _Projection(fragment, size, bounds: parcel.boundary);
     final candidate = projection.nearestBoundary(point);
     if (start == null) {
       if (candidate == null) return;
@@ -199,8 +199,9 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                 key: const Key('subdivision-map'),
                 onTapDown: (details) => _choose(parcel, details.localPosition, size),
                 child: CustomPaint(size: size,
-                  painter: _CutPainter(fragments[selectedFragment],
-                    [?start, ...waypoints], null)),
+                  painter: _CutPainter(parcel.boundary,
+                    [?start, ...waypoints], preview?.boundaries,
+                    selectedFragment)),
               );
             })),
             if (start != null && !choosingEnd) FilledButton.tonal(
@@ -225,6 +226,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
               style: TextStyle(color: Theme.of(context).colorScheme.error)),
             if (preview != null) ...[
               Text('${l10n.text('subdivision.preview')}: ${fragments.length}'),
+              Text(l10n.text('subdivision.closedBoundary')),
               for (var i = 0; i < fragments.length; i++)
                 Text('${l10n.text('subdivision.fragment')} ${i + 1}: '
                   '${preview!.areasM2[i].toStringAsFixed(1)} m²'),
@@ -251,9 +253,11 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
 }
 
 class _Projection {
-  _Projection(Wgs84Polygon polygon, this.size) : vertices = polygon.vertices {
-    final lons = vertices.map((v) => v.longitude);
-    final lats = vertices.map((v) => v.latitude);
+  _Projection(Wgs84Polygon polygon, this.size, {Wgs84Polygon? bounds})
+      : vertices = polygon.vertices {
+    final frame = bounds?.vertices ?? vertices;
+    final lons = frame.map((v) => v.longitude);
+    final lats = frame.map((v) => v.latitude);
     left = lons.reduce(math.min);
     right = lons.reduce(math.max);
     bottom = lats.reduce(math.min);
@@ -307,10 +311,11 @@ class _Projection {
 }
 
 class _CutPainter extends CustomPainter {
-  const _CutPainter(this.source, this.cut, this.children);
+  const _CutPainter(this.source, this.cut, this.children, this.selected);
   final Wgs84Polygon source;
   final List<Wgs84Vertex> cut;
   final List<Wgs84Polygon>? children;
+  final int selected;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -329,7 +334,12 @@ class _CutPainter extends CustomPainter {
     if (children != null) {
       for (var i = 0; i < children!.length; i++) {
         canvas.drawPath(outline(children![i]), Paint()
-          ..color = i == 0 ? const Color(0x9967b468) : const Color(0x99e2b561));
+          ..color = (i == selected
+            ? const Color(0xffa9d99d) : const Color(0xffe7dfac)));
+        canvas.drawPath(outline(children![i]), Paint()
+          ..color = (i == selected
+            ? const Color(0xff146b32) : const Color(0xff795d25))
+          ..style = PaintingStyle.stroke ..strokeWidth = 3);
       }
     }
     canvas.drawPath(outline(source), Paint()
@@ -348,5 +358,5 @@ class _CutPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _CutPainter old) =>
       old.source != source || old.cut != cut ||
-      old.children != children;
+      old.children != children || old.selected != selected;
 }
