@@ -101,7 +101,8 @@ void main() {
     await tester.tap(done);
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.byKey(const Key('subdivision-name-2')),
-      180);
+      180, scrollable: find.descendant(of: find.byType(ListView),
+        matching: find.byType(Scrollable)).first);
     expect(find.byKey(const Key('subdivision-name-2')), findsOneWidget);
     expect(find.textContaining(' m² · '), findsWidgets);
   });
