@@ -155,6 +155,41 @@ void main() {
     expect((await history.derivations('farm', 'source')), hasLength(2));
   });
 
+  test('adjacent enclosed parcels retain their shared edge and three identities', () async {
+    Wgs84Polygon box(double west, double east) => Wgs84Polygon.fromVertices([
+      Wgs84Vertex(latitude: 16.0002, longitude: west),
+      Wgs84Vertex(latitude: 16.0002, longitude: east),
+      Wgs84Vertex(latitude: 16.0006, longitude: east),
+      Wgs84Vertex(latitude: 16.0006, longitude: west),
+    ]);
+    final first = box(106.0004, 106.0008);
+    final second = box(106.0008, 106.0012);
+    final operations = [
+      ParcelSubdivisionCut.enclosed(fragmentIndex: 0, polygon: first),
+      ParcelSubdivisionCut.enclosed(fragmentIndex: 0, polygon: second),
+    ];
+    final source = (await parcels.getById(farmId: 'farm', id: 'source'))!;
+    final preview = await service.previewPlan(subject: subject,
+      sourceParcelId: source.id, cuts: operations);
+    expect(preview.boundaries, hasLength(3));
+    expect(preview.boundaries.first.holes, hasLength(1));
+    final children = await service.savePlan(subject: subject,
+      sourceParcelId: source.id, villageId: 'agrico-la-svk-nong-tako',
+      expectedBoundaryVersion: source.boundaryVersion,
+      cuts: operations, names: ['Còn lại', 'A', 'B']);
+    expect(children, hasLength(3));
+    expect((await parcels.getById(farmId: 'farm', id: children.first.id))!
+      .boundary.holes, hasLength(1));
+    final remainder = (await parcels.getById(
+      farmId: 'farm', id: children.first.id))!;
+    const codec = KmlInterchangeCodec();
+    expect(codec.importKml(codec.exportKml(remainder)).previews.single.boundary,
+      remainder.boundary);
+    expect(children.map((child) => child.areaM2).reduce((a, b) => a + b),
+      closeTo(source.areaM2, 0.01));
+    expect((await history.derivations('farm', 'source')), hasLength(3));
+  });
+
   test('all split parcels round trip through Google Earth KML and KMZ', () async {
     final source = (await parcels.getById(farmId: 'farm', id: 'source'))!;
     final children = await saveThree();

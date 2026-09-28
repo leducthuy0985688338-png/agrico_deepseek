@@ -68,6 +68,23 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('subdivision-fragment-1')), findsOneWidget);
     expect(find.textContaining('Đường cắt phải nằm bên trong'), findsNothing);
+
+    await tester.ensureVisible(map);
+    await tester.pumpAndSettle();
+    final nextOrigin = tester.getTopLeft(map);
+    for (final (lat, lon) in [
+      (16.0006, 106.0014), (16.0006, 106.0018),
+      (16.0014, 106.0018), (16.0014, 106.0014),
+    ]) {
+      await tester.tapAt(nextOrigin + Offset((lon - 106.001) * scale +
+        size.width / 2, (16.001 - lat) * scale + size.height / 2));
+      await tester.pumpAndSettle();
+    }
+    await tester.ensureVisible(done);
+    await tester.tap(done);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('subdivision-fragment-2')), findsOneWidget);
+    expect(find.textContaining('hai vùng đất không chồng lấn'), findsNothing);
   });
 
   testWidgets('drawing the photographed outline previews two closed parcels',

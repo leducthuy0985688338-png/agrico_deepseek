@@ -34,6 +34,44 @@ void main() {
     expect(next.first.holes, hasLength(2));
   });
 
+  test('two adjacent parcels share an entire side and leave one joined hole', () {
+    final first = Wgs84Polygon.fromVertices([
+      p(16.001, 106.001), p(16.001, 106.002),
+      p(16.002, 106.002), p(16.002, 106.001),
+    ]);
+    final neighbor = Wgs84Polygon.fromVertices([
+      p(16.001, 106.002), p(16.001, 106.003),
+      p(16.002, 106.003), p(16.002, 106.002),
+    ]);
+    final firstSplit = const ParcelEnclosedSplitter().split(parent, first);
+    final secondSplit = const ParcelEnclosedSplitter()
+      .split(firstSplit.first, neighbor);
+    expect(secondSplit.first.holes, hasLength(1));
+    final geometry = const Wgs84GeometryService();
+    expect(geometry.measure(secondSplit.first).areaM2 +
+      geometry.measure(first).areaM2 + geometry.measure(neighbor).areaM2,
+      closeTo(geometry.measure(parent).areaM2, 0.01));
+  });
+
+  test('partial shared side also joins without a gap or overlap', () {
+    final first = Wgs84Polygon.fromVertices([
+      p(16.001, 106.001), p(16.001, 106.002),
+      p(16.002, 106.002), p(16.002, 106.001),
+    ]);
+    final neighbor = Wgs84Polygon.fromVertices([
+      p(16.00125, 106.002), p(16.00125, 106.003),
+      p(16.00175, 106.003), p(16.00175, 106.002),
+    ]);
+    final remainder = const ParcelEnclosedSplitter()
+      .split(parent, first).first;
+    final next = const ParcelEnclosedSplitter().split(remainder, neighbor);
+    expect(next.first.holes, hasLength(1));
+    final geometry = const Wgs84GeometryService();
+    expect(geometry.measure(next.first).areaM2 +
+      geometry.measure(first).areaM2 + geometry.measure(neighbor).areaM2,
+      closeTo(geometry.measure(parent).areaM2, 0.01));
+  });
+
   test('outside, touching and overlapping closed shapes are rejected', () {
     expect(() => const ParcelEnclosedSplitter()
       .split(parent, inner(16.003, 16.005)), throwsFormatException);
@@ -43,5 +81,7 @@ void main() {
       .split(parent, inner(16.001, 16.002)).first;
     expect(() => const ParcelEnclosedSplitter()
       .split(remainder, inner(16.0015, 16.0025)), throwsFormatException);
+    expect(() => const ParcelEnclosedSplitter()
+      .split(remainder, inner(16.002, 16.003)), throwsFormatException);
   });
 }

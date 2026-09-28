@@ -135,7 +135,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
     try {
       final traced = [start!, ...waypoints];
       final projection = _Projection(fragment, const Size(360, 420));
-      final startsOnBoundary = projection.nearestBoundary(
+      final startsOnBoundary = projection.nearestOuterBoundary(
         projection.position(start!), tolerance: 1) != null;
       final operation = startsOnBoundary
           ? ParcelSubdivisionCut(fragmentIndex: selectedFragment,
@@ -348,20 +348,30 @@ class _Projection {
     return path.contains(point);
   }
 
-  Wgs84Vertex? nearestBoundary(Offset point, {double tolerance = 24}) {
+  Wgs84Vertex? nearestBoundary(Offset point, {double tolerance = 24}) =>
+    _nearestBoundary(point, [vertices, ...polygon.holes], tolerance);
+
+  Wgs84Vertex? nearestOuterBoundary(Offset point,
+      {double tolerance = 24}) =>
+    _nearestBoundary(point, [vertices], tolerance);
+
+  Wgs84Vertex? _nearestBoundary(Offset point,
+      List<List<Wgs84Vertex>> rings, double tolerance) {
     var distance = double.infinity;
     Offset? nearest;
-    for (var i = 0; i < vertices.length - 1; i++) {
-      final a = position(vertices[i]);
-      final b = position(vertices[i + 1]);
-      final direction = b - a;
-      final length2 = direction.dx * direction.dx + direction.dy * direction.dy;
-      if (length2 <= 0) continue;
-      final t = ((point.dx - a.dx) * direction.dx +
-          (point.dy - a.dy) * direction.dy) / length2;
-      final candidate = a + direction * t.clamp(0.0, 1.0).toDouble();
-      final d = (candidate - point).distance;
-      if (d < distance) { distance = d; nearest = candidate; }
+    for (final ring in rings) {
+      for (var i = 0; i < ring.length - 1; i++) {
+        final a = position(ring[i]);
+        final b = position(ring[i + 1]);
+        final direction = b - a;
+        final length2 = direction.dx * direction.dx + direction.dy * direction.dy;
+        if (length2 <= 0) continue;
+        final t = ((point.dx - a.dx) * direction.dx +
+            (point.dy - a.dy) * direction.dy) / length2;
+        final candidate = a + direction * t.clamp(0.0, 1.0).toDouble();
+        final d = (candidate - point).distance;
+        if (d < distance) { distance = d; nearest = candidate; }
+      }
     }
     return distance <= tolerance && nearest != null
         ? coordinate(nearest) : null;
