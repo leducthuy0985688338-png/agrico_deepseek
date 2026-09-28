@@ -38,12 +38,16 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   Future<(LandParcel, String?)> _load() async {
     final parcel = await widget.service.parcels.getById(
       farmId: widget.subject.farmId, id: widget.sourceParcelId);
-    if (parcel == null) throw StateError('Source parcel is missing.');
+    if (parcel == null) {
+      throw StateError('Source parcel is missing.');
+    }
     final units = await widget.administrativeCatalog.all();
     final byId = {for (final unit in units) unit.id: unit};
     final matches = units.where((v) {
       if (!v.active || v.level != AdministrativeLevel.village ||
-          v.code != parcel.villageCode) return false;
+          v.code != parcel.villageCode) {
+        return false;
+      }
       final d = byId[v.parentId];
       final p = byId[d?.parentId];
       final c = byId[p?.parentId];
@@ -83,10 +87,14 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
       final result = await widget.service.preview(
         subject: widget.subject, sourceParcelId: parcel.id,
         cutStart: start!, cutEnd: end!);
-      if (mounted && revision == cutRevision) setState(() => preview = result);
+      if (mounted && revision == cutRevision) {
+        setState(() => preview = result);
+      }
     } catch (_) {
-      if (mounted && revision == cutRevision) setState(() => previewError =
-          AppLocalizations.of(context).text('subdivision.invalidCut'));
+      if (mounted && revision == cutRevision) {
+        setState(() => previewError =
+            AppLocalizations.of(context).text('subdivision.invalidCut'));
+      }
     }
   }
 
@@ -100,12 +108,18 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
         villageId: villageId, expectedBoundaryVersion: source.boundaryVersion,
         cutStart: start!, cutEnd: end!, firstName: firstName.text,
         secondName: secondName.text);
-      if (mounted) Navigator.of(context).pop(true);
+      if (mounted) {
+        Navigator.of(context).pop(true);
+      }
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.text('subdivision.saveFailed'))));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.text('subdivision.saveFailed'))));
+      }
     } finally {
-      if (mounted) setState(() => saving = false);
+      if (mounted) {
+        setState(() => saving = false);
+      }
     }
   }
 
