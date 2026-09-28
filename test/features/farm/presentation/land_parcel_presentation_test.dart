@@ -229,6 +229,29 @@ void main() {
     expect(find.text('ຮູບ.jpg'), findsOneWidget);
   });
 
+  testWidgets('parcel retains its owner name snapshot after household rename',
+      (tester) async {
+    final savedParcel = parcel().updateMetadata(
+      ownerDisplayName: 'Tên chủ hộ lúc tạo thửa',
+      actorMembershipId: 'member-1', occurredAt: time,
+    );
+    final value = controller(source: [savedParcel]);
+    await tester.pumpWidget(app(LandParcelListScreen(controller: value)));
+    await tester.pumpAndSettle();
+    expect(value.visibleItems.single.owner, 'Tên chủ hộ lúc tạo thửa');
+    await tester.enterText(find.byKey(const Key('parcel-search')),
+        'Tên chủ hộ lúc tạo thửa');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('parcel-parcel-1')), findsOneWidget);
+
+    await tester.pumpWidget(app(LandParcelDetailScreen(
+      controller: value, parcelId: 'parcel-1',
+    )));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Tên chủ hộ lúc tạo thửa'), findsWidgets);
+    expect(find.text('ນາງ ສົມພອນ'), findsNothing);
+  });
+
   testWidgets('authorized user verifies boundary once and detail refreshes', (
     tester,
   ) async {
