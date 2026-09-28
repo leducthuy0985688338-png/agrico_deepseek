@@ -27,7 +27,12 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
     await widget.service.events(widget.subject, widget.parcelId),
   );
 
-  void reload() => setState(() => data = load());
+  void reload() {
+    final refreshed = load();
+    setState(() {
+      data = refreshed;
+    });
+  }
 
   Future<void> addResource() async {
     final l10n = AppLocalizations.of(context);
