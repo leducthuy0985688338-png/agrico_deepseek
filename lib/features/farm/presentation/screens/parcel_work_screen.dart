@@ -34,7 +34,7 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
     final code = TextEditingController();
     final name = TextEditingController();
     var kind = WorkResourceKind.machine;
-    final submitted = await showDialog<bool>(context: context,
+    final route = DialogRoute<bool>(context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, update) => AlertDialog(
           title: Text(l10n.text('work.addResource')),
@@ -60,6 +60,9 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
         ),
       ),
     );
+    final submitted = await Navigator.of(context, rootNavigator: true)
+        .push(route);
+    await route.completed;
     if (submitted == true) {
       try {
         await widget.service.register(widget.subject, WorkResource(
@@ -82,7 +85,7 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
     final area = TextEditingController();
     var phase = ParcelWorkPhase.clearing;
     final selected = <String>{};
-    final submitted = await showDialog<bool>(context: context,
+    final route = DialogRoute<bool>(context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, update) => AlertDialog(
           title: Text(l10n.text('work.addEvent')),
@@ -125,6 +128,9 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
         ),
       ),
     );
+    final submitted = await Navigator.of(context, rootNavigator: true)
+        .push(route);
+    await route.completed;
     if (submitted == true) {
       try {
         final parsedArea = area.text.trim().isEmpty
