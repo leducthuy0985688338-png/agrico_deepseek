@@ -146,7 +146,9 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
         subject: widget.subject, sourceParcelId: source.id,
         villageId: villageId, expectedBoundaryVersion: source.boundaryVersion,
         cuts: List.of(cuts), names: names.map((name) => name.text).toList());
-      if (mounted) Navigator.of(context).pop(true);
+      if (mounted) {
+        Navigator.of(context).pop(true);
+      }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
