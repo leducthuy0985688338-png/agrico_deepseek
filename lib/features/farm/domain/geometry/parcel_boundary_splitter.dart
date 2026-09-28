@@ -2,8 +2,8 @@ import 'dart:math' as math;
 
 import 'wgs84_geometry.dart';
 
-/// Splits a simple parcel polygon along one chord whose endpoints lie on the
-/// exterior boundary. A chord that leaves a concave parcel is rejected.
+/// Splits a simple parcel along a polyline connecting two boundary points.
+/// Each segment must remain inside the polygon, including concave parcels.
 class ParcelBoundarySplitter {
   const ParcelBoundarySplitter();
 
@@ -13,7 +13,17 @@ class ParcelBoundarySplitter {
     Wgs84Polygon parent,
     Wgs84Vertex start,
     Wgs84Vertex end,
+  ) => splitAlongPath(parent, [start, end]);
+
+  List<Wgs84Polygon> splitAlongPath(
+    Wgs84Polygon parent,
+    List<Wgs84Vertex> path,
   ) {
+    if (path.length < 2 || path.any((point) => !point.isValid)) {
+      throw const FormatException('A cut needs valid WGS84 points.');
+    }
+    final start = path.first;
+    final end = path.last;
     if (!start.isValid || !end.isValid || _distance2(start, end) < 1e-18) {
       throw const FormatException('A cut requires two distinct WGS84 points.');
     }
@@ -31,27 +41,38 @@ class ParcelBoundarySplitter {
       throw const FormatException('Cut endpoints coincide on the boundary.');
     }
 
-    // The open cut may touch neither another vertex nor another edge.
-    for (var i = 0; i < ring.length; i++) {
-      final a = ring[i];
-      final b = ring[(i + 1) % ring.length];
-      if (_properIntersection(start, end, a, b)) {
-        throw const FormatException('The cut crosses the parcel boundary.');
-      }
-      for (final vertex in [a, b]) {
-        if (_onSegment(start, vertex, end) &&
-            _distance2(vertex, start) > 1e-18 &&
-            _distance2(vertex, end) > 1e-18) {
-          throw const FormatException('The cut touches another boundary vertex.');
-        }
+    for (var i = 1; i < path.length - 1; i++) {
+      if (!_inside(ring, path[i])) {
+        throw const FormatException('Cut bends must be inside the parcel.');
       }
     }
-    final midpoint = Wgs84Vertex(
-      latitude: (start.latitude + end.latitude) / 2,
-      longitude: (start.longitude + end.longitude) / 2,
-    );
-    if (!_inside(ring, midpoint)) {
-      throw const FormatException('The cut lies outside the parcel.');
+    for (var segment = 0; segment < path.length - 1; segment++) {
+      final a = path[segment];
+      final b = path[segment + 1];
+      if (_distance2(a, b) < 1e-18 || !_inside(ring,
+          Wgs84Vertex(latitude: (a.latitude + b.latitude) / 2,
+            longitude: (a.longitude + b.longitude) / 2))) {
+        throw const FormatException('Each cut segment must stay inside.');
+      }
+      for (var i = 0; i < ring.length; i++) {
+        final edgeA = ring[i];
+        final edgeB = ring[(i + 1) % ring.length];
+        if (_properIntersection(a, b, edgeA, edgeB)) {
+          throw const FormatException('The cut crosses the parcel boundary.');
+        }
+        for (final vertex in [edgeA, edgeB]) {
+          if (_onSegment(a, vertex, b) &&
+              _distance2(vertex, a) > 1e-18 &&
+              _distance2(vertex, b) > 1e-18) {
+            throw const FormatException('The cut touches another boundary vertex.');
+          }
+        }
+      }
+      for (var other = 0; other < segment - 1; other++) {
+        if (_segmentsMeet(a, b, path[other], path[other + 1])) {
+          throw const FormatException('The cut intersects itself.');
+        }
+      }
     }
 
     final augmented = <Wgs84Vertex>[];
@@ -66,8 +87,14 @@ class ParcelBoundarySplitter {
     }
     final aIndex = _indexOf(augmented, start);
     final bIndex = _indexOf(augmented, end);
-    final firstPart = _walk(augmented, aIndex, bIndex);
-    final secondPart = _walk(augmented, bIndex, aIndex);
+    final firstPart = [
+      ..._walk(augmented, aIndex, bIndex),
+      ...path.sublist(1, path.length - 1).reversed,
+    ];
+    final secondPart = [
+      ..._walk(augmented, bIndex, aIndex),
+      ...path.sublist(1, path.length - 1),
+    ];
     final children = [
       Wgs84Polygon.fromVertices(firstPart),
       Wgs84Polygon.fromVertices(secondPart),
@@ -147,6 +174,12 @@ class ParcelBoundarySplitter {
     final w = _orientation(c, d, b);
     return x * y < -1e-24 && z * w < -1e-24;
   }
+
+  bool _segmentsMeet(Wgs84Vertex a, Wgs84Vertex b,
+      Wgs84Vertex c, Wgs84Vertex d) =>
+      _properIntersection(a, b, c, d) ||
+      _onSegment(a, c, b) || _onSegment(a, d, b) ||
+      _onSegment(c, a, d) || _onSegment(c, b, d);
 
   double _orientation(Wgs84Vertex a, Wgs84Vertex b, Wgs84Vertex c) =>
       (b.longitude - a.longitude) * (c.latitude - a.latitude) -

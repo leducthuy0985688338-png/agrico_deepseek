@@ -49,6 +49,7 @@ class LandParcelSpatialSyncWorkflow {
     required int expectedBoundaryVersion,
     required Wgs84Vertex cutStart,
     required Wgs84Vertex cutEnd,
+    List<Wgs84Vertex> cutWaypoints = const [],
     required String firstName,
     required String secondName,
     required String actorMembershipId,
@@ -107,7 +108,8 @@ class LandParcelSpatialSyncWorkflow {
         throw const FormatException('Parcel village does not match the catalog.');
       }
       final boundaries = const ParcelBoundarySplitter()
-          .split(source.boundary, cutStart, cutEnd);
+          .splitAlongPath(source.boundary,
+            [cutStart, ...cutWaypoints, cutEnd]);
       final numbers = SqliteScopedParcelNumberAllocator(tx);
       final children = <LandParcel>[];
       for (var index = 0; index < 2; index++) {

@@ -37,6 +37,7 @@ class ParcelSubdivisionService {
     required String sourceParcelId,
     required Wgs84Vertex cutStart,
     required Wgs84Vertex cutEnd,
+    List<Wgs84Vertex> cutWaypoints = const [],
   }) async {
     _authorize(subject, sourceParcelId, PermissionCodes.fieldView);
     final source = await parcels.getById(
@@ -45,7 +46,7 @@ class ParcelSubdivisionService {
       throw StateError('Source parcel is missing or inactive.');
     }
     final boundaries = const ParcelBoundarySplitter()
-        .split(source.boundary, cutStart, cutEnd);
+        .splitAlongPath(source.boundary, [cutStart, ...cutWaypoints, cutEnd]);
     final geometry = const Wgs84GeometryService();
     return ParcelSubdivisionPreview(
       source: source,
@@ -61,6 +62,7 @@ class ParcelSubdivisionService {
     required int expectedBoundaryVersion,
     required Wgs84Vertex cutStart,
     required Wgs84Vertex cutEnd,
+    List<Wgs84Vertex> cutWaypoints = const [],
     required String firstName,
     required String secondName,
   }) async {
@@ -70,6 +72,7 @@ class ParcelSubdivisionService {
       farmId: subject.farmId, sourceParcelId: sourceParcelId,
       villageId: villageId, expectedBoundaryVersion: expectedBoundaryVersion,
       cutStart: cutStart, cutEnd: cutEnd,
+      cutWaypoints: cutWaypoints,
       firstName: firstName, secondName: secondName,
       actorMembershipId: subject.membershipId,
       occurredAt: DateTime.now().toUtc(),

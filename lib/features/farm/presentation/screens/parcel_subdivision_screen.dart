@@ -30,6 +30,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   final secondName = TextEditingController();
   Wgs84Vertex? start;
   Wgs84Vertex? end;
+  final waypoints = <Wgs84Vertex>[];
   ParcelSubdivisionPreview? preview;
   String? previewError;
   bool saving = false;
@@ -68,13 +69,17 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   Future<void> _choose(LandParcel parcel, Offset point, Size size) async {
     final projection = _Projection(parcel.boundary, size);
     final candidate = projection.nearestBoundary(point);
-    if (candidate == null) return;
+    if (candidate == null && (start == null || end != null ||
+        !projection.contains(point))) return;
     final previous = start;
     setState(() {
       cutRevision++;
       if (previous == null || end != null) {
-        start = candidate;
+        start = candidate!;
         end = null;
+        waypoints.clear();
+      } else if (candidate == null) {
+        waypoints.add(projection.coordinate(point));
       } else {
         end = candidate;
       }
@@ -86,7 +91,8 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
     try {
       final result = await widget.service.preview(
         subject: widget.subject, sourceParcelId: parcel.id,
-        cutStart: start!, cutEnd: end!);
+        cutStart: start!, cutEnd: end!,
+        cutWaypoints: List.of(waypoints));
       if (mounted && revision == cutRevision) {
         setState(() => preview = result);
       }
@@ -106,7 +112,8 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
       await widget.service.save(
         subject: widget.subject, sourceParcelId: source.id,
         villageId: villageId, expectedBoundaryVersion: source.boundaryVersion,
-        cutStart: start!, cutEnd: end!, firstName: firstName.text,
+        cutStart: start!, cutEnd: end!,
+        cutWaypoints: List.of(waypoints), firstName: firstName.text,
         secondName: secondName.text);
       if (mounted) {
         Navigator.of(context).pop(true);
@@ -148,10 +155,25 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                 key: const Key('subdivision-map'),
                 onTapDown: (details) => _choose(parcel, details.localPosition, size),
                 child: CustomPaint(size: size,
-                  painter: _CutPainter(parcel.boundary, start, end,
+                  painter: _CutPainter(parcel.boundary,
+                    [if (start != null) start!, ...waypoints,
+                      if (end != null) end!],
                     preview?.boundaries)),
               );
             })),
+            if (start != null) TextButton.icon(
+              key: const Key('subdivision-reset-cut'),
+              onPressed: () => setState(() {
+                cutRevision++;
+                start = null;
+                end = null;
+                waypoints.clear();
+                preview = null;
+                previewError = null;
+              }),
+              icon: const Icon(Icons.restart_alt),
+              label: Text(l10n.text('subdivision.reset')),
+            ),
             if (previewError != null) Text(previewError!,
               style: TextStyle(color: Theme.of(context).colorScheme.error)),
             if (preview != null) Text('${l10n.text('subdivision.preview')}: '
@@ -202,6 +224,17 @@ class _Projection {
     latitude: (size.height / 2 - point.dy) / scale + (top + bottom) / 2,
   );
 
+  bool contains(Offset point) {
+    final path = Path();
+    for (var i = 0; i < vertices.length; i++) {
+      final vertex = position(vertices[i]);
+      if (i == 0) { path.moveTo(vertex.dx, vertex.dy); }
+      else { path.lineTo(vertex.dx, vertex.dy); }
+    }
+    path.close();
+    return path.contains(point);
+  }
+
   Wgs84Vertex? nearestBoundary(Offset point) {
     var distance = double.infinity;
     Offset? nearest;
@@ -222,9 +255,9 @@ class _Projection {
 }
 
 class _CutPainter extends CustomPainter {
-  const _CutPainter(this.source, this.start, this.end, this.children);
+  const _CutPainter(this.source, this.cut, this.children);
   final Wgs84Polygon source;
-  final Wgs84Vertex? start, end;
+  final List<Wgs84Vertex> cut;
   final List<Wgs84Polygon>? children;
 
   @override
@@ -250,20 +283,18 @@ class _CutPainter extends CustomPainter {
     canvas.drawPath(outline(source), Paint()
       ..color = const Color(0xff217a3b)..style = PaintingStyle.stroke
       ..strokeWidth = 3);
-    if (start != null) {
-      final a = projection.position(start!);
-      canvas.drawCircle(a, 7, Paint()..color = Colors.deepOrange);
-      if (end != null) {
-        final b = projection.position(end!);
-        canvas.drawLine(a, b, Paint()..color = Colors.deepOrange
-          ..strokeWidth = 3);
-        canvas.drawCircle(b, 7, Paint()..color = Colors.deepOrange);
+    for (var i = 0; i < cut.length; i++) {
+      final point = projection.position(cut[i]);
+      canvas.drawCircle(point, 6, Paint()..color = Colors.deepOrange);
+      if (i > 0) {
+        canvas.drawLine(projection.position(cut[i - 1]), point,
+          Paint()..color = Colors.deepOrange..strokeWidth = 3);
       }
     }
   }
 
   @override
   bool shouldRepaint(covariant _CutPainter old) =>
-      old.source != source || old.start != start || old.end != end ||
+      old.source != source || old.cut != cut ||
       old.children != children;
 }

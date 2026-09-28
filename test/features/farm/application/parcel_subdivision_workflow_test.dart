@@ -110,6 +110,20 @@ void main() {
     expect((await parcels.getById(farmId: 'farm', id: 'source'))!.boundaryVersion, 1);
   });
 
+  test('repeatedly splits a child into three active fragments', () async {
+    final children = await save();
+    final grandchildren = await service.save(
+      subject: subject, sourceParcelId: children.first.id,
+      villageId: 'agrico-la-svk-nong-tako', expectedBoundaryVersion: 1,
+      cutStart: const Wgs84Vertex(latitude: 16.0005, longitude: 106.001),
+      cutEnd: const Wgs84Vertex(latitude: 16.0005, longitude: 106.002),
+      firstName: 'Mảnh thứ ba', secondName: 'Mảnh thứ tư',
+    );
+    expect(grandchildren, hasLength(2));
+    expect(await parcels.listByFarm('farm'), hasLength(3));
+    expect((await history.derivations('farm', children.first.id)), hasLength(3));
+  });
+
   test('stale source revision prevents both children', () async {
     await expectLater(service.save(subject: subject,
       sourceParcelId: 'source', villageId: 'agrico-la-svk-nong-tako',
