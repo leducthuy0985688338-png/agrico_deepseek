@@ -53,7 +53,7 @@ class AppLocalizations {
     'household.add': 'Thêm hộ',
     'household.codeAutomatic': 'Mã hộ H00001… sẽ được cấp tự động khi lưu. Chọn bản từ danh mục địa bàn.',
     'household.noVillages': 'Chưa có bản hợp lệ trong danh mục địa bàn.',
-    'household.saveFailed': 'Không thể lưu hộ. Kiểm tra thông tin và thử lại.'
+    'household.saveFailed': 'Không thể lưu hộ. Kiểm tra thông tin và thử lại.',
     'household.parcels': 'Các thửa của hộ',
     'household.noParcels': 'Hộ chưa liên kết thửa nào.',
     'household.notFound': 'Không tìm thấy hộ trong trang trại này.',
@@ -185,7 +185,7 @@ class AppLocalizations {
     'household.add': 'ເພີ່ມຄອບຄົວ',
     'household.codeAutomatic': 'ລະຫັດ H00001… ຈະອອກໃຫ້ອັດຕະໂນມັດເມື່ອບັນທຶກ. ເລືອກບ້ານຈາກລາຍການ.',
     'household.noVillages': 'ຍັງບໍ່ມີບ້ານທີ່ໃຊ້ໄດ້ໃນລາຍການ.',
-    'household.saveFailed': 'ບັນທຶກຄອບຄົວບໍ່ໄດ້. ກວດຂໍ້ມູນແລ້ວລອງໃໝ່.'
+    'household.saveFailed': 'ບັນທຶກຄອບຄົວບໍ່ໄດ້. ກວດຂໍ້ມູນແລ້ວລອງໃໝ່.',
     'household.parcels': 'ແປງດິນຂອງຄອບຄົວ',
     'household.noParcels': 'ຍັງບໍ່ມີແປງດິນທີ່ເຊື່ອມໂຍງ.',
     'household.notFound': 'ບໍ່ພົບຄອບຄົວໃນຟາມນີ້.',
@@ -316,7 +316,7 @@ class AppLocalizations {
     'household.add': 'Add household',
     'household.codeAutomatic': 'An H00001… code will be assigned on save. Select a village from the catalog.',
     'household.noVillages': 'No valid village is available in the catalog.',
-    'household.saveFailed': 'Could not save household. Check the details and try again.'
+    'household.saveFailed': 'Could not save household. Check the details and try again.',
     'household.parcels': 'Household parcels',
     'household.noParcels': 'No parcels linked to this household.',
     'household.notFound': 'Household not found in this farm.',
