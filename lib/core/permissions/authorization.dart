@@ -5,6 +5,7 @@ enum DataScope { allFarm, team, assignedFields, assignedTasks, own }
 /// but authorization decisions must be made below the presentation layer.
 abstract final class PermissionCodes {
   static const fieldView = 'field.view';
+  static const householdCreate = 'household.create';
   static const fieldCreate = 'field.create';
   static const fieldEdit = 'field.edit';
   static const fieldDelete = 'field.delete';
@@ -28,6 +29,7 @@ abstract final class PermissionCodes {
 
   static const values = <String>{
     fieldView,
+    householdCreate,
     fieldCreate,
     fieldEdit,
     fieldDelete,
