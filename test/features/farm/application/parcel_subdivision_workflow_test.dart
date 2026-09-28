@@ -11,6 +11,7 @@ import 'package:agrico_deepseek/features/farm/data/local/sqlite_land_parcel_repo
 import 'package:agrico_deepseek/features/farm/data/local/sqlite_land_parcel_spatial_link_repository.dart';
 import 'package:agrico_deepseek/features/farm/data/local/sqlite_land_survey_repository.dart';
 import 'package:agrico_deepseek/features/farm/data/local/sqlite_parcel_land_history_repository.dart';
+import 'package:agrico_deepseek/features/farm/data/interchange/kml_interchange.dart';
 import 'package:agrico_deepseek/features/farm/domain/entities/land_parcel.dart';
 import 'package:agrico_deepseek/features/farm/domain/geometry/wgs84_geometry.dart';
 import 'package:agrico_deepseek/features/farm/domain/geometry/parcel_subdivision_plan.dart';
@@ -125,6 +126,30 @@ void main() {
     final derivations = await history.derivations('farm', 'source');
     expect(derivations.where((d) => d.sourceParcelId == 'source'), hasLength(3));
     expect(await parcels.listByFarm('farm'), hasLength(3));
+  });
+
+  test('all split parcels round trip through Google Earth KML and KMZ', () async {
+    final source = (await parcels.getById(farmId: 'farm', id: 'source'))!;
+    final children = await saveThree();
+    const codec = KmlInterchangeCodec();
+    for (final child in children) {
+      expect(child.boundary.crs, Wgs84Polygon.crsCode);
+      expect(child.boundary.isClosed, isTrue);
+      expect(child.boundarySource, BoundarySource.manual);
+      final kml = codec.exportKml(child);
+      expect(kml, contains('http://www.opengis.net/kml/2.2'));
+      final fromKml = codec.importKml(kml).previews.single;
+      expect(fromKml.boundary, child.boundary);
+      expect(fromKml.metadata.parcelCode, child.parcelCode);
+      expect(fromKml.metadata.parcelName, child.name);
+      final fromKmz = codec.importKmz(codec.exportKmz(child)).previews.single;
+      expect(fromKmz.boundary, child.boundary);
+      expect(fromKmz.metadata.parcelCode, child.parcelCode);
+    }
+    final original = (await parcels.getById(farmId: 'farm', id: 'source'))!;
+    expect(original.boundary, source.boundary);
+    expect(original.boundarySource, source.boundarySource);
+    expect(original.boundaryVersion, source.boundaryVersion);
   });
 
   test('third lineage failure rolls back all three children and numbers', () async {
