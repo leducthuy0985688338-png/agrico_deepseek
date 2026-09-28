@@ -197,6 +197,7 @@ class LandParcelFormScreen extends StatefulWidget {
     this.crops = const [],
     this.administrativeUnits = const [],
     this.availableHouseholds = const [],
+    this.landOnly = false,
     this.landUse,
     this.surveys = const [],
     this.attachments = const [],
@@ -211,6 +212,8 @@ class LandParcelFormScreen extends StatefulWidget {
   final List<CropRecord> crops;
   final List<AdministrativeUnit> administrativeUnits;
   final List<Household> availableHouseholds;
+  /// New v2 workflow excludes household personal data from parcel entry.
+  final bool landOnly;
   final LandUseProfile? landUse;
   final List<LandParcelSurvey> surveys;
   final List<ParcelAttachment> attachments;
@@ -335,7 +338,7 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
                 _field('village', l10n.text('location.village')),
               ],
             ]),
-            _section(context, l10n.text('survey.household'), [
+            if (!widget.landOnly) _section(context, l10n.text('survey.household'), [
               if (parcel == null && widget.administrativeUnits.isNotEmpty)
                 _householdPicker(l10n)
               else
@@ -757,11 +760,11 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
           villageCode: _selectedAdmin(AdministrativeLevel.village)?.code,
           autoNumber: widget.parcel == null && widget.administrativeUnits.isNotEmpty,
           villageId: _selectedAdmin(AdministrativeLevel.village)?.id,
-          ownerHouseholdId: selectedExistingHouseholdId,
-          householdCode: fields['householdCode']!.text.trim(),
-          ownerName: fields['owner']!.text.trim(),
-          phone: fields['phone']!.text.trim(),
-          alternativeContact: fields['contact']!.text.trim(),
+          ownerHouseholdId: widget.landOnly ? null : selectedExistingHouseholdId,
+          householdCode: widget.landOnly ? '' : fields['householdCode']!.text.trim(),
+          ownerName: widget.landOnly ? '' : fields['owner']!.text.trim(),
+          phone: widget.landOnly ? '' : fields['phone']!.text.trim(),
+          alternativeContact: widget.landOnly ? '' : fields['contact']!.text.trim(),
           crops: List.unmodifiable(crops),
           boundaryDraft: boundaryDraft,
         ),
