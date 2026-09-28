@@ -92,6 +92,10 @@ void main() {
     expect(retained.spatialFeatureId, source.spatialFeatureId);
     expect(retained.boundaryVersion, source.boundaryVersion);
     expect(retained.boundary, source.boundary);
+    expect(retained.active, isFalse);
+    expect(await parcels.listByFarm('farm'), hasLength(2));
+    await expectLater(save(), throwsStateError);
+    expect(await history.derivations('farm', 'source'), hasLength(2));
   });
 
   test('failed second lineage rolls back both children and both numbers', () async {

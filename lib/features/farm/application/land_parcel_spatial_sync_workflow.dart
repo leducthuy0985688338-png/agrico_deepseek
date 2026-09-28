@@ -78,6 +78,21 @@ class LandParcelSpatialSyncWorkflow {
           source.districtCode == null || source.villageCode == null) {
         throw StateError('Source parcel changed or has no catalogued location.');
       }
+      if (source.spatialFeatureId == null ||
+          await LandParcelBoundaryConsistencyQueries(
+            links: links, features: spatial.featureRepository,
+            revisions: spatial.revisionRepository,
+          ).check(source) != LandParcelBoundaryConsistency.consistent) {
+        throw StateError('Source parcel boundary needs reconciliation.');
+      }
+      final existingSplit = await tx.query(
+        SqliteParcelLandHistoryRepository.derivationsTable,
+        columns: ['id'], where: 'farm_id = ? AND source_parcel_id = ? '
+            'AND kind = ?', whereArgs: [farmId, source.id,
+              ParcelDerivationKind.subdivision.name], limit: 1);
+      if (existingSplit.isNotEmpty) {
+        throw StateError('Source parcel has already been subdivided.');
+      }
       final location = await tx.rawQuery('''
         SELECT v.id FROM agrico_administrative_units v
         JOIN agrico_administrative_units d ON d.id = v.parent_id
@@ -132,6 +147,9 @@ class LandParcelSpatialSyncWorkflow {
           ),
         );
       }
+      await parcels.update(source.updateMetadata(
+        active: false, actorMembershipId: actorMembershipId,
+        occurredAt: occurredAt));
       return children;
     }, beforeCreate: (tx, _) async { scopedTransaction = tx; });
   }

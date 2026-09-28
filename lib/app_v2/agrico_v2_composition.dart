@@ -177,6 +177,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         onTimelineRequested: () => push(ParcelLandTimelineScreen(
           parcelId: id, subject: deps.subject,
           parcels: deps.controller.parcels,
+          onSubdivisionSaved: deps.controller.loadList,
           onSubdivideRequested: () => ParcelSubdivisionScreen(
             subject: deps.subject, sourceParcelId: id,
             service: ParcelSubdivisionService(

@@ -12,6 +12,7 @@ class ParcelLandTimelineScreen extends StatefulWidget {
     super.key, required this.subject, required this.parcelId,
     required this.service, required this.parcels,
     this.onSubdivideRequested,
+    this.onSubdivisionSaved,
   });
 
   final AuthorizationSubject subject;
@@ -19,6 +20,7 @@ class ParcelLandTimelineScreen extends StatefulWidget {
   final ParcelLandHistoryService service;
   final LandParcelRepository parcels;
   final Widget Function()? onSubdivideRequested;
+  final Future<void> Function()? onSubdivisionSaved;
 
   @override
   State<ParcelLandTimelineScreen> createState() => _ParcelLandTimelineScreenState();
@@ -47,7 +49,10 @@ class _ParcelLandTimelineScreenState extends State<ParcelLandTimelineScreen> {
     if (page == null) return;
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => page));
-    if (saved == true && mounted) reload();
+    if (saved == true && mounted) {
+      await widget.onSubdivisionSaved?.call();
+      if (mounted) reload();
+    }
   }
 
   Future<void> capture(LandParcel parcel) async {
