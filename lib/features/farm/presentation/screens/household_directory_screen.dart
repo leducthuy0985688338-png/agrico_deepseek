@@ -16,7 +16,7 @@ class HouseholdDirectoryScreen extends StatefulWidget {
 
   final HouseholdDirectoryQuery query;
   final AuthorizationSubject subject;
-  final ValueChanged<String>? onOpenHousehold;
+  final Future<void> Function(String)? onOpenHousehold;
   final Future<void> Function()? onCreate;
 
   @override
@@ -117,7 +117,10 @@ class _HouseholdDirectoryScreenState extends State<HouseholdDirectoryScreen> {
                             : Text(l10n.text('common.inactive')),
                         onTap: widget.onOpenHousehold == null
                             ? null
-                            : () => widget.onOpenHousehold!(household.id),
+                            : () async {
+                                await widget.onOpenHousehold!(household.id);
+                                if (mounted) reload();
+                              },
                       );
                     },
                   )),
