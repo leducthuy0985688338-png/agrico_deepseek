@@ -13,6 +13,7 @@ import 'package:agrico_deepseek/features/farm/data/local/sqlite_land_survey_repo
 import 'package:agrico_deepseek/features/farm/data/local/sqlite_parcel_land_history_repository.dart';
 import 'package:agrico_deepseek/features/farm/domain/entities/land_parcel.dart';
 import 'package:agrico_deepseek/features/farm/domain/geometry/wgs84_geometry.dart';
+import 'package:agrico_deepseek/features/farm/domain/geometry/parcel_subdivision_plan.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -96,6 +97,45 @@ void main() {
     expect(await parcels.listByFarm('farm'), hasLength(2));
     await expectLater(save(), throwsStateError);
     expect(await history.derivations('farm', 'source'), hasLength(2));
+  });
+
+  final threeCuts = [
+    const ParcelSubdivisionCut(fragmentIndex: 0, path: [cutA, cutB]),
+    const ParcelSubdivisionCut(fragmentIndex: 0, path: [
+      Wgs84Vertex(latitude: 16.0005, longitude: 106.001),
+      Wgs84Vertex(latitude: 16.0005, longitude: 106.002),
+    ]),
+  ];
+
+  Future<List<LandParcel>> saveThree() => service.savePlan(
+    subject: subject, sourceParcelId: 'source',
+    villageId: 'agrico-la-svk-nong-tako', expectedBoundaryVersion: 1,
+    cuts: threeCuts, names: ['A', 'B', 'C']);
+
+  test('two cuts save three direct children in one operation', () async {
+    final preview = await service.previewPlan(
+      subject: subject, sourceParcelId: 'source', cuts: threeCuts);
+    expect(preview.boundaries, hasLength(3));
+    final children = await saveThree();
+    expect(children.map((p) => p.name), ['A', 'B', 'C']);
+    expect(children.map((p) => p.parcelCode), [
+      'LA-SVK-NONG-TAKO-L00001', 'LA-SVK-NONG-TAKO-L00002',
+      'LA-SVK-NONG-TAKO-L00003']);
+    expect(children.every((p) => p.spatialFeatureId != null), isTrue);
+    final derivations = await history.derivations('farm', 'source');
+    expect(derivations.where((d) => d.sourceParcelId == 'source'), hasLength(3));
+    expect(await parcels.listByFarm('farm'), hasLength(3));
+  });
+
+  test('third lineage failure rolls back all three children and numbers', () async {
+    await db.execute('''CREATE TRIGGER reject_third_split
+      BEFORE INSERT ON parcel_derivations
+      WHEN (SELECT COUNT(*) FROM parcel_derivations) = 2
+      BEGIN SELECT RAISE(ABORT, 'third lineage rejected'); END''');
+    await expectLater(saveThree(), throwsA(isA<Exception>()));
+    expect(await parcels.listByFarm('farm'), hasLength(1));
+    expect(await history.derivations('farm', 'source'), isEmpty);
+    expect(await db.query(SqliteParcelNumberSequence.locationTable), isEmpty);
   });
 
   test('failed second lineage rolls back both children and both numbers', () async {

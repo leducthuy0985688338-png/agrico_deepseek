@@ -9,6 +9,7 @@ import '../../../../core/permissions/authorization.dart';
 import '../../application/parcel_subdivision_service.dart';
 import '../../domain/entities/land_parcel.dart';
 import '../../domain/geometry/wgs84_geometry.dart';
+import '../../domain/geometry/parcel_subdivision_plan.dart';
 
 class ParcelSubdivisionScreen extends StatefulWidget {
   const ParcelSubdivisionScreen({super.key, required this.subject,
@@ -26,14 +27,16 @@ class ParcelSubdivisionScreen extends StatefulWidget {
 
 class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   late final Future<(LandParcel, String?)> source = _load();
-  final firstName = TextEditingController();
-  final secondName = TextEditingController();
+  final names = <TextEditingController>[TextEditingController()];
+  final retiredNames = <TextEditingController>[];
+  final cuts = <ParcelSubdivisionCut>[];
   Wgs84Vertex? start;
-  Wgs84Vertex? end;
   final waypoints = <Wgs84Vertex>[];
   ParcelSubdivisionPreview? preview;
   String? previewError;
   bool saving = false;
+  bool choosingEnd = false;
+  int selectedFragment = 0;
   int cutRevision = 0;
 
   Future<(LandParcel, String?)> _load() async {
@@ -61,42 +64,69 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
 
   @override
   void dispose() {
-    firstName.dispose();
-    secondName.dispose();
+    for (final name in names) { name.dispose(); }
+    for (final name in retiredNames) { name.dispose(); }
     super.dispose();
   }
 
-  Future<void> _choose(LandParcel parcel, Offset point, Size size) async {
-    final projection = _Projection(parcel.boundary, size);
-    final candidate = projection.nearestBoundary(point);
-    if (candidate == null && (start == null || end != null ||
-        !projection.contains(point))) {
-      return;
-    }
-    final previous = start;
+  void _resetDraft() => setState(() {
+    cutRevision++;
+    start = null;
+    waypoints.clear();
+    choosingEnd = false;
+    previewError = null;
+  });
+
+  void _resetAll() {
     setState(() {
       cutRevision++;
-      if (previous == null || end != null) {
-        start = candidate!;
-        end = null;
-        waypoints.clear();
-      } else if (candidate == null) {
-        waypoints.add(projection.coordinate(point));
-      } else {
-        end = candidate;
-      }
+      start = null;
+      waypoints.clear();
+      choosingEnd = false;
+      cuts.clear();
       preview = null;
       previewError = null;
+      selectedFragment = 0;
+      retiredNames.addAll(names.skip(1));
+      names.removeRange(1, names.length);
     });
-    if (previous == null || end == null) return;
-    final revision = cutRevision;
+  }
+
+  Future<void> _choose(LandParcel parcel, Offset point, Size size) async {
+    final fragment = preview?.boundaries[selectedFragment] ?? parcel.boundary;
+    final projection = _Projection(fragment, size);
+    final candidate = projection.nearestBoundary(point);
+    if (start == null) {
+      if (candidate == null) return;
+      setState(() {
+        start = candidate;
+        waypoints.clear();
+        previewError = null;
+      });
+      return;
+    }
+    if (!choosingEnd) {
+      if (!projection.contains(point)) return;
+      setState(() => waypoints.add(projection.coordinate(point)));
+      return;
+    }
+    if (candidate == null) return;
+    final revision = ++cutRevision;
+    final next = [...cuts, ParcelSubdivisionCut(fragmentIndex: selectedFragment,
+      path: [start!, ...waypoints, candidate])];
     try {
-      final result = await widget.service.preview(
-        subject: widget.subject, sourceParcelId: parcel.id,
-        cutStart: start!, cutEnd: end!,
-        cutWaypoints: List.of(waypoints));
+      final result = await widget.service.previewPlan(
+        subject: widget.subject, sourceParcelId: parcel.id, cuts: next);
       if (mounted && revision == cutRevision) {
-        setState(() => preview = result);
+        setState(() {
+          cuts.add(next.last);
+          preview = result;
+          names.insert(selectedFragment + 1, TextEditingController());
+          start = null;
+          waypoints.clear();
+          choosingEnd = false;
+          previewError = null;
+        });
       }
     } catch (_) {
       if (mounted && revision == cutRevision) {
@@ -108,27 +138,22 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
 
   Future<void> _save(LandParcel source, String villageId) async {
     final l10n = AppLocalizations.of(context);
-    if (start == null || end == null || preview == null || saving) return;
+    if (cuts.isEmpty || preview == null || saving || start != null ||
+        names.any((name) => name.text.trim().isEmpty)) return;
     setState(() => saving = true);
     try {
-      await widget.service.save(
+      await widget.service.savePlan(
         subject: widget.subject, sourceParcelId: source.id,
         villageId: villageId, expectedBoundaryVersion: source.boundaryVersion,
-        cutStart: start!, cutEnd: end!,
-        cutWaypoints: List.of(waypoints), firstName: firstName.text,
-        secondName: secondName.text);
-      if (mounted) {
-        Navigator.of(context).pop(true);
-      }
+        cuts: List.of(cuts), names: names.map((name) => name.text).toList());
+      if (mounted) Navigator.of(context).pop(true);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(l10n.text('subdivision.saveFailed'))));
       }
     } finally {
-      if (mounted) {
-        setState(() => saving = false);
-      }
+      if (mounted) setState(() => saving = false);
     }
   }
 
@@ -146,51 +171,75 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           final (parcel, villageId) = snapshot.data!;
+          final fragments = preview?.boundaries ?? [parcel.boundary];
           return ListView(padding: const EdgeInsets.all(16), children: [
             Text('${parcel.parcelCode} · ${parcel.areaM2.toStringAsFixed(1)} m²'),
             const SizedBox(height: 8),
             Text(l10n.text('subdivision.instruction')),
             const SizedBox(height: 12),
+            if (cuts.isNotEmpty) Wrap(spacing: 8, children: [
+              for (var i = 0; i < fragments.length; i++)
+                ChoiceChip(key: Key('subdivision-fragment-$i'),
+                  label: Text('${l10n.text('subdivision.fragment')} ${i + 1}'),
+                  selected: i == selectedFragment,
+                  onSelected: (_) => setState(() {
+                    cutRevision++;
+                    selectedFragment = i;
+                    start = null;
+                    waypoints.clear();
+                    choosingEnd = false;
+                    previewError = null;
+                  })),
+            ]),
             SizedBox(height: 320, child: LayoutBuilder(builder: (context, box) {
               final size = Size(box.maxWidth, box.maxHeight);
               return GestureDetector(
                 key: const Key('subdivision-map'),
                 onTapDown: (details) => _choose(parcel, details.localPosition, size),
                 child: CustomPaint(size: size,
-                  painter: _CutPainter(parcel.boundary,
-                    [?start, ...waypoints, ?end],
-                    preview?.boundaries)),
+                  painter: _CutPainter(fragments[selectedFragment],
+                    [?start, ...waypoints], null)),
               );
             })),
+            if (start != null && !choosingEnd) FilledButton.tonal(
+              key: const Key('subdivision-choose-end'),
+              onPressed: () => setState(() => choosingEnd = true),
+              child: Text(l10n.text('subdivision.chooseEnd')),
+            ),
+            if (choosingEnd) Text(l10n.text('subdivision.tapEnd')),
             if (start != null) TextButton.icon(
               key: const Key('subdivision-reset-cut'),
-              onPressed: () => setState(() {
-                cutRevision++;
-                start = null;
-                end = null;
-                waypoints.clear();
-                preview = null;
-                previewError = null;
-              }),
+              onPressed: _resetDraft,
               icon: const Icon(Icons.restart_alt),
               label: Text(l10n.text('subdivision.reset')),
             ),
+            if (cuts.isNotEmpty) TextButton.icon(
+              key: const Key('subdivision-reset-all'),
+              onPressed: _resetAll,
+              icon: const Icon(Icons.delete_outline),
+              label: Text(l10n.text('subdivision.resetAll')),
+            ),
             if (previewError != null) Text(previewError!,
               style: TextStyle(color: Theme.of(context).colorScheme.error)),
-            if (preview != null) Text('${l10n.text('subdivision.preview')}: '
-              '${preview!.areasM2[0].toStringAsFixed(1)} + '
-              '${preview!.areasM2[1].toStringAsFixed(1)} m²'),
+            if (preview != null) ...[
+              Text('${l10n.text('subdivision.preview')}: ${fragments.length}'),
+              for (var i = 0; i < fragments.length; i++)
+                Text('${l10n.text('subdivision.fragment')} ${i + 1}: '
+                  '${preview!.areasM2[i].toStringAsFixed(1)} m²'),
+            ],
             if (villageId == null) Text(l10n.text('subdivision.locationRequired')),
             const SizedBox(height: 12),
-            TextField(key: const Key('subdivision-first-name'),
-              controller: firstName,
-              decoration: InputDecoration(labelText: l10n.text('subdivision.firstName'))),
-            TextField(key: const Key('subdivision-second-name'),
-              controller: secondName,
-              decoration: InputDecoration(labelText: l10n.text('subdivision.secondName'))),
+            if (cuts.isNotEmpty)
+              for (var i = 0; i < names.length; i++)
+                TextField(key: Key('subdivision-name-$i'),
+                  controller: names[i],
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(labelText:
+                    '${l10n.text('subdivision.fragment')} ${i + 1}')),
             const SizedBox(height: 12),
             FilledButton(key: const Key('subdivision-save'),
-              onPressed: preview == null || villageId == null || saving
+              onPressed: preview == null || villageId == null || saving ||
+                  start != null || names.any((n) => n.text.trim().isEmpty)
                   ? null : () => _save(parcel, villageId),
               child: Text(l10n.text('subdivision.save'))),
           ]);

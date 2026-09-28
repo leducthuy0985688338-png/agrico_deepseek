@@ -10,7 +10,7 @@ import '../data/adapters/land_parcel_spatial_transaction.dart';
 import '../data/local/sqlite_parcel_land_history_repository.dart';
 import '../domain/entities/land_parcel.dart';
 import '../domain/entities/parcel_land_history.dart';
-import '../domain/geometry/parcel_boundary_splitter.dart';
+import '../domain/geometry/parcel_subdivision_plan.dart';
 import '../domain/geometry/wgs84_geometry.dart';
 import '../domain/entities/land_survey.dart';
 import '../domain/entities/land_parcel_spatial_link.dart';
@@ -54,21 +54,35 @@ class LandParcelSpatialSyncWorkflow {
     required String secondName,
     required String actorMembershipId,
     required DateTime occurredAt,
+  }) => subdividePlan(
+    farmId: farmId, sourceParcelId: sourceParcelId, villageId: villageId,
+    expectedBoundaryVersion: expectedBoundaryVersion,
+    cuts: [ParcelSubdivisionCut(fragmentIndex: 0,
+      path: [cutStart, ...cutWaypoints, cutEnd])],
+    names: [firstName, secondName], actorMembershipId: actorMembershipId,
+    occurredAt: occurredAt,
+  );
+
+  /// Saves all final fragments and their direct source lineage atomically.
+  Future<List<LandParcel>> subdividePlan({
+    required String farmId,
+    required String sourceParcelId,
+    required String villageId,
+    required int expectedBoundaryVersion,
+    required List<ParcelSubdivisionCut> cuts,
+    required List<String> names,
+    required String actorMembershipId,
+    required DateTime occurredAt,
   }) async {
-    if (firstName.trim().isEmpty || secondName.trim().isEmpty ||
-        villageId.trim().isEmpty) {
-      throw const FormatException('Two names and a catalogued village are required.');
+    if (cuts.isEmpty || cuts.length > 99 || names.length != cuts.length + 1 ||
+        names.any((name) => name.trim().isEmpty) || villageId.trim().isEmpty) {
+      throw const FormatException('Every final fragment needs a name and catalogued village.');
     }
-    final childIds = [identityGenerator.newId('land-parcel'),
-      identityGenerator.newId('land-parcel')];
-    final linkIds = [identityGenerator.newId('spatial-link'),
-      identityGenerator.newId('spatial-link')];
-    final featureIds = [identityGenerator.newId('spatial-feature'),
-      identityGenerator.newId('spatial-feature')];
-    final revisionIds = [identityGenerator.newId('spatial-revision'),
-      identityGenerator.newId('spatial-revision')];
-    final derivationIds = [identityGenerator.newId('derivation'),
-      identityGenerator.newId('derivation')];
+    final childIds = List.generate(names.length, (_) => identityGenerator.newId('land-parcel'));
+    final linkIds = List.generate(names.length, (_) => identityGenerator.newId('spatial-link'));
+    final featureIds = List.generate(names.length, (_) => identityGenerator.newId('spatial-feature'));
+    final revisionIds = List.generate(names.length, (_) => identityGenerator.newId('spatial-revision'));
+    final derivationIds = List.generate(names.length, (_) => identityGenerator.newId('derivation'));
     Transaction? scopedTransaction;
     return transaction.run<List<LandParcel>>((parcels, links, spatial) async {
       final tx = scopedTransaction!;
@@ -107,12 +121,10 @@ class LandParcelSpatialSyncWorkflow {
       if (location.length != 1) {
         throw const FormatException('Parcel village does not match the catalog.');
       }
-      final boundaries = const ParcelBoundarySplitter()
-          .splitAlongPath(source.boundary,
-            [cutStart, ...cutWaypoints, cutEnd]);
+      final boundaries = const ParcelSubdivisionPlan().apply(source.boundary, cuts);
       final numbers = SqliteScopedParcelNumberAllocator(tx);
       final children = <LandParcel>[];
-      for (var index = 0; index < 2; index++) {
+      for (var index = 0; index < boundaries.length; index++) {
         final child = await numbers.saveLocationParcel(
           farmId: farmId, villageId: villageId,
           countryCode: source.countryCode!,
@@ -121,7 +133,7 @@ class LandParcelSpatialSyncWorkflow {
           villageCode: source.villageCode!,
           save: (code) async => LandParcel.create(
             id: childIds[index], farmId: farmId, parcelCode: code,
-            name: index == 0 ? firstName.trim() : secondName.trim(),
+            name: names[index].trim(),
             boundary: boundaries[index], boundarySource: BoundarySource.manual,
             verificationStatus: BoundaryVerificationStatus.draft,
             actorMembershipId: actorMembershipId, occurredAt: occurredAt,
