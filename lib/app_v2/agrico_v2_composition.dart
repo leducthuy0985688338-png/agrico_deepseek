@@ -565,6 +565,8 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
             return;
           }
 
+          if (!context.mounted) return;
+
           Navigator.of(context).pop();
           await Navigator.of(context).push(
             MaterialPageRoute(

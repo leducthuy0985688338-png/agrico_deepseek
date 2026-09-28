@@ -155,7 +155,9 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   Future<void> _save(LandParcel source, String villageId) async {
     final l10n = AppLocalizations.of(context);
     if (cuts.isEmpty || preview == null || saving || start != null ||
-        names.any((name) => name.text.trim().isEmpty)) return;
+        names.any((name) => name.text.trim().isEmpty)) {
+      return;
+    }
     setState(() => saving = true);
     try {
       await widget.service.savePlan(
