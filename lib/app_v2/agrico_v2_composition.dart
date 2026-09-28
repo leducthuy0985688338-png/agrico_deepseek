@@ -25,6 +25,12 @@ import '../features/farm/data/legacy/land_parcel_legacy_migration.dart';
 import '../features/farm/data/legacy/legacy_field_adapter.dart';
 import '../features/farm/data/local/sqlite_land_parcel_repository.dart';
 import '../features/farm/data/local/sqlite_land_survey_repository.dart';
+import '../features/farm/data/local/sqlite_parcel_work_repository.dart';
+import '../features/farm/application/parcel_work_service.dart';
+import '../features/farm/presentation/screens/parcel_work_screen.dart';
+import '../features/farm/data/local/sqlite_parcel_land_history_repository.dart';
+import '../features/farm/application/parcel_land_history_service.dart';
+import '../features/farm/presentation/screens/parcel_land_timeline_screen.dart';
 import '../features/farm/domain/entities/land_parcel.dart';
 import '../features/farm/domain/entities/land_survey.dart';
 import '../features/farm/domain/geometry/wgs84_geometry.dart';
@@ -67,6 +73,8 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     final spatial = SpatialPersistenceComposition(database);
     await SqliteLandSurveyRepository.createSchema(database);
     await SqliteParcelNumberSequence.createSchema(database);
+    await SqliteParcelWorkRepository.createSchema(database);
+    await SqliteParcelLandHistoryRepository.createSchema(database);
     await SqliteParcelNumberSequence.reconcileExistingHouseholds(database);
     await SqliteFinanceDocumentRepository.createSchema(database);
     await SqliteAdministrativeCatalog.createSchema(database);
@@ -163,6 +171,19 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         landOnly: true,
         controller: deps.controller,
         parcelId: id,
+        onTimelineRequested: () => push(ParcelLandTimelineScreen(
+          parcelId: id, subject: deps.subject,
+          parcels: deps.controller.parcels,
+          service: ParcelLandHistoryService(
+            SqliteParcelLandHistoryRepository(deps.database),
+            deps.controller.parcels,
+          ),
+        )),
+        onWorkRequested: () => push(ParcelWorkScreen(
+          parcelId: id,
+          subject: deps.subject,
+          service: ParcelWorkService(SqliteParcelWorkRepository(deps.database)),
+        )),
         onGpsRequested: () => _measureGps(context, deps, id),
         onImportRequested: () => _import(context, deps, id),
         onEditRequested: () => _editParcel(context, deps, id),
