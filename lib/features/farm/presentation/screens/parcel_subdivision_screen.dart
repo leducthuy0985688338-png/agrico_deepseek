@@ -112,27 +112,30 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
       });
       return;
     }
-    final hasInterior = waypoints.any((vertex) =>
-      projection.nearestBoundary(projection.position(vertex),
-        tolerance: 1) == null);
+    final hasInterior = _hasInterior(projection);
     final closeToStart = hasInterior &&
         (point - projection.position(start!)).distance <= 24;
-    final finishesAtBoundary = hasInterior && candidate != null &&
-        (projection.position(candidate) - projection.position(start!))
-          .distance > 24;
-    if (!closeToStart && !finishesAtBoundary) {
-      if (candidate == null && !projection.contains(point)) return;
-      setState(() {
-        waypoints.add(candidate ?? projection.coordinate(point));
-        previewError = null;
-      });
+    if (closeToStart) {
+      await _finish(parcel, fragment);
       return;
     }
+    if (candidate == null && !projection.contains(point)) return;
+    setState(() {
+      waypoints.add(candidate ?? projection.coordinate(point));
+      previewError = null;
+    });
+  }
+
+  bool _hasInterior(_Projection projection) => waypoints.any((vertex) =>
+    projection.nearestBoundary(projection.position(vertex),
+      tolerance: 1) == null);
+
+  Future<void> _finish(LandParcel parcel, Wgs84Polygon fragment) async {
+    if (start == null) return;
     final revision = ++cutRevision;
     try {
-      final traced = [start!, ...waypoints];
-      if (finishesAtBoundary) traced.add(candidate!);
-      final path = const ParcelClosedOutline().interiorCut(fragment, traced);
+      final path = const ParcelClosedOutline()
+        .interiorCut(fragment, [start!, ...waypoints]);
       final next = [...cuts, ParcelSubdivisionCut(fragmentIndex: selectedFragment,
         path: path)];
       final result = await widget.service.previewPlan(
@@ -147,10 +150,14 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
           previewError = null;
         });
       }
-    } catch (_) {
+    } catch (error) {
       if (mounted && revision == cutRevision) {
-        setState(() => previewError =
-            AppLocalizations.of(context).text('subdivision.invalidCut'));
+        setState(() {
+          final summary = AppLocalizations.of(context)
+              .text('subdivision.invalidCut');
+          previewError = error is FormatException || error is StateError
+              ? '$summary\n$error' : summary;
+        });
       }
     }
   }
@@ -239,6 +246,13 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
               })),
             ],
             if (start != null) Text(l10n.text('subdivision.autoFinish')),
+            if (start != null && waypoints.length >= 2)
+              TextButton.icon(
+                key: const Key('subdivision-close-outline'),
+                onPressed: () => _finish(parcel, fragments[selectedFragment]),
+                icon: const Icon(Icons.check_circle_outline),
+                label: Text(l10n.text('subdivision.closeOutline')),
+              ),
             if (waypoints.isNotEmpty) TextButton.icon(
               key: const Key('subdivision-undo-point'),
               onPressed: () => setState(() => waypoints.removeLast()),
@@ -382,6 +396,21 @@ class _CutPainter extends CustomPainter {
     canvas.drawPath(outline(source), Paint()
       ..color = const Color(0xff217a3b)..style = PaintingStyle.stroke
       ..strokeWidth = 3);
+    if (cut.length >= 3) {
+      final draft = Path()..moveTo(projection.position(cut.first).dx,
+        projection.position(cut.first).dy);
+      for (final vertex in cut.skip(1)) {
+        final position = projection.position(vertex);
+        draft.lineTo(position.dx, position.dy);
+      }
+      draft.close();
+      canvas.save();
+      canvas.clipPath(outline(source));
+      canvas.drawPath(draft, Paint()..color = const Color(0x55ff7a32));
+      canvas.restore();
+      canvas.drawPath(draft, Paint()..color = const Color(0xffe65d16)
+        ..style = PaintingStyle.stroke..strokeWidth = 2);
+    }
     for (var i = 0; i < cut.length; i++) {
       final point = projection.position(cut[i]);
       canvas.drawCircle(point, 6, Paint()..color = Colors.deepOrange);

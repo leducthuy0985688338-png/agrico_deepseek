@@ -44,8 +44,13 @@ void main() {
     final cut = outline.interiorCut(source, trace);
     expect(cut.first, trace[3]);
     expect(cut.last, trace.last);
-    expect(const ParcelBoundarySplitter().splitAlongPath(source, cut),
-      hasLength(2));
+    final pieces = const ParcelBoundarySplitter().splitAlongPath(source, cut);
+    expect(pieces, hasLength(2));
+    final drawnShape = Wgs84Polygon.fromVertices(trace);
+    final geometry = const Wgs84GeometryService();
+    final drawnArea = geometry.measure(drawnShape).areaM2;
+    expect(pieces.map((piece) => geometry.measure(piece).areaM2)
+      .any((area) => (area - drawnArea).abs() < 0.01), isTrue);
   });
 
   test('interior first and boundary last closes at the original start', () {
