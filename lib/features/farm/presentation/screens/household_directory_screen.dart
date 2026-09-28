@@ -10,10 +10,12 @@ class HouseholdDirectoryScreen extends StatefulWidget {
     super.key,
     required this.query,
     required this.subject,
+    this.onOpenHousehold,
   });
 
   final HouseholdDirectoryQuery query;
   final AuthorizationSubject subject;
+  final ValueChanged<String>? onOpenHousehold;
 
   @override
   State<HouseholdDirectoryScreen> createState() =>
@@ -100,6 +102,9 @@ class _HouseholdDirectoryScreenState extends State<HouseholdDirectoryScreen> {
                         trailing: household.active
                             ? null
                             : Text(l10n.text('common.inactive')),
+                        onTap: widget.onOpenHousehold == null
+                            ? null
+                            : () => widget.onOpenHousehold!(household.id),
                       );
                     },
                   )),
