@@ -361,8 +361,9 @@ class KmlInterchangeCodec {
     return vertices;
   }
 
-  static String _coordinate(Wgs84Vertex vertex) =>
-      '${vertex.longitude},${vertex.latitude},${vertex.altitudeM ?? 0.0}';
+  static String _coordinate(Wgs84Vertex vertex) => vertex.altitudeM == null
+      ? '${vertex.longitude},${vertex.latitude}'
+      : '${vertex.longitude},${vertex.latitude},${vertex.altitudeM}';
 
   static Iterable<XmlElement> _elements(XmlNode node, String localName) => node
       .descendants

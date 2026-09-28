@@ -57,6 +57,26 @@ void main() {
     expect(kml, isNot(contains('16.5,104.7')));
   });
 
+  test('KML does not invent altitude when boundary has none', () {
+    final flat = LandParcel.create(
+      id: 'flat', farmId: 'farm-1', parcelCode: 'FLAT-01', name: 'Flat',
+      boundary: Wgs84Polygon.fromVertices(const [
+        Wgs84Vertex(latitude: 16.5, longitude: 104.7),
+        Wgs84Vertex(latitude: 16.5, longitude: 104.701),
+        Wgs84Vertex(latitude: 16.501, longitude: 104.7),
+      ]),
+      boundarySource: BoundarySource.googleEarth,
+      verificationStatus: BoundaryVerificationStatus.draft,
+      actorMembershipId: 'member-1', occurredAt: timestamp,
+    );
+    final kml = codec.exportKml(flat);
+    expect(kml, contains('104.7,16.5'));
+    expect(kml, isNot(contains('104.7,16.5,0.0')));
+    expect(codec.importKml(kml).previews.single.boundary, flat.boundary);
+    expect(codec.importKmz(codec.exportKmz(flat)).previews.single.boundary,
+        flat.boundary);
+  });
+
   test('imports longitude latitude order and preserves altitude', () {
     final preview = codec
         .importKml(
