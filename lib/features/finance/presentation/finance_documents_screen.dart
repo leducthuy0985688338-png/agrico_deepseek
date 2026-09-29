@@ -64,7 +64,7 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
       ).workbook(widget.organizationId);
       await (widget.saveReport ?? saveExcelFile)(
         workbook,
-        'BaoCaoChungTuV2.xlsx',
+        'BaoCaoChungTuV2-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}.xlsx',
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
