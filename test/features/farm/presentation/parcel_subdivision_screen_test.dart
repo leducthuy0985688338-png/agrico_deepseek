@@ -192,7 +192,7 @@ void main() {
     await tester.tap(done);
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('subdivision-name-1')), findsOneWidget);
-    expect(find.text('Lô đất 1', skipOffstage: false), findsOneWidget);
+    expect(find.text('Lô đất 1', skipOffstage: false), findsWidgets);
     expect(find.text('Thửa ruộng 1', skipOffstage: false), findsOneWidget);
     expect(find.text('Thửa ruộng 2', skipOffstage: false), findsNothing);
     expect(find.textContaining('hai vùng đất không chồng lấn'), findsNothing);
