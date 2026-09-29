@@ -2,6 +2,7 @@ import 'package:agrico_deepseek/core/localization/app_localizations.dart';
 import 'package:agrico_deepseek/core/identity/domain/business_reference_code.dart';
 import 'package:agrico_deepseek/features/finance/domain/finance_document.dart';
 import 'package:agrico_deepseek/features/finance/presentation/finance_documents_screen.dart';
+import 'package:excel/excel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -10,6 +11,8 @@ void main() {
     tester,
   ) async {
     final repository = _MemoryFinanceStore();
+    Excel? exported;
+    String? exportedName;
 
     Widget app() => MaterialApp(
       locale: const Locale('vi'),
@@ -17,6 +20,10 @@ void main() {
       home: FinanceDocumentsScreen(
         repository: repository,
         organizationId: 'farm-a',
+        saveReport: (workbook, fileName) async {
+          exported = workbook;
+          exportedName = fileName;
+        },
       ),
     );
 
@@ -56,6 +63,12 @@ void main() {
       ),
       findsWidgets,
     );
+
+    await tester.tap(find.byKey(const Key('finance-export-v2')));
+    await tester.pumpAndSettle();
+    expect(exportedName, 'BaoCaoChungTuV2.xlsx');
+    expect(exported!['Finance V2'].rows, hasLength(2));
+    expect(exported!['Totals V2'].rows, hasLength(2));
 
     await tester.pumpWidget(const SizedBox());
     await tester.pumpWidget(app());

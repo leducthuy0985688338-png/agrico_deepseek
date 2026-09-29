@@ -2,10 +2,13 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:excel/excel.dart';
 
 import '../../../core/identity/domain/business_reference_code.dart';
 import '../../../core/localization/app_localizations.dart';
+import '../../../services/report_file_saver.dart';
 import '../application/finance_document_summary.dart';
+import '../application/finance_v2_report.dart';
 import '../domain/finance_document.dart';
 
 class FinanceDocumentsScreen extends StatefulWidget {
@@ -13,16 +16,19 @@ class FinanceDocumentsScreen extends StatefulWidget {
     super.key,
     required this.repository,
     required this.organizationId,
+    this.saveReport,
   });
 
   final FinanceDocumentStore repository;
   final String organizationId;
+  final Future<void> Function(Excel workbook, String fileName)? saveReport;
 
   @override
   State<FinanceDocumentsScreen> createState() => _FinanceDocumentsScreenState();
 }
 
 class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
+  bool exporting = false;
   late Future<(List<FinanceDocument>, List<FinanceCurrencyTotal>)> data =
       _load();
 
@@ -50,6 +56,40 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
     ).showSnackBar(SnackBar(content: Text(saved.code)));
   }
 
+  Future<void> _export() async {
+    setState(() => exporting = true);
+    try {
+      final workbook = await FinanceV2Report(
+        widget.repository,
+      ).workbook(widget.organizationId);
+      await (widget.saveReport ?? saveExcelFile)(
+        workbook,
+        'BaoCaoChungTuV2.xlsx',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(context).text('finance.exported'),
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(context).text('finance.exportFailed'),
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => exporting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -57,6 +97,12 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
       appBar: AppBar(
         title: Text(l10n.text('module.finance')),
         actions: [
+          IconButton(
+            key: const Key('finance-export-v2'),
+            tooltip: l10n.text('finance.exportV2'),
+            icon: const Icon(Icons.file_download),
+            onPressed: exporting ? null : _export,
+          ),
           IconButton(
             key: const Key('finance-add'),
             tooltip: l10n.text('finance.add'),
