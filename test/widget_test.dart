@@ -64,12 +64,7 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(1200, 1000));
-    await tester.pumpWidget(const MyApp());
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('ĐĂNG NHẬP'));
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpWidget(const MyApp(homeOverride: DashboardScreen()));
     await tester.pumpAndSettle();
 
     expect(find.byType(SettingsPage), findsNothing);

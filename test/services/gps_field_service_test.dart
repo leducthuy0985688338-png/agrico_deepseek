@@ -26,4 +26,17 @@ void main() {
       0,
     );
   });
+
+  test('completed GPS points become a closed canonical WGS84 polygon', () {
+    final polygon = service.buildCanonicalPolygon(const [
+      LatLng(16.0, 105.0),
+      LatLng(16.0, 105.001),
+      LatLng(16.001, 105.0),
+    ]);
+
+    expect(polygon.vertices, hasLength(4));
+    expect(polygon.vertices.first, polygon.vertices.last);
+    expect(polygon.vertices.first.latitude, 16.0);
+    expect(polygon.vertices.first.longitude, 105.0);
+  });
 }

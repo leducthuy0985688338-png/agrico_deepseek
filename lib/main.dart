@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
+
+import 'core/localization/app_locale_controller.dart';
+import 'core/localization/app_localizations.dart';
+import 'core/backup/local_restore_activation.dart';
 import 'theme/app_theme.dart';
 import 'services/cloud_service.dart';
+import 'app_v2/agrico_v2_composition.dart';
 
 // ====== IMPORT CÁC MÀN HÌNH ======
 import 'screens/warehouse_screen.dart';
@@ -34,18 +40,22 @@ import 'providers/production_cost_provider.dart';
 // ====== ĐIỂM KHỞI ĐẦU ======
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await applyPendingRestore();
   await CloudService.initialize();
   runApp(const MyApp());
 }
 
 // ====== APP CHÍNH ======
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, this.homeOverride});
+
+  final Widget? homeOverride;
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => AppLocaleController()),
         ChangeNotifierProvider(create: (_) => CloudSyncProvider()),
         ChangeNotifierProvider.value(value: FieldProvider()),
         ChangeNotifierProvider(create: (_) => WarehouseProvider()),
@@ -59,38 +69,51 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => HarvestProvider()),
         ChangeNotifierProvider(create: (_) => ProductionCostProvider()),
         ProxyProvider6<
-            FieldProvider,
-            WarehouseProvider,
-            MachineProvider,
-            EmployeeProvider,
-            FinanceProvider,
-            FuelProvider,
-            DashboardProvider>(
-          update: (
-            _,
-            fieldProvider,
-            warehouseProvider,
-            machineProvider,
-            employeeProvider,
-            financeProvider,
-            fuelProvider,
-            __,
-          ) =>
-              DashboardProvider(
-            fieldProvider: fieldProvider,
-            warehouseProvider: warehouseProvider,
-            machineProvider: machineProvider,
-            employeeProvider: employeeProvider,
-            financeProvider: financeProvider,
-            fuelProvider: fuelProvider,
-          ),
+          FieldProvider,
+          WarehouseProvider,
+          MachineProvider,
+          EmployeeProvider,
+          FinanceProvider,
+          FuelProvider,
+          DashboardProvider
+        >(
+          update:
+              (
+                _,
+                fieldProvider,
+                warehouseProvider,
+                machineProvider,
+                employeeProvider,
+                financeProvider,
+                fuelProvider,
+                __,
+              ) => DashboardProvider(
+                fieldProvider: fieldProvider,
+                warehouseProvider: warehouseProvider,
+                machineProvider: machineProvider,
+                employeeProvider: employeeProvider,
+                financeProvider: financeProvider,
+                fuelProvider: fuelProvider,
+              ),
         ),
       ],
-      child: MaterialApp(
-        title: 'Agrico ERP',
-        theme: AppTheme.lightTheme,
-        home: const LoginScreen(),
-        debugShowCheckedModeBanner: false,
+      child: Builder(
+        builder: (context) => MaterialApp(
+          onGenerateTitle: (context) => context.l10n.text('app.name'),
+          // Preserve the legacy Vietnamese default. A persisted user preference
+          // will replace this initial value when settings persistence is migrated.
+          locale: context.watch<AppLocaleController>().locale,
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          theme: AppTheme.lightTheme,
+          home: homeOverride ?? const LoginScreen(),
+          debugShowCheckedModeBanner: false,
+        ),
       ),
     );
   }
@@ -159,24 +182,24 @@ class _LoginScreenState extends State<LoginScreen> {
                   },
                 ),
                 const SizedBox(height: 24),
-                const Text(
-                  'AGRICO ERP',
-                  style: TextStyle(
+                Text(
+                  context.l10n.text('app.name'),
+                  style: const TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.bold,
                     color: AppTheme.primaryColor,
                   ),
                 ),
-                const Text(
-                  'Quản lý nông nghiệp thông minh',
-                  style: TextStyle(fontSize: 14, color: Colors.grey),
+                Text(
+                  context.l10n.text('app.tagline'),
+                  style: const TextStyle(fontSize: 14, color: Colors.grey),
                 ),
                 const SizedBox(height: 40),
                 TextField(
                   controller: emailController,
-                  decoration: const InputDecoration(
-                    labelText: 'Email / Tên đăng nhập',
-                    prefixIcon: Icon(
+                  decoration: InputDecoration(
+                    labelText: context.l10n.text('auth.username'),
+                    prefixIcon: const Icon(
                       Icons.person,
                       color: AppTheme.primaryColor,
                     ),
@@ -188,7 +211,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   controller: passwordController,
                   obscureText: _obscure,
                   decoration: InputDecoration(
-                    labelText: 'Mật khẩu',
+                    labelText: context.l10n.text('auth.password'),
                     prefixIcon: const Icon(
                       Icons.lock,
                       color: AppTheme.primaryColor,
@@ -208,9 +231,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   alignment: Alignment.centerRight,
                   child: TextButton(
                     onPressed: () {},
-                    child: const Text(
-                      'Quên mật khẩu?',
-                      style: TextStyle(color: AppTheme.primaryColor),
+                    child: Text(
+                      context.l10n.text('auth.forgotPassword'),
+                      style: const TextStyle(color: AppTheme.primaryColor),
                     ),
                   ),
                 ),
@@ -226,7 +249,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         Navigator.pushReplacement(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const DashboardScreen(),
+                            builder: (context) => AgricoV2Root(
+                              userId: emailController.text.trim(),
+                            ),
                           ),
                         );
                       });
@@ -248,9 +273,9 @@ class _LoginScreenState extends State<LoginScreen> {
                               color: Colors.white,
                             ),
                           )
-                        : const Text(
-                            'ĐĂNG NHẬP',
-                            style: TextStyle(
+                        : Text(
+                            context.l10n.text('auth.signIn'),
+                            style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                             ),
@@ -267,9 +292,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     color: Colors.grey.shade100,
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Text(
-                    '💡 (Nhấn nút để vào Demo, không cần mật khẩu)',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  child: Text(
+                    context.l10n.text('auth.demoHint'),
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                 ),
               ],
