@@ -27,6 +27,8 @@ import '../features/farm/data/local/sqlite_land_parcel_repository.dart';
 import '../features/farm/data/local/sqlite_land_survey_repository.dart';
 import '../features/farm/data/local/sqlite_parcel_work_repository.dart';
 import '../features/farm/application/parcel_work_service.dart';
+import '../features/farm/domain/entities/parcel_work.dart';
+import '../features/farm/presentation/screens/work_resource_catalog_screen.dart';
 import '../features/farm/presentation/screens/parcel_work_screen.dart';
 import '../features/farm/data/local/sqlite_parcel_land_history_repository.dart';
 import '../features/farm/application/parcel_land_history_service.dart';
@@ -48,10 +50,10 @@ import '../models/field_model.dart';
 import '../providers/production_season_provider.dart';
 import '../providers/task_provider.dart';
 import '../screens/ai_chat_screen.dart';
-import '../screens/employee_list_screen.dart';
+
 import '../screens/field_gps_measure_screen.dart';
 import '../screens/fuel_screen.dart';
-import '../screens/machine_list_screen.dart';
+
 import '../screens/settings_screen.dart';
 import '../screens/task_screen.dart';
 import '../screens/warehouse_screen.dart';
@@ -234,8 +236,24 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         ),
       );
       final legacy = <String, VoidCallback>{
-        'machines': () => push(const MachineListScreen()),
-        'employees': () => push(const EmployeeListScreen()),
+        'machines': () => push(
+          WorkResourceCatalogScreen(
+            kind: WorkResourceKind.machine,
+            subject: deps.subject,
+            service: ParcelWorkService(
+              SqliteParcelWorkRepository(deps.database),
+            ),
+          ),
+        ),
+        'employees': () => push(
+          WorkResourceCatalogScreen(
+            kind: WorkResourceKind.worker,
+            subject: deps.subject,
+            service: ParcelWorkService(
+              SqliteParcelWorkRepository(deps.database),
+            ),
+          ),
+        ),
         'finance': () => push(
           FinanceDocumentsScreen(
             repository: deps.finance,
