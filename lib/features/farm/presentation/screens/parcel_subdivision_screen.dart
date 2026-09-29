@@ -46,6 +46,8 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   GoogleMapController? mapController;
   List<Offset> draftScreenPoints = const [];
   int projectionRevision = 0;
+  Offset? lastMapPointer;
+  bool cameraMoved = false;
 
   Future<void> _refreshDraftScreenPoints() async {
     final controller = mapController;
@@ -130,14 +132,15 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   }
 
   Future<void> _chooseVertex(LandParcel parcel, Wgs84Vertex vertex,
-      {bool closeToStart = false}) async {
+      {bool closeToStart = false, Offset? tapPosition}) async {
     if (start == null) {
       setState(() {
         start = vertex;
         waypoints.clear();
+        if (tapPosition != null) draftScreenPoints = [tapPosition];
         previewError = null;
       });
-      await _refreshDraftScreenPoints();
+      if (tapPosition == null) await _refreshDraftScreenPoints();
       return;
     }
     if (closeToStart) {
@@ -146,9 +149,12 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
     }
     setState(() {
       waypoints.add(vertex);
+      if (tapPosition != null) {
+        draftScreenPoints = [...draftScreenPoints, tapPosition];
+      }
       previewError = null;
     });
-    await _refreshDraftScreenPoints();
+    if (tapPosition == null) await _refreshDraftScreenPoints();
   }
 
   Future<void> _finish(LandParcel parcel) async {
@@ -241,7 +247,9 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
         fillColor: Colors.deepOrange.withValues(alpha: 0.25)));
     }
     return LayoutBuilder(builder: (context, constraints) => Stack(children: [
-      Positioned.fill(child: GoogleMap(
+      Positioned.fill(child: Listener(
+      onPointerDown: (event) => lastMapPointer = event.localPosition,
+      child: GoogleMap(
       key: const Key('subdivision-satellite-map'),
       mapType: MapType.satellite,
       gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
@@ -249,7 +257,13 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
       },
       initialCameraPosition: CameraPosition(
         target: point(parcel.centroid), zoom: 16),
-      onCameraIdle: _refreshDraftScreenPoints,
+      onCameraMoveStarted: () => cameraMoved = true,
+      onCameraIdle: () {
+        if (cameraMoved) {
+          cameraMoved = false;
+          _refreshDraftScreenPoints();
+        }
+      },
       onMapCreated: (controller) {
         mapController = controller;
         _refreshDraftScreenPoints();
@@ -262,6 +276,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
       onTap: (location) => _chooseVertex(parcel,
         Wgs84Vertex(latitude: location.latitude,
           longitude: location.longitude),
+        tapPosition: lastMapPointer,
         closeToStart: start != null && waypoints.length >= 2 &&
           (location.latitude - start!.latitude).abs() < 0.000015 &&
           (location.longitude - start!.longitude).abs() < 0.000015),
@@ -286,7 +301,9 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
       },
       myLocationButtonEnabled: false,
       zoomControlsEnabled: true,
-      )),
+      ))),
+      Positioned.fill(child: IgnorePointer(child: CustomPaint(
+        painter: _DraftScreenLinePainter(draftScreenPoints)))),
       for (var i = 0; i < draftScreenPoints.length; i++)
         if (draftScreenPoints[i].dx >= 0 &&
             draftScreenPoints[i].dy >= 0 &&
@@ -423,6 +440,33 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
         }),
     );
   }
+}
+
+class _DraftScreenLinePainter extends CustomPainter {
+  const _DraftScreenLinePainter(this.points);
+
+  final List<Offset> points;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (points.length < 2) return;
+    final path = Path()..moveTo(points.first.dx, points.first.dy);
+    for (final point in points.skip(1)) {
+      path.lineTo(point.dx, point.dy);
+    }
+    canvas.drawPath(path, Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 7);
+    canvas.drawPath(path, Paint()
+      ..color = Colors.deepOrange
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4);
+  }
+
+  @override
+  bool shouldRepaint(_DraftScreenLinePainter oldDelegate) =>
+    oldDelegate.points != points;
 }
 
 class _Projection {
