@@ -35,4 +35,12 @@ class FarmTaskService {
     _authorize(subject, PermissionCodes.taskView);
     return repository.listByFarm(subject.farmId);
   }
+
+  Future<void> complete(AuthorizationSubject subject, String taskId) {
+    _authorize(subject, PermissionCodes.taskComplete);
+    if (taskId.trim().isEmpty) {
+      throw const FormatException('Task identity is required.');
+    }
+    return repository.complete(farmId: subject.farmId, id: taskId);
+  }
 }

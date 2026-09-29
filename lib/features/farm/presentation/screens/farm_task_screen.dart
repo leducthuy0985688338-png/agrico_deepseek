@@ -33,12 +33,50 @@ class FarmTaskScreen extends StatelessWidget {
     );
   }
 
+  Future<void> _complete(BuildContext context, String taskId) async {
+    final l10n = AppLocalizations.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        content: Text(l10n.text('task.completeConfirm')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(l10n.text('common.cancel')),
+          ),
+          FilledButton(
+            key: const Key('farm-task-confirm-complete'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(l10n.text('task.completeAction')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) {
+      return;
+    }
+    try {
+      await controller.complete(taskId);
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.text('task.completeFailed'))),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final canCreate =
         controller.subject.permissionCodes.contains(
           PermissionCodes.taskCreate,
+        ) &&
+        controller.subject.dataScopes.contains(DataScope.allFarm);
+    final canComplete =
+        controller.subject.permissionCodes.contains(
+          PermissionCodes.taskComplete,
         ) &&
         controller.subject.dataScopes.contains(DataScope.allFarm);
     return AnimatedBuilder(
@@ -79,7 +117,20 @@ class FarmTaskScreen extends StatelessWidget {
                       '${task.dueAt.month.toString().padLeft(2, '0')}-'
                       '${task.dueAt.day.toString().padLeft(2, '0')}',
                     ),
-                    trailing: Text(l10n.text('task.${task.status.name}')),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(l10n.text('task.${task.status.name}')),
+                        if (canComplete &&
+                            task.status != FarmTaskStatus.completed)
+                          IconButton(
+                            key: Key('farm-task-complete-${task.id}'),
+                            tooltip: l10n.text('task.completeAction'),
+                            icon: const Icon(Icons.check_circle_outline),
+                            onPressed: () => _complete(context, task.id),
+                          ),
+                      ],
+                    ),
                   );
                 },
               ),

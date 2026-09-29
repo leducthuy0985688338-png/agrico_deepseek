@@ -112,4 +112,17 @@ class SqliteFarmTaskRepository implements FarmTaskRepository {
       ),
     );
   }
+
+  @override
+  Future<void> complete({required String farmId, required String id}) async {
+    final changed = await database.update(
+      table,
+      {'status': FarmTaskStatus.completed.name},
+      where: "farm_id = ? AND id = ? AND status != ?",
+      whereArgs: [farmId, id, FarmTaskStatus.completed.name],
+    );
+    if (changed != 1) {
+      throw StateError('Task is missing or already completed in this farm.');
+    }
+  }
 }

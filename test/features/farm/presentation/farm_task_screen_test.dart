@@ -43,6 +43,7 @@ void main() {
       permissionCodes: {
         PermissionCodes.taskView,
         PermissionCodes.taskCreate,
+        PermissionCodes.taskComplete,
         PermissionCodes.fieldView,
       },
       dataScopes: {DataScope.allFarm},
@@ -87,6 +88,14 @@ void main() {
     expect(tasks.saved.single.machineResourceId, 'machine-1');
     expect(tasks.saved.single.parcelId, 'parcel-1');
     expect(find.text('Khai hoang A'), findsOneWidget);
+    final completeKey = Key('farm-task-complete-${tasks.saved.single.id}');
+    await tester.tap(find.byKey(completeKey));
+    await tester.pumpAndSettle();
+    expect(tasks.saved.single.status, FarmTaskStatus.pending);
+    await tester.tap(find.byKey(const Key('farm-task-confirm-complete')));
+    await tester.pumpAndSettle();
+    expect(tasks.saved.single.status, FarmTaskStatus.completed);
+    expect(find.byKey(completeKey), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
     await tester.binding.setSurfaceSize(null);
@@ -95,6 +104,29 @@ void main() {
 
 class _Tasks implements FarmTaskRepository {
   final saved = <FarmTask>[];
+
+  @override
+  Future<void> complete({required String farmId, required String id}) async {
+    final index = saved.indexWhere(
+      (task) => task.farmId == farmId && task.id == id,
+    );
+    if (index == -1) {
+      throw StateError('Missing task');
+    }
+    final task = saved[index];
+    saved[index] = FarmTask(
+      id: task.id,
+      farmId: task.farmId,
+      title: task.title,
+      description: task.description,
+      status: FarmTaskStatus.completed,
+      dueAt: task.dueAt,
+      createdAt: task.createdAt,
+      parcelId: task.parcelId,
+      workerResourceId: task.workerResourceId,
+      machineResourceId: task.machineResourceId,
+    );
+  }
 
   @override
   Future<void> create(FarmTask task) async {

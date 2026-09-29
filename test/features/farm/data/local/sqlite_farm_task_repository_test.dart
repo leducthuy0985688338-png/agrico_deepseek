@@ -115,4 +115,42 @@ void main() {
     expect(await service.list(viewer), isEmpty);
     expect(await repository.listByFarm('farm-1'), isEmpty);
   });
+
+  test('completion persists once and is scoped to the current farm', () async {
+    final service = FarmTaskService(repository);
+    const completer = AuthorizationSubject(
+      userId: 'user',
+      membershipId: 'member',
+      farmId: 'farm-1',
+      permissionCodes: {PermissionCodes.taskComplete},
+      dataScopes: {DataScope.allFarm},
+    );
+    const otherFarm = AuthorizationSubject(
+      userId: 'other',
+      membershipId: 'member',
+      farmId: 'farm-2',
+      permissionCodes: {PermissionCodes.taskComplete},
+      dataScopes: {DataScope.allFarm},
+    );
+    await repository.create(task());
+    expect(() => service.complete(editor, 'task-1'), throwsStateError);
+    await expectLater(service.complete(otherFarm, 'task-1'), throwsStateError);
+    expect(
+      (await repository.listByFarm('farm-1')).single.status,
+      FarmTaskStatus.pending,
+    );
+    await service.complete(completer, 'task-1');
+    expect(
+      (await SqliteFarmTaskRepository(
+        database,
+      ).listByFarm('farm-1')).single.status,
+      FarmTaskStatus.completed,
+    );
+    await expectLater(service.complete(completer, 'task-1'), throwsStateError);
+    await expectLater(service.complete(completer, 'missing'), throwsStateError);
+    expect(
+      (await repository.listByFarm('farm-1')).single.status,
+      FarmTaskStatus.completed,
+    );
+  });
 }
