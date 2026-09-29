@@ -12,6 +12,75 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('undo and redraw keep the remaining numbered draft points',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final parcel = LandParcel.create(
+      id: 'source', farmId: 'farm', parcelCode: 'SOURCE', name: 'Nguồn',
+      boundary: Wgs84Polygon.fromVertices(const [
+        Wgs84Vertex(latitude: 16, longitude: 106),
+        Wgs84Vertex(latitude: 16, longitude: 106.002),
+        Wgs84Vertex(latitude: 16.002, longitude: 106.002),
+        Wgs84Vertex(latitude: 16.002, longitude: 106),
+      ]),
+      boundarySource: BoundarySource.googleEarth,
+      verificationStatus: BoundaryVerificationStatus.measured,
+      actorMembershipId: 'member', occurredAt: DateTime.utc(2026, 9, 28),
+    );
+    const subject = AuthorizationSubject(
+      userId: 'user', membershipId: 'member', farmId: 'farm',
+      permissionCodes: {PermissionCodes.fieldView},
+      dataScopes: {DataScope.allFarm},
+    );
+    await tester.pumpWidget(MaterialApp(
+      locale: const Locale('vi'),
+      localizationsDelegates: const [AppLocalizations.delegate],
+      home: ParcelSubdivisionScreen(
+        useSchematicMap: true, subject: subject, sourceParcelId: 'source',
+        service: ParcelSubdivisionService(
+          parcels: _ParcelRepository(parcel), workflow: _UnusedWorkflow()),
+        administrativeCatalog: _EmptyCatalog(),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final map = find.byKey(const Key('subdivision-map'));
+    await tester.ensureVisible(map);
+    await tester.pumpAndSettle();
+    final origin = tester.getTopLeft(map);
+    final size = tester.getSize(map);
+    for (final position in [
+      const Offset(140, 140), const Offset(220, 140),
+      const Offset(220, 220),
+    ]) {
+      await tester.tapAt(origin + position);
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('Số điểm đã chọn: 3'), findsOneWidget);
+    final undo = find.byKey(const Key('subdivision-undo-point'));
+    await tester.ensureVisible(undo);
+    await tester.tap(undo);
+    await tester.pumpAndSettle();
+    expect(find.text('Số điểm đã chọn: 2'), findsOneWidget);
+    await tester.ensureVisible(map);
+    await tester.tapAt(tester.getTopLeft(map) + const Offset(160, 230));
+    await tester.pumpAndSettle();
+    expect(find.text('Số điểm đã chọn: 3'), findsOneWidget);
+    final reset = find.byKey(const Key('subdivision-reset-cut'));
+    await tester.ensureVisible(reset);
+    await tester.tap(reset);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Số điểm đã chọn:'), findsNothing);
+    await tester.ensureVisible(map);
+    await tester.tapAt(tester.getTopLeft(map) + const Offset(140, 140));
+    await tester.pumpAndSettle();
+    expect(find.text('Số điểm đã chọn: 1'), findsOneWidget);
+  });
+
   testWidgets('independent sketches allow touching and overlapping edges',
       (tester) async {
     tester.view.physicalSize = const Size(800, 1600);

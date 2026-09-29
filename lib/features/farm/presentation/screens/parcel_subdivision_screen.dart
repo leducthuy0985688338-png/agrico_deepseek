@@ -48,6 +48,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   int projectionRevision = 0;
   Offset? lastMapPointer;
   bool cameraMoved = false;
+  bool previewing = false;
 
   Future<void> _refreshDraftScreenPoints() async {
     final controller = mapController;
@@ -107,6 +108,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
     projectionRevision++;
     draftScreenPoints = const [];
     previewError = null;
+    previewing = false;
   });
 
   void _resetAll() {
@@ -119,6 +121,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
       cuts.clear();
       preview = null;
       previewError = null;
+      previewing = false;
       retiredNames.addAll(names);
       names.clear();
     });
@@ -137,6 +140,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
       setState(() {
         start = vertex;
         waypoints.clear();
+        projectionRevision++;
         if (tapPosition != null) draftScreenPoints = [tapPosition];
         previewError = null;
       });
@@ -149,6 +153,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
     }
     setState(() {
       waypoints.add(vertex);
+      projectionRevision++;
       if (tapPosition != null) {
         draftScreenPoints = [...draftScreenPoints, tapPosition];
       }
@@ -158,8 +163,12 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   }
 
   Future<void> _finish(LandParcel parcel) async {
-    if (start == null) return;
+    if (start == null || previewing) return;
     final revision = ++cutRevision;
+    setState(() {
+      previewing = true;
+      previewError = null;
+    });
     try {
       final traced = [start!, ...waypoints];
       final operation = ParcelSubdivisionCut.enclosed(fragmentIndex: 0,
@@ -178,7 +187,11 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
           projectionRevision++;
           draftScreenPoints = const [];
           previewError = null;
+          previewing = false;
         });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+          '${AppLocalizations.of(context).text('subdivision.preview')}: '
+          '${result.boundaries.length}')));
       }
     } catch (error) {
       if (mounted && revision == cutRevision) {
@@ -187,7 +200,10 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
               .text('subdivision.invalidCut');
           previewError = error is FormatException || error is StateError
               ? '$summary\n$error' : summary;
+          previewing = false;
         });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+          previewError!)));
       }
     }
   }
@@ -356,6 +372,50 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                 selected: showFieldPlots,
                 onSelected: (value) => setState(() => showFieldPlots = value)),
             ]),
+            SizedBox(height: 128, child: start == null
+              ? Align(alignment: Alignment.centerLeft,
+                  child: Text(l10n.text('subdivision.tapToStart')))
+              : Column(crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+              Text('${l10n.text('subdivision.pointCount')}: '
+                '${waypoints.length + 1}'),
+              Wrap(spacing: 4, runSpacing: 4, children: [
+                if (waypoints.isNotEmpty) TextButton.icon(
+                  key: const Key('subdivision-undo-point'),
+                  onPressed: () => setState(() {
+                    cutRevision++;
+                    previewing = false;
+                    projectionRevision++;
+                    waypoints.removeLast();
+                    draftScreenPoints = draftScreenPoints.isEmpty
+                        ? const [] : draftScreenPoints.sublist(
+                            0, draftScreenPoints.length - 1);
+                    previewError = null;
+                  }),
+                  icon: const Icon(Icons.undo),
+                  label: Text(l10n.text('subdivision.undoPoint')),
+                ),
+                TextButton.icon(
+                  key: const Key('subdivision-reset-cut'),
+                  onPressed: _resetDraft,
+                  icon: const Icon(Icons.restart_alt),
+                  label: Text(l10n.text('subdivision.reset')),
+                ),
+                if (waypoints.length >= 2)
+                  FilledButton.icon(
+                    key: const Key('subdivision-close-outline'),
+                    onPressed: previewing ? null : () => _finish(parcel),
+                    icon: const Icon(Icons.check_circle_outline),
+                    label: Text(l10n.text('subdivision.closeOutline')),
+                  ),
+              ]),
+              if (previewing) const LinearProgressIndicator(),
+            ])),
+            if (previewError != null) Text(previewError!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            if (preview != null)
+              Text('${l10n.text('subdivision.preview')}: '
+                '${fragments.length}'),
             if (!widget.useSchematicMap)
               SizedBox(height: 480, child: _satelliteMap(parcel, fragments))
             else SizedBox(height: 420, child: LayoutBuilder(builder: (context, box) {
@@ -368,9 +428,6 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                     [?start, ...waypoints], fragments, -1)),
               );
             })),
-            if (start != null)
-              Text('${l10n.text('subdivision.pointCount')}: '
-                '${waypoints.length + 1}'),
             if (widget.useSchematicMap && preview != null) ...[
               Text(l10n.text('subdivision.overview')),
               SizedBox(height: 180, child: LayoutBuilder(builder: (context, box) {
@@ -383,37 +440,12 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                 );
               })),
             ],
-            if (start != null) Text(l10n.text('subdivision.autoFinish')),
-            if (start != null && waypoints.length >= 2)
-              TextButton.icon(
-                key: const Key('subdivision-close-outline'),
-              onPressed: () => _finish(parcel),
-                icon: const Icon(Icons.check_circle_outline),
-                label: Text(l10n.text('subdivision.closeOutline')),
-              ),
-            if (waypoints.isNotEmpty) TextButton.icon(
-              key: const Key('subdivision-undo-point'),
-              onPressed: () {
-                setState(() => waypoints.removeLast());
-                _refreshDraftScreenPoints();
-              },
-              icon: const Icon(Icons.undo),
-              label: Text(l10n.text('subdivision.undoPoint')),
-            ),
-            if (start != null) TextButton.icon(
-              key: const Key('subdivision-reset-cut'),
-              onPressed: _resetDraft,
-              icon: const Icon(Icons.restart_alt),
-              label: Text(l10n.text('subdivision.reset')),
-            ),
             if (cuts.isNotEmpty) TextButton.icon(
               key: const Key('subdivision-reset-all'),
               onPressed: _resetAll,
               icon: const Icon(Icons.delete_outline),
               label: Text(l10n.text('subdivision.resetAll')),
             ),
-            if (previewError != null) Text(previewError!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error)),
             if (preview != null) ...[
               Text('${l10n.text('subdivision.preview')}: ${fragments.length}'),
               for (var i = 0; i < fragments.length; i++)
