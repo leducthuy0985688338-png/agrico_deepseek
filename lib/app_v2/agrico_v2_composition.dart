@@ -29,6 +29,9 @@ import '../features/farm/data/local/sqlite_parcel_work_repository.dart';
 import '../features/farm/application/parcel_work_service.dart';
 import '../features/farm/application/farm_task_service.dart';
 import '../features/farm/data/local/sqlite_farm_task_repository.dart';
+import '../features/inventory/application/inventory_service.dart';
+import '../features/inventory/data/local/sqlite_inventory_repository.dart';
+import '../features/inventory/presentation/inventory_catalog_screen.dart';
 import '../features/farm/presentation/controllers/farm_task_controller.dart';
 import '../features/farm/presentation/screens/farm_task_screen.dart';
 import '../features/farm/domain/entities/parcel_work.dart';
@@ -58,7 +61,6 @@ import '../screens/ai_chat_screen.dart';
 import '../screens/field_gps_measure_screen.dart';
 import '../screens/fuel_screen.dart';
 
-import '../screens/warehouse_screen.dart';
 import '../services/field_database.dart';
 import 'agrico_app_shell.dart';
 import 'v2_settings_screen.dart';
@@ -81,6 +83,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     await SqliteParcelNumberSequence.createSchema(database);
     await SqliteParcelWorkRepository.createSchema(database);
     await SqliteFarmTaskRepository.createSchema(database);
+    await SqliteInventoryRepository.createSchema(database);
     await SqliteParcelLandHistoryRepository.createSchema(database);
     await SqliteParcelNumberSequence.reconcileExistingHouseholds(database);
     await SqliteFinanceDocumentRepository.createSchema(database);
@@ -270,7 +273,12 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
             organizationId: deps.subject.farmId,
           ),
         ),
-        'warehouse': () => push(const WarehouseScreen()),
+        'warehouse': () => push(
+          InventoryCatalogScreen(
+            subject: deps.subject,
+            service: InventoryService(SqliteInventoryRepository(deps.database)),
+          ),
+        ),
         'fuel': () => push(const FuelScreen()),
         'tasks': () => push(
           FarmTaskScreen(
