@@ -167,6 +167,12 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
             style: Theme.of(context).textTheme.titleLarge,
           ),
           Text(l10n.text('parcel.layer.${parcel.layer.name}')),
+          if (parcel.layer == ParcelLayer.fieldPlot &&
+              data.parentLandBlock != null)
+            Text('${l10n.text('subdivision.parentBlock')}: '
+              '${data.parentLandBlock!.parcelCode} · '
+              '${data.parentLandBlock!.name}',
+              key: const Key('parcel-parent-land-block')),
           if (parcel.layer == ParcelLayer.landBlock &&
               widget.onDrawFieldPlots != null &&
               controller.can(PermissionCodes.fieldCreate, parcelId: parcel.id) &&

@@ -27,6 +27,7 @@ enum ParcelPresentationPhase {
 class LandParcelViewData {
   const LandParcelViewData({
     required this.parcel,
+    this.parentLandBlock,
     this.household,
     this.landUse,
     this.crops = const [],
@@ -36,6 +37,7 @@ class LandParcelViewData {
     this.boundaryIssue,
   });
   final LandParcel parcel;
+  final LandParcel? parentLandBlock;
   final Household? household;
   final LandUseProfile? landUse;
   final List<CropRecord> crops;
@@ -185,6 +187,10 @@ class LandParcelController extends ChangeNotifier {
       final diagnosis = await boundaryConsistencyQueries?.diagnose(parcel);
       detail = LandParcelViewData(
         parcel: parcel,
+        parentLandBlock: parcel.parentLandBlockId == null
+            ? null
+            : await parcels.getById(
+                farmId: subject.farmId, id: parcel.parentLandBlockId!),
         boundaryConsistency: diagnosis?.consistency ??
             LandParcelBoundaryConsistency.unlinked,
         boundaryIssue: diagnosis?.issue,

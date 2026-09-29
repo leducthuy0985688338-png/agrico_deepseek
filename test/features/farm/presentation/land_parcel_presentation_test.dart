@@ -229,6 +229,34 @@ void main() {
     expect(find.text('ຮູບ.jpg'), findsOneWidget);
   });
 
+  testWidgets('reopened field plot detail displays its saved parent block',
+      (tester) async {
+    final child = LandParcel.create(
+      id: 'plot-1', farmId: 'farm-1', parcelCode: 'T-001',
+      name: 'Thửa lạc',
+      boundary: Wgs84Polygon.fromVertices(const [
+        Wgs84Vertex(latitude: 16.5, longitude: 104.7),
+        Wgs84Vertex(latitude: 16.5, longitude: 104.701),
+        Wgs84Vertex(latitude: 16.501, longitude: 104.7),
+      ]),
+      boundarySource: BoundarySource.googleEarth,
+      verificationStatus: BoundaryVerificationStatus.measured,
+      actorMembershipId: 'member-1', occurredAt: time,
+      legacyMetadata: const {
+        'parcelLayer': 'fieldPlot',
+        'parentLandBlockId': 'parcel-1',
+      },
+    );
+    await tester.pumpWidget(app(LandParcelDetailScreen(
+      controller: controller(source: [parcel(), child]),
+      parcelId: child.id,
+    ), locale: 'vi'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('T-001 · Thửa lạc'), findsOneWidget);
+    expect(find.textContaining('P-001 · Lô cà phê ກາເຟ'), findsWidgets);
+    expect(find.byKey(const Key('parcel-parent-land-block')), findsOneWidget);
+  });
+
   testWidgets('parcel retains its owner name snapshot after household rename',
       (tester) async {
     final savedParcel = parcel().updateMetadata(
