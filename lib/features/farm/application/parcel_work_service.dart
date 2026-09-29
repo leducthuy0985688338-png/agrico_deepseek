@@ -7,12 +7,17 @@ class ParcelWorkService {
 
   final ParcelWorkRepository repository;
 
-  void _authorize(AuthorizationSubject subject, String permission,
-      {String? parcelId}) {
+  void _authorize(
+    AuthorizationSubject subject,
+    String permission, {
+    String? parcelId,
+  }) {
     if (!const AuthorizationService().can(
-          subject: subject, permission: permission,
+          subject: subject,
+          permission: permission,
           resource: ResourceContext(farmId: subject.farmId, fieldId: parcelId),
-        ) || !subject.dataScopes.contains(DataScope.allFarm)) {
+        ) ||
+        !subject.dataScopes.contains(DataScope.allFarm)) {
       throw StateError('Parcel work requires farm-wide access.');
     }
   }
@@ -30,6 +35,17 @@ class ParcelWorkService {
     return repository.resources(subject.farmId);
   }
 
+  Future<void> registerBatch(
+    AuthorizationSubject subject,
+    List<WorkResource> resources,
+  ) {
+    _authorize(subject, PermissionCodes.fieldEdit);
+    if (resources.any((resource) => resource.farmId != subject.farmId)) {
+      throw StateError('Resource is outside the current farm.');
+    }
+    return repository.registerBatch(resources);
+  }
+
   Future<void> record(AuthorizationSubject subject, ParcelWorkEvent event) {
     _authorize(subject, PermissionCodes.fieldEdit, parcelId: event.parcelId);
     if (event.farmId != subject.farmId ||
@@ -40,7 +56,9 @@ class ParcelWorkService {
   }
 
   Future<List<ParcelWorkEvent>> events(
-      AuthorizationSubject subject, String parcelId) {
+    AuthorizationSubject subject,
+    String parcelId,
+  ) {
     _authorize(subject, PermissionCodes.fieldView, parcelId: parcelId);
     return repository.events(subject.farmId, parcelId);
   }

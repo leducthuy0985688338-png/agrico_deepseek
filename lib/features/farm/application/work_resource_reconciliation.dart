@@ -20,21 +20,25 @@ class WorkResourceReconciliation {
     final candidates = <WorkResource>[
       for (final machine in verifiedMachines)
         WorkResource(
-          id: 'legacy-machine:${machine.id}', farmId: subject.farmId,
-          kind: WorkResourceKind.machine, code: machine.id,
+          id: 'legacy-machine:${machine.id}',
+          farmId: subject.farmId,
+          kind: WorkResourceKind.machine,
+          code: machine.id,
           name: machine.name,
         ),
       for (final employee in verifiedEmployees)
         WorkResource(
-          id: 'legacy-worker:${employee.id}', farmId: subject.farmId,
-          kind: WorkResourceKind.worker, code: employee.id,
-          name: employee.name, active: employee.isActive,
+          id: 'legacy-worker:${employee.id}',
+          farmId: subject.farmId,
+          kind: WorkResourceKind.worker,
+          code: employee.id,
+          name: employee.name,
+          active: employee.isActive,
         ),
     ];
     final byId = {for (final resource in existing) resource.id: resource};
     final byCode = {
-      for (final resource in existing)
-        (resource.kind, resource.code): resource,
+      for (final resource in existing) (resource.kind, resource.code): resource,
     };
     final ready = <WorkResource>[];
     final matched = <WorkResource>[];
@@ -52,7 +56,8 @@ class WorkResourceReconciliation {
       final existingMatch = idMatch ?? codeMatch;
       if (counts[key]! > 1 ||
           (idMatch != null &&
-              (idMatch.kind != candidate.kind || idMatch.code != candidate.code)) ||
+              (idMatch.kind != candidate.kind ||
+                  idMatch.code != candidate.code)) ||
           (codeMatch != null && codeMatch.id != candidate.id) ||
           (existingMatch != null &&
               (existingMatch.name != candidate.name ||
@@ -65,15 +70,36 @@ class WorkResourceReconciliation {
       }
     }
     return WorkResourceComparison(
-      ready: List.unmodifiable(ready), matched: List.unmodifiable(matched),
+      ready: List.unmodifiable(ready),
+      matched: List.unmodifiable(matched),
       conflicts: List.unmodifiable(conflicts),
     );
+  }
+
+  /// Only an explicitly selected subset of a reviewed comparison is written.
+  /// The repository rechecks uniqueness inside one SQLite transaction.
+  Future<void> importSelected(
+    AuthorizationSubject subject,
+    WorkResourceComparison comparison,
+    Set<String> selectedIds,
+  ) async {
+    if (selectedIds.isEmpty) return;
+    final selected = comparison.ready
+        .where((resource) => selectedIds.contains(resource.id))
+        .toList();
+    if (selected.length != selectedIds.length ||
+        selected.any((resource) => resource.farmId != subject.farmId)) {
+      throw StateError('Selected resources must be reviewed for this farm.');
+    }
+    await work.registerBatch(subject, selected);
   }
 }
 
 class WorkResourceComparison {
   const WorkResourceComparison({
-    required this.ready, required this.matched, required this.conflicts,
+    required this.ready,
+    required this.matched,
+    required this.conflicts,
   });
 
   final List<WorkResource> ready;
