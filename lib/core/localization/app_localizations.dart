@@ -78,14 +78,16 @@ class AppLocalizations {
     'subdivision.title': 'Vẽ lô đất và thửa ruộng',
     'parcel.layer.landBlock': 'Lô đất',
     'parcel.layer.fieldPlot': 'Thửa ruộng',
-    'subdivision.instruction': 'Chạm từng góc của mảnh đất như trên Google Earth. Các mảnh được đo riêng; cạnh chồng nhau hoặc hơi vượt biên lô lớn vẫn được chấp nhận. Chạm lại điểm đầu hoặc bấm Khép kín và xem trước.',
+    'subdivision.instruction':
+        'Chạm từng góc của mảnh đất như trên Google Earth. Các mảnh được đo riêng; cạnh chồng nhau hoặc hơi vượt biên lô lớn vẫn được chấp nhận. Chạm lại điểm đầu hoặc bấm Khép kín và xem trước.',
     'subdivision.reset': 'Vẽ lại mảnh đang vẽ',
     'subdivision.editSelected': 'Vẽ từng mảnh trong vùng đất lớn:',
     'subdivision.overview': 'Tổng thể các lô:',
     'subdivision.undoPoint': 'Bỏ điểm vừa chạm',
     'subdivision.pointCount': 'Số điểm đã chọn',
     'subdivision.tapToStart': 'Chạm ảnh vệ tinh để đặt điểm đầu tiên.',
-    'subdivision.layerHint': 'Lô đất / Thửa ruộng: bật hoặc tắt đường viền từng lớp trên bản đồ; loại của mỗi mảnh chọn bên dưới.',
+    'subdivision.layerHint':
+        'Lô đất / Thửa ruộng: bật hoặc tắt đường viền từng lớp trên bản đồ; loại của mỗi mảnh chọn bên dưới.',
     'subdivision.name': 'Tên mảnh đất',
     'subdivision.layer': 'Loại mảnh đất',
     'subdivision.parentBlock': 'Thuộc lô đất',
@@ -93,9 +95,11 @@ class AppLocalizations {
     'subdivision.notes': 'Đặc điểm / ghi chú',
     'subdivision.closeOutline': 'Khép kín và xem trước',
     'subdivision.resetAll': 'Xóa tất cả mảnh vừa vẽ',
-    'subdivision.invalidCut': 'Chưa khép kín được đa giác này. Cần ít nhất ba góc và đường không tự cắt.',
+    'subdivision.invalidCut':
+        'Chưa khép kín được đa giác này. Cần ít nhất ba góc và đường không tự cắt.',
     'subdivision.preview': 'Số lô và diện tích từng lô',
-    'subdivision.locationRequired': 'Địa bàn của lô chưa khớp danh mục; hãy đối soát trước khi tách.',
+    'subdivision.locationRequired':
+        'Địa bàn của lô chưa khớp danh mục; hãy đối soát trước khi tách.',
     'subdivision.save': 'Lưu lô đất và thửa ruộng',
     'subdivision.loadFailed': 'Không thể tải lô nguồn.',
     'subdivision.saveFailed': 'Không thể lưu lô đất và thửa ruộng.',
@@ -103,8 +107,10 @@ class AppLocalizations {
     'household.detail': 'Thông tin hộ',
     'household.add': 'Thêm hộ',
     'household.edit': 'Sửa thông tin hộ',
-    'household.editScope': 'Mã hộ và địa bàn không đổi. Tên chủ hộ đã lưu trên các thửa cũ được giữ nguyên.',
-    'household.codeAutomatic': 'Mã hộ H00001… sẽ được cấp tự động khi lưu. Chọn bản từ danh mục địa bàn.',
+    'household.editScope':
+        'Mã hộ và địa bàn không đổi. Tên chủ hộ đã lưu trên các thửa cũ được giữ nguyên.',
+    'household.codeAutomatic':
+        'Mã hộ H00001… sẽ được cấp tự động khi lưu. Chọn bản từ danh mục địa bàn.',
     'household.noVillages': 'Chưa có bản hợp lệ trong danh mục địa bàn.',
     'household.saveFailed': 'Không thể lưu hộ. Kiểm tra thông tin và thử lại.',
     'household.parcels': 'Các thửa của hộ',
@@ -125,6 +131,8 @@ class AppLocalizations {
     'module.finance': 'Tài chính',
     'finance.receipt': 'Thu',
     'finance.payment': 'Chi',
+    'finance.summary': 'Tổng hợp chứng từ',
+    'finance.balance': 'Chênh lệch thu chi',
     'finance.add': 'Thêm chứng từ',
     'finance.category': 'Nội dung',
     'finance.amount': 'Số tiền',
@@ -142,35 +150,50 @@ class AppLocalizations {
     'module.cloud': 'Đồng bộ Cloud',
     'module.backup': 'Sao lưu cục bộ',
     'backup.title': 'Sao lưu dữ liệu',
-    'backup.explanation': 'Xuất hai cơ sở dữ liệu, ảnh và tệp cục bộ thành bản sao được mã hóa bằng mật khẩu. Giữ tệp ngoài điện thoại.',
-    'backup.externalFiles': 'Nếu tệp cục bộ bị thiếu, xuất sao lưu sẽ thất bại. Bản sao cũ dạng JSON chưa được mã hóa.',
+    'backup.explanation':
+        'Xuất hai cơ sở dữ liệu, ảnh và tệp cục bộ thành bản sao được mã hóa bằng mật khẩu. Giữ tệp ngoài điện thoại.',
+    'backup.externalFiles':
+        'Nếu tệp cục bộ bị thiếu, xuất sao lưu sẽ thất bại. Bản sao cũ dạng JSON chưa được mã hóa.',
     'backup.newPasswordTitle': 'Đặt mật khẩu sao lưu',
     'backup.passwordTitle': 'Mật khẩu bản sao lưu',
     'backup.password': 'Mật khẩu',
     'backup.confirmPassword': 'Nhập lại mật khẩu',
-    'backup.passwordAdvice': 'Ít nhất 12 ký tự. Hãy lưu mật khẩu an toàn; mất mật khẩu sẽ không mở được tệp.',
+    'backup.passwordAdvice':
+        'Ít nhất 12 ký tự. Hãy lưu mật khẩu an toàn; mất mật khẩu sẽ không mở được tệp.',
     'backup.passwordInvalid': 'Mật khẩu không đúng hoặc tệp mã hóa bị hỏng.',
     'backup.legacyTitle': 'Cảnh báo: tệp chưa mã hóa',
-    'backup.legacyUnencrypted': 'Bản sao cũ chưa mã hóa. Ai có tệp đều có thể đọc dữ liệu.',
+    'backup.legacyUnencrypted':
+        'Bản sao cũ chưa mã hóa. Ai có tệp đều có thể đọc dữ liệu.',
     'backup.export': 'Xuất bản sao',
     'backup.inspect': 'Kiểm tra tệp sao lưu',
     'backup.preflight': 'Thử khôi phục (không ghi dữ liệu)',
-    'backup.preflightValid': 'Thử khôi phục đạt. Dữ liệu hiện tại không thay đổi. Số bản ghi theo bảng:',
-    'backup.preflightFailed': 'Chưa thể khôi phục: tệp thiếu dữ liệu, cấu trúc không khớp hoặc kiểm tra quan hệ thất bại.',
-    'backup.preflight.missingCosts': 'Tệp sao lưu cũ chưa có cơ sở dữ liệu chi phí. Hãy xuất một tệp mới rồi thử lại.',
-    'backup.preflight.schemaVersion': 'Phiên bản cơ sở dữ liệu trong tệp khác với ứng dụng hiện tại.',
-    'backup.preflight.tables': 'Danh sách bảng trong tệp khác với ứng dụng hiện tại.',
-    'backup.preflight.sqlite': 'Không dựng được dữ liệu sao lưu trong SQLite tạm.',
-    'backup.preflight.integrity': 'Kiểm tra tính toàn vẹn của SQLite tạm thất bại.',
-    'backup.preflight.foreignKeys': 'Dữ liệu có tham chiếu khóa ngoại không hợp lệ.',
+    'backup.preflightValid':
+        'Thử khôi phục đạt. Dữ liệu hiện tại không thay đổi. Số bản ghi theo bảng:',
+    'backup.preflightFailed':
+        'Chưa thể khôi phục: tệp thiếu dữ liệu, cấu trúc không khớp hoặc kiểm tra quan hệ thất bại.',
+    'backup.preflight.missingCosts':
+        'Tệp sao lưu cũ chưa có cơ sở dữ liệu chi phí. Hãy xuất một tệp mới rồi thử lại.',
+    'backup.preflight.schemaVersion':
+        'Phiên bản cơ sở dữ liệu trong tệp khác với ứng dụng hiện tại.',
+    'backup.preflight.tables':
+        'Danh sách bảng trong tệp khác với ứng dụng hiện tại.',
+    'backup.preflight.sqlite':
+        'Không dựng được dữ liệu sao lưu trong SQLite tạm.',
+    'backup.preflight.integrity':
+        'Kiểm tra tính toàn vẹn của SQLite tạm thất bại.',
+    'backup.preflight.foreignKeys':
+        'Dữ liệu có tham chiếu khóa ngoại không hợp lệ.',
     'backup.apply': 'Khôi phục khi mở lại ứng dụng',
     'backup.applyTitle': 'Xác nhận thay dữ liệu trên máy',
-    'backup.applyWarning': 'Lần mở ứng dụng tiếp theo sẽ thay dữ liệu trong cả hai cơ sở dữ liệu bằng tệp đã chọn. Các thay đổi sau thời điểm sao lưu sẽ mất. Chỉ tệp cục bộ được đóng gói trong bản sao v3 mới được khôi phục. Hãy giữ một bản sao lưu riêng trước khi tiếp tục.',
+    'backup.applyWarning':
+        'Lần mở ứng dụng tiếp theo sẽ thay dữ liệu trong cả hai cơ sở dữ liệu bằng tệp đã chọn. Các thay đổi sau thời điểm sao lưu sẽ mất. Chỉ tệp cục bộ được đóng gói trong bản sao v3 mới được khôi phục. Hãy giữ một bản sao lưu riêng trước khi tiếp tục.',
     'backup.applyConfirm': 'Xác nhận khôi phục',
     'backup.scheduled': 'Đã chuẩn bị. Đóng hẳn ứng dụng rồi mở lại để áp dụng.',
-    'backup.applied': 'Đã khôi phục hai cơ sở dữ liệu. Kiểm tra lại các bản ghi của bạn.',
+    'backup.applied':
+        'Đã khôi phục hai cơ sở dữ liệu. Kiểm tra lại các bản ghi của bạn.',
     'backup.previous': 'Xem dữ liệu trước lần khôi phục',
-    'backup.applyFailed': 'Khôi phục không thành công. Giao dịch đã được hoàn tác; kiểm tra lại dữ liệu hiện tại.',
+    'backup.applyFailed':
+        'Khôi phục không thành công. Giao dịch đã được hoàn tác; kiểm tra lại dữ liệu hiện tại.',
     'backup.valid': 'Tệp hợp lệ. Số bản ghi theo bảng:',
     'backup.invalid': 'Tệp sao lưu hỏng hoặc không đúng định dạng.',
     'backup.exportFailed': 'Không thể xuất bản sao.',
@@ -188,9 +211,11 @@ class AppLocalizations {
     'admin.country': 'Quốc gia',
     'admin.root': 'Gốc',
     'admin.parentRequired': 'Cần chọn địa bàn cấp trên.',
-    'admin.saveFailed': 'Không thể lưu. Kiểm tra tên, mã và mã trùng trong cùng địa bàn cấp trên.',
+    'admin.saveFailed':
+        'Không thể lưu. Kiểm tra tên, mã và mã trùng trong cùng địa bàn cấp trên.',
     'admin.loadFailed': 'Không thể tải danh mục địa bàn.',
-    'admin.internalCodes': 'Mã quản trị nội bộ AGRICO; mã đã cấp được giữ nguyên.',
+    'admin.internalCodes':
+        'Mã quản trị nội bộ AGRICO; mã đã cấp được giữ nguyên.',
     'quickCreate.logs': 'Nhật ký',
     'quickCreate.harvest': 'Thu hoạch',
     'quickCreate.costs': 'Chi phí',
@@ -263,14 +288,16 @@ class AppLocalizations {
     'subdivision.title': 'ແຕ້ມພື້ນທີ່ດິນ ແລະ ແປງນາ',
     'parcel.layer.landBlock': 'ພື້ນທີ່ດິນ',
     'parcel.layer.fieldPlot': 'ແປງນາ',
-    'subdivision.instruction': 'ແຕະມຸມຂອງແປງແຕ່ລະແປງຄື Google Earth. ແປງທີ່ຂອບທັບກັນ ຫຼື ເກີນຂອບໃຫຍ່ເລັກນ້ອຍ ຍັງສາມາດວັດໄດ້. ກົດປິດຮູບເມື່ອແຕ້ມແລ້ວ.',
+    'subdivision.instruction':
+        'ແຕະມຸມຂອງແປງແຕ່ລະແປງຄື Google Earth. ແປງທີ່ຂອບທັບກັນ ຫຼື ເກີນຂອບໃຫຍ່ເລັກນ້ອຍ ຍັງສາມາດວັດໄດ້. ກົດປິດຮູບເມື່ອແຕ້ມແລ້ວ.',
     'subdivision.reset': 'ແຕ້ມແປງນີ້ໃໝ່',
     'subdivision.editSelected': 'ແຕ້ມແປງນ້ອຍແຕ່ລະແປງໃນເຂດໃຫຍ່:',
     'subdivision.overview': 'ພາບລວມແປງ:',
     'subdivision.undoPoint': 'ລຶບຈຸດຫຼ້າສຸດ',
     'subdivision.pointCount': 'ຈຳນວນຈຸດທີ່ເລືອກ',
     'subdivision.tapToStart': 'ແຕະແຜນທີ່ດາວທຽມເພື່ອວາງຈຸດທຳອິດ.',
-    'subdivision.layerHint': 'ເປີດ ຫຼື ປິດຂອບຂອງຊັ້ນພື້ນທີ່ດິນ ແລະ ແປງນາ; ເລືອກປະເພດຂອງແຕ່ລະແປງດ້ານລຸ່ມ.',
+    'subdivision.layerHint':
+        'ເປີດ ຫຼື ປິດຂອບຂອງຊັ້ນພື້ນທີ່ດິນ ແລະ ແປງນາ; ເລືອກປະເພດຂອງແຕ່ລະແປງດ້ານລຸ່ມ.',
     'subdivision.name': 'ຊື່ພື້ນທີ່',
     'subdivision.layer': 'ປະເພດພື້ນທີ່',
     'subdivision.parentBlock': 'ຂຶ້ນກັບພື້ນທີ່ດິນ',
@@ -278,7 +305,8 @@ class AppLocalizations {
     'subdivision.notes': 'ລັກສະນະ / ໝາຍເຫດ',
     'subdivision.closeOutline': 'ປິດຮູບ ແລະ ເບິ່ງກ່ອນ',
     'subdivision.resetAll': 'ລຶບທຸກແປງທີ່ແຕ້ມ',
-    'subdivision.invalidCut': 'ປິດຮູບຫຼາຍຫຼ່ຽມບໍ່ໄດ້. ຕ້ອງມີຢ່າງໜ້ອຍສາມມຸມ ແລະ ເສັ້ນບໍ່ຕັດກັນເອງ.',
+    'subdivision.invalidCut':
+        'ປິດຮູບຫຼາຍຫຼ່ຽມບໍ່ໄດ້. ຕ້ອງມີຢ່າງໜ້ອຍສາມມຸມ ແລະ ເສັ້ນບໍ່ຕັດກັນເອງ.',
     'subdivision.preview': 'ຈຳນວນ ແລະ ເນື້ອທີ່ແຕ່ລະແປງ',
     'subdivision.locationRequired': 'ເຂດຂອງແປງບໍ່ກົງກັບລາຍການ; ກວດສອບກ່ອນ.',
     'subdivision.save': 'ບັນທຶກພື້ນທີ່ດິນ ແລະ ແປງນາ',
@@ -288,8 +316,10 @@ class AppLocalizations {
     'household.detail': 'ຂໍ້ມູນຄອບຄົວ',
     'household.add': 'ເພີ່ມຄອບຄົວ',
     'household.edit': 'ແກ້ໄຂຂໍ້ມູນຄອບຄົວ',
-    'household.editScope': 'ລະຫັດແລະເຂດປົກຄອງບໍ່ປ່ຽນ. ຊື່ທີ່ບັນທຶກໃນແປງດິນເກົ່າຍັງຄົງເດີມ.',
-    'household.codeAutomatic': 'ລະຫັດ H00001… ຈະອອກໃຫ້ອັດຕະໂນມັດເມື່ອບັນທຶກ. ເລືອກບ້ານຈາກລາຍການ.',
+    'household.editScope':
+        'ລະຫັດແລະເຂດປົກຄອງບໍ່ປ່ຽນ. ຊື່ທີ່ບັນທຶກໃນແປງດິນເກົ່າຍັງຄົງເດີມ.',
+    'household.codeAutomatic':
+        'ລະຫັດ H00001… ຈະອອກໃຫ້ອັດຕະໂນມັດເມື່ອບັນທຶກ. ເລືອກບ້ານຈາກລາຍການ.',
     'household.noVillages': 'ຍັງບໍ່ມີບ້ານທີ່ໃຊ້ໄດ້ໃນລາຍການ.',
     'household.saveFailed': 'ບັນທຶກຄອບຄົວບໍ່ໄດ້. ກວດຂໍ້ມູນແລ້ວລອງໃໝ່.',
     'household.parcels': 'ແປງດິນຂອງຄອບຄົວ',
@@ -310,6 +340,8 @@ class AppLocalizations {
     'module.finance': 'ການເງິນ',
     'finance.receipt': 'ຮັບ',
     'finance.payment': 'ຈ່າຍ',
+    'finance.summary': 'ສະຫຼຸບໃບບັນທຶກ',
+    'finance.balance': 'ຍອດຮັບລົບຈ່າຍ',
     'finance.add': 'ເພີ່ມໃບບັນທຶກ',
     'finance.category': 'ລາຍການ',
     'finance.amount': 'ຈຳນວນເງິນ',
@@ -327,22 +359,29 @@ class AppLocalizations {
     'module.cloud': 'ຊິງ Cloud',
     'module.backup': 'ສຳຮອງຂໍ້ມູນໃນເຄື່ອງ',
     'backup.title': 'ສຳຮອງຂໍ້ມູນ',
-    'backup.explanation': 'ສົ່ງອອກຖານຂໍ້ມູນສອງຖານ ພ້ອມຮູບ ແລະ ໄຟລ໌ໃນເຄື່ອງ ເປັນໄຟລ໌ສຳຮອງທີ່ເຂົ້າລະຫັດດ້ວຍລະຫັດຜ່ານ.',
-    'backup.externalFiles': 'ຖ້າໄຟລ໌ໃນເຄື່ອງຫາຍ ການສົ່ງອອກຈະບໍ່ສຳເລັດ. ສຳເນົາ JSON ເກົ່າບໍ່ໄດ້ເຂົ້າລະຫັດ.',
+    'backup.explanation':
+        'ສົ່ງອອກຖານຂໍ້ມູນສອງຖານ ພ້ອມຮູບ ແລະ ໄຟລ໌ໃນເຄື່ອງ ເປັນໄຟລ໌ສຳຮອງທີ່ເຂົ້າລະຫັດດ້ວຍລະຫັດຜ່ານ.',
+    'backup.externalFiles':
+        'ຖ້າໄຟລ໌ໃນເຄື່ອງຫາຍ ການສົ່ງອອກຈະບໍ່ສຳເລັດ. ສຳເນົາ JSON ເກົ່າບໍ່ໄດ້ເຂົ້າລະຫັດ.',
     'backup.newPasswordTitle': 'ຕັ້ງລະຫັດຜ່ານສຳຮອງ',
     'backup.passwordTitle': 'ລະຫັດຜ່ານຂອງໄຟລ໌ສຳຮອງ',
     'backup.password': 'ລະຫັດຜ່ານ',
     'backup.confirmPassword': 'ຢືນຢັນລະຫັດຜ່ານ',
-    'backup.passwordAdvice': 'ຢ່າງໜ້ອຍ 12 ຕົວອັກສອນ. ເກັບລະຫັດໃຫ້ປອດໄພ; ຖ້າລືມຈະເປີດໄຟລ໌ບໍ່ໄດ້.',
+    'backup.passwordAdvice':
+        'ຢ່າງໜ້ອຍ 12 ຕົວອັກສອນ. ເກັບລະຫັດໃຫ້ປອດໄພ; ຖ້າລືມຈະເປີດໄຟລ໌ບໍ່ໄດ້.',
     'backup.passwordInvalid': 'ລະຫັດຜ່ານບໍ່ຖືກ ຫຼື ໄຟລ໌ເສຍ.',
     'backup.legacyTitle': 'ຄຳເຕືອນ: ໄຟລ໌ບໍ່ໄດ້ເຂົ້າລະຫັດ',
-    'backup.legacyUnencrypted': 'ສຳເນົາເກົ່າບໍ່ໄດ້ເຂົ້າລະຫັດ; ຜູ້ທີ່ໄດ້ໄຟລ໌ສາມາດອ່ານໄດ້.',
+    'backup.legacyUnencrypted':
+        'ສຳເນົາເກົ່າບໍ່ໄດ້ເຂົ້າລະຫັດ; ຜູ້ທີ່ໄດ້ໄຟລ໌ສາມາດອ່ານໄດ້.',
     'backup.export': 'ສົ່ງອອກ',
     'backup.inspect': 'ກວດໄຟລ໌ສຳຮອງ',
     'backup.preflight': 'ທົດລອງກູ້ຄືນ (ບໍ່ຂຽນຂໍ້ມູນ)',
-    'backup.preflightValid': 'ທົດລອງກູ້ຄືນຜ່ານ. ຂໍ້ມູນເກົ່າບໍ່ປ່ຽນ. ຈຳນວນລາຍການ:',
-    'backup.preflightFailed': 'ກູ້ຄືນບໍ່ໄດ້: ຂໍ້ມູນຂາດ, ໂຄງສ້າງບໍ່ກົງ ຫຼື ກວດຄວາມສຳພັນບໍ່ຜ່ານ.',
-    'backup.preflight.missingCosts': 'ໄຟລ໌ສຳຮອງເກົ່າບໍ່ມີຖານຂໍ້ມູນຄ່າໃຊ້ຈ່າຍ. ກະລຸນາສົ່ງອອກໄຟລ໌ໃໝ່.',
+    'backup.preflightValid':
+        'ທົດລອງກູ້ຄືນຜ່ານ. ຂໍ້ມູນເກົ່າບໍ່ປ່ຽນ. ຈຳນວນລາຍການ:',
+    'backup.preflightFailed':
+        'ກູ້ຄືນບໍ່ໄດ້: ຂໍ້ມູນຂາດ, ໂຄງສ້າງບໍ່ກົງ ຫຼື ກວດຄວາມສຳພັນບໍ່ຜ່ານ.',
+    'backup.preflight.missingCosts':
+        'ໄຟລ໌ສຳຮອງເກົ່າບໍ່ມີຖານຂໍ້ມູນຄ່າໃຊ້ຈ່າຍ. ກະລຸນາສົ່ງອອກໄຟລ໌ໃໝ່.',
     'backup.preflight.schemaVersion': 'ສະບັບຖານຂໍ້ມູນໃນໄຟລ໌ບໍ່ກົງກັບແອັບ.',
     'backup.preflight.tables': 'ຕາຕະລາງໃນໄຟລ໌ບໍ່ກົງກັບແອັບ.',
     'backup.preflight.sqlite': 'ສ້າງຖານຂໍ້ມູນທົດລອງບໍ່ໄດ້.',
@@ -350,7 +389,8 @@ class AppLocalizations {
     'backup.preflight.foreignKeys': 'ຂໍ້ມູນອ້າງອີງບໍ່ຖືກຕ້ອງ.',
     'backup.apply': 'ກູ້ຄືນເມື່ອເປີດແອັບໃໝ່',
     'backup.applyTitle': 'ຢືນຢັນການແທນຂໍ້ມູນ',
-    'backup.applyWarning': 'ເມື່ອເປີດແອັບໃໝ່ ຂໍ້ມູນໃນສອງຖານຈະຖືກແທນດ້ວຍໄຟລ໌ນີ້. ການປ່ຽນແປງຫຼັງສຳຮອງຈະຫາຍໄປ. ຈະກູ້ຄືນສະເພາະໄຟລ໌ໃນເຄື່ອງທີ່ຢູ່ໃນສຳເນົາ v3. ກະລຸນາເກັບສຳເນົາອີກຊຸດ.',
+    'backup.applyWarning':
+        'ເມື່ອເປີດແອັບໃໝ່ ຂໍ້ມູນໃນສອງຖານຈະຖືກແທນດ້ວຍໄຟລ໌ນີ້. ການປ່ຽນແປງຫຼັງສຳຮອງຈະຫາຍໄປ. ຈະກູ້ຄືນສະເພາະໄຟລ໌ໃນເຄື່ອງທີ່ຢູ່ໃນສຳເນົາ v3. ກະລຸນາເກັບສຳເນົາອີກຊຸດ.',
     'backup.applyConfirm': 'ຢືນຢັນກູ້ຄືນ',
     'backup.scheduled': 'ກຽມແລ້ວ. ປິດແອັບແລ້ວເປີດໃໝ່.',
     'backup.applied': 'ກູ້ຄືນສອງຖານຂໍ້ມູນແລ້ວ. ກວດລາຍການຂອງທ່ານ.',
@@ -447,14 +487,17 @@ class AppLocalizations {
     'subdivision.title': 'Draw land blocks and field plots',
     'parcel.layer.landBlock': 'Land block',
     'parcel.layer.fieldPlot': 'Field plot',
-    'subdivision.instruction': 'Tap each corner as in Google Earth. Sketches are measured independently and may share or slightly cross the source edge. Tap the first point or choose Close shape and preview.',
+    'subdivision.instruction':
+        'Tap each corner as in Google Earth. Sketches are measured independently and may share or slightly cross the source edge. Tap the first point or choose Close shape and preview.',
     'subdivision.reset': 'Redraw current sketch',
-    'subdivision.editSelected': 'Draw each small parcel inside the source area:',
+    'subdivision.editSelected':
+        'Draw each small parcel inside the source area:',
     'subdivision.overview': 'All parcels:',
     'subdivision.undoPoint': 'Undo last point',
     'subdivision.pointCount': 'Points selected',
     'subdivision.tapToStart': 'Tap the satellite map to place the first point.',
-    'subdivision.layerHint': 'Toggle land block and field plot boundaries on the map; choose each sketch’s type below.',
+    'subdivision.layerHint':
+        'Toggle land block and field plot boundaries on the map; choose each sketch’s type below.',
     'subdivision.name': 'Area name',
     'subdivision.layer': 'Area type',
     'subdivision.parentBlock': 'Parent land block',
@@ -462,9 +505,11 @@ class AppLocalizations {
     'subdivision.notes': 'Characteristics / notes',
     'subdivision.closeOutline': 'Close shape and preview',
     'subdivision.resetAll': 'Clear all new sketches',
-    'subdivision.invalidCut': 'Cannot close this polygon. Use at least three corners without crossing its own edges.',
+    'subdivision.invalidCut':
+        'Cannot close this polygon. Use at least three corners without crossing its own edges.',
     'subdivision.preview': 'Areas of new parcels',
-    'subdivision.locationRequired': 'The parcel location does not match the catalog; reconcile it first.',
+    'subdivision.locationRequired':
+        'The parcel location does not match the catalog; reconcile it first.',
     'subdivision.save': 'Save land blocks and field plots',
     'subdivision.loadFailed': 'Could not load source parcel.',
     'subdivision.saveFailed': 'Could not save land blocks and field plots.',
@@ -472,10 +517,13 @@ class AppLocalizations {
     'household.detail': 'Household details',
     'household.add': 'Add household',
     'household.edit': 'Edit household contact',
-    'household.editScope': 'Code and location stay fixed. Names saved on existing parcels remain unchanged.',
-    'household.codeAutomatic': 'An H00001… code will be assigned on save. Select a village from the catalog.',
+    'household.editScope':
+        'Code and location stay fixed. Names saved on existing parcels remain unchanged.',
+    'household.codeAutomatic':
+        'An H00001… code will be assigned on save. Select a village from the catalog.',
     'household.noVillages': 'No valid village is available in the catalog.',
-    'household.saveFailed': 'Could not save household. Check the details and try again.',
+    'household.saveFailed':
+        'Could not save household. Check the details and try again.',
     'household.parcels': 'Household parcels',
     'household.noParcels': 'No parcels linked to this household.',
     'household.notFound': 'Household not found in this farm.',
@@ -494,6 +542,8 @@ class AppLocalizations {
     'module.finance': 'Finance',
     'finance.receipt': 'Receipt',
     'finance.payment': 'Payment',
+    'finance.summary': 'Document summary',
+    'finance.balance': 'Receipts less payments',
     'finance.add': 'Add document',
     'finance.category': 'Description',
     'finance.amount': 'Amount',
@@ -511,35 +561,47 @@ class AppLocalizations {
     'module.cloud': 'Cloud sync',
     'module.backup': 'Local backup',
     'backup.title': 'Back up local data',
-    'backup.explanation': 'Export both databases, photos and local files into a password-encrypted backup. Keep it outside the phone.',
-    'backup.externalFiles': 'Export fails if a referenced local file is missing. Older JSON backups are unencrypted.',
+    'backup.explanation':
+        'Export both databases, photos and local files into a password-encrypted backup. Keep it outside the phone.',
+    'backup.externalFiles':
+        'Export fails if a referenced local file is missing. Older JSON backups are unencrypted.',
     'backup.newPasswordTitle': 'Set backup password',
     'backup.passwordTitle': 'Backup password',
     'backup.password': 'Password',
     'backup.confirmPassword': 'Confirm password',
-    'backup.passwordAdvice': 'At least 12 characters. Keep it safe; a lost password cannot unlock the file.',
+    'backup.passwordAdvice':
+        'At least 12 characters. Keep it safe; a lost password cannot unlock the file.',
     'backup.passwordInvalid': 'Incorrect password or damaged encrypted file.',
     'backup.legacyTitle': 'Warning: unencrypted file',
-    'backup.legacyUnencrypted': 'Older backup is unencrypted. Anyone with the file can read its contents.',
+    'backup.legacyUnencrypted':
+        'Older backup is unencrypted. Anyone with the file can read its contents.',
     'backup.export': 'Export backup',
     'backup.inspect': 'Inspect backup file',
     'backup.preflight': 'Test restore (no data changes)',
-    'backup.preflightValid': 'Restore test passed. Current data is unchanged. Rows by table:',
-    'backup.preflightFailed': 'Cannot restore: incomplete backup, mismatched schema or invalid relationships.',
-    'backup.preflight.missingCosts': 'Older backup has no costs database. Export a new backup and retry.',
-    'backup.preflight.schemaVersion': 'Backup database version differs from this app.',
+    'backup.preflightValid':
+        'Restore test passed. Current data is unchanged. Rows by table:',
+    'backup.preflightFailed':
+        'Cannot restore: incomplete backup, mismatched schema or invalid relationships.',
+    'backup.preflight.missingCosts':
+        'Older backup has no costs database. Export a new backup and retry.',
+    'backup.preflight.schemaVersion':
+        'Backup database version differs from this app.',
     'backup.preflight.tables': 'Backup tables differ from this app.',
-    'backup.preflight.sqlite': 'Could not rebuild the backup in temporary SQLite.',
+    'backup.preflight.sqlite':
+        'Could not rebuild the backup in temporary SQLite.',
     'backup.preflight.integrity': 'Temporary SQLite integrity check failed.',
-    'backup.preflight.foreignKeys': 'Backup contains invalid foreign key references.',
+    'backup.preflight.foreignKeys':
+        'Backup contains invalid foreign key references.',
     'backup.apply': 'Restore on next app launch',
     'backup.applyTitle': 'Confirm replacing device data',
-    'backup.applyWarning': 'The next app launch will replace both databases with this backup. Changes since the backup will be lost. Only local files packaged in a v3 backup are restored. Keep a separate backup before continuing.',
+    'backup.applyWarning':
+        'The next app launch will replace both databases with this backup. Changes since the backup will be lost. Only local files packaged in a v3 backup are restored. Keep a separate backup before continuing.',
     'backup.applyConfirm': 'Confirm restore',
     'backup.scheduled': 'Prepared. Fully close and reopen the app to apply.',
     'backup.applied': 'Both databases restored. Check your records.',
     'backup.previous': 'View data before restore',
-    'backup.applyFailed': 'Restore failed. The transaction was rolled back; check the current records.',
+    'backup.applyFailed':
+        'Restore failed. The transaction was rolled back; check the current records.',
     'backup.valid': 'Valid file. Rows by table:',
     'backup.invalid': 'Invalid or damaged backup file.',
     'backup.exportFailed': 'Could not export backup.',
@@ -557,9 +619,11 @@ class AppLocalizations {
     'admin.country': 'Country',
     'admin.root': 'Root',
     'admin.parentRequired': 'Select a parent area.',
-    'admin.saveFailed': 'Could not save. Check the name, code, and duplicate codes under this parent.',
+    'admin.saveFailed':
+        'Could not save. Check the name, code, and duplicate codes under this parent.',
     'admin.loadFailed': 'Could not load administrative areas.',
-    'admin.internalCodes': 'AGRICO internal codes; existing codes stay unchanged.',
+    'admin.internalCodes':
+        'AGRICO internal codes; existing codes stay unchanged.',
     'quickCreate.logs': 'Log',
     'quickCreate.harvest': 'Harvest',
     'quickCreate.costs': 'Cost',
@@ -670,27 +734,41 @@ class AppLocalizations {
       'boundary.source': 'Nguồn ranh giới',
       'boundary.version': 'Phiên bản',
       'boundary.history.title': 'Lịch sử ranh giới',
-      'boundary.reconciliation.required': 'Ranh giới thửa đất và dữ liệu không gian chưa khớp. Cần đối soát trước khi xuất KML/KMZ.',
-      'boundary.reconciliation.eligible': 'Dữ liệu không gian đã khớp. Có thể gắn lại mã không gian còn thiếu cho thửa cũ.',
+      'boundary.reconciliation.required':
+          'Ranh giới thửa đất và dữ liệu không gian chưa khớp. Cần đối soát trước khi xuất KML/KMZ.',
+      'boundary.reconciliation.eligible':
+          'Dữ liệu không gian đã khớp. Có thể gắn lại mã không gian còn thiếu cho thửa cũ.',
       'boundary.reconciliation.action': 'Gắn lại mã không gian',
-      'boundary.reconciliation.confirm': 'Chỉ gắn mã không gian còn thiếu cho thửa này nếu kiểm tra lại dữ liệu vẫn khớp. Tiếp tục?',
-      'boundary.reconciliation.success': 'Đã gắn lại mã không gian cho thửa đất.',
-      'boundary.reconciliation.manual': 'Dữ liệu đã thay đổi hoặc chưa khớp. Cần đối soát thủ công.',
-      'boundary.audit.visibleSummary': 'Tình trạng ranh giới của các thửa đang hiển thị',
+      'boundary.reconciliation.confirm':
+          'Chỉ gắn mã không gian còn thiếu cho thửa này nếu kiểm tra lại dữ liệu vẫn khớp. Tiếp tục?',
+      'boundary.reconciliation.success':
+          'Đã gắn lại mã không gian cho thửa đất.',
+      'boundary.reconciliation.manual':
+          'Dữ liệu đã thay đổi hoặc chưa khớp. Cần đối soát thủ công.',
+      'boundary.audit.visibleSummary':
+          'Tình trạng ranh giới của các thửa đang hiển thị',
       'boundary.audit.filter': 'Lọc theo tình trạng ranh giới',
       'boundary.audit.unlinked': 'Chưa liên kết không gian',
       'boundary.audit.consistent': 'Khớp dữ liệu không gian',
       'boundary.audit.repairableLegacyIdentity': 'Có thể gắn lại mã',
       'boundary.audit.needsReconciliation': 'Cần đối soát thủ công',
       'boundary.issue.missingLink': 'Thiếu liên kết với dữ liệu không gian.',
-      'boundary.issue.identityMismatch': 'Mã không gian của thửa và liên kết không khớp.',
-      'boundary.issue.missingFeature': 'Không tìm thấy đối tượng không gian đã liên kết.',
-      'boundary.issue.wrongFeatureType': 'Đối tượng đã liên kết không phải thửa đất.',
-      'boundary.issue.missingRevision': 'Không tìm thấy phiên bản không gian hiện tại.',
-      'boundary.issue.invalidGeometry': 'Thiếu hình học đa giác trong đối tượng hoặc phiên bản.',
-      'boundary.issue.missingBoundaryVersion': 'Không tìm thấy đúng một phiên bản ranh giới hiện tại.',
-      'boundary.issue.boundaryReferenceMismatch': 'Phiên bản không gian tham chiếu sai lịch sử ranh giới.',
-      'boundary.issue.boundaryGeometryMismatch': 'Hình học ranh giới của thửa và không gian không khớp.',
+      'boundary.issue.identityMismatch':
+          'Mã không gian của thửa và liên kết không khớp.',
+      'boundary.issue.missingFeature':
+          'Không tìm thấy đối tượng không gian đã liên kết.',
+      'boundary.issue.wrongFeatureType':
+          'Đối tượng đã liên kết không phải thửa đất.',
+      'boundary.issue.missingRevision':
+          'Không tìm thấy phiên bản không gian hiện tại.',
+      'boundary.issue.invalidGeometry':
+          'Thiếu hình học đa giác trong đối tượng hoặc phiên bản.',
+      'boundary.issue.missingBoundaryVersion':
+          'Không tìm thấy đúng một phiên bản ranh giới hiện tại.',
+      'boundary.issue.boundaryReferenceMismatch':
+          'Phiên bản không gian tham chiếu sai lịch sử ranh giới.',
+      'boundary.issue.boundaryGeometryMismatch':
+          'Hình học ranh giới của thửa và không gian không khớp.',
       'boundary.source.gps': 'GPS',
       'boundary.source.googleEarth': 'Google Earth',
       'boundary.source.manual': 'Thủ công',
@@ -860,12 +938,16 @@ class AppLocalizations {
       'boundary.source': 'ແຫຼ່ງເຂດແດນ',
       'boundary.version': 'ສະບັບ',
       'boundary.history.title': 'ປະຫວັດເຂດແດນ',
-      'boundary.reconciliation.required': 'ເຂດແດນແປງດິນ ແລະ ຂໍ້ມູນແຜນທີ່ບໍ່ກົງກັນ. ຕ້ອງກວດສອບກ່ອນສົ່ງອອກ KML/KMZ.',
-      'boundary.reconciliation.eligible': 'ຂໍ້ມູນແຜນທີ່ກົງກັນແລ້ວ. ສາມາດຄືນຄ່າລະຫັດແຜນທີ່ທີ່ຂາດໃຫ້ແປງດິນເກົ່າ.',
+      'boundary.reconciliation.required':
+          'ເຂດແດນແປງດິນ ແລະ ຂໍ້ມູນແຜນທີ່ບໍ່ກົງກັນ. ຕ້ອງກວດສອບກ່ອນສົ່ງອອກ KML/KMZ.',
+      'boundary.reconciliation.eligible':
+          'ຂໍ້ມູນແຜນທີ່ກົງກັນແລ້ວ. ສາມາດຄືນຄ່າລະຫັດແຜນທີ່ທີ່ຂາດໃຫ້ແປງດິນເກົ່າ.',
       'boundary.reconciliation.action': 'ຄືນຄ່າລະຫັດແຜນທີ່',
-      'boundary.reconciliation.confirm': 'ຄືນຄ່າລະຫັດທີ່ຂາດໃຫ້ແປງນີ້ ເມື່ອກວດຂໍ້ມູນແລ້ວວ່າກົງກັນ. ສືບຕໍ່ບໍ?',
+      'boundary.reconciliation.confirm':
+          'ຄືນຄ່າລະຫັດທີ່ຂາດໃຫ້ແປງນີ້ ເມື່ອກວດຂໍ້ມູນແລ້ວວ່າກົງກັນ. ສືບຕໍ່ບໍ?',
       'boundary.reconciliation.success': 'ຄືນຄ່າລະຫັດແຜນທີ່ໃຫ້ແປງດິນແລ້ວ.',
-      'boundary.reconciliation.manual': 'ຂໍ້ມູນປ່ຽນໄປ ຫຼື ຍັງບໍ່ກົງກັນ. ຕ້ອງກວດສອບດ້ວຍມື.',
+      'boundary.reconciliation.manual':
+          'ຂໍ້ມູນປ່ຽນໄປ ຫຼື ຍັງບໍ່ກົງກັນ. ຕ້ອງກວດສອບດ້ວຍມື.',
       'boundary.audit.visibleSummary': 'ສະຖານະເຂດແດນຂອງແປງທີ່ສະແດງ',
       'boundary.audit.filter': 'ກັ່ນຕອງຕາມສະຖານະເຂດແດນ',
       'boundary.audit.unlinked': 'ຍັງບໍ່ເຊື່ອມຂໍ້ມູນແຜນທີ່',
@@ -873,14 +955,18 @@ class AppLocalizations {
       'boundary.audit.repairableLegacyIdentity': 'ສາມາດຄືນຄ່າລະຫັດ',
       'boundary.audit.needsReconciliation': 'ຕ້ອງກວດສອບດ້ວຍມື',
       'boundary.issue.missingLink': 'ບໍ່ມີການເຊື່ອມກັບຂໍ້ມູນແຜນທີ່.',
-      'boundary.issue.identityMismatch': 'ລະຫັດແຜນທີ່ຂອງແປງ ແລະ ຂໍ້ມູນເຊື່ອມບໍ່ກົງກັນ.',
+      'boundary.issue.identityMismatch':
+          'ລະຫັດແຜນທີ່ຂອງແປງ ແລະ ຂໍ້ມູນເຊື່ອມບໍ່ກົງກັນ.',
       'boundary.issue.missingFeature': 'ບໍ່ພົບລາຍການແຜນທີ່ທີ່ເຊື່ອມໄວ້.',
       'boundary.issue.wrongFeatureType': 'ລາຍການແຜນທີ່ທີ່ເຊື່ອມບໍ່ແມ່ນແປງດິນ.',
       'boundary.issue.missingRevision': 'ບໍ່ພົບສະບັບແຜນທີ່ປັດຈຸບັນ.',
       'boundary.issue.invalidGeometry': 'ຂາດຮູບຊົງຫຼາຍຫຼ່ຽມໃນລາຍການ ຫຼື ສະບັບ.',
-      'boundary.issue.missingBoundaryVersion': 'ບໍ່ພົບສະບັບເຂດແດນປັດຈຸບັນທີ່ຖືກຕ້ອງ.',
-      'boundary.issue.boundaryReferenceMismatch': 'ສະບັບແຜນທີ່ອ້າງອີງປະຫວັດເຂດແດນບໍ່ກົງກັນ.',
-      'boundary.issue.boundaryGeometryMismatch': 'ຮູບຊົງເຂດແດນຂອງແປງ ແລະ ແຜນທີ່ບໍ່ກົງກັນ.',
+      'boundary.issue.missingBoundaryVersion':
+          'ບໍ່ພົບສະບັບເຂດແດນປັດຈຸບັນທີ່ຖືກຕ້ອງ.',
+      'boundary.issue.boundaryReferenceMismatch':
+          'ສະບັບແຜນທີ່ອ້າງອີງປະຫວັດເຂດແດນບໍ່ກົງກັນ.',
+      'boundary.issue.boundaryGeometryMismatch':
+          'ຮູບຊົງເຂດແດນຂອງແປງ ແລະ ແຜນທີ່ບໍ່ກົງກັນ.',
       'boundary.source.gps': 'GPS',
       'boundary.source.googleEarth': 'Google Earth',
       'boundary.source.manual': 'ກຳນົດເອງ',
@@ -1050,12 +1136,17 @@ class AppLocalizations {
       'boundary.source': 'Boundary source',
       'boundary.version': 'Version',
       'boundary.history.title': 'Boundary history',
-      'boundary.reconciliation.required': 'Parcel boundary and spatial data disagree. Reconcile them before exporting KML/KMZ.',
-      'boundary.reconciliation.eligible': 'Spatial data matches. The missing spatial ID on this legacy parcel can be restored.',
+      'boundary.reconciliation.required':
+          'Parcel boundary and spatial data disagree. Reconcile them before exporting KML/KMZ.',
+      'boundary.reconciliation.eligible':
+          'Spatial data matches. The missing spatial ID on this legacy parcel can be restored.',
       'boundary.reconciliation.action': 'Restore spatial ID',
-      'boundary.reconciliation.confirm': 'Restore only this parcel’s missing spatial ID if the data still matches. Continue?',
-      'boundary.reconciliation.success': 'The parcel’s spatial ID has been restored.',
-      'boundary.reconciliation.manual': 'The data changed or does not match. Manual reconciliation is required.',
+      'boundary.reconciliation.confirm':
+          'Restore only this parcel’s missing spatial ID if the data still matches. Continue?',
+      'boundary.reconciliation.success':
+          'The parcel’s spatial ID has been restored.',
+      'boundary.reconciliation.manual':
+          'The data changed or does not match. Manual reconciliation is required.',
       'boundary.audit.visibleSummary': 'Boundary status of visible parcels',
       'boundary.audit.filter': 'Filter by boundary status',
       'boundary.audit.unlinked': 'Not linked to spatial data',
@@ -1063,14 +1154,21 @@ class AppLocalizations {
       'boundary.audit.repairableLegacyIdentity': 'Spatial ID can be restored',
       'boundary.audit.needsReconciliation': 'Manual reconciliation needed',
       'boundary.issue.missingLink': 'The spatial link is missing.',
-      'boundary.issue.identityMismatch': 'The parcel and link have different spatial IDs.',
+      'boundary.issue.identityMismatch':
+          'The parcel and link have different spatial IDs.',
       'boundary.issue.missingFeature': 'The linked spatial feature is missing.',
-      'boundary.issue.wrongFeatureType': 'The linked spatial feature is not a parcel.',
-      'boundary.issue.missingRevision': 'The current spatial revision is missing.',
-      'boundary.issue.invalidGeometry': 'Polygon geometry is missing from the feature or revision.',
-      'boundary.issue.missingBoundaryVersion': 'The current boundary history version is missing or duplicated.',
-      'boundary.issue.boundaryReferenceMismatch': 'The spatial revision references another boundary history entry.',
-      'boundary.issue.boundaryGeometryMismatch': 'The parcel and spatial polygon boundaries differ.',
+      'boundary.issue.wrongFeatureType':
+          'The linked spatial feature is not a parcel.',
+      'boundary.issue.missingRevision':
+          'The current spatial revision is missing.',
+      'boundary.issue.invalidGeometry':
+          'Polygon geometry is missing from the feature or revision.',
+      'boundary.issue.missingBoundaryVersion':
+          'The current boundary history version is missing or duplicated.',
+      'boundary.issue.boundaryReferenceMismatch':
+          'The spatial revision references another boundary history entry.',
+      'boundary.issue.boundaryGeometryMismatch':
+          'The parcel and spatial polygon boundaries differ.',
       'boundary.source.gps': 'GPS',
       'boundary.source.googleEarth': 'Google Earth',
       'boundary.source.manual': 'Manual',
