@@ -78,7 +78,8 @@ class SqliteParcelLandHistoryRepository implements ParcelLandHistoryRepository {
 
   /// Joins a caller-owned parcel/spatial transaction for atomic subdivision.
   static Future<void> linkScoped(
-      DatabaseExecutor tx, ParcelDerivation derivation) async {
+      DatabaseExecutor tx, ParcelDerivation derivation,
+      {bool allowOutsideSource = false}) async {
     derivation.validate();
     final parcels = SqliteLandParcelRepository(tx);
     final source = await parcels.getById(
@@ -86,7 +87,8 @@ class SqliteParcelLandHistoryRepository implements ParcelLandHistoryRepository {
     final target = await parcels.getById(
           farmId: derivation.farmId, id: derivation.targetParcelId);
     if (source == null || target == null ||
-          derivation.derivedAreaM2 > source.areaM2 + 0.001 ||
+          (!allowOutsideSource &&
+            derivation.derivedAreaM2 > source.areaM2 + 0.001) ||
           derivation.derivedAreaM2 > target.areaM2 + 0.001) {
       throw StateError('Derivation must link parcels in one farm with valid area.');
     }

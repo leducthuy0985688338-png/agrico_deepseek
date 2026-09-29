@@ -91,6 +91,7 @@ class ParcelSubdivisionService {
     required List<ParcelSubdivisionCut> cuts,
     required List<String> names,
     bool independentSketches = false,
+    List<ParcelSketchDetails> details = const [],
   }) async {
     _authorize(subject, sourceParcelId, PermissionCodes.fieldEdit);
     _authorize(subject, sourceParcelId, PermissionCodes.fieldCreate);
@@ -99,6 +100,7 @@ class ParcelSubdivisionService {
       villageId: villageId, expectedBoundaryVersion: expectedBoundaryVersion,
       cuts: cuts, names: names,
       independentSketches: independentSketches,
+      details: details,
       actorMembershipId: subject.membershipId,
       occurredAt: DateTime.now().toUtc(),
     );

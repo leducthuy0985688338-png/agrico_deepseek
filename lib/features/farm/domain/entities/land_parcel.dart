@@ -288,8 +288,8 @@ class LandParcel {
   ParcelLayer get layer => legacyMetadata['parcelLayer'] == 'fieldPlot'
       ? ParcelLayer.fieldPlot : ParcelLayer.landBlock;
 
-  String? get parentLandBlockId => layer == ParcelLayer.fieldPlot
-      ? legacyMetadata['parentLandBlockId'] as String? : null;
+  String? get parentLandBlockId =>
+      legacyMetadata['parentLandBlockId'] as String?;
 
   /// Reference to the stable Spatial Core identity.
   ///

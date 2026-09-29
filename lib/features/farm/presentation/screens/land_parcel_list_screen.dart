@@ -210,7 +210,7 @@ class _LandParcelListScreenState extends State<LandParcelListScreen> {
                 subtitle: Text(
                   [
                     if (item.parcel.parentLandBlockId != null)
-                      l10n.text('parcel.layer.fieldPlot'),
+                      l10n.text('parcel.layer.${item.parcel.layer.name}'),
                     if (item.village.isNotEmpty) item.village,
                     if (!widget.landOnly && item.owner.isNotEmpty) item.owner,
                     '${item.parcel.areaHa.toStringAsFixed(2)} ha',

@@ -1,6 +1,38 @@
 import 'parcel_boundary_splitter.dart';
 import 'parcel_enclosed_splitter.dart';
 import 'wgs84_geometry.dart';
+import '../entities/land_parcel.dart';
+import '../entities/land_survey.dart';
+
+/// Business data recorded for one independently surveyed outline.
+class ParcelSketchDetails {
+  const ParcelSketchDetails({
+    this.layer = ParcelLayer.fieldPlot,
+    this.parentSketchIndex,
+    this.landUseType = LandUseType.agricultural,
+    this.landCondition = LandCondition.unknown,
+    this.clearingStatus = ClearingStatus.unknown,
+    this.readinessStatus = ReadinessStatus.unknown,
+    this.notes,
+    this.cropType,
+    this.cropQuantity,
+    this.cropUnit,
+    this.cropGrowthStage,
+  });
+
+  final ParcelLayer layer;
+  /// A previously drawn land block; null means the source block.
+  final int? parentSketchIndex;
+  final LandUseType landUseType;
+  final LandCondition landCondition;
+  final ClearingStatus clearingStatus;
+  final ReadinessStatus readinessStatus;
+  final String? notes;
+  final String? cropType;
+  final double? cropQuantity;
+  final String? cropUnit;
+  final CropGrowthStage? cropGrowthStage;
+}
 
 /// Each cut targets one of the current fragments. The selected fragment is
 /// replaced by the two resulting polygons; other fragments remain unchanged.

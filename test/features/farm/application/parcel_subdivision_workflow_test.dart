@@ -13,6 +13,7 @@ import 'package:agrico_deepseek/features/farm/data/local/sqlite_land_survey_repo
 import 'package:agrico_deepseek/features/farm/data/local/sqlite_parcel_land_history_repository.dart';
 import 'package:agrico_deepseek/features/farm/data/interchange/kml_interchange.dart';
 import 'package:agrico_deepseek/features/farm/domain/entities/land_parcel.dart';
+import 'package:agrico_deepseek/features/farm/domain/entities/land_survey.dart';
 import 'package:agrico_deepseek/features/farm/domain/geometry/wgs84_geometry.dart';
 import 'package:agrico_deepseek/features/farm/domain/geometry/parcel_subdivision_plan.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -164,6 +165,50 @@ void main() {
       names: ['C'], independentSketches: true);
     expect(more.single.parcelCode, 'LA-SVK-NONG-TAKO-L00003');
     expect((await history.derivations('farm', 'source')), hasLength(3));
+  });
+
+  test('saves block and plot hierarchy with profile and crop even outside source', () async {
+    Wgs84Polygon box(double west, double east, double north) =>
+      Wgs84Polygon.fromVertices([
+        Wgs84Vertex(latitude: 16.0001, longitude: west),
+        Wgs84Vertex(latitude: 16.0001, longitude: east),
+        Wgs84Vertex(latitude: north, longitude: east),
+        Wgs84Vertex(latitude: north, longitude: west),
+      ]);
+    final block = box(106.0001, 106.003, 16.0012);
+    final plot = box(106.0003, 106.0008, 16.0008);
+    final saved = await service.savePlan(
+      subject: subject, sourceParcelId: 'source',
+      villageId: 'agrico-la-svk-nong-tako', expectedBoundaryVersion: 1,
+      cuts: [
+        ParcelSubdivisionCut.enclosed(fragmentIndex: 0, polygon: block),
+        ParcelSubdivisionCut.enclosed(fragmentIndex: 0, polygon: plot),
+      ], names: ['Lô A', 'Thửa A1'], independentSketches: true,
+      details: const [
+        ParcelSketchDetails(layer: ParcelLayer.landBlock,
+          landCondition: LandCondition.unused,
+          clearingStatus: ClearingStatus.inProgress),
+        ParcelSketchDetails(layer: ParcelLayer.fieldPlot,
+          parentSketchIndex: 0,
+          landCondition: LandCondition.cultivated,
+          cropType: 'Lạc', cropQuantity: 12, cropUnit: 'cây',
+          cropGrowthStage: CropGrowthStage.seedling),
+      ],
+    );
+    final source = (await parcels.getById(farmId: 'farm', id: 'source'))!;
+    expect(saved.first.areaM2, greaterThan(source.areaM2));
+    expect(saved.map((parcel) => parcel.layer),
+      [ParcelLayer.landBlock, ParcelLayer.fieldPlot]);
+    expect(saved.first.parentLandBlockId, source.id);
+    expect(saved.last.parentLandBlockId, saved.first.id);
+    final surveys = SqliteLandSurveyRepository(db);
+    expect((await surveys.getLandUseProfile(saved.first.id))!.clearingStatus,
+      ClearingStatus.inProgress);
+    expect((await surveys.getLandUseProfile(saved.last.id))!.currentCondition,
+      LandCondition.cultivated);
+    final crops = await surveys.listCrops(saved.last.id);
+    expect(crops.single.cropType, 'Lạc');
+    expect(crops.single.growthStage, CropGrowthStage.seedling);
   });
 
   test('enclosed polygon saves a child and a remainder with a persisted hole', () async {

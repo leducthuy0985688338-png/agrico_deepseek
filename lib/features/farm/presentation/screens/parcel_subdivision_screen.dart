@@ -11,6 +11,7 @@ import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/permissions/authorization.dart';
 import '../../application/parcel_subdivision_service.dart';
 import '../../domain/entities/land_parcel.dart';
+import '../../domain/entities/land_survey.dart';
 import '../../domain/geometry/wgs84_geometry.dart';
 import '../../domain/geometry/parcel_subdivision_plan.dart';
 
@@ -34,6 +35,8 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   late final Future<(LandParcel, String?)> source = _load();
   final names = <TextEditingController>[];
   final retiredNames = <TextEditingController>[];
+  final details = <_SketchDraft>[];
+  final retiredDetails = <_SketchDraft>[];
   final cuts = <ParcelSubdivisionCut>[];
   Wgs84Vertex? start;
   final waypoints = <Wgs84Vertex>[];
@@ -50,6 +53,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   Offset? lastMapPointer;
   bool cameraMoved = false;
   bool previewing = false;
+  bool fittingInitialCamera = true;
 
   Future<void> _refreshDraftScreenPoints() async {
     final controller = mapController;
@@ -105,6 +109,8 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   void dispose() {
     for (final name in names) { name.dispose(); }
     for (final name in retiredNames) { name.dispose(); }
+    for (final entry in details) { entry.dispose(); }
+    for (final entry in retiredDetails) { entry.dispose(); }
     super.dispose();
   }
 
@@ -132,6 +138,8 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
       previewing = false;
       retiredNames.addAll(names);
       names.clear();
+      retiredDetails.addAll(details);
+      details.clear();
     });
   }
 
@@ -190,6 +198,9 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
           cuts.add(next.last);
           preview = result;
           names.add(TextEditingController());
+          details.add(_SketchDraft(layer: details.any((entry) =>
+            entry.layer == ParcelLayer.landBlock)
+              ? ParcelLayer.fieldPlot : ParcelLayer.landBlock));
           completedScreenRings.add(List.of(draftScreenPoints));
           start = null;
           waypoints.clear();
@@ -229,14 +240,15 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
         subject: widget.subject, sourceParcelId: source.id,
         villageId: villageId, expectedBoundaryVersion: source.boundaryVersion,
         cuts: List.of(cuts), names: names.map((name) => name.text).toList(),
+        details: details.map((entry) => entry.toDetails()).toList(),
         independentSketches: true);
       if (mounted) {
         Navigator.of(context).pop(true);
       }
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.text('subdivision.saveFailed'))));
+          SnackBar(content: Text('${l10n.text('subdivision.saveFailed')}\n$error')));
       }
     } finally {
       if (mounted) setState(() => saving = false);
@@ -259,8 +271,11 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
           ring.map(point).toList()).toList(),
         strokeColor: Colors.green.shade800, strokeWidth: 3,
         fillColor: Colors.green.withValues(alpha: 0.08)),
-      for (var i = 0; showFieldPlots && i < sketches.length; i++)
-        Polygon(polygonId: PolygonId('field-plot-$i'),
+      for (var i = 0; i < sketches.length; i++)
+        if (i < details.length &&
+            (details[i].layer == ParcelLayer.landBlock
+              ? showLandBlock : showFieldPlots))
+        Polygon(polygonId: PolygonId('sketch-$i'),
           points: sketches[i].vertices.map(point).toList(),
           strokeColor: Colors.orange.shade900, strokeWidth: 3,
           fillColor: Colors.orange.withValues(alpha: 0.22)),
@@ -284,19 +299,20 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
         target: point(parcel.centroid), zoom: 16),
       onCameraMoveStarted: () => cameraMoved = true,
       onCameraIdle: () {
+        if (fittingInitialCamera) { cameraMoved = false; return; }
         if (cameraMoved) {
           cameraMoved = false;
           _refreshDraftScreenPoints();
         }
       },
-      onMapCreated: (controller) {
+      onMapCreated: (controller) async {
         mapController = controller;
-        _refreshDraftScreenPoints();
         if (south < north && west < east) {
-          controller.animateCamera(CameraUpdate.newLatLngBounds(
+          await controller.animateCamera(CameraUpdate.newLatLngBounds(
             LatLngBounds(southwest: LatLng(south, west),
               northeast: LatLng(north, east)), 48));
         }
+        fittingInitialCamera = false;
       },
       onTap: (location) => _chooseVertex(parcel,
         Wgs84Vertex(latitude: location.latitude,
@@ -329,7 +345,12 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
       ))),
       Positioned.fill(child: IgnorePointer(child: CustomPaint(
         painter: _DraftScreenLinePainter(
-          draftScreenPoints, List.of(completedScreenRings))))),
+          draftScreenPoints,
+          [for (var i = 0; i < completedScreenRings.length; i++)
+            if (i < details.length &&
+                (details[i].layer == ParcelLayer.landBlock
+                  ? showLandBlock : showFieldPlots))
+              completedScreenRings[i]])))),
       if (preview != null && start == null)
         Positioned(top: 8, left: 8, right: 8,
           child: IgnorePointer(child: Card(
@@ -401,6 +422,8 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                 selected: showFieldPlots,
                 onSelected: (value) => setState(() => showFieldPlots = value)),
             ]),
+            if (!widget.useSchematicMap)
+              Text(l10n.text('subdivision.layerHint')),
             SizedBox(height: 128, child: start == null
               ? Align(alignment: Alignment.centerLeft,
                   child: Text(l10n.text('subdivision.tapToStart')))
@@ -487,11 +510,110 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
             const SizedBox(height: 12),
             if (cuts.isNotEmpty)
               for (var i = 0; i < names.length; i++)
-                TextField(key: Key('subdivision-name-$i'),
-                  controller: names[i],
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(labelText:
-                    '${l10n.text('subdivision.fragment')} ${i + 1}')),
+                Card(child: Padding(padding: const EdgeInsets.all(12),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('${l10n.text('parcel.layer.${details[i].layer.name}')} '
+                        '${i + 1}', style: Theme.of(context).textTheme.titleMedium),
+                      TextField(key: Key('subdivision-name-$i'),
+                        controller: names[i],
+                        onChanged: (_) => setState(() {}),
+                        decoration: InputDecoration(labelText:
+                          l10n.text('subdivision.name'))),
+                      DropdownButtonFormField<ParcelLayer>(
+                        key: Key('subdivision-layer-$i'),
+                        value: details[i].layer,
+                        decoration: InputDecoration(labelText:
+                          l10n.text('subdivision.layer')),
+                        items: [for (final layer in ParcelLayer.values)
+                          DropdownMenuItem(value: layer,
+                            child: Text(l10n.text('parcel.layer.${layer.name}')))],
+                        onChanged: (value) => setState(() {
+                          details[i].layer = value!;
+                          if (value == ParcelLayer.landBlock) {
+                            details[i].parentSketchIndex = null;
+                          } else {
+                            for (final entry in details.skip(i + 1)) {
+                              if (entry.parentSketchIndex == i) {
+                                entry.parentSketchIndex = null;
+                              }
+                            }
+                          }
+                        }),
+                      ),
+                      if (details[i].layer == ParcelLayer.fieldPlot)
+                        DropdownButtonFormField<int?>(
+                          key: Key('subdivision-parent-$i'),
+                          value: details[i].parentSketchIndex,
+                          decoration: InputDecoration(labelText:
+                            l10n.text('subdivision.parentBlock')),
+                          items: [
+                            DropdownMenuItem<int?>(value: null,
+                              child: Text(parcel.name)),
+                            for (var j = 0; j < i; j++)
+                              if (details[j].layer == ParcelLayer.landBlock)
+                                DropdownMenuItem<int?>(value: j,
+                                  child: Text(names[j].text.isEmpty
+                                    ? '${l10n.text('parcel.layer.landBlock')} ${j + 1}'
+                                    : names[j].text)),
+                          ],
+                          onChanged: (value) => setState(() =>
+                            details[i].parentSketchIndex = value),
+                        ),
+                      Text('${l10n.text('geometry.areaM2')}: '
+                        '${preview!.areasM2[i].toStringAsFixed(1)} m² · '
+                        '${l10n.text('geometry.perimeter')}: '
+                        '${preview!.perimetersM[i].toStringAsFixed(1)} m'),
+                      Text('${l10n.text('subdivision.location')}: '
+                        '${const Wgs84GeometryService().measure(fragments[i]).centroid.latitude.toStringAsFixed(6)}, '
+                        '${const Wgs84GeometryService().measure(fragments[i]).centroid.longitude.toStringAsFixed(6)}'),
+                      _statusPicker<LandUseType>(l10n,
+                        'survey.landUse', 'landUse', details[i].landUseType,
+                        LandUseType.values,
+                        (value) => setState(() => details[i].landUseType = value)),
+                      _statusPicker<LandCondition>(l10n,
+                        'survey.landCondition', 'landCondition',
+                        details[i].landCondition, LandCondition.values,
+                        (value) => setState(() => details[i].landCondition = value)),
+                      _statusPicker<ClearingStatus>(l10n,
+                        'survey.clearingStatus', 'clearing',
+                        details[i].clearingStatus, ClearingStatus.values,
+                        (value) => setState(() => details[i].clearingStatus = value)),
+                      _statusPicker<ReadinessStatus>(l10n,
+                        'survey.readinessStatus', 'readiness',
+                        details[i].readinessStatus, ReadinessStatus.values,
+                        (value) => setState(() => details[i].readinessStatus = value)),
+                      TextField(controller: details[i].notes,
+                        decoration: InputDecoration(labelText:
+                          l10n.text('subdivision.notes'))),
+                      TextField(controller: details[i].cropType,
+                        onChanged: (_) => setState(() {}),
+                        decoration: InputDecoration(labelText:
+                          l10n.text('crop.type'))),
+                      if (details[i].cropType.text.trim().isNotEmpty) ...[
+                        TextField(controller: details[i].cropQuantity,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(labelText:
+                            l10n.text('crop.quantity'))),
+                        TextField(controller: details[i].cropUnit,
+                          decoration: InputDecoration(labelText:
+                            l10n.text('crop.unit'))),
+                        DropdownButtonFormField<CropGrowthStage?>(
+                          value: details[i].cropGrowthStage,
+                          decoration: InputDecoration(labelText:
+                            l10n.text('crop.growthStage')),
+                          items: [
+                            DropdownMenuItem<CropGrowthStage?>(value: null,
+                              child: Text(l10n.text('crop.growthStage.unknown'))),
+                            for (final stage in CropGrowthStage.values)
+                              DropdownMenuItem<CropGrowthStage?>(value: stage,
+                                child: Text(l10n.text('crop.growthStage.${stage.name}'))),
+                          ],
+                          onChanged: (value) => setState(() =>
+                            details[i].cropGrowthStage = value),
+                        ),
+                      ],
+                    ]))),
             const SizedBox(height: 12),
             FilledButton(key: const Key('subdivision-save'),
               onPressed: preview == null || villageId == null || saving ||
@@ -501,6 +623,50 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
           ]);
         }),
     );
+  }
+
+  Widget _statusPicker<T extends Enum>(AppLocalizations l10n,
+      String labelKey, String valuePrefix, T value, List<T> options,
+      ValueChanged<T> onChanged) => DropdownButtonFormField<T>(
+    value: value,
+    decoration: InputDecoration(labelText: l10n.text(labelKey)),
+    items: [for (final option in options)
+      DropdownMenuItem<T>(value: option,
+        child: Text(l10n.text('$valuePrefix.${option.name}')))],
+    onChanged: (selected) { if (selected != null) onChanged(selected); },
+  );
+}
+
+class _SketchDraft {
+  _SketchDraft({required this.layer});
+
+  ParcelLayer layer;
+  int? parentSketchIndex;
+  LandUseType landUseType = LandUseType.agricultural;
+  LandCondition landCondition = LandCondition.unknown;
+  ClearingStatus clearingStatus = ClearingStatus.unknown;
+  ReadinessStatus readinessStatus = ReadinessStatus.unknown;
+  CropGrowthStage? cropGrowthStage;
+  final notes = TextEditingController();
+  final cropType = TextEditingController();
+  final cropQuantity = TextEditingController();
+  final cropUnit = TextEditingController();
+
+  ParcelSketchDetails toDetails() => ParcelSketchDetails(
+    layer: layer, parentSketchIndex: parentSketchIndex,
+    landUseType: landUseType, landCondition: landCondition,
+    clearingStatus: clearingStatus, readinessStatus: readinessStatus,
+    notes: notes.text.trim().isEmpty ? null : notes.text.trim(),
+    cropType: cropType.text.trim().isEmpty ? null : cropType.text.trim(),
+    cropQuantity: double.tryParse(cropQuantity.text.trim()),
+    cropUnit: cropUnit.text.trim(), cropGrowthStage: cropGrowthStage,
+  );
+
+  void dispose() {
+    notes.dispose();
+    cropType.dispose();
+    cropQuantity.dispose();
+    cropUnit.dispose();
   }
 }
 

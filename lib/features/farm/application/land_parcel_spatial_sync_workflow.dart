@@ -72,13 +72,30 @@ class LandParcelSpatialSyncWorkflow {
     required List<ParcelSubdivisionCut> cuts,
     required List<String> names,
     bool independentSketches = false,
+    List<ParcelSketchDetails> details = const [],
     required String actorMembershipId,
     required DateTime occurredAt,
   }) async {
     if (cuts.isEmpty || cuts.length > 99 ||
         names.length != cuts.length + (independentSketches ? 0 : 1) ||
-        names.any((name) => name.trim().isEmpty) || villageId.trim().isEmpty) {
+        names.any((name) => name.trim().isEmpty) || villageId.trim().isEmpty ||
+        (details.isNotEmpty && details.length != names.length)) {
       throw const FormatException('Every final fragment needs a name and catalogued village.');
+    }
+    final entries = details.isEmpty
+        ? List.filled(names.length, const ParcelSketchDetails()) : details;
+    for (var i = 0; i < entries.length; i++) {
+      final entry = entries[i];
+      final parentIndex = entry.parentSketchIndex;
+      if (parentIndex != null && (parentIndex < 0 || parentIndex >= i ||
+          entries[parentIndex].layer != ParcelLayer.landBlock)) {
+        throw const FormatException('A field plot must refer to a previously drawn land block.');
+      }
+      if (entry.cropType?.trim().isNotEmpty == true &&
+          (entry.cropQuantity == null || !entry.cropQuantity!.isFinite ||
+           entry.cropQuantity! <= 0 || entry.cropUnit?.trim().isEmpty != false)) {
+        throw const FormatException('Crop requires a positive quantity and unit.');
+      }
     }
     final childIds = List.generate(names.length, (_) => identityGenerator.newId('land-parcel'));
     final linkIds = List.generate(names.length, (_) => identityGenerator.newId('spatial-link'));
@@ -86,6 +103,7 @@ class LandParcelSpatialSyncWorkflow {
     final revisionIds = List.generate(names.length, (_) => identityGenerator.newId('spatial-revision'));
     final derivationIds = List.generate(names.length, (_) => identityGenerator.newId('derivation'));
     Transaction? scopedTransaction;
+    final createdChildren = <LandParcel>[];
     return transaction.run<List<LandParcel>>((parcels, links, spatial) async {
       final tx = scopedTransaction!;
       final source = await parcels.getById(farmId: farmId, id: sourceParcelId);
@@ -132,6 +150,9 @@ class LandParcelSpatialSyncWorkflow {
       final numbers = SqliteScopedParcelNumberAllocator(tx);
       final children = <LandParcel>[];
       for (var index = 0; index < boundaries.length; index++) {
+        final entry = entries[index];
+        final parentId = entry.parentSketchIndex == null
+            ? source.id : childIds[entry.parentSketchIndex!];
         final child = await numbers.saveLocationParcel(
           farmId: farmId, villageId: villageId,
           countryCode: source.countryCode!,
@@ -145,7 +166,8 @@ class LandParcelSpatialSyncWorkflow {
             verificationStatus: BoundaryVerificationStatus.draft,
             actorMembershipId: actorMembershipId, occurredAt: occurredAt,
             legacyMetadata: independentSketches
-                ? {'parcelLayer': 'fieldPlot', 'parentLandBlockId': source.id}
+                ? {'parcelLayer': entry.layer.name,
+                   'parentLandBlockId': parentId}
                 : const {},
             countryCode: source.countryCode,
             provinceCode: source.provinceCode,
@@ -161,6 +183,7 @@ class LandParcelSpatialSyncWorkflow {
           spatialRevisionId: revisionIds[index],
         );
         children.add(child.assignSpatialFeatureId(featureIds[index]));
+        createdChildren.add(children.last);
         await SqliteParcelLandHistoryRepository.linkScoped(tx,
           ParcelDerivation(
             id: derivationIds[index], farmId: farmId,
@@ -168,7 +191,7 @@ class LandParcelSpatialSyncWorkflow {
             kind: ParcelDerivationKind.subdivision,
             derivedAreaM2: child.areaM2, occurredAt: occurredAt,
             actorMembershipId: actorMembershipId,
-          ),
+          ), allowOutsideSource: independentSketches,
         );
       }
       if (!independentSketches) {
@@ -177,7 +200,32 @@ class LandParcelSpatialSyncWorkflow {
           occurredAt: occurredAt));
       }
       return children;
-    }, beforeCreate: (tx, _) async { scopedTransaction = tx; });
+    }, beforeCreate: (tx, _) async { scopedTransaction = tx; },
+      afterCreate: (surveys) async {
+        if (!independentSketches) return;
+        for (var i = 0; i < createdChildren.length; i++) {
+          final entry = entries[i];
+          final child = createdChildren[i];
+          await surveys.saveLandUseProfile(LandUseProfile(
+            parcelId: child.id, landUseType: entry.landUseType,
+            currentCondition: entry.landCondition,
+            clearingStatus: entry.clearingStatus,
+            readinessStatus: entry.readinessStatus,
+            notes: entry.notes?.trim().isEmpty == true ? null : entry.notes?.trim(),
+            updatedAt: occurredAt, updatedBy: actorMembershipId));
+          if (entry.cropType?.trim().isNotEmpty == true) {
+            await surveys.createCrop(CropRecord(
+              id: identityGenerator.newId('crop'), parcelId: child.id,
+              cropType: entry.cropType!.trim(),
+              quantity: entry.cropQuantity!, unit: entry.cropUnit!.trim(),
+              condition: CropCondition.growing,
+              growthStage: entry.cropGrowthStage,
+              active: true, createdAt: occurredAt,
+              createdBy: actorMembershipId, updatedAt: occurredAt,
+              updatedBy: actorMembershipId));
+          }
+        }
+      });
   }
 
   /// Explicitly restores a missing parcel-side ID on a historical linked row.
