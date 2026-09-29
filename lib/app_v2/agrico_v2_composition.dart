@@ -276,6 +276,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         'tasks': () => push(
           FarmTaskScreen(
             controller: deps.taskController,
+            parcels: deps.controller.items.map((item) => item.parcel).toList(),
             resources: ParcelWorkService(
               SqliteParcelWorkRepository(deps.database),
             ),

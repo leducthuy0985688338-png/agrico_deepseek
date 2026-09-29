@@ -3,6 +3,8 @@ import 'package:agrico_deepseek/core/permissions/authorization.dart';
 import 'package:agrico_deepseek/features/farm/application/farm_task_service.dart';
 import 'package:agrico_deepseek/features/farm/application/parcel_work_service.dart';
 import 'package:agrico_deepseek/features/farm/domain/entities/farm_task.dart';
+import 'package:agrico_deepseek/features/farm/domain/entities/land_parcel.dart';
+import 'package:agrico_deepseek/features/farm/domain/geometry/wgs84_geometry.dart';
 import 'package:agrico_deepseek/features/farm/domain/entities/parcel_work.dart';
 import 'package:agrico_deepseek/features/farm/domain/repositories/farm_task_repository.dart';
 import 'package:agrico_deepseek/features/farm/domain/repositories/parcel_work_repository.dart';
@@ -18,6 +20,22 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1200, 1200));
     final tasks = _Tasks();
     final resources = _Resources();
+    final parcel = LandParcel.create(
+      id: 'parcel-1',
+      farmId: 'farm-1',
+      parcelCode: 'L001',
+      name: 'Lô A',
+      boundary: Wgs84Polygon.fromVertices(const [
+        Wgs84Vertex(latitude: 16, longitude: 106),
+        Wgs84Vertex(latitude: 16, longitude: 106.002),
+        Wgs84Vertex(latitude: 16.002, longitude: 106.002),
+        Wgs84Vertex(latitude: 16.002, longitude: 106),
+      ]),
+      boundarySource: BoundarySource.manual,
+      verificationStatus: BoundaryVerificationStatus.draft,
+      actorMembershipId: 'member',
+      occurredAt: DateTime.utc(2026, 9, 29),
+    );
     const subject = AuthorizationSubject(
       userId: 'user',
       membershipId: 'member',
@@ -41,6 +59,7 @@ void main() {
         home: FarmTaskScreen(
           controller: controller,
           resources: ParcelWorkService(resources),
+          parcels: [parcel],
         ),
       ),
     );
@@ -53,6 +72,10 @@ void main() {
       find.byKey(const Key('farm-task-title')),
       'Khai hoang A',
     );
+    await tester.tap(find.byKey(const Key('farm-task-parcel')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('L001 · Lô A').last);
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('farm-task-machine')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('M001 · Máy cày').last);
@@ -62,6 +85,7 @@ void main() {
 
     expect(controller.items, hasLength(1));
     expect(tasks.saved.single.machineResourceId, 'machine-1');
+    expect(tasks.saved.single.parcelId, 'parcel-1');
     expect(find.text('Khai hoang A'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();

@@ -6,6 +6,7 @@ import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/permissions/authorization.dart';
 import '../../application/parcel_work_service.dart';
 import '../../domain/entities/farm_task.dart';
+import '../../domain/entities/land_parcel.dart';
 import '../../domain/entities/parcel_work.dart';
 import '../controllers/farm_task_controller.dart';
 
@@ -14,16 +15,21 @@ class FarmTaskScreen extends StatelessWidget {
     super.key,
     required this.controller,
     required this.resources,
+    required this.parcels,
   });
 
   final FarmTaskController controller;
   final ParcelWorkService resources;
+  final List<LandParcel> parcels;
 
   Future<void> _add(BuildContext context) async {
     await showDialog<void>(
       context: context,
-      builder: (_) =>
-          _CreateTaskDialog(controller: controller, resources: resources),
+      builder: (_) => _CreateTaskDialog(
+        controller: controller,
+        resources: resources,
+        parcels: parcels,
+      ),
     );
   }
 
@@ -83,10 +89,15 @@ class FarmTaskScreen extends StatelessWidget {
 }
 
 class _CreateTaskDialog extends StatefulWidget {
-  const _CreateTaskDialog({required this.controller, required this.resources});
+  const _CreateTaskDialog({
+    required this.controller,
+    required this.resources,
+    required this.parcels,
+  });
 
   final FarmTaskController controller;
   final ParcelWorkService resources;
+  final List<LandParcel> parcels;
 
   @override
   State<_CreateTaskDialog> createState() => _CreateTaskDialogState();
@@ -98,6 +109,7 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
   late final Future<List<WorkResource>> available;
   DateTime dueAt = DateTime.now().add(const Duration(days: 1));
   String? workerId;
+  String? parcelId;
   String? machineId;
   bool saving = false;
   bool failed = false;
@@ -136,6 +148,7 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
           status: FarmTaskStatus.pending,
           dueAt: dueAt,
           createdAt: DateTime.now(),
+          parcelId: parcelId,
           workerResourceId: workerId,
           machineResourceId: machineId,
         ),
@@ -192,6 +205,22 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
                   '${l10n.text('task.due')}: '
                   '${dueAt.year}-${dueAt.month}-${dueAt.day}',
                 ),
+              ),
+              DropdownButtonFormField<String>(
+                key: const Key('farm-task-parcel'),
+                initialValue: parcelId,
+                decoration: InputDecoration(
+                  labelText: l10n.text('task.parcel'),
+                ),
+                items: [
+                  const DropdownMenuItem<String>(value: null, child: Text('—')),
+                  for (final parcel in widget.parcels.where((p) => p.active))
+                    DropdownMenuItem(
+                      value: parcel.id,
+                      child: Text('${parcel.parcelCode} · ${parcel.name}'),
+                    ),
+                ],
+                onChanged: (value) => setState(() => parcelId = value),
               ),
               FutureBuilder<List<WorkResource>>(
                 future: available,
