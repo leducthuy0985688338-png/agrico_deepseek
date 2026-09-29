@@ -163,7 +163,8 @@ void main() {
         size.width / 2, (16.001 - lat) * scale + size.height / 2));
       await tester.pumpAndSettle();
     }
-    final done = find.byKey(const Key('subdivision-close-outline'));
+    final done = find.byKey(const Key('subdivision-close-outline'),
+      skipOffstage: false);
     await tester.ensureVisible(done);
     await tester.tap(done);
     await tester.pumpAndSettle();
@@ -274,7 +275,8 @@ void main() {
     await tap(16.0013, 106.001);
     await tap(16.0014, 106.0003);
     await tap(16.0017, 106);         // Second boundary anchor.
-    final done = find.byKey(const Key('subdivision-close-outline'));
+    final done = find.byKey(const Key('subdivision-close-outline'),
+      skipOffstage: false);
     await tester.ensureVisible(done);
     await tester.tap(done);          // Explicit Google Earth style Done step.
     await tester.pumpAndSettle();
