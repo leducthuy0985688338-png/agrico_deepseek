@@ -54,7 +54,9 @@ class SqliteParcelWorkRepository implements ParcelWorkRepository {
 
   @override
   Future<void> registerBatch(List<WorkResource> resources) async {
-    if (resources.isEmpty) return;
+    if (resources.isEmpty) {
+      return;
+    }
     final farmId = resources.first.farmId;
     final ids = <String>{};
     final codes = <(WorkResourceKind, String)>{};
