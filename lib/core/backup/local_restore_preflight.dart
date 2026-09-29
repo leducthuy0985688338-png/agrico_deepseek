@@ -34,7 +34,8 @@ class LocalRestorePreflight {
       'agrico.db': primary,
       'agrico_costs.db': costs,
     }.entries) {
-      final path = '$temporaryDirectory/agrico-restore-'
+      final path =
+          '$temporaryDirectory/agrico-restore-'
           '${DateTime.now().microsecondsSinceEpoch}-${index++}.db';
       await _validateDatabase(
         path: path,
@@ -60,7 +61,10 @@ class LocalRestorePreflight {
       final versionRows = await current.rawQuery('PRAGMA user_version');
       final version = versionRows.single['user_version'];
       if (payload['databaseVersion'] != version) {
-        throw RestorePreflightException('schemaVersion', database: databaseName);
+        throw RestorePreflightException(
+          'schemaVersion',
+          database: databaseName,
+        );
       }
       final schema = await current.rawQuery(
         "SELECT type, name, sql FROM sqlite_master WHERE type IN ('table', 'index') "
@@ -79,28 +83,45 @@ class LocalRestorePreflight {
       // Backups made before land-only parcel numbering lack the empty v3
       // counter table. Its CREATE TABLE comes from the current app schema.
       final optionalMissing = databaseName == 'agrico.db'
-          ? {'agrico_location_parcel_sequences_v3',
-              'parcel_work_resources', 'parcel_work_events',
-              'parcel_work_assignments', 'parcel_stage_snapshots',
-              'parcel_derivations'} : <String>{};
+          ? {
+              'agrico_location_parcel_sequences_v3',
+              'parcel_work_resources',
+              'parcel_work_events',
+              'parcel_work_assignments',
+              'parcel_stage_snapshots',
+              'parcel_derivations',
+              'farm_tasks_v2',
+            }
+          : <String>{};
       final missing = tables.difference(saved.keys.toSet());
-      if (missing.intersection({'parcel_work_resources',
-          'parcel_work_events', 'parcel_work_assignments'}).isNotEmpty &&
-          ['parcel_work_resources', 'parcel_work_events',
-            'parcel_work_assignments'].any((name) =>
-              (saved[name] as List? ?? const []).isNotEmpty)) {
+      if (missing.intersection({
+            'parcel_work_resources',
+            'parcel_work_events',
+            'parcel_work_assignments',
+          }).isNotEmpty &&
+          [
+            'parcel_work_resources',
+            'parcel_work_events',
+            'parcel_work_assignments',
+          ].any((name) => (saved[name] as List? ?? const []).isNotEmpty)) {
         throw RestorePreflightException('tables', database: databaseName);
       }
-      if (missing.intersection({'parcel_stage_snapshots',
-          'parcel_derivations'}).isNotEmpty &&
-          ['parcel_stage_snapshots', 'parcel_derivations'].any((name) =>
-              (saved[name] as List? ?? const []).isNotEmpty)) {
+      if (missing.intersection({
+            'parcel_stage_snapshots',
+            'parcel_derivations',
+          }).isNotEmpty &&
+          [
+            'parcel_stage_snapshots',
+            'parcel_derivations',
+          ].any((name) => (saved[name] as List? ?? const []).isNotEmpty)) {
         throw RestorePreflightException('tables', database: databaseName);
       }
       if (missing.contains('agrico_location_parcel_sequences_v3') &&
-          (saved['land_parcels'] as List? ?? const []).any((row) =>
-              RegExp(r'-L[0-9]{5}$').hasMatch(
-                  (row as Map)['parcel_code']?.toString() ?? ''))) {
+          (saved['land_parcels'] as List? ?? const []).any(
+            (row) => RegExp(
+              r'-L[0-9]{5}$',
+            ).hasMatch((row as Map)['parcel_code']?.toString() ?? ''),
+          )) {
         throw RestorePreflightException('tables', database: databaseName);
       }
       if (!tables.containsAll(saved.keys) ||
@@ -126,7 +147,10 @@ class LocalRestorePreflight {
                 if (value.length != 1 || value['blobBase64'] is! String) {
                   throw const FormatException('Invalid binary data.');
                 }
-                return MapEntry(key, base64Decode(value['blobBase64'] as String));
+                return MapEntry(
+                  key,
+                  base64Decode(value['blobBase64'] as String),
+                );
               }
               return MapEntry(key, value);
             });
@@ -139,8 +163,10 @@ class LocalRestorePreflight {
         await staged.execute(row['sql']! as String);
       }
       step = 'integrity';
-      if ((await staged.rawQuery('PRAGMA integrity_check')).single.values.single
-          != 'ok') {
+      if ((await staged.rawQuery(
+            'PRAGMA integrity_check',
+          )).single.values.single !=
+          'ok') {
         throw RestorePreflightException('integrity', database: databaseName);
       }
       if ((await staged.rawQuery('PRAGMA foreign_key_check')).isNotEmpty) {
@@ -150,7 +176,9 @@ class LocalRestorePreflight {
       rethrow;
     } on DatabaseException {
       throw RestorePreflightException(
-        'sqlite', database: databaseName, step: step,
+        'sqlite',
+        database: databaseName,
+        step: step,
       );
     } finally {
       await staged?.close();

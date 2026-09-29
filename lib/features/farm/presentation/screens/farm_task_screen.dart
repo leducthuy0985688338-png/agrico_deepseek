@@ -144,11 +144,12 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
         Navigator.of(context).pop();
       }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           saving = false;
           failed = true;
         });
+      }
     }
   }
 
