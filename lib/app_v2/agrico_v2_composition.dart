@@ -58,11 +58,10 @@ import '../screens/ai_chat_screen.dart';
 import '../screens/field_gps_measure_screen.dart';
 import '../screens/fuel_screen.dart';
 
-import '../screens/settings_screen.dart';
-
 import '../screens/warehouse_screen.dart';
 import '../services/field_database.dart';
 import 'agrico_app_shell.dart';
+import 'v2_settings_screen.dart';
 
 class AgricoV2Root extends StatefulWidget {
   const AgricoV2Root({super.key, required this.userId});
@@ -283,7 +282,16 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
           ),
         ),
         'ai': () => push(const AiChatScreen()),
-        'settings': () => push(const SettingsPage()),
+        'settings': () => push(
+          V2SettingsScreen(
+            onOpenBackup:
+                deps.subject.permissionCodes.contains(
+                  PermissionCodes.localBackupExport,
+                )
+                ? () => push(LocalBackupScreen(database: deps.database))
+                : null,
+          ),
+        ),
         if (deps.subject.permissionCodes.contains(
           PermissionCodes.localBackupExport,
         ))

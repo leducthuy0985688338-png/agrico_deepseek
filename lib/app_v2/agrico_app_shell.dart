@@ -339,7 +339,7 @@ class ModulesV2 extends StatelessWidget {
           'administrativeCatalog': legacyRoutes['administrativeCatalog'],
           'tasks': legacyRoutes['tasks'],
           'ai': legacyRoutes['ai'],
-          'cloud': legacyRoutes['settings'],
+          'cloud': null,
         }),
       ],
     );
