@@ -378,7 +378,8 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
               : Column(crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
               Text('${l10n.text('subdivision.pointCount')}: '
-                '${waypoints.length + 1}'),
+                '${waypoints.length + 1}',
+                key: const Key('subdivision-point-count')),
               Wrap(spacing: 4, runSpacing: 4, children: [
                 if (waypoints.isNotEmpty) TextButton.icon(
                   key: const Key('subdivision-undo-point'),

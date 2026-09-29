@@ -61,35 +61,35 @@ void main() {
       await tester.tapAt(tester.getTopLeft(map) + position);
       await tester.pumpAndSettle();
       count++;
-      await tester.ensureVisible(
-        find.byKey(const Key('subdivision-reset-cut')));
-      await tester.pumpAndSettle();
-      expect(find.text('Số điểm đã chọn: $count'), findsOneWidget);
+      expect(tester.widget<Text>(find.byKey(
+        const Key('subdivision-point-count'), skipOffstage: false)).data,
+        'Số điểm đã chọn: $count');
     }
     final undo = find.byKey(const Key('subdivision-undo-point'));
     await tester.ensureVisible(undo);
     await tester.tap(undo);
     await tester.pumpAndSettle();
-    expect(find.text('Số điểm đã chọn: 2'), findsOneWidget);
+    expect(tester.widget<Text>(find.byKey(
+      const Key('subdivision-point-count'), skipOffstage: false)).data,
+      'Số điểm đã chọn: 2');
     await tester.ensureVisible(map);
     await tester.tapAt(tester.getTopLeft(map) + const Offset(160, 230));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(
-      find.byKey(const Key('subdivision-reset-cut')));
-    await tester.pumpAndSettle();
-    expect(find.text('Số điểm đã chọn: 3'), findsOneWidget);
+    expect(tester.widget<Text>(find.byKey(
+      const Key('subdivision-point-count'), skipOffstage: false)).data,
+      'Số điểm đã chọn: 3');
     final reset = find.byKey(const Key('subdivision-reset-cut'));
     await tester.ensureVisible(reset);
     await tester.tap(reset);
     await tester.pumpAndSettle();
-    expect(find.textContaining('Số điểm đã chọn:'), findsNothing);
+    expect(find.byKey(const Key('subdivision-point-count'),
+      skipOffstage: false), findsNothing);
     await tester.ensureVisible(map);
     await tester.tapAt(tester.getTopLeft(map) + const Offset(140, 140));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(
-      find.byKey(const Key('subdivision-reset-cut')));
-    await tester.pumpAndSettle();
-    expect(find.text('Số điểm đã chọn: 1'), findsOneWidget);
+    expect(tester.widget<Text>(find.byKey(
+      const Key('subdivision-point-count'), skipOffstage: false)).data,
+      'Số điểm đã chọn: 1');
   });
 
   testWidgets('independent sketches allow touching and overlapping edges',
