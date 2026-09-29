@@ -91,9 +91,18 @@ class LocalRestorePreflight {
               'parcel_stage_snapshots',
               'parcel_derivations',
               'farm_tasks_v2',
+              'inventory_items_v2',
+              'inventory_movements_v2',
             }
           : <String>{};
       final missing = tables.difference(saved.keys.toSet());
+      const inventoryTables = {'inventory_items_v2', 'inventory_movements_v2'};
+      if (missing.intersection(inventoryTables).isNotEmpty &&
+          inventoryTables.any(
+            (name) => (saved[name] as List? ?? const []).isNotEmpty,
+          )) {
+        throw RestorePreflightException('tables', database: databaseName);
+      }
       if (missing.intersection({
             'parcel_work_resources',
             'parcel_work_events',
@@ -171,6 +180,30 @@ class LocalRestorePreflight {
       }
       if ((await staged.rawQuery('PRAGMA foreign_key_check')).isNotEmpty) {
         throw RestorePreflightException('foreignKeys', database: databaseName);
+      }
+      if (databaseName == 'agrico.db' && tables.containsAll(inventoryTables)) {
+        step = 'inventory reconciliation';
+        final wrongFarm = await staged.rawQuery('''
+          SELECT m.id FROM inventory_movements_v2 m
+          JOIN inventory_items_v2 i ON i.id = m.item_id
+          WHERE m.farm_id != i.farm_id LIMIT 1
+        ''');
+        final wrongStock = await staged.rawQuery('''
+          SELECT i.id FROM inventory_items_v2 i
+          LEFT JOIN inventory_movements_v2 m ON m.item_id = i.id
+          GROUP BY i.id, i.stock
+          HAVING i.stock != COALESCE(SUM(
+            CASE m.kind WHEN 'receipt' THEN m.quantity
+                        WHEN 'issue' THEN -m.quantity ELSE 0 END
+          ), 0) LIMIT 1
+        ''');
+        if (wrongFarm.isNotEmpty || wrongStock.isNotEmpty) {
+          throw RestorePreflightException(
+            'integrity',
+            database: databaseName,
+            step: step,
+          );
+        }
       }
     } on RestorePreflightException {
       rethrow;
