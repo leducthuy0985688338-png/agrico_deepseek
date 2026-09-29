@@ -20,6 +20,8 @@ abstract final class PermissionCodes {
   static const taskEdit = 'task.edit';
   static const taskAssign = 'task.assign';
   static const taskComplete = 'task.complete';
+  static const inventoryView = 'inventory.view';
+  static const inventoryManage = 'inventory.manage';
   static const taskVerify = 'task.verify';
   static const chatView = 'chat.view';
   static const chatSend = 'chat.send';
@@ -45,6 +47,8 @@ abstract final class PermissionCodes {
     taskEdit,
     taskAssign,
     taskComplete,
+    inventoryView,
+    inventoryManage,
     taskVerify,
     chatView,
     chatSend,
