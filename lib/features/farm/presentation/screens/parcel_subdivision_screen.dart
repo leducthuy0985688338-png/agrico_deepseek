@@ -55,6 +55,16 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   bool previewing = false;
   bool fittingInitialCamera = true;
 
+  int _layerOrdinal(int index) {
+    final layer = details[index].layer;
+    return details.take(index + 1)
+        .where((entry) => entry.layer == layer).length;
+  }
+
+  String _sketchLabel(AppLocalizations l10n, int index) =>
+      '${l10n.text('parcel.layer.${details[index].layer.name}')} '
+      '${_layerOrdinal(index)}';
+
   Future<void> _refreshDraftScreenPoints() async {
     final controller = mapController;
     final vertices = [?start, ...waypoints];
@@ -502,7 +512,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
             if (preview != null) ...[
               Text('${l10n.text('subdivision.preview')}: ${fragments.length}'),
               for (var i = 0; i < fragments.length; i++)
-                Text('${l10n.text('subdivision.fragment')} ${i + 1}: '
+                Text('${_sketchLabel(l10n, i)}: '
                   '${preview!.areasM2[i].toStringAsFixed(1)} m² · '
                   '${preview!.perimetersM[i].toStringAsFixed(1)} m'),
             ],
@@ -513,8 +523,8 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                 Card(child: Padding(padding: const EdgeInsets.all(12),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('${l10n.text('parcel.layer.${details[i].layer.name}')} '
-                        '${i + 1}', style: Theme.of(context).textTheme.titleMedium),
+                      Text(_sketchLabel(l10n, i),
+                        style: Theme.of(context).textTheme.titleMedium),
                       TextField(key: Key('subdivision-name-$i'),
                         controller: names[i],
                         onChanged: (_) => setState(() {}),
@@ -554,7 +564,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                               if (details[j].layer == ParcelLayer.landBlock)
                                 DropdownMenuItem<int?>(value: j,
                                   child: Text(names[j].text.isEmpty
-                                    ? '${l10n.text('parcel.layer.landBlock')} ${j + 1}'
+                                    ? _sketchLabel(l10n, j)
                                     : names[j].text)),
                           ],
                           onChanged: (value) => setState(() =>
