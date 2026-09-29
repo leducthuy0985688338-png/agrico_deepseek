@@ -45,6 +45,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   bool showFieldPlots = true;
   GoogleMapController? mapController;
   List<Offset> draftScreenPoints = const [];
+  final completedScreenRings = <List<Offset>>[];
   int projectionRevision = 0;
   Offset? lastMapPointer;
   bool cameraMoved = false;
@@ -54,18 +55,24 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
     final controller = mapController;
     final vertices = [?start, ...waypoints];
     final revision = ++projectionRevision;
-    if (controller == null || vertices.isEmpty) {
-      if (mounted) setState(() => draftScreenPoints = const []);
-      return;
-    }
+    if (controller == null) return;
     try {
-      final coordinates = await Future.wait(vertices.map((vertex) =>
-        controller.getScreenCoordinate(LatLng(
-          vertex.latitude, vertex.longitude))));
+      Future<List<ScreenCoordinate>> project(List<Wgs84Vertex> ring) =>
+        Future.wait(ring.map((vertex) => controller.getScreenCoordinate(
+          LatLng(vertex.latitude, vertex.longitude))));
+      final coordinates = await project(vertices);
+      final completed = await Future.wait(cuts.map((cut) =>
+        project(cut.enclosedPolygon!.vertices)));
       if (!mounted || revision != projectionRevision) return;
       final pixelRatio = MediaQuery.devicePixelRatioOf(context);
-      setState(() => draftScreenPoints = coordinates.map((coordinate) =>
-        Offset(coordinate.x / pixelRatio, coordinate.y / pixelRatio)).toList());
+      Offset position(ScreenCoordinate coordinate) =>
+        Offset(coordinate.x / pixelRatio, coordinate.y / pixelRatio);
+      setState(() {
+        draftScreenPoints = coordinates.map(position).toList();
+        completedScreenRings
+          ..clear()
+          ..addAll(completed.map((ring) => ring.map(position).toList()));
+      });
     } catch (_) {
       // The map may be rebuilding while the camera moves; retry when idle.
     }
@@ -118,6 +125,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
       waypoints.clear();
       projectionRevision++;
       draftScreenPoints = const [];
+      completedScreenRings.clear();
       cuts.clear();
       preview = null;
       previewError = null;
@@ -182,6 +190,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
           cuts.add(next.last);
           preview = result;
           names.add(TextEditingController());
+          completedScreenRings.add(List.of(draftScreenPoints));
           start = null;
           waypoints.clear();
           projectionRevision++;
@@ -294,8 +303,8 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
           longitude: location.longitude),
         tapPosition: lastMapPointer,
         closeToStart: start != null && waypoints.length >= 2 &&
-          (location.latitude - start!.latitude).abs() < 0.000015 &&
-          (location.longitude - start!.longitude).abs() < 0.000015),
+          lastMapPointer != null && draftScreenPoints.isNotEmpty &&
+          (lastMapPointer! - draftScreenPoints.first).distance <= 24),
       polygons: boundaries,
       markers: {
         for (var i = 0; i < draft.length; i++)
@@ -319,7 +328,27 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
       zoomControlsEnabled: true,
       ))),
       Positioned.fill(child: IgnorePointer(child: CustomPaint(
-        painter: _DraftScreenLinePainter(draftScreenPoints)))),
+        painter: _DraftScreenLinePainter(
+          draftScreenPoints, List.of(completedScreenRings))))),
+      if (preview != null && start == null)
+        Positioned(top: 8, left: 8, right: 8,
+          child: IgnorePointer(child: Card(
+            color: Colors.white,
+            child: Padding(padding: const EdgeInsets.all(8),
+              child: Text('${AppLocalizations.of(context).text('subdivision.preview')}: '
+                '${preview!.boundaries.length} · '
+                '${preview!.areasM2.last.toStringAsFixed(1)} m² · '
+                '${preview!.perimetersM.last.toStringAsFixed(1)} m')),
+          ))),
+      if (start != null && waypoints.length >= 2)
+        Positioned(bottom: 12, left: 12, right: 12,
+          child: FilledButton.icon(
+            key: const Key('subdivision-close-outline'),
+            onPressed: previewing ? null : () => _finish(parcel),
+            icon: const Icon(Icons.check_circle_outline),
+            label: Text(AppLocalizations.of(context)
+              .text('subdivision.closeOutline')),
+          )),
       for (var i = 0; i < draftScreenPoints.length; i++)
         if (draftScreenPoints[i].dx >= 0 &&
             draftScreenPoints[i].dy >= 0 &&
@@ -402,7 +431,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                   icon: const Icon(Icons.restart_alt),
                   label: Text(l10n.text('subdivision.reset')),
                 ),
-                if (waypoints.length >= 2)
+                if (widget.useSchematicMap && waypoints.length >= 2)
                   FilledButton.icon(
                     key: const Key('subdivision-close-outline'),
                     onPressed: previewing ? null : () => _finish(parcel),
@@ -476,12 +505,31 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
 }
 
 class _DraftScreenLinePainter extends CustomPainter {
-  const _DraftScreenLinePainter(this.points);
+  const _DraftScreenLinePainter(this.points, this.completedRings);
 
   final List<Offset> points;
+  final List<List<Offset>> completedRings;
 
   @override
   void paint(Canvas canvas, Size size) {
+    for (final ring in completedRings) {
+      if (ring.length < 3) continue;
+      final outline = Path()..moveTo(ring.first.dx, ring.first.dy);
+      for (final point in ring.skip(1)) {
+        outline.lineTo(point.dx, point.dy);
+      }
+      outline.close();
+      canvas.drawPath(outline,
+        Paint()..color = Colors.orange.withValues(alpha: 0.28));
+      canvas.drawPath(outline, Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 6);
+      canvas.drawPath(outline, Paint()
+        ..color = Colors.deepOrange
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3);
+    }
     if (points.length < 2) return;
     final path = Path()..moveTo(points.first.dx, points.first.dy);
     for (final point in points.skip(1)) {
@@ -499,7 +547,8 @@ class _DraftScreenLinePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_DraftScreenLinePainter oldDelegate) =>
-    oldDelegate.points != points;
+    oldDelegate.points != points ||
+    oldDelegate.completedRings != completedRings;
 }
 
 class _Projection {

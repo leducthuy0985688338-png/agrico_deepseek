@@ -97,6 +97,19 @@ void main() {
     expect(tester.widget<Text>(find.byKey(
       const Key('subdivision-point-count'), skipOffstage: false)).data,
       'Số điểm đã chọn: 1');
+    for (final position in [
+      const Offset(220, 140), const Offset(220, 220),
+      const Offset(140, 220), const Offset(140, 140),
+    ]) {
+      await tester.ensureVisible(map);
+      await tester.pumpAndSettle();
+      await tester.tapAt(tester.getTopLeft(map) + position);
+      await tester.pumpAndSettle();
+    }
+    expect(find.byKey(const Key('subdivision-point-count'),
+      skipOffstage: false), findsNothing);
+    expect(find.byKey(const Key('subdivision-name-0'),
+      skipOffstage: false), findsOneWidget);
   });
 
   testWidgets('independent sketches allow touching and overlapping edges',
