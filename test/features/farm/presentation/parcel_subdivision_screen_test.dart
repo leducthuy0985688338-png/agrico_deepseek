@@ -9,6 +9,7 @@ import 'package:agrico_deepseek/features/farm/domain/geometry/wgs84_geometry.dar
 import 'package:agrico_deepseek/features/farm/domain/repositories/land_parcel_repository.dart';
 import 'package:agrico_deepseek/features/farm/presentation/screens/parcel_subdivision_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -39,7 +40,13 @@ void main() {
     );
     await tester.pumpWidget(MaterialApp(
       locale: const Locale('vi'),
-      localizationsDelegates: const [AppLocalizations.delegate],
+      supportedLocales: AppLocalizations.supportedLocales,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       home: ParcelSubdivisionScreen(
         useSchematicMap: true, subject: subject, sourceParcelId: 'source',
         service: ParcelSubdivisionService(
