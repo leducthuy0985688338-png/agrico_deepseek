@@ -476,9 +476,6 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
             ])),
             if (previewError != null) Text(previewError!,
               style: TextStyle(color: Theme.of(context).colorScheme.error)),
-            if (preview != null)
-              Text('${l10n.text('subdivision.preview')}: '
-                '${fragments.length}'),
             if (!widget.useSchematicMap)
               SizedBox(height: 480, child: _satelliteMap(parcel, fragments))
             else SizedBox(height: 420, child: LayoutBuilder(builder: (context, box) {

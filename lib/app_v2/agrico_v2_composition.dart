@@ -176,21 +176,6 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         landOnly: true,
         controller: deps.controller,
         parcelId: id,
-        onDrawFieldPlots: () async {
-          final saved = await Navigator.of(context).push<bool>(
-            MaterialPageRoute(builder: (_) => ParcelSubdivisionScreen(
-              subject: deps.subject, sourceParcelId: id,
-              service: ParcelSubdivisionService(
-                parcels: deps.controller.parcels,
-                workflow: deps.spatialWorkflow,
-              ),
-              administrativeCatalog: SqliteAdministrativeCatalog(deps.database),
-            )));
-          if (saved == true) {
-            await deps.controller.loadList();
-            await deps.controller.loadDetail(id);
-          }
-        },
         onTimelineRequested: () => push(ParcelLandTimelineScreen(
           parcelId: id, subject: deps.subject,
           parcels: deps.controller.parcels,

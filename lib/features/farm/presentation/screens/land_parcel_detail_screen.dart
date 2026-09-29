@@ -23,7 +23,6 @@ class LandParcelDetailScreen extends StatefulWidget {
     this.landOnly = false,
     this.onWorkRequested,
     this.onTimelineRequested,
-    this.onDrawFieldPlots,
   });
   final LandParcelController controller;
   final String parcelId;
@@ -35,7 +34,6 @@ class LandParcelDetailScreen extends StatefulWidget {
   final bool landOnly;
   final VoidCallback? onWorkRequested;
   final VoidCallback? onTimelineRequested;
-  final VoidCallback? onDrawFieldPlots;
 
   @override
   State<LandParcelDetailScreen> createState() => _LandParcelDetailScreenState();
@@ -173,16 +171,6 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
               '${data.parentLandBlock!.parcelCode} · '
               '${data.parentLandBlock!.name}',
               key: const Key('parcel-parent-land-block')),
-          if (parcel.layer == ParcelLayer.landBlock &&
-              widget.onDrawFieldPlots != null &&
-              controller.can(PermissionCodes.fieldCreate, parcelId: parcel.id) &&
-              controller.can(PermissionCodes.fieldEdit, parcelId: parcel.id))
-            FilledButton.icon(
-              key: const Key('draw-field-plots'),
-              onPressed: widget.onDrawFieldPlots,
-              icon: const Icon(Icons.draw),
-              label: Text(l10n.text('subdivision.drawPlots')),
-            ),
           if (data.village.isNotEmpty || (!widget.landOnly && data.owner.isNotEmpty))
             Text(widget.landOnly ? data.village : '${data.village} · ${data.owner}'),
           if (parcel.verificationStatus !=
