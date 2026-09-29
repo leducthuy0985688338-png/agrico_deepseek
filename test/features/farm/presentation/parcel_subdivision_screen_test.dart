@@ -139,7 +139,13 @@ void main() {
     );
     await tester.pumpWidget(MaterialApp(
       locale: const Locale('vi'),
-      localizationsDelegates: const [AppLocalizations.delegate],
+      supportedLocales: AppLocalizations.supportedLocales,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       home: ParcelSubdivisionScreen(
         useSchematicMap: true,
         subject: subject, sourceParcelId: 'source',
