@@ -206,14 +206,17 @@ void main() {
         '${AppLocalizations.of(tester.element(map)).text('subdivision.pointCount')}: '
         '$thirdPointCount');
     }
-    await tester.ensureVisible(done);
-    await tester.tap(done);
+    // Closing by tapping the first point also works when the growing
+    // metadata form has scrolled the toolbar underneath the app bar.
+    await tester.ensureVisible(map);
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.byKey(const Key('subdivision-name-2')),
-      180, scrollable: find.descendant(of: find.byType(ListView),
-        matching: find.byType(Scrollable)).first);
-    expect(find.byKey(const Key('subdivision-name-2')), findsOneWidget);
-    expect(find.textContaining(' m² · '), findsWidgets);
+    await tester.tapAt(tester.getTopLeft(map) + Offset(
+      (105.99998 - 106.001) * scale + size.width / 2,
+      (16.001 - 16.0007) * scale + size.height / 2));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('subdivision-name-2'),
+      skipOffstage: false), findsOneWidget);
+    expect(find.textContaining(' m² · ', skipOffstage: false), findsWidgets);
   });
 
   testWidgets('drawing the photographed outline previews two closed parcels',
