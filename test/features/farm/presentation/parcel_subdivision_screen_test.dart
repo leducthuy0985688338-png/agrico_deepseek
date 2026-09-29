@@ -51,16 +51,21 @@ void main() {
     final map = find.byKey(const Key('subdivision-map'));
     await tester.ensureVisible(map);
     await tester.pumpAndSettle();
-    final origin = tester.getTopLeft(map);
-    final size = tester.getSize(map);
+    var count = 0;
     for (final position in [
       const Offset(140, 140), const Offset(220, 140),
       const Offset(220, 220),
     ]) {
-      await tester.tapAt(origin + position);
+      await tester.ensureVisible(map);
       await tester.pumpAndSettle();
+      await tester.tapAt(tester.getTopLeft(map) + position);
+      await tester.pumpAndSettle();
+      count++;
+      await tester.ensureVisible(
+        find.byKey(const Key('subdivision-reset-cut')));
+      await tester.pumpAndSettle();
+      expect(find.text('Số điểm đã chọn: $count'), findsOneWidget);
     }
-    expect(find.text('Số điểm đã chọn: 3'), findsOneWidget);
     final undo = find.byKey(const Key('subdivision-undo-point'));
     await tester.ensureVisible(undo);
     await tester.tap(undo);
@@ -68,6 +73,9 @@ void main() {
     expect(find.text('Số điểm đã chọn: 2'), findsOneWidget);
     await tester.ensureVisible(map);
     await tester.tapAt(tester.getTopLeft(map) + const Offset(160, 230));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const Key('subdivision-reset-cut')));
     await tester.pumpAndSettle();
     expect(find.text('Số điểm đã chọn: 3'), findsOneWidget);
     final reset = find.byKey(const Key('subdivision-reset-cut'));
@@ -77,6 +85,9 @@ void main() {
     expect(find.textContaining('Số điểm đã chọn:'), findsNothing);
     await tester.ensureVisible(map);
     await tester.tapAt(tester.getTopLeft(map) + const Offset(140, 140));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const Key('subdivision-reset-cut')));
     await tester.pumpAndSettle();
     expect(find.text('Số điểm đã chọn: 1'), findsOneWidget);
   });
