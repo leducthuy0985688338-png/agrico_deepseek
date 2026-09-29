@@ -189,14 +189,21 @@ void main() {
 
     await tester.ensureVisible(map);
     await tester.pumpAndSettle();
-    final thirdOrigin = tester.getTopLeft(map);
+    var thirdPointCount = 0;
     for (final (lat, lon) in [
       (16.0007, 105.99998), (16.0007, 106.0008),
       (16.0012, 106.0008), (16.0012, 105.99998),
     ]) {
-      await tester.tapAt(thirdOrigin + Offset((lon - 106.001) * scale +
+      await tester.ensureVisible(map);
+      await tester.pumpAndSettle();
+      await tester.tapAt(tester.getTopLeft(map) + Offset((lon - 106.001) * scale +
         size.width / 2, (16.001 - lat) * scale + size.height / 2));
       await tester.pumpAndSettle();
+      thirdPointCount++;
+      expect(tester.widget<Text>(find.byKey(
+        const Key('subdivision-point-count'), skipOffstage: false)).data,
+        '${AppLocalizations.of(tester.element(map)).text('subdivision.pointCount')}: '
+        '$thirdPointCount');
     }
     await tester.ensureVisible(done);
     await tester.tap(done);
