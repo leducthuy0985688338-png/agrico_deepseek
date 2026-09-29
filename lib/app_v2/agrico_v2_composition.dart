@@ -27,6 +27,10 @@ import '../features/farm/data/local/sqlite_land_parcel_repository.dart';
 import '../features/farm/data/local/sqlite_land_survey_repository.dart';
 import '../features/farm/data/local/sqlite_parcel_work_repository.dart';
 import '../features/farm/application/parcel_work_service.dart';
+import '../features/farm/application/farm_task_service.dart';
+import '../features/farm/data/local/sqlite_farm_task_repository.dart';
+import '../features/farm/presentation/controllers/farm_task_controller.dart';
+import '../features/farm/presentation/screens/farm_task_screen.dart';
 import '../features/farm/domain/entities/parcel_work.dart';
 import '../features/farm/presentation/screens/work_resource_catalog_screen.dart';
 import '../features/farm/presentation/screens/parcel_work_screen.dart';
@@ -48,14 +52,14 @@ import '../features/finance/data/local/sqlite_finance_document_repository.dart';
 import '../features/finance/presentation/finance_documents_screen.dart';
 import '../models/field_model.dart';
 import '../providers/production_season_provider.dart';
-import '../providers/task_provider.dart';
+
 import '../screens/ai_chat_screen.dart';
 
 import '../screens/field_gps_measure_screen.dart';
 import '../screens/fuel_screen.dart';
 
 import '../screens/settings_screen.dart';
-import '../screens/task_screen.dart';
+
 import '../screens/warehouse_screen.dart';
 import '../services/field_database.dart';
 import 'agrico_app_shell.dart';
@@ -77,6 +81,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     await SqliteLandSurveyRepository.createSchema(database);
     await SqliteParcelNumberSequence.createSchema(database);
     await SqliteParcelWorkRepository.createSchema(database);
+    await SqliteFarmTaskRepository.createSchema(database);
     await SqliteParcelLandHistoryRepository.createSchema(database);
     await SqliteParcelNumberSequence.reconcileExistingHouseholds(database);
     await SqliteFinanceDocumentRepository.createSchema(database);
@@ -147,11 +152,17 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       ),
     );
     await controller.loadList();
+    final taskController = FarmTaskController(
+      subject: subject,
+      service: FarmTaskService(SqliteFarmTaskRepository(database)),
+    );
+    await taskController.load();
     return _V2Dependencies(
       subject: subject,
       spatial: spatial,
       spatialWorkflow: spatialSyncWorkflow,
       controller: controller,
+      taskController: taskController,
       application: application,
       finance: finance,
       database: database,
@@ -262,7 +273,14 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         ),
         'warehouse': () => push(const WarehouseScreen()),
         'fuel': () => push(const FuelScreen()),
-        'tasks': () => push(const TaskScreen()),
+        'tasks': () => push(
+          FarmTaskScreen(
+            controller: deps.taskController,
+            resources: ParcelWorkService(
+              SqliteParcelWorkRepository(deps.database),
+            ),
+          ),
+        ),
         'ai': () => push(const AiChatScreen()),
         'settings': () => push(const SettingsPage()),
         if (deps.subject.permissionCodes.contains(
@@ -280,7 +298,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
           ),
       };
       return AnimatedBuilder(
-        animation: deps.controller,
+        animation: Listenable.merge([deps.controller, deps.taskController]),
         builder: (context, _) => AgricoAppShell(
           subject: deps.subject,
           landParcelController: deps.controller,
@@ -294,7 +312,9 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
           seasonCount: context.watch<ProductionSeasonProvider>().isLoading
               ? null
               : context.watch<ProductionSeasonProvider>().allSeasons.length,
-          taskCount: context.watch<TaskProvider>().tasks.length,
+          taskCount: deps.taskController.hasError
+              ? null
+              : deps.taskController.items.length,
         ),
       );
     },
@@ -719,6 +739,7 @@ class _V2Dependencies {
     required this.spatial,
     required this.spatialWorkflow,
     required this.controller,
+    required this.taskController,
     required this.application,
     required this.finance,
     required this.database,
@@ -730,6 +751,7 @@ class _V2Dependencies {
   final SpatialPersistenceComposition spatial;
   final LandParcelSpatialSyncWorkflow spatialWorkflow;
   final LandParcelController controller;
+  final FarmTaskController taskController;
   final LandParcelApplicationService application;
   final SqliteFinanceDocumentRepository finance;
   final Database database;
