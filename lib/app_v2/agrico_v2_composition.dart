@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -52,7 +52,6 @@ import '../screens/employee_list_screen.dart';
 import '../screens/field_gps_measure_screen.dart';
 import '../screens/fuel_screen.dart';
 import '../screens/machine_list_screen.dart';
-import '../screens/report_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/task_screen.dart';
 import '../screens/warehouse_screen.dart';
@@ -141,7 +140,9 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       fileOpener: platform,
       googleEarthOpener: platform,
       boundaryConsistencyQueries: boundaryConsistencyQueries,
-      reconcileLegacySpatialIdentity: ReconcileLegacySpatialIdentity(application),
+      reconcileLegacySpatialIdentity: ReconcileLegacySpatialIdentity(
+        application,
+      ),
     );
     await controller.loadList();
     return _V2Dependencies(
@@ -176,40 +177,51 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         landOnly: true,
         controller: deps.controller,
         parcelId: id,
-        onTimelineRequested: () => push(ParcelLandTimelineScreen(
-          parcelId: id, subject: deps.subject,
-          parcels: deps.controller.parcels,
-          onSubdivisionSaved: deps.controller.loadList,
-          onSubdivideRequested: () => ParcelSubdivisionScreen(
-            subject: deps.subject, sourceParcelId: id,
-            service: ParcelSubdivisionService(
-              parcels: deps.controller.parcels,
-              workflow: deps.spatialWorkflow,
+        onTimelineRequested: () => push(
+          ParcelLandTimelineScreen(
+            parcelId: id,
+            subject: deps.subject,
+            parcels: deps.controller.parcels,
+            onSubdivisionSaved: deps.controller.loadList,
+            onSubdivideRequested: () => ParcelSubdivisionScreen(
+              subject: deps.subject,
+              sourceParcelId: id,
+              service: ParcelSubdivisionService(
+                parcels: deps.controller.parcels,
+                workflow: deps.spatialWorkflow,
+              ),
+              administrativeCatalog: SqliteAdministrativeCatalog(deps.database),
             ),
-            administrativeCatalog: SqliteAdministrativeCatalog(deps.database),
+            service: ParcelLandHistoryService(
+              SqliteParcelLandHistoryRepository(deps.database),
+              deps.controller.parcels,
+            ),
           ),
-          service: ParcelLandHistoryService(
-            SqliteParcelLandHistoryRepository(deps.database),
-            deps.controller.parcels,
+        ),
+        onWorkRequested: () => push(
+          ParcelWorkScreen(
+            parcelId: id,
+            subject: deps.subject,
+            service: ParcelWorkService(
+              SqliteParcelWorkRepository(deps.database),
+            ),
           ),
-        )),
-        onWorkRequested: () => push(ParcelWorkScreen(
-          parcelId: id,
-          subject: deps.subject,
-          service: ParcelWorkService(SqliteParcelWorkRepository(deps.database)),
-        )),
+        ),
         onGpsRequested: () => _measureGps(context, deps, id),
         onImportRequested: () => _import(context, deps, id),
         onEditRequested: () => _editParcel(context, deps, id),
         onAttachRequested: () => _attachParcel(context, deps, id),
         onOpenAttachment: (attachment) async {
           final reference = attachment.localReference;
-          final opened = reference != null &&
+          final opened =
+              reference != null &&
               await deps.platform.openLocalAttachment(reference);
           if (!opened && context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text(context.l10n.text('attachment.openFailed')),
-            ));
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(context.l10n.text('attachment.openFailed')),
+              ),
+            );
           }
         },
       );
@@ -224,23 +236,30 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       final legacy = <String, VoidCallback>{
         'machines': () => push(const MachineListScreen()),
         'employees': () => push(const EmployeeListScreen()),
-        'finance': () => push(FinanceDocumentsScreen(
-          repository: deps.finance,
-          organizationId: deps.subject.farmId,
-        )),
+        'finance': () => push(
+          FinanceDocumentsScreen(
+            repository: deps.finance,
+            organizationId: deps.subject.farmId,
+          ),
+        ),
         'warehouse': () => push(const WarehouseScreen()),
         'fuel': () => push(const FuelScreen()),
         'tasks': () => push(const TaskScreen()),
         'ai': () => push(const AiChatScreen()),
-        'reports': () => push(const ReportScreen()),
         'settings': () => push(const SettingsPage()),
-        if (deps.subject.permissionCodes.contains(PermissionCodes.localBackupExport))
+        if (deps.subject.permissionCodes.contains(
+          PermissionCodes.localBackupExport,
+        ))
           'backup': () => push(LocalBackupScreen(database: deps.database)),
         if (deps.subject.permissionCodes.contains(
-            PermissionCodes.administrativeCatalogManage))
-          'administrativeCatalog': () => push(AdministrativeCatalogScreen(
-            catalog: deps.administrativeCatalog, subject: deps.subject,
-          )),
+          PermissionCodes.administrativeCatalogManage,
+        ))
+          'administrativeCatalog': () => push(
+            AdministrativeCatalogScreen(
+              catalog: deps.administrativeCatalog,
+              subject: deps.subject,
+            ),
+          ),
       };
       return AnimatedBuilder(
         animation: deps.controller,
@@ -250,7 +269,8 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
           openLandParcels: openParcels,
           openCreateParcel: () => _createParcel(context, deps),
           legacyRoutes: legacy,
-          parcelCount: deps.controller.phase == ParcelPresentationPhase.persistenceError
+          parcelCount:
+              deps.controller.phase == ParcelPresentationPhase.persistenceError
               ? null
               : deps.controller.items.length,
           seasonCount: context.watch<ProductionSeasonProvider>().isLoading
@@ -397,7 +417,8 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
             final landUseResult = await deps.application.updateLandUseProfile(
               deps.subject,
               UpdateLandUseProfileCommand(
-                farmId: deps.subject.farmId, parcelId: parcel.id,
+                farmId: deps.subject.farmId,
+                parcelId: parcel.id,
                 actorMembershipId: deps.subject.membershipId,
                 occurredAt: DateTime.now().toUtc(),
                 landUseType: value.landUseType,
@@ -408,8 +429,13 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
             );
             if (!landUseResult.isSuccess) {
               if (editContext.mounted) {
-                ScaffoldMessenger.of(editContext).showSnackBar(SnackBar(
-                  content: Text(editContext.l10n.text(landUseResult.messageKey))));
+                ScaffoldMessenger.of(editContext).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      editContext.l10n.text(landUseResult.messageKey),
+                    ),
+                  ),
+                );
               }
               return;
             }
@@ -428,149 +454,164 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     _V2Dependencies deps,
     String parcelId,
   ) async {
-    if (!deps.controller.can(PermissionCodes.fieldEdit,
-        parcelId: parcelId)) {
+    if (!deps.controller.can(PermissionCodes.fieldEdit, parcelId: parcelId)) {
       return;
     }
     try {
       final picked = await deps.platform.pickAndStoreAttachment();
       if (picked == null) return;
       final name = picked.name.toLowerCase();
-      final photo = ['.jpg', '.jpeg', '.png', '.webp', '.heic']
-          .any(name.endsWith);
+      final photo = [
+        '.jpg',
+        '.jpeg',
+        '.png',
+        '.webp',
+        '.heic',
+      ].any(name.endsWith);
       final type = photo
           ? ParcelAttachmentType.photo
           : ParcelAttachmentType.document;
       final mime = photo
-          ? (name.endsWith('.png') ? 'image/png' :
-              name.endsWith('.webp') ? 'image/webp' :
-              name.endsWith('.heic') ? 'image/heic' : 'image/jpeg')
-          : name.endsWith('.pdf') ? 'application/pdf' :
-              'application/octet-stream';
+          ? (name.endsWith('.png')
+                ? 'image/png'
+                : name.endsWith('.webp')
+                ? 'image/webp'
+                : name.endsWith('.heic')
+                ? 'image/heic'
+                : 'image/jpeg')
+          : name.endsWith('.pdf')
+          ? 'application/pdf'
+          : 'application/octet-stream';
       final now = DateTime.now().toUtc();
-      await deps.surveyRepository.createAttachment(ParcelAttachment(
-        id: 'attachment-${now.microsecondsSinceEpoch}',
-        parcelId: parcelId,
-        attachmentType: type,
-        fileName: picked.name,
-        mimeType: mime,
-        localReference: picked.path,
-        createdAt: now,
-        createdBy: deps.subject.membershipId,
-      ));
+      await deps.surveyRepository.createAttachment(
+        ParcelAttachment(
+          id: 'attachment-${now.microsecondsSinceEpoch}',
+          parcelId: parcelId,
+          attachmentType: type,
+          fileName: picked.name,
+          mimeType: mime,
+          localReference: picked.path,
+          createdAt: now,
+          createdBy: deps.subject.membershipId,
+        ),
+      );
       await deps.controller.loadDetail(parcelId);
     } catch (_) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(context.l10n.text('attachment.saveFailed')),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.text('attachment.saveFailed'))),
+        );
       }
     }
   }
 
-  void _createParcel(
-    BuildContext context,
-    _V2Dependencies deps,
-  ) async {
+  void _createParcel(BuildContext context, _V2Dependencies deps) async {
     final administrativeUnits = await deps.administrativeCatalog.all();
     if (!context.mounted) return;
     Navigator.of(context).push(
-    MaterialPageRoute(
-      builder: (_) => LandParcelFormScreen(
-        landOnly: true,
-        administrativeUnits: administrativeUnits,
-        onGpsRequested: () => _measureGpsForCreate(context),
-        onImportRequested: () => _importForCreate(context, deps),
-        onSubmit: (value) async {
-          final draft = value.boundaryDraft;
-          if (draft == null) {
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(context.l10n.text('parcel.boundaryRequired')),
-                ),
-              );
+      MaterialPageRoute(
+        builder: (_) => LandParcelFormScreen(
+          landOnly: true,
+          administrativeUnits: administrativeUnits,
+          onGpsRequested: () => _measureGpsForCreate(context),
+          onImportRequested: () => _importForCreate(context, deps),
+          onSubmit: (value) async {
+            final draft = value.boundaryDraft;
+            if (draft == null) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(context.l10n.text('parcel.boundaryRequired')),
+                  ),
+                );
+              }
+              return;
             }
-            return;
-          }
 
-          final id = 'parcel-${DateTime.now().toUtc().microsecondsSinceEpoch}';
-          final result = await deps.controller.create(
-            id: id,
-            parcelCode: value.parcelCode,
-            name: value.name,
-            vertices: draft.boundary.vertices.toList(),
-            source: draft.source,
-            crops: value.crops,
-            ownerDisplayName: null,
-            ownerHouseholdId: null,
-            autoNumber: value.autoNumber,
-            villageId: value.villageId,
-            countryCode: value.countryCode,
-            provinceCode: value.provinceCode,
-            districtCode: value.districtCode,
-            villageCode: value.villageCode,
-            legacyMetadata: {
-              'active': value.active,
-              'country': value.country,
-              'province': value.province,
-              'district': value.district,
-              'village': value.village,
-              'countryCode': value.countryCode,
-              'provinceCode': value.provinceCode,
-              'districtCode': value.districtCode,
-              'villageCode': value.villageCode,
-            },
-          );
+            final id =
+                'parcel-${DateTime.now().toUtc().microsecondsSinceEpoch}';
+            final result = await deps.controller.create(
+              id: id,
+              parcelCode: value.parcelCode,
+              name: value.name,
+              vertices: draft.boundary.vertices.toList(),
+              source: draft.source,
+              crops: value.crops,
+              ownerDisplayName: null,
+              ownerHouseholdId: null,
+              autoNumber: value.autoNumber,
+              villageId: value.villageId,
+              countryCode: value.countryCode,
+              provinceCode: value.provinceCode,
+              districtCode: value.districtCode,
+              villageCode: value.villageCode,
+              legacyMetadata: {
+                'active': value.active,
+                'country': value.country,
+                'province': value.province,
+                'district': value.district,
+                'village': value.village,
+                'countryCode': value.countryCode,
+                'provinceCode': value.provinceCode,
+                'districtCode': value.districtCode,
+                'villageCode': value.villageCode,
+              },
+            );
 
-          if (!context.mounted) return;
-          if (!result.isSuccess || result.value == null) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text(result.messageKey)));
-            return;
-          }
-
-          final createdId = result.value!.id;
-          final landUseResult = await deps.application.updateLandUseProfile(
-            deps.subject, UpdateLandUseProfileCommand(
-              farmId: deps.subject.farmId, parcelId: createdId,
-              actorMembershipId: deps.subject.membershipId,
-              occurredAt: DateTime.now().toUtc(),
-              landUseType: value.landUseType,
-              currentCondition: value.landCondition,
-              clearingStatus: value.clearingStatus,
-              readinessStatus: value.readinessStatus,
-            ));
-          if (!landUseResult.isSuccess) {
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: Text(context.l10n.text(landUseResult.messageKey))));
+            if (!context.mounted) return;
+            if (!result.isSuccess || result.value == null) {
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text(result.messageKey)));
+              return;
             }
-            return;
-          }
 
-          if (!context.mounted) return;
-
-          Navigator.of(context).pop();
-          await Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => LandParcelDetailScreen(
-                controller: deps.controller,
-                parcelId: result.value!.id,
-                onGpsRequested: () =>
-                    _measureGps(context, deps, result.value!.id),
-                onImportRequested: () =>
-                    _import(context, deps, result.value!.id),
-                onEditRequested: () =>
-                    _editParcel(context, deps, result.value!.id),
+            final createdId = result.value!.id;
+            final landUseResult = await deps.application.updateLandUseProfile(
+              deps.subject,
+              UpdateLandUseProfileCommand(
+                farmId: deps.subject.farmId,
+                parcelId: createdId,
+                actorMembershipId: deps.subject.membershipId,
+                occurredAt: DateTime.now().toUtc(),
+                landUseType: value.landUseType,
+                currentCondition: value.landCondition,
+                clearingStatus: value.clearingStatus,
+                readinessStatus: value.readinessStatus,
               ),
-            ),
-          );
-        },
+            );
+            if (!landUseResult.isSuccess) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(context.l10n.text(landUseResult.messageKey)),
+                  ),
+                );
+              }
+              return;
+            }
+
+            if (!context.mounted) return;
+
+            Navigator.of(context).pop();
+            await Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => LandParcelDetailScreen(
+                  controller: deps.controller,
+                  parcelId: result.value!.id,
+                  onGpsRequested: () =>
+                      _measureGps(context, deps, result.value!.id),
+                  onImportRequested: () =>
+                      _import(context, deps, result.value!.id),
+                  onEditRequested: () =>
+                      _editParcel(context, deps, result.value!.id),
+                ),
+              ),
+            );
+          },
+        ),
       ),
-    ),
-  );
+    );
   }
 
   Future<LandParcelBoundaryDraft?> _measureGpsForCreate(
@@ -633,9 +674,8 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
 
       final preview = await showDialog<LandParcelImportPreview>(
         context: context,
-        builder: (dialogContext) => KmlBoundaryPicker(
-          previews: result.value!.previews,
-        ),
+        builder: (dialogContext) =>
+            KmlBoundaryPicker(previews: result.value!.previews),
       );
       if (!context.mounted || preview == null) return null;
       return LandParcelBoundaryDraft(

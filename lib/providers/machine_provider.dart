@@ -5,85 +5,10 @@ import '../services/machine_production_cost_sync_service.dart';
 
 class MachineProvider extends ChangeNotifier {
   List<MachineModel> _machines = [];
-  final MachineProductionCostSyncService _productionCostSync = MachineProductionCostSyncService();
+  final MachineProductionCostSyncService _productionCostSync =
+      MachineProductionCostSyncService();
 
   List<MachineModel> get machines => _machines;
-
-  MachineProvider() {
-    _machines = [
-      MachineModel(
-        id: 'M001',
-        name: 'Máy cày Yanmar',
-        type: 'Máy cày',
-        manufacturer: 'Yanmar',
-        year: 2022,
-        status: 'Tốt',
-        totalHours: 350,
-        fuelConsumption: 8.5,
-        costPerHour: 0,
-        currentFieldId: 'LO0001',
-      ),
-      MachineModel(
-        id: 'M002',
-        name: 'Máy gặt Kubota',
-        type: 'Máy gặt',
-        manufacturer: 'Kubota',
-        year: 2021,
-        status: 'Đang bảo trì',
-        totalHours: 520,
-        fuelConsumption: 12.0,
-        costPerHour: 0,
-        currentFieldId: null,
-      ),
-      MachineModel(
-        id: 'M003',
-        name: 'Xe tải Hino',
-        type: 'Xe tải',
-        manufacturer: 'Hino',
-        year: 2023,
-        status: 'Tốt',
-        totalHours: 180,
-        fuelConsumption: 15.5,
-        costPerHour: 0,
-        currentFieldId: null,
-      ),
-      MachineModel(
-        id: 'M004',
-        name: 'Máy kéo John Deere',
-        type: 'Máy kéo',
-        manufacturer: 'John Deere',
-        year: 2022,
-        status: 'Tốt',
-        totalHours: 420,
-        fuelConsumption: 10.0,
-        costPerHour: 0,
-        currentFieldId: 'LO0002',
-      ),
-    ];
-
-    _machines[0].fieldHistory = [
-      MachineFieldRecord(
-        fieldId: 'LO0001',
-        fieldName: 'Lô cà phê A1',
-        startDate: DateTime(2024, 1, 10),
-        endDate: DateTime(2024, 1, 15),
-        hoursWorked: 40,
-        fuelUsed: 320,
-        operatorName: 'Nguyễn Văn An',
-      ),
-    ];
-    _machines[3].fieldHistory = [
-      MachineFieldRecord(
-        fieldId: 'LO0002',
-        fieldName: 'Lô tiêu B2',
-        startDate: DateTime(2024, 1, 5),
-        endDate: DateTime(2024, 1, 12),
-        hoursWorked: 56,
-        fuelUsed: 500,
-        operatorName: 'Hoàng Văn Em',
-      ),
-    ];
-  }
 
   MachineModel? getMachineById(String id) {
     try {

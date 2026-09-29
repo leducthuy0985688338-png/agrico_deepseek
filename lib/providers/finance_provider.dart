@@ -8,108 +8,6 @@ class FinanceProvider extends ChangeNotifier {
   List<FinanceRecord> get records => _records;
   List<FieldBudget> get budgets => _budgets;
 
-  FinanceProvider() {
-    _addSampleData();
-  }
-
-  void _addSampleData() {
-    // Tạo các giao dịch mẫu
-    final now = DateTime.now();
-
-    // Chi phí sản xuất cho Lô cà phê A1
-    _records.add(
-      FinanceRecord(
-        id: 'F001',
-        fieldId: 'LO0001',
-        fieldName: 'Lô cà phê A1',
-        date: DateTime(now.year, now.month, 5),
-        type: TransactionType.CHI,
-        category: 'Vật tư',
-        amount: 5000000,
-        description: 'Mua phân bón cho lô cà phê',
-      ),
-    );
-    _records.add(
-      FinanceRecord(
-        id: 'F002',
-        fieldId: 'LO0001',
-        fieldName: 'Lô cà phê A1',
-        date: DateTime(now.year, now.month, 10),
-        type: TransactionType.CHI,
-        category: 'Nhiên liệu',
-        amount: 1500000,
-        description: 'Đổ dầu cho máy cày',
-        machineId: 'M001',
-        machineName: 'Máy cày Yanmar',
-      ),
-    );
-    _records.add(
-      FinanceRecord(
-        id: 'F003',
-        fieldId: 'LO0001',
-        fieldName: 'Lô cà phê A1',
-        date: DateTime(now.year, now.month, 15),
-        type: TransactionType.CHI,
-        category: 'Nhân công',
-        amount: 3000000,
-        description: 'Công thu hoạch cà phê',
-      ),
-    );
-    _records.add(
-      FinanceRecord(
-        id: 'F004',
-        fieldId: 'LO0001',
-        fieldName: 'Lô cà phê A1',
-        date: DateTime(now.year, now.month, 20),
-        type: TransactionType.THU,
-        category: 'Thu hoạch',
-        amount: 25000000,
-        description: 'Bán cà phê tươi',
-      ),
-    );
-
-    // Chi phí cho Lô tiêu B2
-    _records.add(
-      FinanceRecord(
-        id: 'F005',
-        fieldId: 'LO0002',
-        fieldName: 'Lô tiêu B2',
-        date: DateTime(now.year, now.month, 8),
-        type: TransactionType.CHI,
-        category: 'Vật tư',
-        amount: 3500000,
-        description: 'Mua thuốc bảo vệ thực vật',
-      ),
-    );
-    _records.add(
-      FinanceRecord(
-        id: 'F006',
-        fieldId: 'LO0002',
-        fieldName: 'Lô tiêu B2',
-        date: DateTime(now.year, now.month, 18),
-        type: TransactionType.CHI,
-        category: 'Nhân công',
-        amount: 2000000,
-        description: 'Công chăm sóc tiêu',
-      ),
-    );
-    _records.add(
-      FinanceRecord(
-        id: 'F007',
-        fieldId: 'LO0002',
-        fieldName: 'Lô tiêu B2',
-        date: DateTime(now.year, now.month, 25),
-        type: TransactionType.THU,
-        category: 'Thu hoạch',
-        amount: 18000000,
-        description: 'Bán hồ tiêu',
-      ),
-    );
-
-    // Cập nhật ngân sách
-    _updateBudgets();
-  }
-
   void _updateBudgets() {
     final fieldIds = _records.map((r) => r.fieldId).toSet();
     _budgets.clear();
@@ -149,8 +47,7 @@ class FinanceProvider extends ChangeNotifier {
 
     _records = <String, FinanceRecord>{
       for (final record in records) record.id: record,
-    }.values.toList()
-      ..sort((a, b) => b.date.compareTo(a.date));
+    }.values.toList()..sort((a, b) => b.date.compareTo(a.date));
     _updateBudgets();
     notifyListeners();
   }

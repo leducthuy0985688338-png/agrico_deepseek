@@ -2,41 +2,10 @@ import 'package:flutter/material.dart';
 import '../models/warehouse_item.dart';
 import '../services/material_production_cost_sync_service.dart';
 
-// Đây là bộ nhớ tạm (giả lập dữ liệu)
 class WarehouseProvider extends ChangeNotifier {
   List<WarehouseItem> _items = [];
 
   List<WarehouseItem> get items => _items;
-
-  // Khởi tạo với dữ liệu mẫu giống file Excel
-  WarehouseProvider() {
-    _items = [
-      WarehouseItem(
-        id: 'PB0001',
-        name: 'Phân Kali',
-        unit: 'Kg',
-        importPrice: 15000,
-        supplier: 'Công ty Phân bón A',
-        stock: 200,
-      ),
-      WarehouseItem(
-        id: 'PB0002',
-        name: 'Phân Lân',
-        unit: 'Kg',
-        importPrice: 12000,
-        supplier: 'Công ty Phân bón B',
-        stock: 150,
-      ),
-      WarehouseItem(
-        id: 'PB0003',
-        name: 'Phân Đạm',
-        unit: 'Kg',
-        importPrice: 18000,
-        supplier: 'Công ty Phân bón C',
-        stock: 80,
-      ),
-    ];
-  }
 
   int restoreFromCloud({required List<WarehouseItem> items}) {
     if (items.isEmpty) return 0;
@@ -50,9 +19,7 @@ class WarehouseProvider extends ChangeNotifier {
     if (restoredById.isEmpty) return 0;
 
     _items = restoredById.values.toList(growable: false)
-      ..sort(
-        (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
-      );
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     notifyListeners();
     return _items.length;
   }
@@ -117,8 +84,7 @@ class WarehouseProvider extends ChangeNotifier {
         unitPrice: item.importPrice,
         fieldId: fieldId,
         seasonId: seasonId,
-        notes: notes ??
-            'Xuất ${item.name} cho ${fieldName ?? 'thửa sản xuất'}',
+        notes: notes ?? 'Xuất ${item.name} cho ${fieldName ?? 'thửa sản xuất'}',
       );
     } catch (_) {
       // Không để lỗi ledger làm hỏng thao tác xuất kho.

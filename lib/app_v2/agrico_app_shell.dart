@@ -61,10 +61,22 @@ class _AgricoAppShellState extends State<AgricoAppShell> {
         openLandParcels: widget.openLandParcels,
         legacyRoutes: widget.legacyRoutes,
       ),
-      AppDestination.reports: _EntryPage(
-        icon: Icons.assessment_outlined,
-        title: l10n.text('nav.reports'),
-        action: widget.legacyRoutes['reports'],
+      AppDestination.reports: ListView(
+        key: const Key('reports-v2'),
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text(
+            l10n.text('nav.reports'),
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          ListTile(
+            leading: const Icon(Icons.account_balance_wallet_outlined),
+            title: Text(l10n.text('module.finance')),
+            trailing: const Icon(Icons.chevron_right),
+            enabled: widget.legacyRoutes['finance'] != null,
+            onTap: widget.legacyRoutes['finance'],
+          ),
+        ],
       ),
       AppDestination.profile: ProfileV2(
         subject: widget.subject,
@@ -403,27 +415,6 @@ class ProfileV2 extends StatelessWidget {
       ],
     );
   }
-}
-
-class _EntryPage extends StatelessWidget {
-  const _EntryPage({required this.icon, required this.title, this.action});
-  final IconData icon;
-  final String title;
-  final VoidCallback? action;
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 56),
-        Text(title, style: Theme.of(context).textTheme.headlineSmall),
-        FilledButton(
-          onPressed: action,
-          child: Text(AppLocalizations.of(context).text('common.open')),
-        ),
-      ],
-    ),
-  );
 }
 
 class _SectionTitle extends StatelessWidget {

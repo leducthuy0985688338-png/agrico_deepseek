@@ -9,37 +9,12 @@ class EmployeeProvider extends ChangeNotifier {
   List<AttendanceRecord> _attendanceLogs = [];
   List<PayrollRecord> _payrollRecords = [];
 
-  final LaborProductionCostSyncService _laborCostSync = LaborProductionCostSyncService();
+  final LaborProductionCostSyncService _laborCostSync =
+      LaborProductionCostSyncService();
 
   List<EmployeeModel> get employees => _employees;
   List<AttendanceRecord> get attendanceLogs => _attendanceLogs;
   List<PayrollRecord> get payrollRecords => _payrollRecords;
-
-  EmployeeProvider() {
-    _employees = [
-      EmployeeModel(id: 'NV001', name: 'Nguyễn Văn An', position: 'Công nhân', department: 'Sản xuất', dailyRate: 250000, phone: '0987654321', address: 'Hà Nội'),
-      EmployeeModel(id: 'NV002', name: 'Trần Thị Bình', position: 'Công nhân', department: 'Sản xuất', dailyRate: 250000, phone: '0976543210', address: 'Hà Nội'),
-      EmployeeModel(id: 'NV003', name: 'Lê Văn Cường', position: 'Quản lý sản xuất', department: 'Sản xuất', dailyRate: 500000, phone: '0965432109', address: 'Hà Nội'),
-      EmployeeModel(id: 'NV004', name: 'Phạm Thị Dung', position: 'Kế toán', department: 'Văn phòng', dailyRate: 400000, phone: '0954321098', address: 'Hà Nội'),
-      EmployeeModel(id: 'NV005', name: 'Hoàng Văn Em', position: 'Lái máy', department: 'Sản xuất', dailyRate: 350000, phone: '0943210987', address: 'Hà Nội'),
-    ];
-
-    final now = DateTime.now();
-    for (var employee in _employees) {
-      for (int day = 1; day <= 5; day++) {
-        _attendanceLogs.add(
-          AttendanceRecord(
-            employeeId: employee.id,
-            date: DateTime(now.year, now.month, day),
-            checkIn: DateTime(now.year, now.month, day, 7, 30),
-            checkOut: DateTime(now.year, now.month, day, 17, 0),
-            hours: 8.5,
-            fieldId: 'LO0001',
-          ),
-        );
-      }
-    }
-  }
 
   void addEmployee(EmployeeModel employee) {
     _employees.add(employee);
@@ -64,8 +39,7 @@ class EmployeeProvider extends ChangeNotifier {
 
     _employees = <String, EmployeeModel>{
       for (final employee in employees) employee.id: employee,
-    }.values.toList(growable: false)
-      ..sort((a, b) => a.name.compareTo(b.name));
+    }.values.toList(growable: false)..sort((a, b) => a.name.compareTo(b.name));
     notifyListeners();
   }
 
@@ -143,10 +117,17 @@ class EmployeeProvider extends ChangeNotifier {
   Future<int> syncProductionAttendanceCosts() async {
     var synced = 0;
     for (final attendance in _attendanceLogs) {
-      if (attendance.fieldId == null || attendance.fieldId!.isEmpty || attendance.checkOut == null || attendance.hours <= 0) continue;
+      if (attendance.fieldId == null ||
+          attendance.fieldId!.isEmpty ||
+          attendance.checkOut == null ||
+          attendance.hours <= 0)
+        continue;
       final employee = getEmployeeById(attendance.employeeId);
       if (employee == null) continue;
-      final result = await _laborCostSync.sync(attendance: attendance, employee: employee);
+      final result = await _laborCostSync.sync(
+        attendance: attendance,
+        employee: employee,
+      );
       if (result != null) synced++;
     }
     return synced;
@@ -154,9 +135,25 @@ class EmployeeProvider extends ChangeNotifier {
 
   PayrollRecord calculatePayroll(String employeeId, int month, int year) {
     final employee = _employees.firstWhere((e) => e.id == employeeId);
-    final workingDays = _attendanceLogs.where((record) => record.employeeId == employeeId && record.date.year == year && record.date.month == month && record.checkOut != null).length;
+    final workingDays = _attendanceLogs
+        .where(
+          (record) =>
+              record.employeeId == employeeId &&
+              record.date.year == year &&
+              record.date.month == month &&
+              record.checkOut != null,
+        )
+        .length;
     final totalSalary = workingDays * employee.dailyRate;
-    return PayrollRecord(employeeId: employeeId, employeeName: employee.name, month: month, year: year, workingDays: workingDays, totalSalary: totalSalary, netSalary: totalSalary);
+    return PayrollRecord(
+      employeeId: employeeId,
+      employeeName: employee.name,
+      month: month,
+      year: year,
+      workingDays: workingDays,
+      totalSalary: totalSalary,
+      netSalary: totalSalary,
+    );
   }
 
   void generatePayroll(int month, int year) {
@@ -167,7 +164,12 @@ class EmployeeProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<EmployeeModel> getEmployeesByDepartment(String department) => _employees.where((e) => e.department == department).toList();
+  List<EmployeeModel> getEmployeesByDepartment(String department) =>
+      _employees.where((e) => e.department == department).toList();
 
-  List<AttendanceRecord> getAttendanceHistory(String employeeId) => _attendanceLogs.where((record) => record.employeeId == employeeId).toList()..sort((a, b) => b.date.compareTo(a.date));
+  List<AttendanceRecord> getAttendanceHistory(String employeeId) =>
+      _attendanceLogs
+          .where((record) => record.employeeId == employeeId)
+          .toList()
+        ..sort((a, b) => b.date.compareTo(a.date));
 }
