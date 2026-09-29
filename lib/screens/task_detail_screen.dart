@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../providers/task_provider.dart';
 import '../models/task_model.dart';
 import '../theme/app_theme.dart';
@@ -13,7 +14,7 @@ class TaskDetailScreen extends StatefulWidget {
 }
 
 class _TaskDetailScreenState extends State<TaskDetailScreen> {
-  final TaskProvider _provider = TaskProvider();
+  TaskProvider get _provider => context.read<TaskProvider>();
 
   late TaskModel _task;
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../providers/task_provider.dart';
 import '../providers/employee_provider.dart';
 import '../providers/field_provider.dart';
@@ -14,7 +15,6 @@ class TaskAddScreen extends StatefulWidget {
 }
 
 class _TaskAddScreenState extends State<TaskAddScreen> {
-  final TaskProvider _taskProvider = TaskProvider();
   final EmployeeProvider _employeeProvider = EmployeeProvider();
   final FieldProvider _fieldProvider = FieldProvider();
   final MachineProvider _machineProvider = MachineProvider();
@@ -362,7 +362,7 @@ class _TaskAddScreenState extends State<TaskAddScreen> {
       createdAt: DateTime.now(),
     );
 
-    _taskProvider.addTask(newTask);
+    context.read<TaskProvider>().addTask(newTask);
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../providers/task_provider.dart';
 import '../models/task_model.dart';
 import 'task_detail_screen.dart';
@@ -13,7 +14,7 @@ class TaskScreen extends StatefulWidget {
 }
 
 class _TaskScreenState extends State<TaskScreen> {
-  final TaskProvider _provider = TaskProvider();
+  TaskProvider get _provider => context.watch<TaskProvider>();
   String _selectedFilter = 'Tất cả';
 
   final List<String> _filterOptions = [
