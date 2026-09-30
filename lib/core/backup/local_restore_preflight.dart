@@ -91,11 +91,41 @@ class LocalRestorePreflight {
               'parcel_stage_snapshots',
               'parcel_derivations',
               'farm_tasks_v2',
+              'agrico_production_parcel_sequences_v4',
               'inventory_items_v2',
               'inventory_movements_v2',
             }
           : <String>{};
       final missing = tables.difference(saved.keys.toSet());
+      final productionCode = RegExp(r'^(.+)-L([0-9]{3,})(?:-T([0-9]{3,}))?$');
+      final productionRows = (saved['land_parcels'] as List? ?? const []).where(
+        (raw) {
+          final row = raw as Map;
+          final code = row['parcel_code']?.toString() ?? '';
+          final match = productionCode.firstMatch(code);
+          if (match == null) {
+            return false;
+          }
+          // Exclude issued administrative codes from the previous allocator.
+          final metadata = row['payload_json'] is String
+              ? jsonDecode(row['payload_json'] as String)
+                    as Map<String, dynamic>
+              : <String, dynamic>{};
+          final location = [
+            metadata['countryCode'],
+            metadata['provinceCode'],
+            metadata['districtCode'],
+            metadata['villageCode'],
+          ];
+          return !(match.group(3) == null &&
+              location.every((value) => value != null) &&
+              match.group(1) == location.join('-'));
+        },
+      );
+      if (missing.contains('agrico_production_parcel_sequences_v4') &&
+          productionRows.isNotEmpty) {
+        throw RestorePreflightException('tables', database: databaseName);
+      }
       const inventoryTables = {'inventory_items_v2', 'inventory_movements_v2'};
       if (missing.intersection(inventoryTables).isNotEmpty &&
           inventoryTables.any(
@@ -170,6 +200,41 @@ class LocalRestorePreflight {
       for (final row in schema.where((row) => row['type'] == 'index')) {
         step = 'index ${row['name']}';
         await staged.execute(row['sql']! as String);
+      }
+      if (databaseName == 'agrico.db' &&
+          tables.contains('agrico_production_parcel_sequences_v4')) {
+        step = 'production numbering';
+        final counters = await staged.query(
+          'agrico_production_parcel_sequences_v4',
+        );
+        for (final raw in productionRows) {
+          final row = raw as Map;
+          final match = productionCode.firstMatch(
+            row['parcel_code'] as String,
+          )!;
+          final block = int.parse(match.group(2)!);
+          final plot = match.group(3) == null
+              ? null
+              : int.parse(match.group(3)!);
+          final project = match.group(1)!;
+          bool covers(int parent, int number) => counters.any(
+            (counter) =>
+                counter['farm_id'] == row['farm_id'] &&
+                counter['project_code'] == project &&
+                counter['parent_block_number'] == parent &&
+                (counter['last_sequence']! as int) >= number,
+          );
+          if (block < 1 ||
+              (plot != null && plot < 1) ||
+              !covers(0, block) ||
+              (plot != null && !covers(block, plot))) {
+            throw RestorePreflightException(
+              'integrity',
+              database: databaseName,
+              step: step,
+            );
+          }
+        }
       }
       step = 'integrity';
       if ((await staged.rawQuery(
