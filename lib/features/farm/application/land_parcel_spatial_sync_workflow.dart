@@ -1,3 +1,7 @@
+import '../../../core/identity/domain/production_parcel_reference_code.dart';
+import '../domain/geometry/field_plot_placement.dart';
+import '../data/local/sqlite_land_parcel_repository.dart';
+import '../data/local/sqlite_land_parcel_spatial_link_repository.dart';
 import 'package:sqflite/sqflite.dart';
 import '../../../core/identity/domain/parcel_number_allocator.dart';
 import '../../../core/identity/data/sqlite_production_parcel_number_allocator.dart';
@@ -479,6 +483,112 @@ class LandParcelSpatialSyncWorkflow {
               occurredAt: draft.createdAt,
             ),
           ),
+    );
+  }
+
+  /// Creates one field plot without requiring complete coverage of its block.
+  /// The parent, existing plots, code and spatial writes share one transaction.
+  Future<LandParcel> createProductionFieldPlot({
+    required LandParcel draft,
+    required String parentLandBlockId,
+    required int expectedParentBoundaryVersion,
+    required SpatialTemporalState temporalState,
+  }) {
+    if (parentLandBlockId.trim().isEmpty ||
+        draft.id == parentLandBlockId ||
+        !draft.active ||
+        draft.spatialFeatureId != null ||
+        draft.boundaryVersion != 1) {
+      throw const FormatException(
+        'A field plot requires a new draft and distinct parent.',
+      );
+    }
+    return createPrepared(
+      temporalState: temporalState,
+      prepare: (tx, surveys) async {
+        final parcels = SqliteLandParcelRepository(tx);
+        final parent = await parcels.getById(
+          farmId: draft.farmId,
+          id: parentLandBlockId,
+        );
+        if (parent == null ||
+            !parent.active ||
+            parent.layer != ParcelLayer.landBlock ||
+            parent.parentLandBlockId != null ||
+            parent.boundaryVersion != expectedParentBoundaryVersion) {
+          throw StateError(
+            'Parent land block is missing, inactive or changed.',
+          );
+        }
+        final spatial = SpatialPersistenceComposition(tx);
+        if (parent.spatialFeatureId == null ||
+            await LandParcelBoundaryConsistencyQueries(
+                  links: SqliteLandParcelSpatialLinkRepository(tx),
+                  features: spatial.featureRepository,
+                  revisions: spatial.revisionRepository,
+                ).check(parent) !=
+                LandParcelBoundaryConsistency.consistent) {
+          throw StateError('Parent land block boundary needs reconciliation.');
+        }
+        final match = RegExp(r'^(.+)-L([0-9]+)$').firstMatch(parent.parcelCode);
+        if (match == null) {
+          throw const FormatException(
+            'Parent requires a production land block code.',
+          );
+        }
+        final parentCode = ProductionParcelReferenceCode.landBlock(
+          projectCode: match.group(1)!,
+          landBlockNumber: int.parse(match.group(2)!),
+        );
+        if (parentCode.toString() != parent.parcelCode) {
+          throw const FormatException(
+            'Parent production code is not canonical.',
+          );
+        }
+        final siblings = await parcels.listByFarm(draft.farmId);
+        const FieldPlotPlacement().validate(
+          block: parent.boundary,
+          plot: draft.boundary,
+          existingPlots: siblings
+              .where(
+                (item) =>
+                    item.active &&
+                    item.layer == ParcelLayer.fieldPlot &&
+                    item.parentLandBlockId == parent.id,
+              )
+              .map((item) => item.boundary),
+        );
+        return SqliteProductionParcelNumberAllocator(tx).saveFieldPlot(
+          farmId: draft.farmId,
+          parent: parentCode,
+          save: (code) async => LandParcel.create(
+            id: draft.id,
+            farmId: draft.farmId,
+            parcelCode: code.toString(),
+            name: draft.name,
+            boundary: draft.boundary,
+            boundarySource: draft.boundarySource,
+            verificationStatus: draft.verificationStatus,
+            actorMembershipId: draft.createdBy,
+            occurredAt: draft.createdAt,
+            ownerHouseholdId: draft.ownerHouseholdId,
+            ownerDisplayName: draft.ownerDisplayName,
+            ownerContact: draft.ownerContact,
+            horizontalAccuracyM: draft.horizontalAccuracyM,
+            boundaryConfidence: draft.boundaryConfidence,
+            note: draft.boundaryHistory.first.note,
+            countryCode: draft.countryCode,
+            provinceCode: draft.provinceCode,
+            districtCode: draft.districtCode,
+            villageCode: draft.villageCode,
+            legacyMetadata: {
+              ...draft.legacyMetadata,
+              'parcelLayer': ParcelLayer.fieldPlot.name,
+              'parentLandBlockId': parent.id,
+            },
+          ),
+        );
+      },
     );
   }
 

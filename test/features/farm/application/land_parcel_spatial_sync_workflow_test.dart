@@ -84,6 +84,111 @@ void main() {
 
   tearDown(() => database.close());
 
+  LandParcel plotDraft(
+    String id, {
+    double offset = 0,
+    String farmId = 'farm-1',
+  }) => LandParcel.create(
+    id: id,
+    farmId: farmId,
+    parcelCode: 'DRAFT',
+    name: 'Thửa $id',
+    boundary: Wgs84Polygon.fromVertices([
+      Wgs84Vertex(latitude: 16.5001, longitude: 104.7001 + offset),
+      Wgs84Vertex(latitude: 16.5001, longitude: 104.7003 + offset),
+      Wgs84Vertex(latitude: 16.5003, longitude: 104.7003 + offset),
+      Wgs84Vertex(latitude: 16.5003, longitude: 104.7001 + offset),
+    ]),
+    boundarySource: BoundarySource.manual,
+    verificationStatus: BoundaryVerificationStatus.draft,
+    actorMembershipId: 'member-1',
+    occurredAt: createdAt,
+  );
+
+  test(
+    'production field plot saves its parent and spatial link with partial coverage',
+    () async {
+      await SqliteProductionParcelNumberAllocator.createSchema(database);
+      final parent = await workflow.createProductionLandBlock(
+        draft: createParcel(),
+        projectCode: 'AGR-NONG',
+        temporalState: SpatialTemporalState.baseline,
+      );
+      final plot = await workflow.createProductionFieldPlot(
+        draft: plotDraft('plot-1'),
+        parentLandBlockId: parent.id,
+        expectedParentBoundaryVersion: parent.boundaryVersion,
+        temporalState: SpatialTemporalState.underConstruction,
+      );
+      expect(plot.parcelCode, 'AGR-NONG-L001-T001');
+      expect(plot.layer, ParcelLayer.fieldPlot);
+      expect(plot.parentLandBlockId, parent.id);
+      expect(plot.areaM2, lessThan(parent.areaM2));
+      final persisted = (await parcels.getById(farmId: 'farm-1', id: plot.id))!;
+      expect(persisted.parentLandBlockId, parent.id);
+      expect(
+        await LandParcelBoundaryConsistencyQueries(
+          links: links,
+          features: spatial.featureRepository,
+          revisions: spatial.revisionRepository,
+        ).check(persisted),
+        LandParcelBoundaryConsistency.consistent,
+      );
+      final unchanged = (await parcels.getById(
+        farmId: 'farm-1',
+        id: parent.id,
+      ))!;
+      expect(unchanged.boundary, parent.boundary);
+      expect(unchanged.boundaryVersion, parent.boundaryVersion);
+      expect(unchanged.areaM2, parent.areaM2);
+    },
+  );
+
+  test(
+    'invalid plot placement or parent does not consume a plot number',
+    () async {
+      await SqliteProductionParcelNumberAllocator.createSchema(database);
+      final parent = await workflow.createProductionLandBlock(
+        draft: createParcel(),
+        projectCode: 'AGR-NONG',
+        temporalState: SpatialTemporalState.baseline,
+      );
+      Future<LandParcel> save(
+        LandParcel draft, {
+        int version = 1,
+        String? parentId,
+      }) => workflow.createProductionFieldPlot(
+        draft: draft,
+        parentLandBlockId: parentId ?? parent.id,
+        expectedParentBoundaryVersion: version,
+        temporalState: SpatialTemporalState.underConstruction,
+      );
+      await save(plotDraft('plot-1'));
+      await expectLater(save(plotDraft('overlap')), throwsFormatException);
+      await expectLater(
+        save(plotDraft('outside', offset: .001)),
+        throwsFormatException,
+      );
+      await expectLater(
+        save(plotDraft('other-farm', farmId: 'farm-2')),
+        throwsStateError,
+      );
+      await expectLater(save(plotDraft('stale'), version: 2), throwsStateError);
+      await expectLater(
+        save(plotDraft('nested'), parentId: 'plot-1'),
+        throwsStateError,
+      );
+      await expectLater(
+        save(plotDraft('plot-1', offset: .0002)),
+        throwsA(isA<DatabaseException>()),
+      );
+      final next = await save(plotDraft('plot-2', offset: .0002));
+      expect(next.parcelCode, 'AGR-NONG-L001-T002');
+      expect(await database.query('land_parcels'), hasLength(3));
+      expect(await database.query('land_parcel_spatial_links'), hasLength(3));
+    },
+  );
+
   test(
     'production block code and spatial projection save without village or household',
     () async {
