@@ -2,6 +2,7 @@ import 'package:agrico_deepseek/core/permissions/authorization.dart';
 import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_temporal.dart';
 import 'package:agrico_deepseek/features/farm/application/production_parcel_creation_service.dart';
 import 'package:agrico_deepseek/features/farm/domain/entities/land_parcel.dart';
+import 'package:agrico_deepseek/features/farm/domain/entities/land_survey.dart';
 import 'package:agrico_deepseek/features/farm/domain/geometry/wgs84_geometry.dart';
 import 'package:agrico_deepseek/features/farm/domain/repositories/production_parcel_creation_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -40,6 +41,78 @@ LandParcel draft({String farm = 'farm', String actor = 'member'}) =>
     );
 
 void main() {
+  test('GPS and imported creation require their source permissions', () {
+    final repo = _Creation();
+    final service = ProductionParcelCreationService(repo);
+    final original = draft();
+    for (final source in [BoundarySource.gps, BoundarySource.imported]) {
+      final sourced = LandParcel.create(
+        id: original.id,
+        farmId: original.farmId,
+        parcelCode: 'DRAFT',
+        name: original.name,
+        boundary: original.boundary,
+        boundarySource: source,
+        verificationStatus: BoundaryVerificationStatus.draft,
+        actorMembershipId: 'member',
+        occurredAt: original.createdAt,
+      );
+      expect(
+        () => service.createLandBlock(
+          subject: subject(),
+          draft: sourced,
+          projectCode: 'AGR-NONG',
+        ),
+        throwsStateError,
+      );
+    }
+    expect(repo.calls, 0);
+  });
+
+  test(
+    'crop drafts are bound to the new parcel and current membership',
+    () async {
+      final repo = _Creation();
+      final service = ProductionParcelCreationService(repo);
+      final time = DateTime.utc(2026);
+      CropRecord crop(double quantity) => CropRecord(
+        id: 'editor',
+        parcelId: 'editor',
+        cropType: ' Peanut ',
+        quantity: quantity,
+        unit: ' plants ',
+        condition: CropCondition.unknown,
+        active: true,
+        ageMonths: 12,
+        createdAt: time,
+        updatedAt: time,
+        createdBy: 'editor',
+        updatedBy: 'editor',
+      );
+      await service.createLandBlock(
+        subject: subject(),
+        draft: draft(),
+        projectCode: 'AGR-NONG',
+        crops: [crop(2)],
+      );
+      final saved = repo.receivedCrops.single;
+      expect(saved.id, 'crop-draft-0');
+      expect(saved.parcelId, 'draft');
+      expect(saved.createdBy, 'member');
+      expect(saved.cropType, 'Peanut');
+      expect(saved.ageMonths, 12);
+      expect(
+        () => service.createLandBlock(
+          subject: subject(),
+          draft: draft(),
+          projectCode: 'AGR-NONG',
+          crops: [crop(0)],
+        ),
+        throwsFormatException,
+      );
+      expect(repo.calls, 1);
+    },
+  );
   test(
     'authorized requests forward the parent version and fixed temporal states',
     () async {
@@ -126,6 +199,7 @@ void main() {
 
 class _Creation implements ProductionParcelCreationRepository {
   int calls = 0;
+  List<CropRecord> receivedCrops = const [];
   String? project;
   String? parent;
   int? version;
@@ -134,10 +208,12 @@ class _Creation implements ProductionParcelCreationRepository {
   Future<LandParcel> createLandBlock({
     required LandParcel draft,
     required String projectCode,
+    List<CropRecord> crops = const [],
     required SpatialTemporalState temporalState,
   }) async {
     calls++;
     project = projectCode;
+    receivedCrops = crops;
     state = temporalState;
     return draft;
   }

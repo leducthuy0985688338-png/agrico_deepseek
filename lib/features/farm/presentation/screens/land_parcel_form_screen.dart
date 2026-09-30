@@ -35,6 +35,7 @@ class _CropEditorDialogState extends State<_CropEditorDialog> {
     super.initState();
     growthStage = widget.original?.growthStage;
   }
+
   late final type = TextEditingController(text: widget.original?.cropType);
   late final quantity = TextEditingController(
     text: widget.original?.quantity.toString(),
@@ -68,41 +69,45 @@ class _CropEditorDialogState extends State<_CropEditorDialog> {
     final years = yearsText.isEmpty ? 0 : int.tryParse(yearsText);
     final months = monthsText.isEmpty ? 0 : int.tryParse(monthsText);
     if (years == null || months == null || months > 11) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.text('crop.age.invalid'))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.text('crop.age.invalid'))));
       return;
     }
     final original = widget.original;
     final now = DateTime.now().toUtc();
-    Navigator.of(context).pop(CropRecord(
-      id: original?.id ?? 'draft-${now.microsecondsSinceEpoch}',
-      parcelId: widget.parcelId,
-      cropType: type.text.trim(),
-      quantity: double.tryParse(quantity.text) ?? 0,
-      unit: unit.text.trim(),
-      ageMonths: yearsText.isEmpty && monthsText.isEmpty
-          ? null
-          : years * 12 + months,
-      growthStage: growthStage,
-      variety: original?.variety,
-      plantingYear: original?.plantingYear,
-      plantingDate: original?.plantingDate,
-      notes: original?.notes,
-      condition: original?.condition ?? CropCondition.unknown,
-      active: true,
-      createdAt: original?.createdAt ?? now,
-      createdBy: original?.createdBy ?? 'draft',
-      updatedAt: now,
-      updatedBy: 'draft',
-    ));
+    Navigator.of(context).pop(
+      CropRecord(
+        id: original?.id ?? 'draft-${now.microsecondsSinceEpoch}',
+        parcelId: widget.parcelId,
+        cropType: type.text.trim(),
+        quantity: double.tryParse(quantity.text) ?? 0,
+        unit: unit.text.trim(),
+        ageMonths: yearsText.isEmpty && monthsText.isEmpty
+            ? null
+            : years * 12 + months,
+        growthStage: growthStage,
+        variety: original?.variety,
+        plantingYear: original?.plantingYear,
+        plantingDate: original?.plantingDate,
+        notes: original?.notes,
+        condition: original?.condition ?? CropCondition.unknown,
+        active: true,
+        createdAt: original?.createdAt ?? now,
+        createdBy: original?.createdBy ?? 'draft',
+        updatedAt: now,
+        updatedBy: 'draft',
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return AlertDialog(
-      title: Text(l10n.text(widget.original == null ? 'crop.add' : 'crop.edit')),
+      title: Text(
+        l10n.text(widget.original == null ? 'crop.add' : 'crop.edit'),
+      ),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -114,7 +119,9 @@ class _CropEditorDialogState extends State<_CropEditorDialog> {
             TextField(
               controller: quantity,
               keyboardType: TextInputType.number,
-              decoration: InputDecoration(labelText: l10n.text('crop.quantity')),
+              decoration: InputDecoration(
+                labelText: l10n.text('crop.quantity'),
+              ),
             ),
             TextField(
               controller: unit,
@@ -125,25 +132,35 @@ class _CropEditorDialogState extends State<_CropEditorDialog> {
               controller: ageYears,
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: InputDecoration(labelText: l10n.text('crop.age.yearsInput')),
+              decoration: InputDecoration(
+                labelText: l10n.text('crop.age.yearsInput'),
+              ),
             ),
             TextField(
               key: const Key('crop-age-months'),
               controller: ageRemainder,
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: InputDecoration(labelText: l10n.text('crop.age.monthsInput')),
+              decoration: InputDecoration(
+                labelText: l10n.text('crop.age.monthsInput'),
+              ),
             ),
             DropdownButtonFormField<CropGrowthStage?>(
               key: const Key('crop-growth-stage'),
               initialValue: growthStage,
-              decoration: InputDecoration(labelText: l10n.text('crop.growthStage')),
+              decoration: InputDecoration(
+                labelText: l10n.text('crop.growthStage'),
+              ),
               items: [
-                DropdownMenuItem<CropGrowthStage?>(value: null,
-                  child: Text(l10n.text('crop.growthStage.unknown'))),
+                DropdownMenuItem<CropGrowthStage?>(
+                  value: null,
+                  child: Text(l10n.text('crop.growthStage.unknown')),
+                ),
                 for (final stage in CropGrowthStage.values)
-                  DropdownMenuItem<CropGrowthStage?>(value: stage,
-                    child: Text(l10n.text('crop.growthStage.${stage.name}'))),
+                  DropdownMenuItem<CropGrowthStage?>(
+                    value: stage,
+                    child: Text(l10n.text('crop.growthStage.${stage.name}')),
+                  ),
               ],
               onChanged: (value) => setState(() => growthStage = value),
             ),
@@ -227,6 +244,7 @@ class LandParcelFormScreen extends StatefulWidget {
     this.administrativeUnits = const [],
     this.availableHouseholds = const [],
     this.landOnly = false,
+    this.productionProjectCode,
     this.landUse,
     this.surveys = const [],
     this.attachments = const [],
@@ -241,8 +259,10 @@ class LandParcelFormScreen extends StatefulWidget {
   final List<CropRecord> crops;
   final List<AdministrativeUnit> administrativeUnits;
   final List<Household> availableHouseholds;
+
   /// New v2 workflow excludes household personal data from parcel entry.
   final bool landOnly;
+  final String? productionProjectCode;
   final LandUseProfile? landUse;
   final List<LandParcelSurvey> surveys;
   final List<ParcelAttachment> attachments;
@@ -301,7 +321,8 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
         AdministrativeLevel.village,
       ]) {
         final choices = _adminChoices(level);
-        if (choices.isNotEmpty) selectedAdministrativeIds[level] = choices.first.id;
+        if (choices.isNotEmpty)
+          selectedAdministrativeIds[level] = choices.first.id;
       }
     }
     active = widget.parcel?.active ?? true;
@@ -329,7 +350,11 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
       appBar: AppBar(
         title: Text(
           l10n.text(
-            parcel == null ? 'parcel.create.title' : 'parcel.edit.title',
+            parcel == null
+                ? (widget.productionProjectCode == null
+                      ? 'parcel.create.title'
+                      : 'production.block.create')
+                : 'parcel.edit.title',
           ),
         ),
       ),
@@ -339,7 +364,15 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
           padding: const EdgeInsets.all(16),
           children: [
             _section(context, l10n.text('parcel.section.identity'), [
-              if (parcel == null && widget.administrativeUnits.isNotEmpty)
+              if (parcel == null && widget.productionProjectCode != null)
+                ListTile(
+                  key: const Key('production-block-code'),
+                  title: Text(l10n.text('parcel.code')),
+                  subtitle: Text(
+                    '${widget.productionProjectCode}-L001 — ${l10n.text('production.code.onSave')}',
+                  ),
+                )
+              else if (parcel == null && widget.administrativeUnits.isNotEmpty)
                 ListTile(
                   title: Text(l10n.text('parcel.code')),
                   subtitle: Text(l10n.text('parcel.code.autoOnSave')),
@@ -354,39 +387,61 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
                 onChanged: (value) => setState(() => active = value),
               ),
             ]),
-            _section(context, l10n.text('survey.administrativeLocation'), [
-              if (parcel == null && widget.administrativeUnits.isNotEmpty) ...[
-                _adminPicker(AdministrativeLevel.country, l10n.text('location.country')),
-                _adminPicker(AdministrativeLevel.province, l10n.text('location.province')),
-                _adminPicker(AdministrativeLevel.district, l10n.text('location.district')),
-                _adminPicker(AdministrativeLevel.village, l10n.text('location.village')),
-              ] else ...[
-                _field('country', l10n.text('location.country')),
-                _field('province', l10n.text('location.province')),
-                _field('district', l10n.text('location.district')),
-                _field('village', l10n.text('location.village')),
-              ],
-            ]),
-            if (!widget.landOnly) _section(context, l10n.text('survey.household'), [
-              if (parcel == null && widget.administrativeUnits.isNotEmpty)
-                _householdPicker(l10n)
-              else
-                _field('householdCode', l10n.text('household.code')),
-              if (parcel == null && widget.administrativeUnits.isNotEmpty &&
-                  selectedExistingHouseholdId == null)
-                _required('owner', l10n.text('household.head'))
-              else
-                _field('owner', l10n.text('household.head'),
-                    readOnly: selectedExistingHouseholdId != null),
-              _field(
-                'phone',
-                l10n.text('household.phone'),
-                keyboard: TextInputType.phone,
-                readOnly: selectedExistingHouseholdId != null,
-              ),
-              _field('contact', l10n.text('household.alternativeContact'),
-                  readOnly: selectedExistingHouseholdId != null),
-            ]),
+            if (widget.productionProjectCode == null)
+              _section(context, l10n.text('survey.administrativeLocation'), [
+                if (parcel == null &&
+                    widget.administrativeUnits.isNotEmpty) ...[
+                  _adminPicker(
+                    AdministrativeLevel.country,
+                    l10n.text('location.country'),
+                  ),
+                  _adminPicker(
+                    AdministrativeLevel.province,
+                    l10n.text('location.province'),
+                  ),
+                  _adminPicker(
+                    AdministrativeLevel.district,
+                    l10n.text('location.district'),
+                  ),
+                  _adminPicker(
+                    AdministrativeLevel.village,
+                    l10n.text('location.village'),
+                  ),
+                ] else ...[
+                  _field('country', l10n.text('location.country')),
+                  _field('province', l10n.text('location.province')),
+                  _field('district', l10n.text('location.district')),
+                  _field('village', l10n.text('location.village')),
+                ],
+              ]),
+            if (!widget.landOnly)
+              _section(context, l10n.text('survey.household'), [
+                if (parcel == null && widget.administrativeUnits.isNotEmpty)
+                  _householdPicker(l10n)
+                else
+                  _field('householdCode', l10n.text('household.code')),
+                if (parcel == null &&
+                    widget.administrativeUnits.isNotEmpty &&
+                    selectedExistingHouseholdId == null)
+                  _required('owner', l10n.text('household.head'))
+                else
+                  _field(
+                    'owner',
+                    l10n.text('household.head'),
+                    readOnly: selectedExistingHouseholdId != null,
+                  ),
+                _field(
+                  'phone',
+                  l10n.text('household.phone'),
+                  keyboard: TextInputType.phone,
+                  readOnly: selectedExistingHouseholdId != null,
+                ),
+                _field(
+                  'contact',
+                  l10n.text('household.alternativeContact'),
+                  readOnly: selectedExistingHouseholdId != null,
+                ),
+              ]),
             _section(context, l10n.text('parcel.section.boundary'), [
               if (parcel == null) ...[
                 Wrap(
@@ -568,10 +623,16 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
       AdministrativeLevel.village => AdministrativeLevel.district,
       _ => null,
     };
-    final parentId = parentLevel == null ? null : selectedAdministrativeIds[parentLevel];
+    final parentId = parentLevel == null
+        ? null
+        : selectedAdministrativeIds[parentLevel];
     if (parentLevel != null && parentId == null) return const [];
-    return widget.administrativeUnits.where((unit) => unit.active &&
-        unit.level == level && unit.parentId == parentId).toList();
+    return widget.administrativeUnits
+        .where(
+          (unit) =>
+              unit.active && unit.level == level && unit.parentId == parentId,
+        )
+        .toList();
   }
 
   AdministrativeUnit? _selectedAdmin(AdministrativeLevel level) {
@@ -583,32 +644,40 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
   }
 
   List<Household> get _matchingHouseholds => widget.availableHouseholds
-      .where((household) => household.active &&
-          household.administrativeLocation.countryCode ==
-              _selectedAdmin(AdministrativeLevel.country)?.code &&
-          household.administrativeLocation.provinceCode ==
-              _selectedAdmin(AdministrativeLevel.province)?.code &&
-          household.administrativeLocation.districtCode ==
-              _selectedAdmin(AdministrativeLevel.district)?.code &&
-          household.administrativeLocation.villageCode ==
-              _selectedAdmin(AdministrativeLevel.village)?.code &&
-          RegExp(r'^H[0-9]{5}$').hasMatch(household.householdCode))
+      .where(
+        (household) =>
+            household.active &&
+            household.administrativeLocation.countryCode ==
+                _selectedAdmin(AdministrativeLevel.country)?.code &&
+            household.administrativeLocation.provinceCode ==
+                _selectedAdmin(AdministrativeLevel.province)?.code &&
+            household.administrativeLocation.districtCode ==
+                _selectedAdmin(AdministrativeLevel.district)?.code &&
+            household.administrativeLocation.villageCode ==
+                _selectedAdmin(AdministrativeLevel.village)?.code &&
+            RegExp(r'^H[0-9]{5}$').hasMatch(household.householdCode),
+      )
       .toList();
 
   Widget _householdPicker(AppLocalizations l10n) => Padding(
     padding: const EdgeInsets.only(bottom: 10),
     child: DropdownButtonFormField<String>(
-      key: Key('household-${selectedAdministrativeIds[AdministrativeLevel.village]}'),
+      key: Key(
+        'household-${selectedAdministrativeIds[AdministrativeLevel.village]}',
+      ),
       initialValue: selectedExistingHouseholdId ?? '__new__',
       decoration: InputDecoration(labelText: l10n.text('household.code')),
       items: [
         DropdownMenuItem(
-          value: '__new__', child: Text(l10n.text('household.createNew')),
+          value: '__new__',
+          child: Text(l10n.text('household.createNew')),
         ),
         for (final household in _matchingHouseholds)
           DropdownMenuItem(
             value: household.id,
-            child: Text('${household.householdCode} · ${household.headOfHouseholdName}'),
+            child: Text(
+              '${household.householdCode} · ${household.headOfHouseholdName}',
+            ),
           ),
       ],
       onChanged: (id) => setState(() {
@@ -636,16 +705,23 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: DropdownButtonFormField<String>(
-        key: Key('admin-${level.name}-${switch (level) {
-          AdministrativeLevel.province => selectedAdministrativeIds[AdministrativeLevel.country],
-          AdministrativeLevel.district => selectedAdministrativeIds[AdministrativeLevel.province],
-          AdministrativeLevel.village => selectedAdministrativeIds[AdministrativeLevel.district],
-          _ => 'root',
-        }}'),
+        key: Key(
+          'admin-${level.name}-${switch (level) {
+            AdministrativeLevel.province => selectedAdministrativeIds[AdministrativeLevel.country],
+            AdministrativeLevel.district => selectedAdministrativeIds[AdministrativeLevel.province],
+            AdministrativeLevel.village => selectedAdministrativeIds[AdministrativeLevel.district],
+            _ => 'root',
+          }}',
+        ),
         initialValue: _selectedAdmin(level)?.id,
         decoration: InputDecoration(labelText: label),
-        items: [for (final unit in choices)
-          DropdownMenuItem(value: unit.id, child: Text('${unit.name} (${unit.code})'))],
+        items: [
+          for (final unit in choices)
+            DropdownMenuItem(
+              value: unit.id,
+              child: Text('${unit.name} (${unit.code})'),
+            ),
+        ],
         onChanged: (id) => setState(() {
           if (id == null) return;
           selectedAdministrativeIds[level] = id;
@@ -654,16 +730,22 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
           fields['owner']!.clear();
           fields['phone']!.clear();
           fields['contact']!.clear();
-          final levels = [AdministrativeLevel.country, AdministrativeLevel.province,
-            AdministrativeLevel.district, AdministrativeLevel.village];
+          final levels = [
+            AdministrativeLevel.country,
+            AdministrativeLevel.province,
+            AdministrativeLevel.district,
+            AdministrativeLevel.village,
+          ];
           for (final child in levels.skip(levels.indexOf(level) + 1)) {
             selectedAdministrativeIds.remove(child);
             final next = _adminChoices(child);
-            if (next.isNotEmpty) selectedAdministrativeIds[child] = next.first.id;
+            if (next.isNotEmpty)
+              selectedAdministrativeIds[child] = next.first.id;
           }
         }),
         validator: (id) => id == null
-            ? AppLocalizations.of(context).text('validation.required') : null,
+            ? AppLocalizations.of(context).text('validation.required')
+            : null,
       ),
     );
   }
@@ -682,7 +764,12 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
           ),
         ),
       );
-  Widget _field(String key, String label, {TextInputType? keyboard, bool readOnly = false}) => Padding(
+  Widget _field(
+    String key,
+    String label, {
+    TextInputType? keyboard,
+    bool readOnly = false,
+  }) => Padding(
     padding: const EdgeInsets.only(bottom: 10),
     child: TextFormField(
       key: Key('parcel-field-$key'),
@@ -779,21 +866,38 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
           parcelCode: fields['code']!.text.trim(),
           name: fields['name']!.text.trim(),
           active: active,
-          country: _selectedAdmin(AdministrativeLevel.country)?.name ?? fields['country']!.text.trim(),
-          province: _selectedAdmin(AdministrativeLevel.province)?.name ?? fields['province']!.text.trim(),
-          district: _selectedAdmin(AdministrativeLevel.district)?.name ?? fields['district']!.text.trim(),
-          village: _selectedAdmin(AdministrativeLevel.village)?.name ?? fields['village']!.text.trim(),
+          country:
+              _selectedAdmin(AdministrativeLevel.country)?.name ??
+              fields['country']!.text.trim(),
+          province:
+              _selectedAdmin(AdministrativeLevel.province)?.name ??
+              fields['province']!.text.trim(),
+          district:
+              _selectedAdmin(AdministrativeLevel.district)?.name ??
+              fields['district']!.text.trim(),
+          village:
+              _selectedAdmin(AdministrativeLevel.village)?.name ??
+              fields['village']!.text.trim(),
           countryCode: _selectedAdmin(AdministrativeLevel.country)?.code,
           provinceCode: _selectedAdmin(AdministrativeLevel.province)?.code,
           districtCode: _selectedAdmin(AdministrativeLevel.district)?.code,
           villageCode: _selectedAdmin(AdministrativeLevel.village)?.code,
-          autoNumber: widget.parcel == null && widget.administrativeUnits.isNotEmpty,
+          autoNumber:
+              widget.productionProjectCode == null &&
+              widget.parcel == null &&
+              widget.administrativeUnits.isNotEmpty,
           villageId: _selectedAdmin(AdministrativeLevel.village)?.id,
-          ownerHouseholdId: widget.landOnly ? null : selectedExistingHouseholdId,
-          householdCode: widget.landOnly ? '' : fields['householdCode']!.text.trim(),
+          ownerHouseholdId: widget.landOnly
+              ? null
+              : selectedExistingHouseholdId,
+          householdCode: widget.landOnly
+              ? ''
+              : fields['householdCode']!.text.trim(),
           ownerName: widget.landOnly ? '' : fields['owner']!.text.trim(),
           phone: widget.landOnly ? '' : fields['phone']!.text.trim(),
-          alternativeContact: widget.landOnly ? '' : fields['contact']!.text.trim(),
+          alternativeContact: widget.landOnly
+              ? ''
+              : fields['contact']!.text.trim(),
           crops: List.unmodifiable(crops),
           landUseType: landUseType,
           landCondition: landCondition,

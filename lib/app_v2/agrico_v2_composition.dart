@@ -1,3 +1,5 @@
+import '../features/farm/application/production_parcel_creation_service.dart';
+import '../features/farm/data/adapters/spatial_production_parcel_creation_repository.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -142,6 +144,9 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       parcels: parcels,
       surveys: SqliteLandSurveyRepository(database),
       createLandParcel: CreateLandParcel(application),
+      productionCreation: ProductionParcelCreationService(
+        SpatialProductionParcelCreationRepository(spatialSyncWorkflow),
+      ),
       updateMetadata: UpdateLandParcelMetadata(application),
       completeGpsMeasurement: CompleteGpsMeasurement(application),
       verifyBoundary: VerifyBoundary(application),
@@ -563,13 +568,12 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
   }
 
   void _createParcel(BuildContext context, _V2Dependencies deps) async {
-    final administrativeUnits = await deps.administrativeCatalog.all();
     if (!context.mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => LandParcelFormScreen(
           landOnly: true,
-          administrativeUnits: administrativeUnits,
+          productionProjectCode: 'AGR-NONG',
           onGpsRequested: () => _measureGpsForCreate(context),
           onImportRequested: () => _importForCreate(context, deps),
           onSubmit: (value) async {
@@ -590,6 +594,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
             final result = await deps.controller.create(
               id: id,
               parcelCode: value.parcelCode,
+              projectCode: 'AGR-NONG',
               name: value.name,
               vertices: draft.boundary.vertices.toList(),
               source: draft.source,
@@ -617,9 +622,9 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
 
             if (!context.mounted) return;
             if (!result.isSuccess || result.value == null) {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(SnackBar(content: Text(result.messageKey)));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(context.l10n.text(result.messageKey))),
+              );
               return;
             }
 

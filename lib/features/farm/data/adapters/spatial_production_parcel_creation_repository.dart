@@ -1,6 +1,7 @@
 import '../../../../core/spatial/domain/entities/spatial_temporal.dart';
 import '../../application/land_parcel_spatial_sync_workflow.dart';
 import '../../domain/entities/land_parcel.dart';
+import '../../domain/entities/land_survey.dart';
 import '../../domain/repositories/production_parcel_creation_repository.dart';
 
 /// Reuses the existing atomic spatial workflow; there is no second write path.
@@ -13,10 +14,12 @@ class SpatialProductionParcelCreationRepository
   Future<LandParcel> createLandBlock({
     required LandParcel draft,
     required String projectCode,
+    List<CropRecord> crops = const [],
     required SpatialTemporalState temporalState,
   }) => workflow.createProductionLandBlock(
     draft: draft,
     projectCode: projectCode,
+    crops: crops,
     temporalState: temporalState,
   );
 

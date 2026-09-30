@@ -462,6 +462,7 @@ class LandParcelSpatialSyncWorkflow {
   Future<LandParcel> createProductionLandBlock({
     required LandParcel draft,
     required String projectCode,
+    List<CropRecord> crops = const [],
     required SpatialTemporalState temporalState,
   }) {
     if (draft.layer != ParcelLayer.landBlock ||
@@ -472,6 +473,7 @@ class LandParcelSpatialSyncWorkflow {
       );
     }
     return createPrepared(
+      crops: crops,
       temporalState: temporalState,
       prepare: (tx, surveys) =>
           SqliteProductionParcelNumberAllocator(tx).saveLandBlock(

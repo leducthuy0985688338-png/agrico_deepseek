@@ -524,6 +524,53 @@ void main() {
     );
   });
 
+  test(
+    'production block crop failure rolls back numbering and spatial writes',
+    () async {
+      await SqliteProductionParcelNumberAllocator.createSchema(database);
+      final surveys = SqliteLandSurveyRepository(database);
+      final first = createParcel();
+      CropRecord crop(String parcelId) => CropRecord(
+        id: 'fixed-crop',
+        parcelId: parcelId,
+        cropType: 'Peanut',
+        quantity: 2,
+        unit: 'plants',
+        condition: CropCondition.unknown,
+        active: true,
+        createdAt: createdAt,
+        updatedAt: createdAt,
+        createdBy: 'member-1',
+        updatedBy: 'member-1',
+      );
+      await workflow.createProductionLandBlock(
+        draft: first,
+        projectCode: 'AGR-NONG',
+        temporalState: SpatialTemporalState.baseline,
+        crops: [crop(first.id)],
+      );
+      expect((await surveys.listCrops(first.id)).single.cropType, 'Peanut');
+      final second = createParcel(id: 'second');
+      await expectLater(
+        workflow.createProductionLandBlock(
+          draft: second,
+          projectCode: 'AGR-NONG',
+          temporalState: SpatialTemporalState.baseline,
+          crops: [crop(second.id)],
+        ),
+        throwsA(isA<DatabaseException>()),
+      );
+      expect(await parcels.getById(farmId: 'farm-1', id: 'second'), isNull);
+      expect(await links.findByLandParcelId('second'), isNull);
+      final next = await workflow.createProductionLandBlock(
+        draft: second,
+        projectCode: 'AGR-NONG',
+        temporalState: SpatialTemporalState.baseline,
+      );
+      expect(next.parcelCode, 'AGR-NONG-L002');
+    },
+  );
+
   test('new parcel and crop commit together or both roll back', () async {
     final surveys = SqliteLandSurveyRepository(database);
     final subject = AuthorizationSubject(

@@ -6,6 +6,7 @@ import '../../../../core/permissions/authorization.dart';
 import '../../application/land_parcel_boundary_consistency_queries.dart';
 import '../../application/land_parcel_application_service.dart';
 import '../../application/land_parcel_use_cases.dart';
+import '../../application/production_parcel_creation_service.dart';
 import '../../data/interchange/kml_interchange.dart';
 import '../../domain/entities/land_parcel.dart';
 import '../../domain/entities/land_survey.dart';
@@ -45,7 +46,8 @@ class LandParcelViewData {
   final List<ParcelAttachment> attachments;
   final LandParcelBoundaryConsistency boundaryConsistency;
   final LandParcelBoundaryIssue? boundaryIssue;
-  String get village => household?.administrativeLocation.villageName ??
+  String get village =>
+      household?.administrativeLocation.villageName ??
       (parcel.legacyMetadata['village'] as String? ?? '');
   String get owner =>
       parcel.ownerDisplayName ?? household?.headOfHouseholdName ?? '';
@@ -80,12 +82,14 @@ class LandParcelController extends ChangeNotifier {
     this.googleEarthOpener,
     this.boundaryConsistencyQueries,
     this.reconcileLegacySpatialIdentity,
+    this.productionCreation,
   });
 
   final AuthorizationSubject subject;
   final LandParcelRepository parcels;
   final LandSurveyRepository surveys;
   final CreateLandParcel createLandParcel;
+  final ProductionParcelCreationService? productionCreation;
   final UpdateLandParcelMetadata updateMetadata;
   final CompleteGpsMeasurement completeGpsMeasurement;
   final VerifyBoundary verifyBoundary;
@@ -190,9 +194,11 @@ class LandParcelController extends ChangeNotifier {
         parentLandBlock: parcel.parentLandBlockId == null
             ? null
             : await parcels.getById(
-                farmId: subject.farmId, id: parcel.parentLandBlockId!),
-        boundaryConsistency: diagnosis?.consistency ??
-            LandParcelBoundaryConsistency.unlinked,
+                farmId: subject.farmId,
+                id: parcel.parentLandBlockId!,
+              ),
+        boundaryConsistency:
+            diagnosis?.consistency ?? LandParcelBoundaryConsistency.unlinked,
         boundaryIssue: diagnosis?.issue,
         household: parcel.ownerHouseholdId == null
             ? null
@@ -236,6 +242,7 @@ class LandParcelController extends ChangeNotifier {
   Future<LandParcelApplicationResult<LandParcel>> create({
     required String id,
     required String parcelCode,
+    String? projectCode,
     required String name,
     required List<Wgs84Vertex> vertices,
     required BoundarySource source,
@@ -261,31 +268,105 @@ class LandParcelController extends ChangeNotifier {
 
     _phase(ParcelPresentationPhase.saving);
 
-    final result = await createLandParcel(
-      subject,
-      CreateLandParcelCommand(
-        id: id,
-        farmId: subject.farmId,
-        parcelCode: parcelCode,
-        name: name,
-        vertices: vertices,
-        source: source,
-        actorMembershipId: subject.membershipId,
-        occurredAt: DateTime.now().toUtc(),
-        ownerHouseholdId: ownerHouseholdId,
-        ownerDisplayName: ownerDisplayName,
-        countryCode: countryCode,
-        provinceCode: provinceCode,
-        districtCode: districtCode,
-        villageCode: villageCode,
-        autoNumber: autoNumber,
-        villageId: villageId,
-        horizontalAccuracyM: horizontalAccuracyM,
-        boundaryConfidence: boundaryConfidence,
-        legacyMetadata: legacyMetadata,
-        crops: crops,
-      ),
-    );
+    LandParcelApplicationResult<LandParcel> result;
+    if (projectCode != null) {
+      try {
+        final service = productionCreation;
+        if (service == null) {
+          throw StateError('Production creation is unavailable.');
+        }
+        if (!authorization.can(
+              subject: subject,
+              permission: PermissionCodes.fieldCreate,
+              resource: ResourceContext(farmId: subject.farmId),
+            ) ||
+            !subject.dataScopes.contains(DataScope.allFarm) ||
+            (source == BoundarySource.gps &&
+                !authorization.can(
+                  subject: subject,
+                  permission: PermissionCodes.fieldMeasure,
+                  resource: ResourceContext(farmId: subject.farmId),
+                )) ||
+            ((source == BoundarySource.googleEarth ||
+                    source == BoundarySource.imported) &&
+                !authorization.can(
+                  subject: subject,
+                  permission: PermissionCodes.fieldGoogleEarthImport,
+                  resource: ResourceContext(farmId: subject.farmId),
+                ))) {
+          result = const LandParcelApplicationResult.failure(
+            LandParcelApplicationStatus.permissionDenied,
+            'error.permissionDenied',
+          );
+        } else {
+          final saved = await service.createLandBlock(
+            subject: subject,
+            projectCode: projectCode,
+            crops: crops,
+            draft: LandParcel.create(
+              id: id,
+              farmId: subject.farmId,
+              parcelCode: 'DRAFT',
+              name: name,
+              boundary: Wgs84Polygon.fromVertices(vertices),
+              boundarySource: source,
+              verificationStatus: BoundaryVerificationStatus.draft,
+              actorMembershipId: subject.membershipId,
+              occurredAt: DateTime.now().toUtc(),
+              active: legacyMetadata['active'] != false,
+              horizontalAccuracyM: horizontalAccuracyM,
+              boundaryConfidence: boundaryConfidence,
+              legacyMetadata: {
+                ...legacyMetadata,
+                'parcelLayer': ParcelLayer.landBlock.name,
+              },
+            ),
+          );
+          result = LandParcelApplicationResult.success(
+            saved,
+            'landParcel.create.success',
+          );
+        }
+      } on FormatException catch (error) {
+        result = LandParcelApplicationResult.failure(
+          LandParcelApplicationStatus.validationFailed,
+          'landParcel.geometry.invalid',
+          error: error,
+        );
+      } catch (error) {
+        result = LandParcelApplicationResult.failure(
+          LandParcelApplicationStatus.persistenceFailed,
+          'landParcel.persistence.failed',
+          error: error,
+        );
+      }
+    } else {
+      result = await createLandParcel(
+        subject,
+        CreateLandParcelCommand(
+          id: id,
+          farmId: subject.farmId,
+          parcelCode: parcelCode,
+          name: name,
+          vertices: vertices,
+          source: source,
+          actorMembershipId: subject.membershipId,
+          occurredAt: DateTime.now().toUtc(),
+          ownerHouseholdId: ownerHouseholdId,
+          ownerDisplayName: ownerDisplayName,
+          countryCode: countryCode,
+          provinceCode: provinceCode,
+          districtCode: districtCode,
+          villageCode: villageCode,
+          autoNumber: autoNumber,
+          villageId: villageId,
+          horizontalAccuracyM: horizontalAccuracyM,
+          boundaryConfidence: boundaryConfidence,
+          legacyMetadata: legacyMetadata,
+          crops: crops,
+        ),
+      );
+    }
 
     _result(result);
 
