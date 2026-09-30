@@ -1,5 +1,6 @@
-﻿import 'package:sqflite/sqflite.dart';
+import 'package:sqflite/sqflite.dart';
 import '../../../core/identity/domain/parcel_number_allocator.dart';
+import '../../../core/identity/data/sqlite_production_parcel_number_allocator.dart';
 import '../../../core/identity/data/sqlite_scoped_parcel_number_allocator.dart';
 
 import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_feature.dart';
@@ -55,11 +56,18 @@ class LandParcelSpatialSyncWorkflow {
     required String actorMembershipId,
     required DateTime occurredAt,
   }) => subdividePlan(
-    farmId: farmId, sourceParcelId: sourceParcelId, villageId: villageId,
+    farmId: farmId,
+    sourceParcelId: sourceParcelId,
+    villageId: villageId,
     expectedBoundaryVersion: expectedBoundaryVersion,
-    cuts: [ParcelSubdivisionCut(fragmentIndex: 0,
-      path: [cutStart, ...cutWaypoints, cutEnd])],
-    names: [firstName, secondName], actorMembershipId: actorMembershipId,
+    cuts: [
+      ParcelSubdivisionCut(
+        fragmentIndex: 0,
+        path: [cutStart, ...cutWaypoints, cutEnd],
+      ),
+    ],
+    names: [firstName, secondName],
+    actorMembershipId: actorMembershipId,
     occurredAt: occurredAt,
   );
 
@@ -76,62 +84,106 @@ class LandParcelSpatialSyncWorkflow {
     required String actorMembershipId,
     required DateTime occurredAt,
   }) async {
-    if (cuts.isEmpty || cuts.length > 99 ||
+    if (cuts.isEmpty ||
+        cuts.length > 99 ||
         names.length != cuts.length + (independentSketches ? 0 : 1) ||
-        names.any((name) => name.trim().isEmpty) || villageId.trim().isEmpty ||
+        names.any((name) => name.trim().isEmpty) ||
+        villageId.trim().isEmpty ||
         (details.isNotEmpty && details.length != names.length)) {
-      throw const FormatException('Every final fragment needs a name and catalogued village.');
+      throw const FormatException(
+        'Every final fragment needs a name and catalogued village.',
+      );
     }
     final entries = details.isEmpty
-        ? List.filled(names.length, const ParcelSketchDetails()) : details;
+        ? List.filled(names.length, const ParcelSketchDetails())
+        : details;
     for (var i = 0; i < entries.length; i++) {
       final entry = entries[i];
       final parentIndex = entry.parentSketchIndex;
-      if (parentIndex != null && (parentIndex < 0 || parentIndex >= i ||
-          entries[parentIndex].layer != ParcelLayer.landBlock)) {
-        throw const FormatException('A field plot must refer to a previously drawn land block.');
+      if (parentIndex != null &&
+          (parentIndex < 0 ||
+              parentIndex >= i ||
+              entries[parentIndex].layer != ParcelLayer.landBlock)) {
+        throw const FormatException(
+          'A field plot must refer to a previously drawn land block.',
+        );
       }
       if (entry.cropType?.trim().isNotEmpty == true &&
-          (entry.cropQuantity == null || !entry.cropQuantity!.isFinite ||
-           entry.cropQuantity! <= 0 || entry.cropUnit?.trim().isEmpty != false)) {
-        throw const FormatException('Crop requires a positive quantity and unit.');
+          (entry.cropQuantity == null ||
+              !entry.cropQuantity!.isFinite ||
+              entry.cropQuantity! <= 0 ||
+              entry.cropUnit?.trim().isEmpty != false)) {
+        throw const FormatException(
+          'Crop requires a positive quantity and unit.',
+        );
       }
     }
-    final childIds = List.generate(names.length, (_) => identityGenerator.newId('land-parcel'));
-    final linkIds = List.generate(names.length, (_) => identityGenerator.newId('spatial-link'));
-    final featureIds = List.generate(names.length, (_) => identityGenerator.newId('spatial-feature'));
-    final revisionIds = List.generate(names.length, (_) => identityGenerator.newId('spatial-revision'));
-    final derivationIds = List.generate(names.length, (_) => identityGenerator.newId('derivation'));
+    final childIds = List.generate(
+      names.length,
+      (_) => identityGenerator.newId('land-parcel'),
+    );
+    final linkIds = List.generate(
+      names.length,
+      (_) => identityGenerator.newId('spatial-link'),
+    );
+    final featureIds = List.generate(
+      names.length,
+      (_) => identityGenerator.newId('spatial-feature'),
+    );
+    final revisionIds = List.generate(
+      names.length,
+      (_) => identityGenerator.newId('spatial-revision'),
+    );
+    final derivationIds = List.generate(
+      names.length,
+      (_) => identityGenerator.newId('derivation'),
+    );
     Transaction? scopedTransaction;
     final createdChildren = <LandParcel>[];
-    return transaction.run<List<LandParcel>>((parcels, links, spatial) async {
-      final tx = scopedTransaction!;
-      final source = await parcels.getById(farmId: farmId, id: sourceParcelId);
-      if (source == null || !source.active ||
-          source.boundaryVersion != expectedBoundaryVersion ||
-          source.countryCode == null || source.provinceCode == null ||
-          source.districtCode == null || source.villageCode == null) {
-        throw StateError('Source parcel changed or has no catalogued location.');
-      }
-      if (independentSketches && source.layer != ParcelLayer.landBlock) {
-        throw StateError('Field plots must belong to a land block.');
-      }
-      if (source.spatialFeatureId == null ||
-          await LandParcelBoundaryConsistencyQueries(
-            links: links, features: spatial.featureRepository,
-            revisions: spatial.revisionRepository,
-          ).check(source) != LandParcelBoundaryConsistency.consistent) {
-        throw StateError('Source parcel boundary needs reconciliation.');
-      }
-      final existingSplit = await tx.query(
-        SqliteParcelLandHistoryRepository.derivationsTable,
-        columns: ['id'], where: 'farm_id = ? AND source_parcel_id = ? '
-            'AND kind = ?', whereArgs: [farmId, source.id,
-              ParcelDerivationKind.subdivision.name], limit: 1);
-      if (!independentSketches && existingSplit.isNotEmpty) {
-        throw StateError('Source parcel has already been subdivided.');
-      }
-      final location = await tx.rawQuery('''
+    return transaction.run<List<LandParcel>>(
+      (parcels, links, spatial) async {
+        final tx = scopedTransaction!;
+        final source = await parcels.getById(
+          farmId: farmId,
+          id: sourceParcelId,
+        );
+        if (source == null ||
+            !source.active ||
+            source.boundaryVersion != expectedBoundaryVersion ||
+            source.countryCode == null ||
+            source.provinceCode == null ||
+            source.districtCode == null ||
+            source.villageCode == null) {
+          throw StateError(
+            'Source parcel changed or has no catalogued location.',
+          );
+        }
+        if (independentSketches && source.layer != ParcelLayer.landBlock) {
+          throw StateError('Field plots must belong to a land block.');
+        }
+        if (source.spatialFeatureId == null ||
+            await LandParcelBoundaryConsistencyQueries(
+                  links: links,
+                  features: spatial.featureRepository,
+                  revisions: spatial.revisionRepository,
+                ).check(source) !=
+                LandParcelBoundaryConsistency.consistent) {
+          throw StateError('Source parcel boundary needs reconciliation.');
+        }
+        final existingSplit = await tx.query(
+          SqliteParcelLandHistoryRepository.derivationsTable,
+          columns: ['id'],
+          where:
+              'farm_id = ? AND source_parcel_id = ? '
+              'AND kind = ?',
+          whereArgs: [farmId, source.id, ParcelDerivationKind.subdivision.name],
+          limit: 1,
+        );
+        if (!independentSketches && existingSplit.isNotEmpty) {
+          throw StateError('Source parcel has already been subdivided.');
+        }
+        final location = await tx.rawQuery(
+          '''
         SELECT v.id FROM agrico_administrative_units v
         JOIN agrico_administrative_units d ON d.id = v.parent_id
         JOIN agrico_administrative_units p ON p.id = d.parent_id
@@ -139,93 +191,141 @@ class LandParcelSpatialSyncWorkflow {
         WHERE v.id = ? AND v.level = 'village' AND v.active = 1
           AND d.active = 1 AND p.active = 1 AND c.active = 1
           AND v.code = ? AND d.code = ? AND p.code = ? AND c.code = ?
-      ''', [villageId, source.villageCode, source.districtCode,
-        source.provinceCode, source.countryCode]);
-      if (location.length != 1) {
-        throw const FormatException('Parcel village does not match the catalog.');
-      }
-      final plan = const ParcelSubdivisionPlan();
-      final boundaries = independentSketches
-          ? plan.sketches(cuts) : plan.apply(source.boundary, cuts);
-      final numbers = SqliteScopedParcelNumberAllocator(tx);
-      final children = <LandParcel>[];
-      for (var index = 0; index < boundaries.length; index++) {
-        final entry = entries[index];
-        final parentId = entry.parentSketchIndex == null
-            ? source.id : childIds[entry.parentSketchIndex!];
-        final child = await numbers.saveLocationParcel(
-          farmId: farmId, villageId: villageId,
-          countryCode: source.countryCode!,
-          provinceCode: source.provinceCode!,
-          districtCode: source.districtCode!,
-          villageCode: source.villageCode!,
-          save: (code) async => LandParcel.create(
-            id: childIds[index], farmId: farmId, parcelCode: code,
-            name: names[index].trim(),
-            boundary: boundaries[index], boundarySource: BoundarySource.manual,
-            verificationStatus: BoundaryVerificationStatus.draft,
-            actorMembershipId: actorMembershipId, occurredAt: occurredAt,
-            legacyMetadata: independentSketches
-                ? {'parcelLayer': entry.layer.name,
-                   'parentLandBlockId': parentId}
-                : const {},
-            countryCode: source.countryCode,
-            provinceCode: source.provinceCode,
-            districtCode: source.districtCode,
-            villageCode: source.villageCode,
-          ),
+      ''',
+          [
+            villageId,
+            source.villageCode,
+            source.districtCode,
+            source.provinceCode,
+            source.countryCode,
+          ],
         );
-        await createScoped(
-          parcels: parcels, links: links, spatial: spatial,
-          parcel: child, temporalState: SpatialTemporalState.underConstruction,
-          spatialLinkId: linkIds[index],
-          spatialFeatureId: featureIds[index],
-          spatialRevisionId: revisionIds[index],
-        );
-        children.add(child.assignSpatialFeatureId(featureIds[index]));
-        createdChildren.add(children.last);
-        await SqliteParcelLandHistoryRepository.linkScoped(tx,
-          ParcelDerivation(
-            id: derivationIds[index], farmId: farmId,
-            sourceParcelId: source.id, targetParcelId: child.id,
-            kind: ParcelDerivationKind.subdivision,
-            derivedAreaM2: child.areaM2, occurredAt: occurredAt,
-            actorMembershipId: actorMembershipId,
-          ), allowOutsideSource: independentSketches,
-        );
-      }
-      if (!independentSketches) {
-        await parcels.update(source.updateMetadata(
-          active: false, actorMembershipId: actorMembershipId,
-          occurredAt: occurredAt));
-      }
-      return children;
-    }, beforeCreate: (tx, _) async { scopedTransaction = tx; },
+        if (location.length != 1) {
+          throw const FormatException(
+            'Parcel village does not match the catalog.',
+          );
+        }
+        final plan = const ParcelSubdivisionPlan();
+        final boundaries = independentSketches
+            ? plan.sketches(cuts)
+            : plan.apply(source.boundary, cuts);
+        final numbers = SqliteScopedParcelNumberAllocator(tx);
+        final children = <LandParcel>[];
+        for (var index = 0; index < boundaries.length; index++) {
+          final entry = entries[index];
+          final parentId = entry.parentSketchIndex == null
+              ? source.id
+              : childIds[entry.parentSketchIndex!];
+          final child = await numbers.saveLocationParcel(
+            farmId: farmId,
+            villageId: villageId,
+            countryCode: source.countryCode!,
+            provinceCode: source.provinceCode!,
+            districtCode: source.districtCode!,
+            villageCode: source.villageCode!,
+            save: (code) async => LandParcel.create(
+              id: childIds[index],
+              farmId: farmId,
+              parcelCode: code,
+              name: names[index].trim(),
+              boundary: boundaries[index],
+              boundarySource: BoundarySource.manual,
+              verificationStatus: BoundaryVerificationStatus.draft,
+              actorMembershipId: actorMembershipId,
+              occurredAt: occurredAt,
+              legacyMetadata: independentSketches
+                  ? {
+                      'parcelLayer': entry.layer.name,
+                      'parentLandBlockId': parentId,
+                    }
+                  : const {},
+              countryCode: source.countryCode,
+              provinceCode: source.provinceCode,
+              districtCode: source.districtCode,
+              villageCode: source.villageCode,
+            ),
+          );
+          await createScoped(
+            parcels: parcels,
+            links: links,
+            spatial: spatial,
+            parcel: child,
+            temporalState: SpatialTemporalState.underConstruction,
+            spatialLinkId: linkIds[index],
+            spatialFeatureId: featureIds[index],
+            spatialRevisionId: revisionIds[index],
+          );
+          children.add(child.assignSpatialFeatureId(featureIds[index]));
+          createdChildren.add(children.last);
+          await SqliteParcelLandHistoryRepository.linkScoped(
+            tx,
+            ParcelDerivation(
+              id: derivationIds[index],
+              farmId: farmId,
+              sourceParcelId: source.id,
+              targetParcelId: child.id,
+              kind: ParcelDerivationKind.subdivision,
+              derivedAreaM2: child.areaM2,
+              occurredAt: occurredAt,
+              actorMembershipId: actorMembershipId,
+            ),
+            allowOutsideSource: independentSketches,
+          );
+        }
+        if (!independentSketches) {
+          await parcels.update(
+            source.updateMetadata(
+              active: false,
+              actorMembershipId: actorMembershipId,
+              occurredAt: occurredAt,
+            ),
+          );
+        }
+        return children;
+      },
+      beforeCreate: (tx, _) async {
+        scopedTransaction = tx;
+      },
       afterCreate: (surveys) async {
         if (!independentSketches) return;
         for (var i = 0; i < createdChildren.length; i++) {
           final entry = entries[i];
           final child = createdChildren[i];
-          await surveys.saveLandUseProfile(LandUseProfile(
-            parcelId: child.id, landUseType: entry.landUseType,
-            currentCondition: entry.landCondition,
-            clearingStatus: entry.clearingStatus,
-            readinessStatus: entry.readinessStatus,
-            notes: entry.notes?.trim().isEmpty == true ? null : entry.notes?.trim(),
-            updatedAt: occurredAt, updatedBy: actorMembershipId));
+          await surveys.saveLandUseProfile(
+            LandUseProfile(
+              parcelId: child.id,
+              landUseType: entry.landUseType,
+              currentCondition: entry.landCondition,
+              clearingStatus: entry.clearingStatus,
+              readinessStatus: entry.readinessStatus,
+              notes: entry.notes?.trim().isEmpty == true
+                  ? null
+                  : entry.notes?.trim(),
+              updatedAt: occurredAt,
+              updatedBy: actorMembershipId,
+            ),
+          );
           if (entry.cropType?.trim().isNotEmpty == true) {
-            await surveys.createCrop(CropRecord(
-              id: identityGenerator.newId('crop'), parcelId: child.id,
-              cropType: entry.cropType!.trim(),
-              quantity: entry.cropQuantity!, unit: entry.cropUnit!.trim(),
-              condition: CropCondition.growing,
-              growthStage: entry.cropGrowthStage,
-              active: true, createdAt: occurredAt,
-              createdBy: actorMembershipId, updatedAt: occurredAt,
-              updatedBy: actorMembershipId));
+            await surveys.createCrop(
+              CropRecord(
+                id: identityGenerator.newId('crop'),
+                parcelId: child.id,
+                cropType: entry.cropType!.trim(),
+                quantity: entry.cropQuantity!,
+                unit: entry.cropUnit!.trim(),
+                condition: CropCondition.growing,
+                growthStage: entry.cropGrowthStage,
+                active: true,
+                createdAt: occurredAt,
+                createdBy: actorMembershipId,
+                updatedAt: occurredAt,
+                updatedBy: actorMembershipId,
+              ),
+            );
           }
         }
-      });
+      },
+    );
   }
 
   /// Explicitly restores a missing parcel-side ID on a historical linked row.
@@ -276,8 +376,8 @@ class LandParcelSpatialSyncWorkflow {
     }
 
     final spatialLinkId = identityGenerator.newId('spatial-link');
-    final spatialFeatureId = providedSpatialFeatureId ??
-        identityGenerator.newId('spatial-feature');
+    final spatialFeatureId =
+        providedSpatialFeatureId ?? identityGenerator.newId('spatial-feature');
     final spatialRevisionId = identityGenerator.newId('spatial-revision');
 
     return transaction.run<void>(
@@ -307,8 +407,11 @@ class LandParcelSpatialSyncWorkflow {
   /// [prepare] may reserve business numbers and write a new Household via the
   /// transaction-scoped survey repository. A failure anywhere rolls them back.
   Future<LandParcel> createPrepared({
-    required Future<LandParcel> Function(Transaction tx, LandSurveyRepository surveys)
-        prepare,
+    required Future<LandParcel> Function(
+      Transaction tx,
+      LandSurveyRepository surveys,
+    )
+    prepare,
     required SpatialTemporalState temporalState,
     List<CropRecord> crops = const [],
   }) async {
@@ -334,14 +437,48 @@ class LandParcelSpatialSyncWorkflow {
       beforeCreate: (tx, surveys) async {
         prepared = await prepare(tx, surveys);
         if (prepared!.spatialFeatureId != null) {
-          throw const FormatException('Prepared parcel must not already have a spatial identity.');
+          throw const FormatException(
+            'Prepared parcel must not already have a spatial identity.',
+          );
         }
       },
-      afterCreate: crops.isEmpty ? null : (surveys) async {
-        for (final crop in crops) {
-          await surveys.createCrop(crop);
-        }
-      },
+      afterCreate: crops.isEmpty
+          ? null
+          : (surveys) async {
+              for (final crop in crops) {
+                await surveys.createCrop(crop);
+              }
+            },
+    );
+  }
+
+  /// Saves a production block with a project-scoped code in the same
+  /// transaction as its spatial identity, revision and link.
+  /// Administrative location and ownership do not participate in numbering.
+  Future<LandParcel> createProductionLandBlock({
+    required LandParcel draft,
+    required String projectCode,
+    required SpatialTemporalState temporalState,
+  }) {
+    if (draft.layer != ParcelLayer.landBlock ||
+        draft.parentLandBlockId != null ||
+        draft.spatialFeatureId != null) {
+      throw const FormatException(
+        'A new production block cannot have a parent or spatial identity.',
+      );
+    }
+    return createPrepared(
+      temporalState: temporalState,
+      prepare: (tx, surveys) =>
+          SqliteProductionParcelNumberAllocator(tx).saveLandBlock(
+            farmId: draft.farmId,
+            projectCode: projectCode,
+            save: (code) async => draft.updateMetadata(
+              parcelCode: code.toString(),
+              actorMembershipId: draft.createdBy,
+              occurredAt: draft.createdAt,
+            ),
+          ),
     );
   }
 
@@ -351,7 +488,8 @@ class LandParcelSpatialSyncWorkflow {
     required Future<LandParcel> Function(
       ParcelNumberAllocator numbers,
       LandSurveyRepository surveys,
-    ) prepare,
+    )
+    prepare,
     required SpatialTemporalState temporalState,
     List<CropRecord> crops = const [],
   }) => createPrepared(
@@ -457,8 +595,9 @@ class LandParcelSpatialSyncWorkflow {
     // This runs inside the same LandParcelSpatialTransaction.run()
     // boundary, so failure here rolls back the SpatialFeature,
     // Revision 1, Link, and the LandParcel update together.
-    final parcelWithSpatialIdentity =
-        parcel.assignSpatialFeatureId(spatialFeatureId);
+    final parcelWithSpatialIdentity = parcel.assignSpatialFeatureId(
+      spatialFeatureId,
+    );
     await parcels.update(parcelWithSpatialIdentity);
   }
 

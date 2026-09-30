@@ -1,3 +1,4 @@
+import 'package:agrico_deepseek/core/identity/data/sqlite_production_parcel_number_allocator.dart';
 import 'package:agrico_deepseek/core/identity/data/sqlite_parcel_number_sequence.dart';
 import 'package:agrico_deepseek/core/spatial/data/spatial_persistence_composition.dart';
 import '../../../core/spatial/support/sequential_spatial_identity_generator.dart';
@@ -83,184 +84,339 @@ void main() {
 
   tearDown(() => database.close());
 
-  test('prepared household and numbered parcel share the spatial transaction',
-      () async {
-    await SqliteParcelNumberSequence.createSchema(database);
-    final numbers = SqliteParcelNumberSequence();
-    final saved = await workflow.createPrepared(
-      temporalState: SpatialTemporalState.baseline,
-      prepare: (tx, surveys) => numbers.saveHousehold(
-        tx: tx, farmId: 'farm-1',
-        save: (houseCode) async {
-          await surveys.createHousehold(Household(
-            id: 'household-1', farmId: 'farm-1',
-            householdCode: houseCode,
-            headOfHouseholdName: 'ສົມພອນ',
-            administrativeLocation: const AdministrativeLocation(
-              countryName: 'Lào', countryCode: 'LA',
-              provinceName: 'Savannakhet', provinceCode: 'SVK',
-              districtName: 'Nong', districtCode: 'NONG',
-              villageName: 'Ta Ko', villageCode: 'TAKO',
-            ),
-            active: true, createdAt: createdAt, createdBy: 'member-1',
-            updatedAt: createdAt, updatedBy: 'member-1',
-          ));
-          return numbers.saveParcel(
-            tx: tx, farmId: 'farm-1', villageId: 'village-tako',
-            householdNumber: int.parse(houseCode.substring(1)),
-            countryCode: 'LA', provinceCode: 'SVK',
-            districtCode: 'NONG', villageCode: 'TAKO',
-            save: (code) async => createParcel(
-              code: code, ownerHouseholdId: 'household-1',
-            ),
+  test(
+    'production block code and spatial projection save without village or household',
+    () async {
+      await SqliteProductionParcelNumberAllocator.createSchema(database);
+      final saved = await workflow.createProductionLandBlock(
+        draft: createParcel(),
+        projectCode: 'AGR-NONG',
+        temporalState: SpatialTemporalState.baseline,
+      );
+      expect(saved.parcelCode, 'AGR-NONG-L001');
+      expect(saved.villageCode, isNull);
+      expect(saved.ownerHouseholdId, isNull);
+      expect(saved.layer, ParcelLayer.landBlock);
+      final persisted = await parcels.getById(farmId: 'farm-1', id: saved.id);
+      final link = await links.findByLandParcelId(saved.id);
+      expect(persisted!.spatialFeatureId, link!.spatialFeatureId);
+      expect(
+        await LandParcelBoundaryConsistencyQueries(
+          links: links,
+          features: spatial.featureRepository,
+          revisions: spatial.revisionRepository,
+        ).check(persisted),
+        LandParcelBoundaryConsistency.consistent,
+      );
+      expect(await database.query('households'), isEmpty);
+    },
+  );
+
+  test(
+    'failed production block creation rolls back allocated number and spatial writes',
+    () async {
+      await SqliteProductionParcelNumberAllocator.createSchema(database);
+      await workflow.createProductionLandBlock(
+        draft: createParcel(),
+        projectCode: 'AGR-NONG',
+        temporalState: SpatialTemporalState.baseline,
+      );
+      await expectLater(
+        workflow.createProductionLandBlock(
+          draft: createParcel(),
+          projectCode: 'AGR-NONG',
+          temporalState: SpatialTemporalState.baseline,
+        ),
+        throwsA(isA<DatabaseException>()),
+      );
+      final next = await workflow.createProductionLandBlock(
+        draft: createParcel(id: 'parcel-2'),
+        projectCode: 'AGR-NONG',
+        temporalState: SpatialTemporalState.baseline,
+      );
+      expect(next.parcelCode, 'AGR-NONG-L002');
+      expect(await database.query('land_parcels'), hasLength(2));
+      expect(await database.query('land_parcel_spatial_links'), hasLength(2));
+    },
+  );
+
+  test(
+    'prepared household and numbered parcel share the spatial transaction',
+    () async {
+      await SqliteParcelNumberSequence.createSchema(database);
+      final numbers = SqliteParcelNumberSequence();
+      final saved = await workflow.createPrepared(
+        temporalState: SpatialTemporalState.baseline,
+        prepare: (tx, surveys) => numbers.saveHousehold(
+          tx: tx,
+          farmId: 'farm-1',
+          save: (houseCode) async {
+            await surveys.createHousehold(
+              Household(
+                id: 'household-1',
+                farmId: 'farm-1',
+                householdCode: houseCode,
+                headOfHouseholdName: 'ສົມພອນ',
+                administrativeLocation: const AdministrativeLocation(
+                  countryName: 'Lào',
+                  countryCode: 'LA',
+                  provinceName: 'Savannakhet',
+                  provinceCode: 'SVK',
+                  districtName: 'Nong',
+                  districtCode: 'NONG',
+                  villageName: 'Ta Ko',
+                  villageCode: 'TAKO',
+                ),
+                active: true,
+                createdAt: createdAt,
+                createdBy: 'member-1',
+                updatedAt: createdAt,
+                updatedBy: 'member-1',
+              ),
+            );
+            return numbers.saveParcel(
+              tx: tx,
+              farmId: 'farm-1',
+              villageId: 'village-tako',
+              householdNumber: int.parse(houseCode.substring(1)),
+              countryCode: 'LA',
+              provinceCode: 'SVK',
+              districtCode: 'NONG',
+              villageCode: 'TAKO',
+              save: (code) async =>
+                  createParcel(code: code, ownerHouseholdId: 'household-1'),
+            );
+          },
+        ),
+      );
+      expect(saved.parcelCode, 'LA-SVK-NONG-TAKO-H00001-001');
+      expect(saved.spatialFeatureId, isNotNull);
+      expect(
+        (await parcels.getById(farmId: 'farm-1', id: saved.id))!.parcelCode,
+        saved.parcelCode,
+      );
+      expect(
+        (await SqliteLandSurveyRepository(
+          database,
+        ).getHousehold('household-1'))!.householdCode,
+        'H00001',
+      );
+      expect(saved.ownerHouseholdId, 'household-1');
+      expect(await links.findByLandParcelId(saved.id), isNotNull);
+    },
+  );
+
+  test(
+    'application generates household and parcel codes and reuses the household',
+    () async {
+      await SqliteParcelNumberSequence.createSchema(database);
+      final subject = AuthorizationSubject(
+        userId: 'user-1',
+        membershipId: 'member-1',
+        farmId: 'farm-1',
+        permissionCodes: PermissionCodes.values,
+        dataScopes: const {DataScope.allFarm},
+      );
+      final application = LandParcelApplicationService(
+        repository: parcels,
+        spatialWorkflow: workflow,
+      );
+      CreateLandParcelCommand command(String id, {String? householdId}) =>
+          CreateLandParcelCommand(
+            id: id,
+            farmId: 'farm-1',
+            parcelCode: '',
+            name: id,
+            vertices: createParcel().boundary.vertices.toList(),
+            source: BoundarySource.manual,
+            actorMembershipId: 'member-1',
+            occurredAt: createdAt,
+            autoNumber: true,
+            villageId: 'village-tako',
+            ownerHouseholdId: householdId,
+            ownerDisplayName: 'Somphon',
+            countryCode: 'LA',
+            provinceCode: 'SVK',
+            districtCode: 'NONG',
+            villageCode: 'TAKO',
+            legacyMetadata: const {
+              'country': 'Lào',
+              'province': 'Savannakhet',
+              'district': 'Nong',
+              'village': 'Ta Ko',
+            },
           );
-        },
-      ),
-    );
-    expect(saved.parcelCode, 'LA-SVK-NONG-TAKO-H00001-001');
-    expect(saved.spatialFeatureId, isNotNull);
-    expect((await parcels.getById(farmId: 'farm-1', id: saved.id))!.parcelCode,
-        saved.parcelCode);
-    expect((await SqliteLandSurveyRepository(database).getHousehold('household-1'))!
-        .householdCode, 'H00001');
-    expect(saved.ownerHouseholdId, 'household-1');
-    expect(await links.findByLandParcelId(saved.id), isNotNull);
-  });
+      final first = await application.createLandParcel(
+        subject,
+        command('first'),
+      );
+      expect(first.isSuccess, isTrue);
+      expect(first.value!.parcelCode, 'LA-SVK-NONG-TAKO-H00001-001');
+      final householdId = first.value!.ownerHouseholdId!;
+      expect(
+        (await SqliteLandSurveyRepository(
+          database,
+        ).getHousehold(householdId))!.householdCode,
+        'H00001',
+      );
 
-  test('application generates household and parcel codes and reuses the household',
-      () async {
-    await SqliteParcelNumberSequence.createSchema(database);
-    final subject = AuthorizationSubject(
-      userId: 'user-1', membershipId: 'member-1', farmId: 'farm-1',
-      permissionCodes: PermissionCodes.values,
-      dataScopes: const {DataScope.allFarm},
-    );
-    final application = LandParcelApplicationService(
-      repository: parcels, spatialWorkflow: workflow,
-    );
-    CreateLandParcelCommand command(String id, {String? householdId}) =>
-        CreateLandParcelCommand(
-          id: id, farmId: 'farm-1', parcelCode: '', name: id,
-          vertices: createParcel().boundary.vertices.toList(),
-          source: BoundarySource.manual,
-          actorMembershipId: 'member-1', occurredAt: createdAt,
-          autoNumber: true, villageId: 'village-tako',
-          ownerHouseholdId: householdId, ownerDisplayName: 'Somphon',
-          countryCode: 'LA', provinceCode: 'SVK',
-          districtCode: 'NONG', villageCode: 'TAKO',
-          legacyMetadata: const {
-            'country': 'Lào', 'province': 'Savannakhet',
-            'district': 'Nong', 'village': 'Ta Ko',
-          },
-        );
-    final first = await application.createLandParcel(subject, command('first'));
-    expect(first.isSuccess, isTrue);
-    expect(first.value!.parcelCode, 'LA-SVK-NONG-TAKO-H00001-001');
-    final householdId = first.value!.ownerHouseholdId!;
-    expect((await SqliteLandSurveyRepository(database).getHousehold(householdId))!
-        .householdCode, 'H00001');
+      final second = await application.createLandParcel(
+        subject,
+        command('second', householdId: householdId),
+      );
+      expect(second.isSuccess, isTrue);
+      expect(second.value!.parcelCode, 'LA-SVK-NONG-TAKO-H00001-002');
+      expect(second.value!.ownerHouseholdId, householdId);
+      expect(
+        await SqliteLandSurveyRepository(database).listHouseholds('farm-1'),
+        hasLength(1),
+      );
 
-    final second = await application.createLandParcel(subject,
-        command('second', householdId: householdId));
-    expect(second.isSuccess, isTrue);
-    expect(second.value!.parcelCode, 'LA-SVK-NONG-TAKO-H00001-002');
-    expect(second.value!.ownerHouseholdId, householdId);
-    expect(await SqliteLandSurveyRepository(database).listHouseholds('farm-1'),
-        hasLength(1));
+      final third = await application.createLandParcel(
+        subject,
+        command('third'),
+      );
+      expect(third.isSuccess, isTrue);
+      expect(third.value!.parcelCode, 'LA-SVK-NONG-TAKO-H00002-001');
+    },
+  );
 
-    final third = await application.createLandParcel(subject, command('third'));
-    expect(third.isSuccess, isTrue);
-    expect(third.value!.parcelCode, 'LA-SVK-NONG-TAKO-H00002-001');
-  });
+  test(
+    'failed automatic parcel save does not consume household or parcel number',
+    () async {
+      await SqliteParcelNumberSequence.createSchema(database);
+      final subject = AuthorizationSubject(
+        userId: 'user-1',
+        membershipId: 'member-1',
+        farmId: 'farm-1',
+        permissionCodes: PermissionCodes.values,
+        dataScopes: const {DataScope.allFarm},
+      );
+      final application = LandParcelApplicationService(
+        repository: parcels,
+        spatialWorkflow: workflow,
+      );
+      CreateLandParcelCommand command(String id, {String? householdId}) =>
+          CreateLandParcelCommand(
+            id: id,
+            farmId: 'farm-1',
+            parcelCode: '',
+            name: id,
+            vertices: createParcel().boundary.vertices.toList(),
+            source: BoundarySource.manual,
+            actorMembershipId: 'member-1',
+            occurredAt: createdAt,
+            autoNumber: true,
+            villageId: 'village-tako',
+            ownerHouseholdId: householdId,
+            ownerDisplayName: 'Somphon',
+            countryCode: 'LA',
+            provinceCode: 'SVK',
+            districtCode: 'NONG',
+            villageCode: 'TAKO',
+            legacyMetadata: const {
+              'country': 'Lào',
+              'province': 'Savannakhet',
+              'district': 'Nong',
+              'village': 'Ta Ko',
+            },
+          );
 
-  test('failed automatic parcel save does not consume household or parcel number',
-      () async {
-    await SqliteParcelNumberSequence.createSchema(database);
-    final subject = AuthorizationSubject(
-      userId: 'user-1', membershipId: 'member-1', farmId: 'farm-1',
-      permissionCodes: PermissionCodes.values,
-      dataScopes: const {DataScope.allFarm},
-    );
-    final application = LandParcelApplicationService(
-      repository: parcels, spatialWorkflow: workflow,
-    );
-    CreateLandParcelCommand command(String id, {String? householdId}) =>
-        CreateLandParcelCommand(
-          id: id, farmId: 'farm-1', parcelCode: '', name: id,
-          vertices: createParcel().boundary.vertices.toList(),
-          source: BoundarySource.manual,
-          actorMembershipId: 'member-1', occurredAt: createdAt,
-          autoNumber: true, villageId: 'village-tako',
-          ownerHouseholdId: householdId, ownerDisplayName: 'Somphon',
-          countryCode: 'LA', provinceCode: 'SVK',
-          districtCode: 'NONG', villageCode: 'TAKO',
-          legacyMetadata: const {
-            'country': 'Lào', 'province': 'Savannakhet',
-            'district': 'Nong', 'village': 'Ta Ko',
-          },
-        );
+      // A legacy row with this ID causes the parcel insert to fail after the
+      // new household and both numbers have been prepared.
+      await parcels.create(createParcel(id: 'collision', code: 'LEGACY-001'));
+      final failedHousehold = await application.createLandParcel(
+        subject,
+        command('collision'),
+      );
+      expect(failedHousehold.isSuccess, isFalse);
+      expect(
+        await SqliteLandSurveyRepository(database).listHouseholds('farm-1'),
+        isEmpty,
+      );
+      expect(
+        (await parcels.getById(farmId: 'farm-1', id: 'collision'))!.parcelCode,
+        'LEGACY-001',
+      );
 
-    // A legacy row with this ID causes the parcel insert to fail after the
-    // new household and both numbers have been prepared.
-    await parcels.create(createParcel(id: 'collision', code: 'LEGACY-001'));
-    final failedHousehold = await application.createLandParcel(
-      subject, command('collision'),
-    );
-    expect(failedHousehold.isSuccess, isFalse);
-    expect(await SqliteLandSurveyRepository(database).listHouseholds('farm-1'),
-        isEmpty);
-    expect((await parcels.getById(farmId: 'farm-1', id: 'collision'))!.parcelCode,
-        'LEGACY-001');
+      final first = await application.createLandParcel(
+        subject,
+        command('first'),
+      );
+      expect(first.isSuccess, isTrue);
+      expect(first.value!.parcelCode, 'LA-SVK-NONG-TAKO-H00001-001');
+      final householdId = first.value!.ownerHouseholdId!;
 
-    final first = await application.createLandParcel(subject, command('first'));
-    expect(first.isSuccess, isTrue);
-    expect(first.value!.parcelCode, 'LA-SVK-NONG-TAKO-H00001-001');
-    final householdId = first.value!.ownerHouseholdId!;
+      final failedParcel = await application.createLandParcel(
+        subject,
+        command('first', householdId: householdId),
+      );
+      expect(failedParcel.isSuccess, isFalse);
+      expect(
+        (await SqliteLandSurveyRepository(database).listHouseholds('farm-1')),
+        hasLength(1),
+      );
 
-    final failedParcel = await application.createLandParcel(
-      subject, command('first', householdId: householdId),
-    );
-    expect(failedParcel.isSuccess, isFalse);
-    expect((await SqliteLandSurveyRepository(database).listHouseholds('farm-1')),
-        hasLength(1));
-
-    final next = await application.createLandParcel(
-      subject, command('second', householdId: householdId),
-    );
-    expect(next.isSuccess, isTrue);
-    expect(next.value!.parcelCode, 'LA-SVK-NONG-TAKO-H00001-002');
-    expect(next.value!.ownerHouseholdId, householdId);
-  });
+      final next = await application.createLandParcel(
+        subject,
+        command('second', householdId: householdId),
+      );
+      expect(next.isSuccess, isTrue);
+      expect(next.value!.parcelCode, 'LA-SVK-NONG-TAKO-H00001-002');
+      expect(next.value!.ownerHouseholdId, householdId);
+    },
+  );
 
   test('land-only parcel allocates without creating household', () async {
     await SqliteParcelNumberSequence.createSchema(database);
     final subject = AuthorizationSubject(
-      userId: 'user-1', membershipId: 'member-1', farmId: 'farm-1',
+      userId: 'user-1',
+      membershipId: 'member-1',
+      farmId: 'farm-1',
       permissionCodes: PermissionCodes.values,
       dataScopes: const {DataScope.allFarm},
     );
     final application = LandParcelApplicationService(
-      repository: parcels, spatialWorkflow: workflow,
+      repository: parcels,
+      spatialWorkflow: workflow,
     );
     Future<LandParcelApplicationResult<LandParcel>> create(String id) =>
-        application.createLandParcel(subject, CreateLandParcelCommand(
-          id: id, farmId: 'farm-1', parcelCode: '', name: id,
-          vertices: createParcel().boundary.vertices.toList(),
-          source: BoundarySource.manual,
-          actorMembershipId: 'member-1', occurredAt: createdAt,
-          autoNumber: true, villageId: 'village-tako',
-          countryCode: 'LA', provinceCode: 'SVK',
-          districtCode: 'NONG', villageCode: 'TAKO',
-          legacyMetadata: const {'village': 'Ta Ko'},
-        ));
-    expect((await create('first')).value!.parcelCode,
-        'LA-SVK-NONG-TAKO-L00001');
-    expect((await create('second')).value!.parcelCode,
-        'LA-SVK-NONG-TAKO-L00002');
-    expect(await SqliteLandSurveyRepository(database).listHouseholds('farm-1'),
-        isEmpty);
-    expect((await parcels.getById(farmId: 'farm-1', id: 'first'))!
-        .ownerHouseholdId, isNull);
+        application.createLandParcel(
+          subject,
+          CreateLandParcelCommand(
+            id: id,
+            farmId: 'farm-1',
+            parcelCode: '',
+            name: id,
+            vertices: createParcel().boundary.vertices.toList(),
+            source: BoundarySource.manual,
+            actorMembershipId: 'member-1',
+            occurredAt: createdAt,
+            autoNumber: true,
+            villageId: 'village-tako',
+            countryCode: 'LA',
+            provinceCode: 'SVK',
+            districtCode: 'NONG',
+            villageCode: 'TAKO',
+            legacyMetadata: const {'village': 'Ta Ko'},
+          ),
+        );
+    expect(
+      (await create('first')).value!.parcelCode,
+      'LA-SVK-NONG-TAKO-L00001',
+    );
+    expect(
+      (await create('second')).value!.parcelCode,
+      'LA-SVK-NONG-TAKO-L00002',
+    );
+    expect(
+      await SqliteLandSurveyRepository(database).listHouseholds('farm-1'),
+      isEmpty,
+    );
+    expect(
+      (await parcels.getById(farmId: 'farm-1', id: 'first'))!.ownerHouseholdId,
+      isNull,
+    );
   });
 
   test('new parcel and crop commit together or both roll back', () async {
@@ -314,8 +470,10 @@ void main() {
     expect(crops.single.parcelId, 'with-crop');
     expect(crops.single.createdBy, 'member-1');
     expect(
-      (await parcels.getById(farmId: 'farm-1', id: 'with-crop'))!
-          .spatialFeatureId,
+      (await parcels.getById(
+        farmId: 'farm-1',
+        id: 'with-crop',
+      ))!.spatialFeatureId,
       isNotNull,
     );
 
@@ -332,123 +490,113 @@ void main() {
     expect(await surveys.listCrops('rollback'), isEmpty);
   });
 
-  test('editing crop type preserves parcel boundary and spatial revisions', () async {
-    final parcel = createParcel(spatialFeatureId: 'feature-edit-crop');
-    await workflow.create(
-      parcel: parcel,
-      temporalState: SpatialTemporalState.operational,
-    );
-    final surveys = SqliteLandSurveyRepository(database);
-    CropRecord crop(String id, String type, {int? ageMonths}) => CropRecord(
-      id: id,
-      parcelId: parcel.id,
-      cropType: type,
-      ageMonths: ageMonths,
-      quantity: 12,
-      unit: 'plants',
-      condition: CropCondition.unknown,
-      active: true,
-      createdAt: createdAt,
-      createdBy: 'member-1',
-      updatedAt: createdAt,
-      updatedBy: 'member-1',
-    );
-    await surveys.createCrop(crop('crop-existing', 'ມັນຕົ້ນ'));
-    final before = (await parcels.getById(farmId: parcel.farmId, id: parcel.id))!;
-    final revisions = await spatial.revisionRepository.findByFeatureId(
-      'feature-edit-crop',
-    );
-    final application = LandParcelApplicationService(
-      repository: parcels,
-      spatialWorkflow: workflow,
-    );
-    final subject = AuthorizationSubject(
-      userId: 'user-1',
-      membershipId: 'member-1',
-      farmId: parcel.farmId,
-      permissionCodes: PermissionCodes.values,
-      dataScopes: const {DataScope.allFarm},
-    );
-    UpdateLandParcelMetadataCommand command(List<CropRecord> crops) =>
-        UpdateLandParcelMetadataCommand(
-          farmId: parcel.farmId,
-          parcelId: parcel.id,
-          actorMembershipId: 'member-1',
-          occurredAt: createdAt.add(const Duration(days: 1)),
-          name: 'Changed crop parcel',
-          crops: crops,
-        );
-
-    final result = await application.updateLandParcelMetadata(
-      subject,
-      command([crop('crop-existing', 'ຢາງພາລາ', ageMonths: 42)]),
-    );
-    expect(result.isSuccess, isTrue);
-    expect((await surveys.listCrops(parcel.id)).single.cropType, 'ຢາງພາລາ');
-    expect((await surveys.listCrops(parcel.id)).single.ageMonths, 42);
-    final after = (await parcels.getById(farmId: parcel.farmId, id: parcel.id))!;
-    expect(after.boundary, before.boundary);
-    expect(after.boundaryVersion, before.boundaryVersion);
-    expect(after.boundaryHistory.map((v) => v.id),
-        before.boundaryHistory.map((v) => v.id));
-    expect((await spatial.revisionRepository.findByFeatureId('feature-edit-crop'))
-            .map((v) => v.id),
-        revisions.map((v) => v.id));
-
-    final rejected = await application.updateLandParcelMetadata(
-      subject,
-      UpdateLandParcelMetadataCommand(
-        farmId: parcel.farmId,
+  test(
+    'editing crop type preserves parcel boundary and spatial revisions',
+    () async {
+      final parcel = createParcel(spatialFeatureId: 'feature-edit-crop');
+      await workflow.create(
+        parcel: parcel,
+        temporalState: SpatialTemporalState.operational,
+      );
+      final surveys = SqliteLandSurveyRepository(database);
+      CropRecord crop(String id, String type, {int? ageMonths}) => CropRecord(
+        id: id,
         parcelId: parcel.id,
-        actorMembershipId: 'member-1',
-        occurredAt: createdAt.add(const Duration(days: 2)),
-        name: 'Must roll back',
-        crops: [crop('crop-from-another-parcel', 'invalid')],
-      ),
-    );
-    expect(rejected.status, LandParcelApplicationStatus.validationFailed);
-    expect((await surveys.listCrops(parcel.id)).single.cropType, 'ຢາງພາລາ');
-    expect((await parcels.getById(farmId: parcel.farmId, id: parcel.id))!.name,
-        'Changed crop parcel');
-  });
-
-  test('legacy unlinked parcel may edit crops without creating a spatial link', () async {
-    final parcel = createParcel(id: 'legacy-crops', code: 'P-LEGACY-CROP');
-    await parcels.create(parcel);
-    final surveys = SqliteLandSurveyRepository(database);
-    await surveys.createCrop(CropRecord(
-      id: 'legacy-crop',
-      parcelId: parcel.id,
-      cropType: 'Cassava',
-      quantity: 10,
-      unit: 'plants',
-      condition: CropCondition.unknown,
-      active: true,
-      createdAt: createdAt,
-      createdBy: 'member-1',
-      updatedAt: createdAt,
-      updatedBy: 'member-1',
-    ));
-    final result = await LandParcelApplicationService(
-      repository: parcels,
-      spatialWorkflow: workflow,
-    ).updateLandParcelMetadata(
-      AuthorizationSubject(
+        cropType: type,
+        ageMonths: ageMonths,
+        quantity: 12,
+        unit: 'plants',
+        condition: CropCondition.unknown,
+        active: true,
+        createdAt: createdAt,
+        createdBy: 'member-1',
+        updatedAt: createdAt,
+        updatedBy: 'member-1',
+      );
+      await surveys.createCrop(crop('crop-existing', 'ມັນຕົ້ນ'));
+      final before = (await parcels.getById(
+        farmId: parcel.farmId,
+        id: parcel.id,
+      ))!;
+      final revisions = await spatial.revisionRepository.findByFeatureId(
+        'feature-edit-crop',
+      );
+      final application = LandParcelApplicationService(
+        repository: parcels,
+        spatialWorkflow: workflow,
+      );
+      final subject = AuthorizationSubject(
         userId: 'user-1',
         membershipId: 'member-1',
         farmId: parcel.farmId,
         permissionCodes: PermissionCodes.values,
         dataScopes: const {DataScope.allFarm},
-      ),
-      UpdateLandParcelMetadataCommand(
+      );
+      UpdateLandParcelMetadataCommand command(List<CropRecord> crops) =>
+          UpdateLandParcelMetadataCommand(
+            farmId: parcel.farmId,
+            parcelId: parcel.id,
+            actorMembershipId: 'member-1',
+            occurredAt: createdAt.add(const Duration(days: 1)),
+            name: 'Changed crop parcel',
+            crops: crops,
+          );
+
+      final result = await application.updateLandParcelMetadata(
+        subject,
+        command([crop('crop-existing', 'ຢາງພາລາ', ageMonths: 42)]),
+      );
+      expect(result.isSuccess, isTrue);
+      expect((await surveys.listCrops(parcel.id)).single.cropType, 'ຢາງພາລາ');
+      expect((await surveys.listCrops(parcel.id)).single.ageMonths, 42);
+      final after = (await parcels.getById(
         farmId: parcel.farmId,
-        parcelId: parcel.id,
-        actorMembershipId: 'member-1',
-        occurredAt: createdAt.add(const Duration(days: 1)),
-        crops: [CropRecord(
+        id: parcel.id,
+      ))!;
+      expect(after.boundary, before.boundary);
+      expect(after.boundaryVersion, before.boundaryVersion);
+      expect(
+        after.boundaryHistory.map((v) => v.id),
+        before.boundaryHistory.map((v) => v.id),
+      );
+      expect(
+        (await spatial.revisionRepository.findByFeatureId(
+          'feature-edit-crop',
+        )).map((v) => v.id),
+        revisions.map((v) => v.id),
+      );
+
+      final rejected = await application.updateLandParcelMetadata(
+        subject,
+        UpdateLandParcelMetadataCommand(
+          farmId: parcel.farmId,
+          parcelId: parcel.id,
+          actorMembershipId: 'member-1',
+          occurredAt: createdAt.add(const Duration(days: 2)),
+          name: 'Must roll back',
+          crops: [crop('crop-from-another-parcel', 'invalid')],
+        ),
+      );
+      expect(rejected.status, LandParcelApplicationStatus.validationFailed);
+      expect((await surveys.listCrops(parcel.id)).single.cropType, 'ຢາງພາລາ');
+      expect(
+        (await parcels.getById(farmId: parcel.farmId, id: parcel.id))!.name,
+        'Changed crop parcel',
+      );
+    },
+  );
+
+  test(
+    'legacy unlinked parcel may edit crops without creating a spatial link',
+    () async {
+      final parcel = createParcel(id: 'legacy-crops', code: 'P-LEGACY-CROP');
+      await parcels.create(parcel);
+      final surveys = SqliteLandSurveyRepository(database);
+      await surveys.createCrop(
+        CropRecord(
           id: 'legacy-crop',
           parcelId: parcel.id,
-          cropType: 'Rubber',
+          cropType: 'Cassava',
           quantity: 10,
           unit: 'plants',
           condition: CropCondition.unknown,
@@ -457,15 +605,54 @@ void main() {
           createdBy: 'member-1',
           updatedAt: createdAt,
           updatedBy: 'member-1',
-        )],
-      ),
-    );
-    expect(result.isSuccess, isTrue);
-    expect((await surveys.listCrops(parcel.id)).single.cropType, 'Rubber');
-    expect(await links.findByLandParcelId(parcel.id), isNull);
-    expect((await parcels.getById(farmId: parcel.farmId, id: parcel.id))!
-        .boundaryVersion, parcel.boundaryVersion);
-  });
+        ),
+      );
+      final result =
+          await LandParcelApplicationService(
+            repository: parcels,
+            spatialWorkflow: workflow,
+          ).updateLandParcelMetadata(
+            AuthorizationSubject(
+              userId: 'user-1',
+              membershipId: 'member-1',
+              farmId: parcel.farmId,
+              permissionCodes: PermissionCodes.values,
+              dataScopes: const {DataScope.allFarm},
+            ),
+            UpdateLandParcelMetadataCommand(
+              farmId: parcel.farmId,
+              parcelId: parcel.id,
+              actorMembershipId: 'member-1',
+              occurredAt: createdAt.add(const Duration(days: 1)),
+              crops: [
+                CropRecord(
+                  id: 'legacy-crop',
+                  parcelId: parcel.id,
+                  cropType: 'Rubber',
+                  quantity: 10,
+                  unit: 'plants',
+                  condition: CropCondition.unknown,
+                  active: true,
+                  createdAt: createdAt,
+                  createdBy: 'member-1',
+                  updatedAt: createdAt,
+                  updatedBy: 'member-1',
+                ),
+              ],
+            ),
+          );
+      expect(result.isSuccess, isTrue);
+      expect((await surveys.listCrops(parcel.id)).single.cropType, 'Rubber');
+      expect(await links.findByLandParcelId(parcel.id), isNull);
+      expect(
+        (await parcels.getById(
+          farmId: parcel.farmId,
+          id: parcel.id,
+        ))!.boundaryVersion,
+        parcel.boundaryVersion,
+      );
+    },
+  );
 
   Future<LandParcel> seedLegacyLinked() async {
     final parcel = createParcel(id: 'old-linked', code: 'P-OLD');
@@ -482,217 +669,282 @@ void main() {
     return parcel;
   }
 
-  test('repairs only the parcel ID when persisted legacy geometry matches', () async {
-    final parcel = await seedLegacyLinked();
-    final before = await spatial.revisionRepository.findByFeatureId('old-feature');
-    final repaired = await workflow.reconcileLegacySpatialIdentity(
-      farmId: parcel.farmId,
-      landParcelId: parcel.id,
-    );
-    final stored = (await parcels.getById(farmId: parcel.farmId, id: parcel.id))!;
-    expect(repaired.spatialFeatureId, 'old-feature');
-    expect(stored.spatialFeatureId, 'old-feature');
-    expect(stored.boundary, parcel.boundary);
-    expect(stored.boundaryHistory.map((version) => version.id),
-        parcel.boundaryHistory.map((version) => version.id));
-    final after = await spatial.revisionRepository.findByFeatureId('old-feature');
-    expect(after.map((revision) => revision.id),
-        before.map((revision) => revision.id));
-    expect(after.map((revision) => revision.revision),
-        before.map((revision) => revision.revision));
-    expect(
-      await LandParcelBoundaryConsistencyQueries(
+  test(
+    'repairs only the parcel ID when persisted legacy geometry matches',
+    () async {
+      final parcel = await seedLegacyLinked();
+      final before = await spatial.revisionRepository.findByFeatureId(
+        'old-feature',
+      );
+      final repaired = await workflow.reconcileLegacySpatialIdentity(
+        farmId: parcel.farmId,
+        landParcelId: parcel.id,
+      );
+      final stored = (await parcels.getById(
+        farmId: parcel.farmId,
+        id: parcel.id,
+      ))!;
+      expect(repaired.spatialFeatureId, 'old-feature');
+      expect(stored.spatialFeatureId, 'old-feature');
+      expect(stored.boundary, parcel.boundary);
+      expect(
+        stored.boundaryHistory.map((version) => version.id),
+        parcel.boundaryHistory.map((version) => version.id),
+      );
+      final after = await spatial.revisionRepository.findByFeatureId(
+        'old-feature',
+      );
+      expect(
+        after.map((revision) => revision.id),
+        before.map((revision) => revision.id),
+      );
+      expect(
+        after.map((revision) => revision.revision),
+        before.map((revision) => revision.revision),
+      );
+      expect(
+        await LandParcelBoundaryConsistencyQueries(
+          links: links,
+          features: spatial.featureRepository,
+          revisions: spatial.revisionRepository,
+        ).check(stored),
+        LandParcelBoundaryConsistency.consistent,
+      );
+    },
+  );
+
+  test(
+    'refuses legacy repair when current revision points to another boundary',
+    () async {
+      final parcel = await seedLegacyLinked();
+      final rows = await database.query(
+        SqliteSpatialSchema.revisionsTable,
+        where: 'feature_id = ?',
+        whereArgs: ['old-feature'],
+      );
+      final payload =
+          jsonDecode(rows.single['payload_json']! as String)
+              as Map<String, dynamic>;
+      payload['geometryReference'] = 'different-boundary';
+      await database.update(
+        SqliteSpatialSchema.revisionsTable,
+        {
+          'geometry_reference': 'different-boundary',
+          'payload_json': jsonEncode(payload),
+        },
+        where: 'feature_id = ?',
+        whereArgs: ['old-feature'],
+      );
+      final diagnosis = await LandParcelBoundaryConsistencyQueries(
         links: links,
         features: spatial.featureRepository,
         revisions: spatial.revisionRepository,
-      ).check(stored),
-      LandParcelBoundaryConsistency.consistent,
-    );
-  });
-
-  test('refuses legacy repair when current revision points to another boundary', () async {
-    final parcel = await seedLegacyLinked();
-    final rows = await database.query(
-      SqliteSpatialSchema.revisionsTable,
-      where: 'feature_id = ?',
-      whereArgs: ['old-feature'],
-    );
-    final payload = jsonDecode(rows.single['payload_json']! as String)
-        as Map<String, dynamic>;
-    payload['geometryReference'] = 'different-boundary';
-    await database.update(
-      SqliteSpatialSchema.revisionsTable,
-      {
-        'geometry_reference': 'different-boundary',
-        'payload_json': jsonEncode(payload),
-      },
-      where: 'feature_id = ?',
-      whereArgs: ['old-feature'],
-    );
-    final diagnosis = await LandParcelBoundaryConsistencyQueries(
-      links: links,
-      features: spatial.featureRepository,
-      revisions: spatial.revisionRepository,
-    ).diagnose(parcel);
-    expect(diagnosis.consistency,
-        LandParcelBoundaryConsistency.needsReconciliation);
-    expect(diagnosis.issue,
-        LandParcelBoundaryIssue.boundaryReferenceMismatch);
-    await expectLater(
-      workflow.reconcileLegacySpatialIdentity(
+      ).diagnose(parcel);
+      expect(
+        diagnosis.consistency,
+        LandParcelBoundaryConsistency.needsReconciliation,
+      );
+      expect(
+        diagnosis.issue,
+        LandParcelBoundaryIssue.boundaryReferenceMismatch,
+      );
+      await expectLater(
+        workflow.reconcileLegacySpatialIdentity(
+          farmId: parcel.farmId,
+          landParcelId: parcel.id,
+        ),
+        throwsStateError,
+      );
+      final stored = await parcels.getById(
         farmId: parcel.farmId,
-        landParcelId: parcel.id,
-      ),
-      throwsStateError,
-    );
-    final stored = await parcels.getById(farmId: parcel.farmId, id: parcel.id);
-    expect(stored!.spatialFeatureId, isNull);
-    expect(stored.boundary, parcel.boundary);
-  });
+        id: parcel.id,
+      );
+      expect(stored!.spatialFeatureId, isNull);
+      expect(stored.boundary, parcel.boundary);
+    },
+  );
 
-  test('application gates legacy repair and restores KML export after success', () async {
-    final parcel = await seedLegacyLinked();
-    final queries = LandParcelBoundaryConsistencyQueries(
-      links: links,
-      features: spatial.featureRepository,
-      revisions: spatial.revisionRepository,
-    );
-    expect(await queries.check(parcel),
-        LandParcelBoundaryConsistency.repairableLegacyIdentity);
-    final application = LandParcelApplicationService(
-      repository: parcels,
-      spatialWorkflow: workflow,
-      boundaryConsistencyQueries: queries,
-    );
-    AuthorizationSubject subject(Set<String> permissions) => AuthorizationSubject(
-      userId: 'user-1',
-      membershipId: 'member-1',
-      farmId: 'farm-1',
-      permissionCodes: permissions,
-      dataScopes: const {DataScope.allFarm},
-    );
-    final denied = await application.reconcileLegacySpatialIdentity(
-      subject({PermissionCodes.fieldEdit}),
-      farmId: parcel.farmId,
-      parcelId: parcel.id,
-    );
-    expect(denied.status, LandParcelApplicationStatus.permissionDenied);
-    expect((await parcels.getById(farmId: parcel.farmId, id: parcel.id))!
-        .spatialFeatureId, isNull);
-    final beforeExport = await application.exportKmlKmz(
-      subject(PermissionCodes.values),
-      farmId: parcel.farmId,
-      parcelId: parcel.id,
-      format: LandParcelInterchangeFormat.kml,
-    );
-    expect(beforeExport.status, LandParcelApplicationStatus.validationFailed);
+  test(
+    'application gates legacy repair and restores KML export after success',
+    () async {
+      final parcel = await seedLegacyLinked();
+      final queries = LandParcelBoundaryConsistencyQueries(
+        links: links,
+        features: spatial.featureRepository,
+        revisions: spatial.revisionRepository,
+      );
+      expect(
+        await queries.check(parcel),
+        LandParcelBoundaryConsistency.repairableLegacyIdentity,
+      );
+      final application = LandParcelApplicationService(
+        repository: parcels,
+        spatialWorkflow: workflow,
+        boundaryConsistencyQueries: queries,
+      );
+      AuthorizationSubject subject(Set<String> permissions) =>
+          AuthorizationSubject(
+            userId: 'user-1',
+            membershipId: 'member-1',
+            farmId: 'farm-1',
+            permissionCodes: permissions,
+            dataScopes: const {DataScope.allFarm},
+          );
+      final denied = await application.reconcileLegacySpatialIdentity(
+        subject({PermissionCodes.fieldEdit}),
+        farmId: parcel.farmId,
+        parcelId: parcel.id,
+      );
+      expect(denied.status, LandParcelApplicationStatus.permissionDenied);
+      expect(
+        (await parcels.getById(
+          farmId: parcel.farmId,
+          id: parcel.id,
+        ))!.spatialFeatureId,
+        isNull,
+      );
+      final beforeExport = await application.exportKmlKmz(
+        subject(PermissionCodes.values),
+        farmId: parcel.farmId,
+        parcelId: parcel.id,
+        format: LandParcelInterchangeFormat.kml,
+      );
+      expect(beforeExport.status, LandParcelApplicationStatus.validationFailed);
 
-    final success = await application.reconcileLegacySpatialIdentity(
-      subject({PermissionCodes.fieldEdit, PermissionCodes.fieldBoundaryVerify}),
-      farmId: parcel.farmId,
-      parcelId: parcel.id,
-    );
-    expect(success.isSuccess, isTrue);
-    final after = (await parcels.getById(farmId: parcel.farmId, id: parcel.id))!;
-    expect(await queries.check(after), LandParcelBoundaryConsistency.consistent);
-    final afterExport = await application.exportKmlKmz(
-      subject(PermissionCodes.values),
-      farmId: parcel.farmId,
-      parcelId: parcel.id,
-      format: LandParcelInterchangeFormat.kml,
-    );
-    expect(afterExport.isSuccess, isTrue);
-  });
+      final success = await application.reconcileLegacySpatialIdentity(
+        subject({
+          PermissionCodes.fieldEdit,
+          PermissionCodes.fieldBoundaryVerify,
+        }),
+        farmId: parcel.farmId,
+        parcelId: parcel.id,
+      );
+      expect(success.isSuccess, isTrue);
+      final after = (await parcels.getById(
+        farmId: parcel.farmId,
+        id: parcel.id,
+      ))!;
+      expect(
+        await queries.check(after),
+        LandParcelBoundaryConsistency.consistent,
+      );
+      final afterExport = await application.exportKmlKmz(
+        subject(PermissionCodes.values),
+        farmId: parcel.farmId,
+        parcelId: parcel.id,
+        format: LandParcelInterchangeFormat.kml,
+      );
+      expect(afterExport.isSuccess, isTrue);
+    },
+  );
 
-  test('read diagnosis distinguishes unlinked, aligned and legacy missing geometry', () async {
-    final queries = LandParcelBoundaryConsistencyQueries(
-      links: links,
-      features: spatial.featureRepository,
-      revisions: spatial.revisionRepository,
-    );
-    final legacy = createParcel(id: 'legacy', code: 'P-LEGACY');
-    await parcels.create(legacy);
-    expect(await queries.check(legacy), LandParcelBoundaryConsistency.unlinked);
+  test(
+    'read diagnosis distinguishes unlinked, aligned and legacy missing geometry',
+    () async {
+      final queries = LandParcelBoundaryConsistencyQueries(
+        links: links,
+        features: spatial.featureRepository,
+        revisions: spatial.revisionRepository,
+      );
+      final legacy = createParcel(id: 'legacy', code: 'P-LEGACY');
+      await parcels.create(legacy);
+      expect(
+        await queries.check(legacy),
+        LandParcelBoundaryConsistency.unlinked,
+      );
 
-    final oldLinked = await seedLegacyLinked();
-    // Historical fixture: the link and feature exist, but the parcel payload
-    // predates the stable ID assignment now enforced for new creations.
-    final storedOld = (await parcels.getById(
-      farmId: oldLinked.farmId,
-      id: oldLinked.id,
-    ))!;
-    expect(
-      await queries.check(storedOld),
-      LandParcelBoundaryConsistency.repairableLegacyIdentity,
-    );
+      final oldLinked = await seedLegacyLinked();
+      // Historical fixture: the link and feature exist, but the parcel payload
+      // predates the stable ID assignment now enforced for new creations.
+      final storedOld = (await parcels.getById(
+        farmId: oldLinked.farmId,
+        id: oldLinked.id,
+      ))!;
+      expect(
+        await queries.check(storedOld),
+        LandParcelBoundaryConsistency.repairableLegacyIdentity,
+      );
 
-    final generated = createParcel(id: 'generated', code: 'P-GEN');
-    await workflow.create(
-      parcel: generated,
-      temporalState: SpatialTemporalState.operational,
-    );
-    final storedGenerated = (await parcels.getById(
-      farmId: generated.farmId,
-      id: generated.id,
-    ))!;
-    expect(storedGenerated.spatialFeatureId, isNotNull);
-    expect(
-      await queries.check(storedGenerated),
-      LandParcelBoundaryConsistency.consistent,
-    );
+      final generated = createParcel(id: 'generated', code: 'P-GEN');
+      await workflow.create(
+        parcel: generated,
+        temporalState: SpatialTemporalState.operational,
+      );
+      final storedGenerated = (await parcels.getById(
+        farmId: generated.farmId,
+        id: generated.id,
+      ))!;
+      expect(storedGenerated.spatialFeatureId, isNotNull);
+      expect(
+        await queries.check(storedGenerated),
+        LandParcelBoundaryConsistency.consistent,
+      );
 
-    final parcel = createParcel(spatialFeatureId: 'spatial-aligned');
-    await workflow.create(parcel: parcel, temporalState: SpatialTemporalState.operational);
-    final stored = (await parcels.getById(farmId: parcel.farmId, id: parcel.id))!;
-    expect(await queries.check(stored), LandParcelBoundaryConsistency.consistent);
+      final parcel = createParcel(spatialFeatureId: 'spatial-aligned');
+      await workflow.create(
+        parcel: parcel,
+        temporalState: SpatialTemporalState.operational,
+      );
+      final stored = (await parcels.getById(
+        farmId: parcel.farmId,
+        id: parcel.id,
+      ))!;
+      expect(
+        await queries.check(stored),
+        LandParcelBoundaryConsistency.consistent,
+      );
 
-    final link = (await links.findByLandParcelId(parcel.id))!;
-    final revisionRows = await database.query(
-      SqliteSpatialSchema.revisionsTable,
-      where: 'feature_id = ?',
-      whereArgs: [link.spatialFeatureId],
-    );
-    final legacyPayload = jsonDecode(revisionRows.single['payload_json']! as String)
-        as Map<String, dynamic>;
-    legacyPayload['geometry'] = null;
-    await database.update(
-      SqliteSpatialSchema.revisionsTable,
-      {'geometry_json': null, 'payload_json': jsonEncode(legacyPayload)},
-      where: 'feature_id = ?',
-      whereArgs: [link.spatialFeatureId],
-    );
-    final diagnosis = await queries.diagnose(stored);
-    expect(diagnosis.consistency,
-        LandParcelBoundaryConsistency.needsReconciliation);
-    expect(diagnosis.issue, LandParcelBoundaryIssue.invalidGeometry);
+      final link = (await links.findByLandParcelId(parcel.id))!;
+      final revisionRows = await database.query(
+        SqliteSpatialSchema.revisionsTable,
+        where: 'feature_id = ?',
+        whereArgs: [link.spatialFeatureId],
+      );
+      final legacyPayload =
+          jsonDecode(revisionRows.single['payload_json']! as String)
+              as Map<String, dynamic>;
+      legacyPayload['geometry'] = null;
+      await database.update(
+        SqliteSpatialSchema.revisionsTable,
+        {'geometry_json': null, 'payload_json': jsonEncode(legacyPayload)},
+        where: 'feature_id = ?',
+        whereArgs: [link.spatialFeatureId],
+      );
+      final diagnosis = await queries.diagnose(stored);
+      expect(
+        diagnosis.consistency,
+        LandParcelBoundaryConsistency.needsReconciliation,
+      );
+      expect(diagnosis.issue, LandParcelBoundaryIssue.invalidGeometry);
 
-    final application = LandParcelApplicationService(
-      repository: parcels,
-      boundaryConsistencyQueries: queries,
-    );
-    final subject = AuthorizationSubject(
-      userId: 'user-1',
-      membershipId: 'member-1',
-      farmId: 'farm-1',
-      permissionCodes: PermissionCodes.values,
-      dataScopes: const {DataScope.allFarm},
-    );
-    final denied = await application.exportKmlKmz(
-      subject,
-      farmId: 'farm-1',
-      parcelId: parcel.id,
-      format: LandParcelInterchangeFormat.kml,
-    );
-    expect(denied.status, LandParcelApplicationStatus.validationFailed);
-    expect(denied.messageKey, 'boundary.reconciliation.required');
-    final legacyExport = await application.exportKmlKmz(
-      subject,
-      farmId: 'farm-1',
-      parcelId: legacy.id,
-      format: LandParcelInterchangeFormat.kml,
-    );
-    expect(legacyExport.isSuccess, isTrue);
-  });
+      final application = LandParcelApplicationService(
+        repository: parcels,
+        boundaryConsistencyQueries: queries,
+      );
+      final subject = AuthorizationSubject(
+        userId: 'user-1',
+        membershipId: 'member-1',
+        farmId: 'farm-1',
+        permissionCodes: PermissionCodes.values,
+        dataScopes: const {DataScope.allFarm},
+      );
+      final denied = await application.exportKmlKmz(
+        subject,
+        farmId: 'farm-1',
+        parcelId: parcel.id,
+        format: LandParcelInterchangeFormat.kml,
+      );
+      expect(denied.status, LandParcelApplicationStatus.validationFailed);
+      expect(denied.messageKey, 'boundary.reconciliation.required');
+      final legacyExport = await application.exportKmlKmz(
+        subject,
+        farmId: 'farm-1',
+        parcelId: legacy.id,
+        format: LandParcelInterchangeFormat.kml,
+      );
+      expect(legacyExport.isSuccess, isTrue);
+    },
+  );
 
   Future<void> seedCorruptSpatialIdentity(LandParcel parcel) async {
     await parcels.create(createParcel(id: parcel.id, code: parcel.parcelCode));
@@ -702,8 +954,9 @@ void main() {
       where: 'id = ?',
       whereArgs: [parcel.id],
     );
-    final payload = jsonDecode(rows.single['payload_json']! as String)
-        as Map<String, dynamic>;
+    final payload =
+        jsonDecode(rows.single['payload_json']! as String)
+            as Map<String, dynamic>;
     payload['spatialFeatureId'] = parcel.spatialFeatureId;
     await database.update(
       SqliteLandParcelRepository.parcelTable,
