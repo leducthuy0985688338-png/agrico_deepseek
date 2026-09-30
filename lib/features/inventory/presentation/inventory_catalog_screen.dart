@@ -47,6 +47,22 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
     }
   }
 
+  Future<void> record(InventoryItem item, InventoryMovementKind kind) async {
+    final saved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _MovementDialog(
+        subject: widget.subject,
+        service: widget.service,
+        item: item,
+        kind: kind,
+      ),
+    );
+    if (saved == true && mounted) {
+      reload();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -93,6 +109,20 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
               final item = snapshot.data![index];
               return ListTile(
                 title: Text('${item.code} · ${item.name}'),
+                trailing: canManage
+                    ? PopupMenuButton<InventoryMovementKind>(
+                        key: Key('inventory-actions-${item.id}'),
+                        onSelected: (kind) => record(item, kind),
+                        itemBuilder: (_) => [
+                          for (final kind in InventoryMovementKind.values)
+                            PopupMenuItem(
+                              key: Key('inventory-${kind.name}-${item.id}'),
+                              value: kind,
+                              child: Text(l10n.text('inventory.${kind.name}')),
+                            ),
+                        ],
+                      )
+                    : null,
                 subtitle: Text(
                   '${l10n.text('inventory.stock')}: '
                   '${item.stock} ${item.unit}',
@@ -236,6 +266,123 @@ class _AddItemDialogState extends State<_AddItemDialog> {
           child: Text(l10n.text('common.save')),
         ),
       ],
+    );
+  }
+}
+
+class _MovementDialog extends StatefulWidget {
+  const _MovementDialog({
+    required this.subject,
+    required this.service,
+    required this.item,
+    required this.kind,
+  });
+
+  final AuthorizationSubject subject;
+  final InventoryService service;
+  final InventoryItem item;
+  final InventoryMovementKind kind;
+
+  @override
+  State<_MovementDialog> createState() => _MovementDialogState();
+}
+
+class _MovementDialogState extends State<_MovementDialog> {
+  final quantity = TextEditingController();
+  bool saving = false;
+  String? errorKey;
+
+  @override
+  void dispose() {
+    quantity.dispose();
+    super.dispose();
+  }
+
+  Future<void> save() async {
+    if (saving) {
+      return;
+    }
+    final amount = int.tryParse(quantity.text.trim());
+    if (amount == null || amount <= 0) {
+      setState(() {
+        errorKey = 'inventory.invalidQuantity';
+      });
+      return;
+    }
+    setState(() {
+      saving = true;
+      errorKey = null;
+    });
+    try {
+      await widget.service.record(
+        widget.subject,
+        InventoryMovement(
+          id:
+              'inventory-movement-${DateTime.now().microsecondsSinceEpoch}-'
+              '${Random.secure().nextInt(1 << 32)}',
+          farmId: widget.subject.farmId,
+          itemId: widget.item.id,
+          kind: widget.kind,
+          quantity: amount,
+          occurredAt: DateTime.now().toUtc(),
+        ),
+      );
+      if (mounted) {
+        Navigator.pop(context, true);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          saving = false;
+          errorKey = 'inventory.movementFailed';
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return PopScope(
+      canPop: !saving,
+      child: AlertDialog(
+        title: Text(l10n.text('inventory.${widget.kind.name}')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('${widget.item.code} · ${widget.item.name}'),
+            Text(
+              '${l10n.text('inventory.stock')}: ${widget.item.stock} ${widget.item.unit}',
+            ),
+            TextField(
+              key: const Key('inventory-movement-quantity'),
+              controller: quantity,
+              enabled: !saving,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText:
+                    '${l10n.text('inventory.quantity')} (${widget.item.unit})',
+              ),
+            ),
+            if (errorKey != null)
+              Text(
+                l10n.text(errorKey!),
+                key: const Key('inventory-movement-error'),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: saving ? null : () => Navigator.pop(context, false),
+            child: Text(l10n.text('common.cancel')),
+          ),
+          FilledButton(
+            key: const Key('inventory-movement-save'),
+            onPressed: saving ? null : save,
+            child: Text(l10n.text('common.save')),
+          ),
+        ],
+      ),
     );
   }
 }
