@@ -6,6 +6,7 @@ import '../../../core/localization/app_localizations.dart';
 import '../../../core/permissions/authorization.dart';
 import '../application/inventory_service.dart';
 import '../domain/entities/inventory_item.dart';
+import 'inventory_history_screen.dart';
 
 class InventoryCatalogScreen extends StatefulWidget {
   const InventoryCatalogScreen({
@@ -76,6 +77,19 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
       appBar: AppBar(
         title: Text(l10n.text('module.warehouse')),
         actions: [
+          IconButton(
+            key: const Key('inventory-history-open'),
+            tooltip: l10n.text('inventory.history'),
+            icon: const Icon(Icons.history),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => InventoryHistoryScreen(
+                  subject: widget.subject,
+                  service: widget.service,
+                ),
+              ),
+            ),
+          ),
           IconButton(
             onPressed: reload,
             tooltip: l10n.text('common.retry'),
