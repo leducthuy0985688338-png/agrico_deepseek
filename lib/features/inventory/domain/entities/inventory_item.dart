@@ -39,6 +39,7 @@ class InventoryMovement {
     required this.kind,
     required this.quantity,
     required this.occurredAt,
+    this.code,
   });
 
   final String id;
@@ -47,6 +48,9 @@ class InventoryMovement {
   final InventoryMovementKind kind;
   final int quantity;
   final DateTime occurredAt;
+
+  /// Assigned by the repository; older movements may have no document code.
+  final String? code;
 
   void validate() {
     if ([id, farmId, itemId].any((value) => value.trim().isEmpty) ||
