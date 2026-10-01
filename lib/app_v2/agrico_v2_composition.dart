@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../core/project/agrico_project.dart';
 import '../core/localization/app_localizations.dart';
 import '../core/geography/data/sqlite_administrative_catalog.dart';
 import '../core/geography/application/manage_administrative_catalog.dart';
@@ -573,7 +574,8 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       MaterialPageRoute(
         builder: (_) => LandParcelFormScreen(
           landOnly: true,
-          productionProjectCode: 'AGR-NONG',
+          productionProjectId: AgricoProject.defaultProject.id,
+          productionProjectCode: AgricoProject.defaultProject.code,
           onGpsRequested: () => _measureGpsForCreate(context),
           onImportRequested: () => _importForCreate(context, deps),
           onSubmit: (value) async {
@@ -594,11 +596,11 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
             final result = await deps.controller.create(
               id: id,
               parcelCode: value.parcelCode,
-              projectCode: 'AGR-NONG',
+              projectId: AgricoProject.defaultProject.id,
+              projectCode: AgricoProject.defaultProject.code,
               name: value.name,
               vertices: draft.boundary.vertices.toList(),
               source: draft.source,
-              crops: value.crops,
               ownerDisplayName: null,
               ownerHouseholdId: null,
               autoNumber: value.autoNumber,

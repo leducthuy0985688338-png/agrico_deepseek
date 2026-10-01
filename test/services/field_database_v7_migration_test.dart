@@ -47,11 +47,12 @@ void main() {
   Future<int> pragma(Database database, String name) async =>
       (await database.rawQuery('PRAGMA $name')).single.values.single! as int;
 
-  test('fresh authoritative database creates complete v8 schema', () async {
+  test('fresh authoritative database creates complete v9 schema', () async {
     final database = await openAuthoritative(FieldDatabase.databaseVersion);
     addTearDown(database.close);
 
-    expect(await pragma(database, 'user_version'), 8);
+    expect(await pragma(database, 'user_version'),
+        FieldDatabase.databaseVersion);
     expect(await pragma(database, 'foreign_keys'), 1);
     expect(
       await tableNames(database),
@@ -129,7 +130,7 @@ void main() {
     expect(await database.rawQuery('PRAGMA foreign_key_check'), isEmpty);
   });
 
-  test('representative v1 database reaches complete v8 schema', () async {
+  test('representative v1 database reaches complete v9 schema', () async {
     var database = await databaseFactoryFfi.openDatabase(
       path,
       options: OpenDatabaseOptions(
@@ -162,9 +163,10 @@ void main() {
     );
     await database.close();
 
-    database = await openAuthoritative(8);
+    database = await openAuthoritative(FieldDatabase.databaseVersion);
     addTearDown(database.close);
-    expect(await pragma(database, 'user_version'), 8);
+    expect(await pragma(database, 'user_version'),
+        FieldDatabase.databaseVersion);
     expect((await database.query('fields')).single['id'], 'legacy-field');
     expect(
       await tableNames(database),
@@ -181,7 +183,7 @@ void main() {
   });
 
   test(
-    'v7 to v8 adds persistent LandParcel Spatial links without guessing associations',
+    'v7 to v9 adds persistent LandParcel Spatial links without guessing associations',
     () async {
       var database = await openAuthoritative(7);
 
@@ -210,10 +212,11 @@ void main() {
 
       await database.close();
 
-      database = await openAuthoritative(8);
+      database = await openAuthoritative(FieldDatabase.databaseVersion);
       addTearDown(database.close);
 
-      expect(await pragma(database, 'user_version'), 8);
+      expect(await pragma(database, 'user_version'),
+          FieldDatabase.databaseVersion);
       expect(await pragma(database, 'foreign_keys'), 1);
       expect(
         await tableNames(database),

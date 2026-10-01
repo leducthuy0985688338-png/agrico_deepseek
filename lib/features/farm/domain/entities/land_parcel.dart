@@ -81,6 +81,9 @@ class LandParcel {
     this.provinceCode,
     this.districtCode,
     this.villageCode,
+    this.projectId,
+    this.kind = ParcelLayer.landBlock,
+    this.parentBlockId,
   }) : boundaryHistory = UnmodifiableListView(boundaryHistory),
        legacyMetadata = UnmodifiableMapView(legacyMetadata);
 
@@ -107,28 +110,37 @@ class LandParcel {
     String? provinceCode,
     String? districtCode,
     String? villageCode,
+    String? projectId,
+    ParcelLayer kind = ParcelLayer.landBlock,
+    String? parentBlockId,
   }) {
-    _requireIdentity(id, farmId, parcelCode, name, actorMembershipId);
-    _requireOptionalText(spatialFeatureId, 'spatialFeatureId');
+    if (kind == ParcelLayer.landBlock && parentBlockId != null) {
+      throw const FormatException(
+        'A land block must not have a parent block id.',
+      );
+    }
+    // P02A: reject blank (non-null but whitespace-only) optional text
+    // fields at create, matching the rehydrate contract. Null stays valid.
     _requireOptionalText(ownerHouseholdId, 'ownerHouseholdId');
     _requireOptionalText(ownerDisplayName, 'ownerDisplayName');
     _requireOptionalText(ownerContact, 'ownerContact');
-    _requireOptionalText(countryCode, 'countryCode');
-    _requireOptionalText(provinceCode, 'provinceCode');
-    _requireOptionalText(districtCode, 'districtCode');
-    _requireOptionalText(villageCode, 'villageCode');
-    final metrics = const Wgs84GeometryService().measure(boundary);
-    final version = _buildVersion(
+    _requireOptionalText(spatialFeatureId, 'spatialFeatureId');
+    final geometry = const Wgs84GeometryService();
+    final metrics = geometry.measure(boundary);
+    final version = LandParcelBoundaryVersion(
+      id: '$id-boundary-1',
       parcelId: id,
       version: 1,
       boundary: boundary,
-      metrics: metrics,
+      centroid: metrics.centroid,
+      areaM2: metrics.areaM2,
+      perimeterM: metrics.perimeterM,
       source: boundarySource,
       verificationStatus: verificationStatus,
       horizontalAccuracyM: horizontalAccuracyM,
       boundaryConfidence: boundaryConfidence,
-      actorMembershipId: actorMembershipId,
       occurredAt: occurredAt,
+      actorMembershipId: actorMembershipId,
       note: note,
     );
     return LandParcel._(
@@ -140,11 +152,6 @@ class LandParcel {
       ownerDisplayName: ownerDisplayName,
       ownerContact: ownerContact,
       active: active,
-      spatialFeatureId: spatialFeatureId,
-      countryCode: countryCode,
-      provinceCode: provinceCode,
-      districtCode: districtCode,
-      villageCode: villageCode,
       createdAt: occurredAt,
       createdBy: actorMembershipId,
       updatedAt: occurredAt,
@@ -163,6 +170,14 @@ class LandParcel {
       boundaryVersion: 1,
       boundaryHistory: [version],
       legacyMetadata: legacyMetadata,
+      spatialFeatureId: spatialFeatureId,
+      countryCode: countryCode,
+      provinceCode: provinceCode,
+      districtCode: districtCode,
+      villageCode: villageCode,
+      projectId: projectId,
+      kind: kind,
+      parentBlockId: parentBlockId,
     );
   }
 
@@ -198,6 +213,9 @@ class LandParcel {
     String? provinceCode,
     String? districtCode,
     String? villageCode,
+    String? projectId,
+    ParcelLayer kind = ParcelLayer.landBlock,
+    String? parentBlockId,
   }) {
     _requireIdentity(id, farmId, parcelCode, name, createdBy);
     _requireOptionalText(spatialFeatureId, 'spatialFeatureId');
@@ -211,6 +229,11 @@ class LandParcel {
         areaM2 <= 0 ||
         perimeterM <= 0) {
       throw const FormatException('Land parcel persisted values are invalid.');
+    }
+    if (kind == ParcelLayer.landBlock && parentBlockId != null) {
+      throw const FormatException(
+        'A land block must not have a parent block id.',
+      );
     }
     final matchingVersion = boundaryHistory.any(
       (item) => item.parcelId == id && item.version == boundaryVersion,
@@ -252,10 +275,13 @@ class LandParcel {
       boundaryVersion: boundaryVersion,
       boundaryHistory: boundaryHistory,
       legacyMetadata: legacyMetadata,
+      projectId: projectId,
+      kind: kind,
+      parentBlockId: parentBlockId,
     );
   }
 
-  static const currentSchemaVersion = 2;
+  static const currentSchemaVersion = 3;
 
   final String id;
   final String farmId;
@@ -263,6 +289,7 @@ class LandParcel {
   final String name;
   final String? ownerHouseholdId;
   final String? ownerDisplayName;
+  final String? ownerContact;
   final bool active;
   final DateTime createdAt;
   final String createdBy;
@@ -283,13 +310,24 @@ class LandParcel {
   final UnmodifiableListView<LandParcelBoundaryVersion> boundaryHistory;
   final UnmodifiableMapView<String, Object?> legacyMetadata;
 
-  /// Existing parcels remain land blocks. New surveyed plots carry their
-  /// parent ID inside the persisted parcel metadata for backup compatibility.
-  ParcelLayer get layer => legacyMetadata['parcelLayer'] == 'fieldPlot'
-      ? ParcelLayer.fieldPlot : ParcelLayer.landBlock;
+  /// Project identity — nullable when not yet determined.
+  ///
+  /// Not derived from [farmId]. Transitional data may keep this null.
+  final String? projectId;
 
-  String? get parentLandBlockId =>
-      legacyMetadata['parentLandBlockId'] as String?;
+  /// Business kind — canonical field, no longer computed from legacyMetadata.
+  final ParcelLayer kind;
+
+  /// Parent block identity — only meaningful when [kind] is fieldPlot.
+  ///
+  /// Null for independent plots and always null for land blocks.
+  final String? parentBlockId;
+
+  /// Backward-compatible getter.
+  ParcelLayer get layer => kind;
+
+  /// Backward-compatible getter.
+  String? get parentLandBlockId => parentBlockId;
 
   /// Reference to the stable Spatial Core identity.
   ///
@@ -304,7 +342,6 @@ class LandParcel {
   final String? villageCode;
 
   /// Optional owner contact.
-  final String? ownerContact;
 
   double get areaHa => areaM2 / 10000;
 
@@ -343,6 +380,32 @@ class LandParcel {
       provinceCode: provinceCode ?? this.provinceCode,
       districtCode: districtCode ?? this.districtCode,
       villageCode: villageCode ?? this.villageCode,
+      updatedAt: occurredAt,
+      updatedBy: actorMembershipId,
+    );
+  }
+
+  /// Update only the business kind and parent block identity.
+  ///
+  /// A land block may not carry a parent. Setting [kind] to fieldPlot with a
+  /// [parentBlockId] links this parcel to a block. Removing the parent is
+  /// allowed when the parcel stays a field plot.
+  LandParcel updateKind({
+    required ParcelLayer kind,
+    String? parentBlockId,
+    required String actorMembershipId,
+    required DateTime occurredAt,
+  }) {
+    if (kind == ParcelLayer.landBlock && parentBlockId != null) {
+      throw const FormatException(
+        'A land block must not have a parent block id.',
+      );
+    }
+    _requireOptionalText(parentBlockId, 'parentBlockId');
+    return _copyWith(
+      kind: kind,
+      parentBlockId: parentBlockId,
+      clearParentBlockId: parentBlockId == null,
       updatedAt: occurredAt,
       updatedBy: actorMembershipId,
     );
@@ -439,6 +502,9 @@ class LandParcel {
       boundaryVersion: nextVersion,
       boundaryHistory: history,
       legacyMetadata: legacyMetadata,
+      projectId: projectId,
+      kind: kind,
+      parentBlockId: parentBlockId,
     );
   }
 
@@ -499,7 +565,7 @@ class LandParcel {
 
     throw StateError(
       'Land parcel spatialFeatureId is immutable once established. '
-      'Current: , attempted: .',
+      'Current: $current, attempted: $trimmed.',
     );
   }
 
@@ -518,6 +584,9 @@ class LandParcel {
     String? provinceCode,
     String? districtCode,
     String? villageCode,
+    ParcelLayer? kind,
+    String? parentBlockId,
+    bool clearParentBlockId = false,
   }) => LandParcel._(
     id: id,
     farmId: farmId,
@@ -550,6 +619,10 @@ class LandParcel {
     boundaryVersion: boundaryVersion,
     boundaryHistory: boundaryHistory,
     legacyMetadata: legacyMetadata,
+    projectId: projectId,
+    kind: kind ?? this.kind,
+    parentBlockId:
+        clearParentBlockId ? null : (parentBlockId ?? this.parentBlockId),
   );
 
   static LandParcelBoundaryVersion _buildVersion({
@@ -608,7 +681,7 @@ class LandParcel {
   static void _requireOptionalText(String? value, String fieldName) {
     if (value != null && value.trim().isEmpty) {
       throw FormatException(
-        'Land parcel  cannot be blank when provided.',
+        'Land parcel $fieldName cannot be blank when provided.',
       );
     }
   }

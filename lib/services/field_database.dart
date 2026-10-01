@@ -19,7 +19,9 @@ class FieldDatabase {
   static final FieldDatabase _instance = FieldDatabase._();
 
   static const _databaseName = 'agrico.db';
-  static const databaseVersion = 8;
+
+  /// Bumped to 9 for the P02A typed land parcel columns.
+  static const databaseVersion = 9;
   static const _table = 'fields';
   static const _historyTable = 'field_measurement_history';
   static const _distanceTable = 'distance_measurements';
@@ -72,6 +74,11 @@ class FieldDatabase {
     if (version >= 8) {
       await SqliteLandParcelSpatialLinkRepository.createSchema(database);
     }
+    if (version >= 9) {
+      // Fresh databases: createSchema already includes the P02A columns and
+      // triggers, so the migration ledger is not touched here.
+      await SqliteLandParcelRepository.createSchema(database);
+    }
   }
 
   static Future<void> upgradeSchema(
@@ -104,6 +111,12 @@ class FieldDatabase {
     }
     if (oldVersion < 8) {
       await SqliteLandParcelSpatialLinkRepository.createSchema(database);
+    }
+    if (oldVersion < 9) {
+      // P02A: the sqflite onUpgrade callback already runs inside a
+      // transaction. Call the migration directly; do NOT open a nested
+      // transaction here, which would deadlock against the outer one.
+      await SqliteLandParcelRepository.migrateAddTypedColumns(database);
     }
   }
 

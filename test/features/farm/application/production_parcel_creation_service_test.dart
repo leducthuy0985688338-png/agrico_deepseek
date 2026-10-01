@@ -1,4 +1,5 @@
 import 'package:agrico_deepseek/core/permissions/authorization.dart';
+import 'package:agrico_deepseek/core/project/agrico_project.dart';
 import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_temporal.dart';
 import 'package:agrico_deepseek/features/farm/application/production_parcel_creation_service.dart';
 import 'package:agrico_deepseek/features/farm/domain/entities/land_parcel.dart';
@@ -22,23 +23,32 @@ AuthorizationSubject subject({
   dataScopes: scopes,
   active: active,
 );
-LandParcel draft({String farm = 'farm', String actor = 'member'}) =>
-    LandParcel.create(
-      id: 'draft',
-      farmId: farm,
-      parcelCode: 'DRAFT',
-      name: 'Lô',
-      boundary: Wgs84Polygon.fromVertices(const [
-        Wgs84Vertex(latitude: 16, longitude: 106),
-        Wgs84Vertex(latitude: 16, longitude: 106.01),
-        Wgs84Vertex(latitude: 16.01, longitude: 106.01),
-        Wgs84Vertex(latitude: 16.01, longitude: 106),
-      ]),
-      boundarySource: BoundarySource.manual,
-      verificationStatus: BoundaryVerificationStatus.draft,
-      actorMembershipId: actor,
-      occurredAt: DateTime.utc(2026, 9, 30),
-    );
+
+const _project = AgricoProject.defaultProject;
+
+const String _projectId = 'agrico-nong';
+
+LandParcel draft({
+  String farm = 'farm',
+  String actor = 'member',
+  String? projectId = _projectId,
+}) => LandParcel.create(
+  id: 'draft',
+  farmId: farm,
+  parcelCode: 'DRAFT',
+  name: 'Lô',
+  boundary: Wgs84Polygon.fromVertices(const [
+    Wgs84Vertex(latitude: 16, longitude: 106),
+    Wgs84Vertex(latitude: 16, longitude: 106.01),
+    Wgs84Vertex(latitude: 16.01, longitude: 106.01),
+    Wgs84Vertex(latitude: 16.01, longitude: 106),
+  ]),
+  boundarySource: BoundarySource.manual,
+  verificationStatus: BoundaryVerificationStatus.draft,
+  actorMembershipId: actor,
+  occurredAt: DateTime.utc(2026, 9, 30),
+  projectId: projectId,
+);
 
 void main() {
   test('GPS and imported creation require their source permissions', () {
@@ -56,12 +66,14 @@ void main() {
         verificationStatus: BoundaryVerificationStatus.draft,
         actorMembershipId: 'member',
         occurredAt: original.createdAt,
+        projectId: _project.id,
       );
       expect(
         () => service.createLandBlock(
           subject: subject(),
           draft: sourced,
-          projectCode: 'AGR-NONG',
+          projectCode: _project.code,
+          project: _project,
         ),
         throwsStateError,
       );
@@ -70,7 +82,7 @@ void main() {
   });
 
   test(
-    'crop drafts are bound to the new parcel and current membership',
+    'createLandBlock rejects any crops even when the caller bypasses the UI',
     () async {
       final repo = _Creation();
       final service = ProductionParcelCreationService(repo);
@@ -89,30 +101,31 @@ void main() {
         createdBy: 'editor',
         updatedBy: 'editor',
       );
-      await service.createLandBlock(
-        subject: subject(),
-        draft: draft(),
-        projectCode: 'AGR-NONG',
-        crops: [crop(2)],
-      );
-      final saved = repo.receivedCrops.single;
-      expect(saved.id, 'crop-draft-0');
-      expect(saved.parcelId, 'draft');
-      expect(saved.createdBy, 'member');
-      expect(saved.cropType, 'Peanut');
-      expect(saved.ageMonths, 12);
+      // A single valid crop still rejects the block, because crops are
+      // not allowed on production land blocks at all.
       expect(
         () => service.createLandBlock(
           subject: subject(),
           draft: draft(),
-          projectCode: 'AGR-NONG',
-          crops: [crop(0)],
+          projectCode: _project.code,
+          project: _project,
+          crops: [crop(2)],
         ),
         throwsFormatException,
       );
+      // An empty crop list is fine.
+      await service.createLandBlock(
+        subject: subject(),
+        draft: draft(),
+        projectCode: _project.code,
+        project: _project,
+      );
       expect(repo.calls, 1);
+      expect(repo.project, _project.code);
+      expect(repo.receivedCrops, isEmpty);
     },
   );
+
   test(
     'authorized requests forward the parent version and fixed temporal states',
     () async {
@@ -121,9 +134,10 @@ void main() {
       await service.createLandBlock(
         subject: subject(),
         draft: draft(),
-        projectCode: 'AGR-NONG',
+        projectCode: _project.code,
+        project: _project,
       );
-      expect(repo.project, 'AGR-NONG');
+      expect(repo.project, _project.code);
       expect(repo.state, SpatialTemporalState.baseline);
       await service.createFieldPlot(
         subject: subject(),
@@ -151,7 +165,8 @@ void main() {
           () => service.createLandBlock(
             subject: denied,
             draft: draft(),
-            projectCode: 'AGR-NONG',
+            projectCode: _project.code,
+            project: _project,
           ),
           throwsStateError,
         );
@@ -178,7 +193,8 @@ void main() {
           () => service.createLandBlock(
             subject: subject(),
             draft: invalid,
-            projectCode: 'AGR-NONG',
+            projectCode: _project.code,
+            project: _project,
           ),
           throwsStateError,
         );
@@ -195,6 +211,42 @@ void main() {
       expect(repo.calls, 0);
     },
   );
+
+  test('missing or mismatched project id is rejected before numbering', () {
+    final repo = _Creation();
+    final service = ProductionParcelCreationService(repo);
+    // Missing project id.
+    expect(
+      () => service.createLandBlock(
+        subject: subject(),
+        draft: draft(projectId: null),
+        projectCode: _project.code,
+        project: _project,
+      ),
+      throwsFormatException,
+    );
+    // Mismatched project id.
+    expect(
+      () => service.createLandBlock(
+        subject: subject(),
+        draft: draft(projectId: 'other-project'),
+        projectCode: _project.code,
+        project: _project,
+      ),
+      throwsFormatException,
+    );
+    // Mismatched project code.
+    expect(
+      () => service.createLandBlock(
+        subject: subject(),
+        draft: draft(),
+        projectCode: 'OTHER',
+        project: _project,
+      ),
+      throwsFormatException,
+    );
+    expect(repo.calls, 0);
+  });
 }
 
 class _Creation implements ProductionParcelCreationRepository {

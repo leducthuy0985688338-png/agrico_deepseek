@@ -244,6 +244,7 @@ class LandParcelFormScreen extends StatefulWidget {
     this.administrativeUnits = const [],
     this.availableHouseholds = const [],
     this.landOnly = false,
+    this.productionProjectId,
     this.productionProjectCode,
     this.landUse,
     this.surveys = const [],
@@ -262,6 +263,9 @@ class LandParcelFormScreen extends StatefulWidget {
 
   /// New v2 workflow excludes household personal data from parcel entry.
   final bool landOnly;
+
+  /// Stable project id. Required when [productionProjectCode] is set.
+  final String? productionProjectId;
   final String? productionProjectCode;
   final LandUseProfile? landUse;
   final List<LandParcelSurvey> surveys;
@@ -536,40 +540,44 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
                 labelKey: 'survey.readinessStatus',
               ),
             ]),
-            _section(context, l10n.text('survey.crop'), [
-              ...crops.asMap().entries.map(
-                (entry) => ListTile(
-                  key: Key('crop-${entry.value.id}'),
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(entry.value.cropType),
-                  subtitle: Text(
-                    '${entry.value.quantity} ${entry.value.unit}'
-                    '${cropAgeSuffix(l10n, entry.value)}',
-                  ),
-                  trailing: Wrap(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.edit),
-                        tooltip: l10n.text('common.edit'),
-                        onPressed: () => _editCrop(entry.key),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline),
-                        tooltip: l10n.text('common.remove'),
-                        onPressed: () =>
-                            setState(() => crops.removeAt(entry.key)),
-                      ),
-                    ],
+            // P02A: crops belong to field plots, not to production blocks.
+            // Hide the crop section when this form creates a production
+            // land block.
+            if (widget.productionProjectCode == null)
+              _section(context, l10n.text('survey.crop'), [
+                ...crops.asMap().entries.map(
+                  (entry) => ListTile(
+                    key: Key('crop-${entry.value.id}'),
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(entry.value.cropType),
+                    subtitle: Text(
+                      '${entry.value.quantity} ${entry.value.unit}'
+                      '${cropAgeSuffix(l10n, entry.value)}',
+                    ),
+                    trailing: Wrap(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.edit),
+                          tooltip: l10n.text('common.edit'),
+                          onPressed: () => _editCrop(entry.key),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          tooltip: l10n.text('common.remove'),
+                          onPressed: () =>
+                              setState(() => crops.removeAt(entry.key)),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              OutlinedButton.icon(
-                key: const Key('add-crop'),
-                onPressed: () => _editCrop(null),
-                icon: const Icon(Icons.add),
-                label: Text(l10n.text('crop.add')),
-              ),
-            ]),
+                OutlinedButton.icon(
+                  key: const Key('add-crop'),
+                  onPressed: () => _editCrop(null),
+                  icon: const Icon(Icons.add),
+                  label: Text(l10n.text('crop.add')),
+                ),
+              ]),
             _section(
               context,
               l10n.text('survey.record'),

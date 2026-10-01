@@ -31,10 +31,17 @@ class SqliteLandParcelRepository implements LandParcelRepository {
   static const parcelTable = 'land_parcels';
   static const boundaryVersionTable = 'land_parcel_boundary_versions';
 
+  /// Marker row name for the P02A migration ledger.
+  static const _migrationLedgerTable = 'agrico_schema_migrations';
+
   final DatabaseExecutor _executor;
   final bool _spatialWriteScope;
   final void Function(String farmId, String parcelId)? _onSpatialWrite;
 
+  /// Creates the canonical schema for a fresh database.
+  ///
+  /// The fresh schema already carries the P02A typed columns and triggers,
+  /// so a new database and an upgraded database share the same final shape.
   static Future<void> createSchema(DatabaseExecutor db) async {
     await db.execute('PRAGMA foreign_keys = ON');
     await db.execute('''
@@ -46,7 +53,12 @@ class SqliteLandParcelRepository implements LandParcelRepository {
         boundary_version INTEGER NOT NULL,
         schema_version INTEGER NOT NULL,
         payload_json TEXT NOT NULL,
-        UNIQUE(farm_id, parcel_code)
+        project_id TEXT,
+        kind TEXT NOT NULL DEFAULT 'landBlock',
+        parent_block_id TEXT,
+        UNIQUE(farm_id, parcel_code),
+        FOREIGN KEY (parent_block_id) REFERENCES $parcelTable(id)
+          ON UPDATE RESTRICT ON DELETE RESTRICT
       )
     ''');
     await db.execute(
@@ -56,6 +68,14 @@ class SqliteLandParcelRepository implements LandParcelRepository {
     await db.execute(
       'CREATE UNIQUE INDEX IF NOT EXISTS idx_land_parcels_farm_code '
       'ON $parcelTable(farm_id, parcel_code)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_land_parcels_project_kind '
+      'ON $parcelTable(project_id, kind)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_land_parcels_parent '
+      'ON $parcelTable(parent_block_id)',
     );
     await db.execute('''
       CREATE TABLE IF NOT EXISTS $boundaryVersionTable (
@@ -73,6 +93,342 @@ class SqliteLandParcelRepository implements LandParcelRepository {
       'CREATE UNIQUE INDEX IF NOT EXISTS idx_boundary_parcel_version '
       'ON $boundaryVersionTable(parcel_id, version)',
     );
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $_migrationLedgerTable (
+        id TEXT PRIMARY KEY,
+        applied_at TEXT NOT NULL
+      )
+    ''');
+    await _createParentTriggers(db);
+  }
+
+  /// Adds the P02A typed columns to an existing database.
+  ///
+  /// Runs exactly once per database: a ledger row records completion, and
+  /// any error rolls back the DDL, the backfill and the ledger entry. The
+  /// function accepts a [DatabaseExecutor] so callers can wrap it inside a
+  /// transaction when needed.
+  static Future<void> migrateAddTypedColumns(DatabaseExecutor db) async {
+    // Ledger lookup.
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $_migrationLedgerTable (
+        id TEXT PRIMARY KEY,
+        applied_at TEXT NOT NULL
+      )
+    ''');
+    final ledger = await db.query(
+      _migrationLedgerTable,
+      where: 'id = ?',
+      whereArgs: ['p02a_add_typed_columns'],
+      limit: 1,
+    );
+    if (ledger.isNotEmpty) return;
+
+    // Detect column presence.
+    final columns = await db.rawQuery('PRAGMA table_info($parcelTable)');
+    final names = columns.map((row) => row['name'] as String).toSet();
+
+    // Additive column additions (idempotent per-column).
+    if (!names.contains('project_id')) {
+      await db.execute('ALTER TABLE $parcelTable ADD COLUMN project_id TEXT');
+    }
+    if (!names.contains('kind')) {
+      await db.execute(
+        "ALTER TABLE $parcelTable ADD COLUMN kind TEXT NOT NULL DEFAULT 'landBlock'",
+      );
+    }
+    if (!names.contains('parent_block_id')) {
+      await db.execute(
+        'ALTER TABLE $parcelTable ADD COLUMN parent_block_id TEXT',
+      );
+    }
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_land_parcels_project_kind '
+      'ON $parcelTable(project_id, kind)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_land_parcels_parent '
+      'ON $parcelTable(parent_block_id)',
+    );
+
+    // Install triggers BEFORE the backfill, so the backfill itself is
+    // validated by the same rules used at runtime.
+    await _createParentTriggers(db);
+
+    // Backfill from payload_json. Any malformed payload aborts the whole
+    // migration — no silent skipping.
+    final rows = await db.query(
+      parcelTable,
+      columns: ['id', 'payload_json', 'kind', 'parent_block_id'],
+    );
+    for (final row in rows) {
+      final id = row['id'] as String;
+      final rawPayload = row['payload_json'];
+      if (rawPayload is! String) {
+        throw FormatException(
+          'Parcel $id: payload_json is not a string during P02A migration.',
+        );
+      }
+      final Map<String, Object?> payload;
+      try {
+        final decoded = jsonDecode(rawPayload);
+        if (decoded is! Map) {
+          throw FormatException(
+            'Parcel $id: payload_json is not a JSON object.',
+          );
+        }
+        payload = decoded.map(
+          (key, value) => MapEntry(key.toString(), value),
+        );
+      } on FormatException {
+        rethrow;
+      } catch (error) {
+        throw FormatException(
+          'Parcel $id: payload_json could not be decoded: $error',
+        );
+      }
+
+      final metadataRaw = payload['legacyMetadata'];
+      final Map<String, Object?> metadata;
+      if (metadataRaw == null) {
+        metadata = const {};
+      } else if (metadataRaw is Map) {
+        metadata = metadataRaw.map(
+          (key, value) => MapEntry(key.toString(), value),
+        );
+      } else {
+        throw FormatException(
+          'Parcel $id: legacyMetadata is not a JSON object.',
+        );
+      }
+
+      // Determine the kind.
+      final rawKind = metadata['parcelLayer'];
+      final String expectedKind;
+      if (rawKind == null) {
+        expectedKind = 'landBlock';
+      } else if (rawKind == 'landBlock') {
+        expectedKind = 'landBlock';
+      } else if (rawKind == 'fieldPlot') {
+        expectedKind = 'fieldPlot';
+      } else {
+        throw FormatException(
+          'Parcel $id: unsupported legacy parcelLayer value: $rawKind',
+        );
+      }
+
+      // Determine parent (only meaningful for fieldPlot).
+      final rawParent = metadata['parentLandBlockId'];
+      final String? expectedParent;
+      if (rawParent == null) {
+        expectedParent = null;
+      } else if (rawParent is String && rawParent.isNotEmpty) {
+        if (expectedKind != 'fieldPlot') {
+          throw FormatException(
+            'Parcel $id: land block carries a parentLandBlockId in legacy metadata.',
+          );
+        }
+        expectedParent = rawParent;
+      } else {
+        throw FormatException(
+          'Parcel $id: parentLandBlockId must be a non-empty string.',
+        );
+      }
+
+      final currentKind = row['kind'] as String?;
+      final currentParent = row['parent_block_id'] as String?;
+      final needsUpdate =
+          currentKind != expectedKind || currentParent != expectedParent;
+      if (needsUpdate) {
+        // The triggers installed above validate this UPDATE, including the
+        // parent link, farm, project and self-reference checks.
+        await db.update(
+          parcelTable,
+          {'kind': expectedKind, 'parent_block_id': expectedParent},
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      }
+    }
+
+    // Final sanity check after backfill: no self-reference, no orphan.
+    // Runs BEFORE the ledger row, so a broken database never records the
+    // migration as complete.
+    final broken = await db.rawQuery('''
+      SELECT id FROM $parcelTable
+      WHERE parent_block_id IS NOT NULL
+        AND (parent_block_id = id
+             OR parent_block_id NOT IN (SELECT id FROM $parcelTable))
+    ''');
+    if (broken.isNotEmpty) {
+      final ids = broken.map((row) => row['id']).join(', ');
+      throw FormatException(
+        'P02A migration left orphan or self-referencing parcels: $ids',
+      );
+    }
+    final stillBadKind = await db.rawQuery('''
+      SELECT id FROM $parcelTable
+      WHERE kind NOT IN ('landBlock', 'fieldPlot')
+    ''');
+    if (stillBadKind.isNotEmpty) {
+      final ids = stillBadKind.map((row) => row['id']).join(', ');
+      throw FormatException(
+        'P02A migration left parcels with unsupported kind: $ids',
+      );
+    }
+
+    // Record completion.
+    await db.insert(
+      _migrationLedgerTable,
+      {
+        'id': 'p02a_add_typed_columns',
+        'applied_at': DateTime.now().toUtc().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.abort,
+    );
+  }
+
+  /// Parent integrity triggers. Installed on both fresh and upgraded
+  /// databases so both share the same final behaviour.
+  static Future<void> _createParentTriggers(DatabaseExecutor db) async {
+    // Cleanup of superseded trigger names so the canonical set always wins.
+    await db.execute(
+      'DROP TRIGGER IF EXISTS trg_land_parcels_parent_protect_update',
+    );
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_land_parcels_kind_check_insert
+      BEFORE INSERT ON $parcelTable
+      FOR EACH ROW
+      WHEN NEW.kind NOT IN ('landBlock', 'fieldPlot')
+      BEGIN
+        SELECT RAISE(ABORT, 'land_parcels.kind must be landBlock or fieldPlot');
+      END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_land_parcels_kind_check_update
+      BEFORE UPDATE OF kind ON $parcelTable
+      FOR EACH ROW
+      WHEN NEW.kind NOT IN ('landBlock', 'fieldPlot')
+      BEGIN
+        SELECT RAISE(ABORT, 'land_parcels.kind must be landBlock or fieldPlot');
+      END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_land_parcels_parent_check_insert
+      BEFORE INSERT ON $parcelTable
+      FOR EACH ROW
+      BEGIN
+        SELECT CASE
+          WHEN NEW.parent_block_id IS NOT NULL AND NEW.kind != 'fieldPlot'
+            THEN RAISE(ABORT, 'only field plots may have a parent block id')
+          WHEN NEW.parent_block_id IS NOT NULL AND NEW.parent_block_id = NEW.id
+            THEN RAISE(ABORT, 'a parcel cannot be its own parent')
+        END;
+      END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_land_parcels_parent_check_update
+      BEFORE UPDATE OF parent_block_id, kind ON $parcelTable
+      FOR EACH ROW
+      BEGIN
+        SELECT CASE
+          WHEN NEW.parent_block_id IS NOT NULL AND NEW.kind != 'fieldPlot'
+            THEN RAISE(ABORT, 'only field plots may have a parent block id')
+          WHEN NEW.parent_block_id IS NOT NULL AND NEW.parent_block_id = NEW.id
+            THEN RAISE(ABORT, 'a parcel cannot be its own parent')
+        END;
+      END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_land_parcels_parent_fk_insert
+      BEFORE INSERT ON $parcelTable
+      FOR EACH ROW
+      WHEN NEW.parent_block_id IS NOT NULL
+      BEGIN
+        SELECT CASE
+          WHEN (SELECT COUNT(*) FROM $parcelTable
+                WHERE id = NEW.parent_block_id) = 0
+            THEN RAISE(ABORT, 'parent block does not exist')
+          WHEN (SELECT kind FROM $parcelTable
+                WHERE id = NEW.parent_block_id) != 'landBlock'
+            THEN RAISE(ABORT, 'parent must be a land block')
+          WHEN (SELECT farm_id FROM $parcelTable
+                WHERE id = NEW.parent_block_id) != NEW.farm_id
+            THEN RAISE(ABORT, 'parent block must share the same farm')
+          WHEN (SELECT project_id FROM $parcelTable
+                WHERE id = NEW.parent_block_id) IS NOT NULL
+               AND NEW.project_id IS NOT NULL
+               AND (SELECT project_id FROM $parcelTable
+                    WHERE id = NEW.parent_block_id) != NEW.project_id
+            THEN RAISE(ABORT, 'parent block and field plot must share the same project')
+        END;
+      END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_land_parcels_parent_fk_update
+      BEFORE UPDATE OF parent_block_id, farm_id, project_id ON $parcelTable
+      FOR EACH ROW
+      WHEN NEW.parent_block_id IS NOT NULL
+      BEGIN
+        SELECT CASE
+          WHEN (SELECT COUNT(*) FROM $parcelTable
+                WHERE id = NEW.parent_block_id) = 0
+            THEN RAISE(ABORT, 'parent block does not exist')
+          WHEN (SELECT kind FROM $parcelTable
+                WHERE id = NEW.parent_block_id) != 'landBlock'
+            THEN RAISE(ABORT, 'parent must be a land block')
+          WHEN (SELECT farm_id FROM $parcelTable
+                WHERE id = NEW.parent_block_id) != NEW.farm_id
+            THEN RAISE(ABORT, 'parent block must share the same farm')
+          WHEN (SELECT project_id FROM $parcelTable
+                WHERE id = NEW.parent_block_id) IS NOT NULL
+               AND NEW.project_id IS NOT NULL
+               AND (SELECT project_id FROM $parcelTable
+                    WHERE id = NEW.parent_block_id) != NEW.project_id
+            THEN RAISE(ABORT, 'parent block and field plot must share the same project')
+        END;
+      END
+    ''');
+    // Block destructive parent updates that would orphan children.
+    // Covers kind, id, farm_id and project_id changes when the row has
+    // children pointing at it.
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_land_parcels_parent_protect_update
+      BEFORE UPDATE OF kind, id, farm_id, project_id ON $parcelTable
+      FOR EACH ROW
+      WHEN (SELECT COUNT(*) FROM $parcelTable
+            WHERE parent_block_id = OLD.id) > 0
+      BEGIN
+        SELECT CASE
+          WHEN NEW.kind != 'landBlock'
+            THEN RAISE(ABORT, 'a parcel that has children cannot leave the land block kind')
+          WHEN NEW.id != OLD.id
+            THEN RAISE(ABORT, 'a parcel that has children cannot change its id')
+          WHEN NEW.farm_id != OLD.farm_id
+            THEN RAISE(ABORT, 'a parcel that has children cannot change its farm')
+          WHEN EXISTS (
+                SELECT 1 FROM $parcelTable child
+                WHERE child.parent_block_id = OLD.id
+                  AND child.project_id IS NOT NULL
+                  AND (NEW.project_id IS NULL
+                       OR child.project_id != NEW.project_id)
+              )
+            THEN RAISE(ABORT, 'a parcel that has children cannot change to a conflicting project')
+        END;
+      END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_land_parcels_parent_orphan_delete
+      BEFORE DELETE ON $parcelTable
+      FOR EACH ROW
+      BEGIN
+        SELECT CASE
+          WHEN (SELECT COUNT(*) FROM $parcelTable
+                WHERE parent_block_id = OLD.id) > 0
+            THEN RAISE(ABORT, 'cannot delete a land block that still has field plots')
+        END;
+      END
+    ''');
   }
 
   @override
@@ -321,6 +677,9 @@ class SqliteLandParcelRepository implements LandParcelRepository {
     'payload_json': jsonEncode(
       LandParcelMapper.toJson(parcel, includeHistory: false),
     ),
+    'project_id': parcel.projectId,
+    'kind': _kindColumnValue(parcel.kind),
+    'parent_block_id': parcel.parentBlockId,
   };
 
   Future<void> _insertBoundaryVersion(
@@ -340,6 +699,16 @@ class SqliteLandParcelRepository implements LandParcelRepository {
 
   Future<LandParcel> _hydrate(Map<String, Object?> parcelRow) async {
     final parcelJson = _decodeObject(parcelRow['payload_json']);
+    // P02A: enrich with typed columns when they are present.
+    if (parcelRow.containsKey('project_id')) {
+      parcelJson['projectId'] = parcelRow['project_id'];
+    }
+    if (parcelRow.containsKey('kind') && parcelRow['kind'] is String) {
+      parcelJson['kind'] = parcelRow['kind'];
+    }
+    if (parcelRow.containsKey('parent_block_id')) {
+      parcelJson['parentBlockId'] = parcelRow['parent_block_id'];
+    }
     final historyRows = await _executor.query(
       boundaryVersionTable,
       columns: ['payload_json'],
@@ -352,6 +721,11 @@ class SqliteLandParcelRepository implements LandParcelRepository {
       history: historyRows.map((row) => _decodeObject(row['payload_json'])),
     );
   }
+
+  static String _kindColumnValue(ParcelLayer kind) => switch (kind) {
+    ParcelLayer.landBlock => 'landBlock',
+    ParcelLayer.fieldPlot => 'fieldPlot',
+  };
 
   static Map<String, Object?> _decodeObject(Object? value) {
     final decoded = jsonDecode(value! as String);

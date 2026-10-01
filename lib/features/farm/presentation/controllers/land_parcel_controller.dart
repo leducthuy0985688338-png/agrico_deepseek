@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../../core/project/agrico_project.dart';
 import '../../../../core/permissions/authorization.dart';
 import '../../application/land_parcel_boundary_consistency_queries.dart';
 import '../../application/land_parcel_application_service.dart';
@@ -242,6 +243,7 @@ class LandParcelController extends ChangeNotifier {
   Future<LandParcelApplicationResult<LandParcel>> create({
     required String id,
     required String parcelCode,
+    String? projectId,
     String? projectCode,
     required String name,
     required List<Wgs84Vertex> vertices,
@@ -299,10 +301,16 @@ class LandParcelController extends ChangeNotifier {
             'error.permissionDenied',
           );
         } else {
+          if (projectId == null || projectId.trim().isEmpty) {
+            return const LandParcelApplicationResult.failure(
+              LandParcelApplicationStatus.validationFailed,
+              'landParcel.project.missing',
+            );
+          }
           final saved = await service.createLandBlock(
             subject: subject,
             projectCode: projectCode,
-            crops: crops,
+            project: AgricoProject.defaultProject,
             draft: LandParcel.create(
               id: id,
               farmId: subject.farmId,
@@ -316,10 +324,8 @@ class LandParcelController extends ChangeNotifier {
               active: legacyMetadata['active'] != false,
               horizontalAccuracyM: horizontalAccuracyM,
               boundaryConfidence: boundaryConfidence,
-              legacyMetadata: {
-                ...legacyMetadata,
-                'parcelLayer': ParcelLayer.landBlock.name,
-              },
+              projectId: projectId,
+              legacyMetadata: legacyMetadata,
             ),
           );
           result = LandParcelApplicationResult.success(

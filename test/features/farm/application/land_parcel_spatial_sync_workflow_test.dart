@@ -35,6 +35,7 @@ void main() {
     String code = 'P-001',
     String? spatialFeatureId,
     String? ownerHouseholdId,
+    double offset = 0,
   }) {
     return LandParcel.create(
       id: id,
@@ -42,11 +43,12 @@ void main() {
       parcelCode: code,
       name: 'Parcel $id',
       ownerHouseholdId: ownerHouseholdId,
-      boundary: Wgs84Polygon.fromVertices(const [
-        Wgs84Vertex(latitude: 16.5000, longitude: 104.7000),
-        Wgs84Vertex(latitude: 16.5000, longitude: 104.7010),
-        Wgs84Vertex(latitude: 16.5010, longitude: 104.7010),
-        Wgs84Vertex(latitude: 16.5010, longitude: 104.7000),
+      projectId: 'PROJ-A',
+      boundary: Wgs84Polygon.fromVertices([
+        Wgs84Vertex(latitude: 16.5000, longitude: 104.7000 + offset),
+        Wgs84Vertex(latitude: 16.5000, longitude: 104.7010 + offset),
+        Wgs84Vertex(latitude: 16.5010, longitude: 104.7010 + offset),
+        Wgs84Vertex(latitude: 16.5010, longitude: 104.7000 + offset),
       ]),
       boundarySource: BoundarySource.gps,
       verificationStatus: BoundaryVerificationStatus.measured,
@@ -93,6 +95,7 @@ void main() {
     farmId: farmId,
     parcelCode: 'DRAFT',
     name: 'Thửa $id',
+    projectId: 'PROJ-A',
     boundary: Wgs84Polygon.fromVertices([
       Wgs84Vertex(latitude: 16.5001, longitude: 104.7001 + offset),
       Wgs84Vertex(latitude: 16.5001, longitude: 104.7003 + offset),
@@ -226,16 +229,19 @@ void main() {
         projectCode: 'AGR-NONG',
         temporalState: SpatialTemporalState.baseline,
       );
+      // Disjoint geometry so the block-on-block guard does not fire, but
+      // reuse the same parcel_code so the DB unique (farm_id, parcel_code)
+      // constraint throws after numbering and spatial writes happen.
       await expectLater(
         workflow.createProductionLandBlock(
-          draft: createParcel(),
+          draft: createParcel(offset: 0.01),
           projectCode: 'AGR-NONG',
           temporalState: SpatialTemporalState.baseline,
         ),
         throwsA(isA<DatabaseException>()),
       );
       final next = await workflow.createProductionLandBlock(
-        draft: createParcel(id: 'parcel-2'),
+        draft: createParcel(id: 'parcel-2', code: 'P-002', offset: 0.02),
         projectCode: 'AGR-NONG',
         temporalState: SpatialTemporalState.baseline,
       );
@@ -525,10 +531,9 @@ void main() {
   });
 
   test(
-    'production block crop failure rolls back numbering and spatial writes',
+    'production block rejects crops before numbering or spatial writes',
     () async {
       await SqliteProductionParcelNumberAllocator.createSchema(database);
-      final surveys = SqliteLandSurveyRepository(database);
       final first = createParcel();
       CropRecord crop(String parcelId) => CropRecord(
         id: 'fixed-crop',
@@ -543,31 +548,23 @@ void main() {
         createdBy: 'member-1',
         updatedBy: 'member-1',
       );
-      await workflow.createProductionLandBlock(
-        draft: first,
-        projectCode: 'AGR-NONG',
-        temporalState: SpatialTemporalState.baseline,
-        crops: [crop(first.id)],
-      );
-      expect((await surveys.listCrops(first.id)).single.cropType, 'Peanut');
-      final second = createParcel(id: 'second');
+      // The workflow rejects crops on a production block before numbering
+      // or spatial writes happen.
       await expectLater(
-        workflow.createProductionLandBlock(
-          draft: second,
+        () => workflow.createProductionLandBlock(
+          draft: first,
           projectCode: 'AGR-NONG',
           temporalState: SpatialTemporalState.baseline,
-          crops: [crop(second.id)],
+          crops: [crop(first.id)],
         ),
-        throwsA(isA<DatabaseException>()),
+        throwsFormatException,
       );
-      expect(await parcels.getById(farmId: 'farm-1', id: 'second'), isNull);
-      expect(await links.findByLandParcelId('second'), isNull);
-      final next = await workflow.createProductionLandBlock(
-        draft: second,
-        projectCode: 'AGR-NONG',
-        temporalState: SpatialTemporalState.baseline,
+      expect(await parcels.getById(farmId: 'farm-1', id: first.id), isNull);
+      expect(await links.findByLandParcelId(first.id), isNull);
+      expect(
+        await database.query('agrico_production_parcel_sequences_v4'),
+        isEmpty,
       );
-      expect(next.parcelCode, 'AGR-NONG-L002');
     },
   );
 
@@ -2157,6 +2154,174 @@ void main() {
       expect(revisionsAfter[0].revision, 1);
       expect(revisionsAfter[1].revision, 2);
       expect(revisionsAfter[1].changeReason, 'landParcel.metadataUpdated');
+    },
+  );
+
+  test(
+    'production block rejects a NULL project candidate',
+    () async {
+      await SqliteProductionParcelNumberAllocator.createSchema(database);
+      // A draft without a project id. Built directly rather than via the
+      // shared helper, which always stamps PROJ-A.
+      final draft = LandParcel.create(
+        id: 'no-project',
+        farmId: 'farm-1',
+        parcelCode: 'P-NOP',
+        name: 'Parcel no-project',
+        boundary: Wgs84Polygon.fromVertices(const [
+          Wgs84Vertex(latitude: 16.5000, longitude: 104.7000),
+          Wgs84Vertex(latitude: 16.5000, longitude: 104.7010),
+          Wgs84Vertex(latitude: 16.5010, longitude: 104.7010),
+          Wgs84Vertex(latitude: 16.5010, longitude: 104.7000),
+        ]),
+        boundarySource: BoundarySource.gps,
+        verificationStatus: BoundaryVerificationStatus.measured,
+        actorMembershipId: 'member-1',
+        occurredAt: createdAt,
+        projectId: null,
+      );
+      expect(
+        () => workflow.createProductionLandBlock(
+          draft: draft,
+          projectCode: 'AGR-NONG',
+          temporalState: SpatialTemporalState.baseline,
+        ),
+        throwsFormatException,
+      );
+    },
+  );
+
+  test(
+    'production block rejects a candidate overlapping a NULL project block',
+    () async {
+      await SqliteProductionParcelNumberAllocator.createSchema(database);
+      // Existing block with NULL project and the same geometry as the
+      // candidate. Raw fixture insert bypasses the workflow on purpose so
+      // the guard is the only thing under test.
+      await database.insert(SqliteLandParcelRepository.parcelTable, {
+        'id': 'existing-null',
+        'farm_id': 'farm-1',
+        'parcel_code': 'P-NULL',
+        'active': 1,
+        'boundary_version': 1,
+        'schema_version': 3,
+        'payload_json': jsonEncode({
+          'boundary': [
+            {'latitude': 16.5000, 'longitude': 104.7000, 'altitudeM': null},
+            {'latitude': 16.5000, 'longitude': 104.7010, 'altitudeM': null},
+            {'latitude': 16.5010, 'longitude': 104.7010, 'altitudeM': null},
+            {'latitude': 16.5010, 'longitude': 104.7000, 'altitudeM': null},
+          ],
+        }),
+        'project_id': null,
+        'kind': 'landBlock',
+        'parent_block_id': null,
+      });
+
+      await expectLater(
+        workflow.createProductionLandBlock(
+          draft: createParcel(id: 'new', code: 'P-NEW'),
+          projectCode: 'AGR-NONG',
+          temporalState: SpatialTemporalState.baseline,
+        ),
+        throwsA(isA<StateError>()),
+      );
+
+      // Rollback: only the fixture block remains, no link, no counter.
+      final parcelsRows = await database.query(
+        SqliteLandParcelRepository.parcelTable,
+      );
+      expect(parcelsRows, hasLength(1));
+      expect(parcelsRows.single['id'], 'existing-null');
+      expect(
+        await database.query('agrico_production_parcel_sequences_v4'),
+        isEmpty,
+      );
+      expect(await database.query('land_parcel_spatial_links'), isEmpty);
+    },
+  );
+
+  test(
+    'production block rejects a candidate overlapping an X project block',
+    () async {
+      await SqliteProductionParcelNumberAllocator.createSchema(database);
+      // Existing block with X project and the same geometry.
+      await database.insert(SqliteLandParcelRepository.parcelTable, {
+        'id': 'existing-x',
+        'farm_id': 'farm-1',
+        'parcel_code': 'P-X',
+        'active': 1,
+        'boundary_version': 1,
+        'schema_version': 3,
+        'payload_json': jsonEncode({
+          'boundary': [
+            {'latitude': 16.5000, 'longitude': 104.7000, 'altitudeM': null},
+            {'latitude': 16.5000, 'longitude': 104.7010, 'altitudeM': null},
+            {'latitude': 16.5010, 'longitude': 104.7010, 'altitudeM': null},
+            {'latitude': 16.5010, 'longitude': 104.7000, 'altitudeM': null},
+          ],
+        }),
+        'project_id': 'PROJ-A',
+        'kind': 'landBlock',
+        'parent_block_id': null,
+      });
+
+      await expectLater(
+        workflow.createProductionLandBlock(
+          draft: createParcel(id: 'new', code: 'P-NEW'),
+          projectCode: 'AGR-NONG',
+          temporalState: SpatialTemporalState.baseline,
+        ),
+        throwsA(isA<StateError>()),
+      );
+
+      // Rollback: only the fixture block remains, no link, no counter.
+      final parcelsRows = await database.query(
+        SqliteLandParcelRepository.parcelTable,
+      );
+      expect(parcelsRows, hasLength(1));
+      expect(parcelsRows.single['id'], 'existing-x');
+      expect(
+        await database.query('agrico_production_parcel_sequences_v4'),
+        isEmpty,
+      );
+      expect(await database.query('land_parcel_spatial_links'), isEmpty);
+    },
+  );
+
+  test(
+    'production block allows a candidate overlapping a Y project block',
+    () async {
+      await SqliteProductionParcelNumberAllocator.createSchema(database);
+      // Existing block with a different project Y and the same geometry.
+      // The same geometry is allowed because projects are independent.
+      await database.insert(SqliteLandParcelRepository.parcelTable, {
+        'id': 'existing-y',
+        'farm_id': 'farm-1',
+        'parcel_code': 'P-Y',
+        'active': 1,
+        'boundary_version': 1,
+        'schema_version': 3,
+        'payload_json': jsonEncode({
+          'boundary': [
+            {'latitude': 16.5000, 'longitude': 104.7000, 'altitudeM': null},
+            {'latitude': 16.5000, 'longitude': 104.7010, 'altitudeM': null},
+            {'latitude': 16.5010, 'longitude': 104.7010, 'altitudeM': null},
+            {'latitude': 16.5010, 'longitude': 104.7000, 'altitudeM': null},
+          ],
+        }),
+        'project_id': 'PROJ-Y',
+        'kind': 'landBlock',
+        'parent_block_id': null,
+      });
+
+      final saved = await workflow.createProductionLandBlock(
+        draft: createParcel(id: 'new', code: 'P-NEW'),
+        projectCode: 'AGR-NONG',
+        temporalState: SpatialTemporalState.baseline,
+      );
+      expect(saved.id, 'new');
+      expect(saved.projectId, 'PROJ-A');
     },
   );
 }

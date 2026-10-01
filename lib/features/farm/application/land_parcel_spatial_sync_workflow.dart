@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../../../core/identity/domain/production_parcel_reference_code.dart';
 import '../domain/geometry/field_plot_placement.dart';
 import '../data/local/sqlite_land_parcel_repository.dart';
@@ -17,6 +19,7 @@ import '../domain/entities/land_parcel.dart';
 import '../domain/entities/parcel_land_history.dart';
 import '../domain/geometry/parcel_subdivision_plan.dart';
 import '../domain/geometry/wgs84_geometry.dart';
+import '../domain/geometry/wgs84_topology.dart';
 import '../domain/entities/land_survey.dart';
 import '../domain/entities/land_parcel_spatial_link.dart';
 import '../domain/repositories/land_parcel_repository.dart';
@@ -213,6 +216,23 @@ class LandParcelSpatialSyncWorkflow {
         final boundaries = independentSketches
             ? plan.sketches(cuts)
             : plan.apply(source.boundary, cuts);
+
+        // P02A: block-on-block guard. A new land block must not overlap the
+        // interior of any other active land block in the same project.
+        // NULL project is transitional and is still compared — it is not
+        // treated as a real project.
+        await _guardBlockOverlaps(
+          tx: tx,
+          farmId: farmId,
+          sourceId: source.id,
+          sourceProjectId: source.projectId,
+          sourceBoundary: source.boundary,
+          sourceStaysActive: independentSketches,
+          boundaries: boundaries,
+          entries: entries,
+          independentSketches: independentSketches,
+        );
+
         final numbers = SqliteScopedParcelNumberAllocator(tx);
         final children = <LandParcel>[];
         for (var index = 0; index < boundaries.length; index++) {
@@ -237,12 +257,15 @@ class LandParcelSpatialSyncWorkflow {
               verificationStatus: BoundaryVerificationStatus.draft,
               actorMembershipId: actorMembershipId,
               occurredAt: occurredAt,
-              legacyMetadata: independentSketches
-                  ? {
-                      'parcelLayer': entry.layer.name,
-                      'parentLandBlockId': parentId,
-                    }
-                  : const {},
+              // P02A: typed fields. Project inherits from the source.
+              projectId: source.projectId,
+              kind: independentSketches
+                  ? entry.layer
+                  : ParcelLayer.landBlock,
+              parentBlockId:
+                  independentSketches && entry.layer == ParcelLayer.fieldPlot
+                      ? parentId
+                      : null,
               countryCode: source.countryCode,
               provinceCode: source.provinceCode,
               districtCode: source.districtCode,
@@ -295,6 +318,10 @@ class LandParcelSpatialSyncWorkflow {
         for (var i = 0; i < createdChildren.length; i++) {
           final entry = entries[i];
           final child = createdChildren[i];
+          // P02A: land-use profiles and crops belong to field plots only.
+          // A land block created by subdivision never carries them, even
+          // when the input sketch authorises such metadata.
+          if (child.layer != ParcelLayer.fieldPlot) continue;
           await surveys.saveLandUseProfile(
             LandUseProfile(
               parcelId: child.id,
@@ -330,6 +357,131 @@ class LandParcelSpatialSyncWorkflow {
         }
       },
     );
+  }
+
+  /// P02A block-on-block guard. Rejects any new land block whose interior
+  /// overlaps another active land block within the same project scope.
+  ///
+  /// Scope rule (transitional, per approved contract):
+  /// - NULL vs NULL: check (both are undetermined).
+  /// - NULL vs X: check (undetermined cannot skip a defined project).
+  /// - X vs X: check (same project).
+  /// - X vs Y (different): skip (different projects do not overlap for
+  ///   agricultural management purposes).
+  ///
+  /// Shared edges or vertices are allowed.
+  Future<void> _guardBlockOverlaps({
+    required Transaction tx,
+    required String farmId,
+    required String sourceId,
+    required String? sourceProjectId,
+    required Wgs84Polygon sourceBoundary,
+    required bool sourceStaysActive,
+    required List<Wgs84Polygon> boundaries,
+    required List<ParcelSketchDetails> entries,
+    required bool independentSketches,
+  }) async {
+    final rows = await tx.query(
+      SqliteLandParcelRepository.parcelTable,
+      columns: [
+        'id',
+        'payload_json',
+        'kind',
+        'parent_block_id',
+        'project_id',
+      ],
+      where: 'farm_id = ? AND active = 1',
+      whereArgs: [farmId],
+    );
+    final existingBlocks = <Wgs84Polygon>[];
+    for (final row in rows) {
+      if ((row['kind'] as String?) != 'landBlock') continue;
+      if ((row['parent_block_id'] as String?) != null) continue;
+      final id = row['id'] as String;
+      if (id == sourceId) continue;
+      final rowProject = row['project_id'] as String?;
+      final inSameScope = _sameProjectScope(sourceProjectId, rowProject);
+      if (!inSameScope) continue;
+      final decoded = jsonDecode(row['payload_json'] as String) as Map;
+      existingBlocks.add(_decodeBoundary(decoded['boundary']));
+    }
+    final activeBlocks = <Wgs84Polygon>[
+      if (sourceStaysActive) sourceBoundary,
+      ...existingBlocks,
+    ];
+
+    const topology = Wgs84Topology();
+    final accepted = <Wgs84Polygon>[];
+    for (var i = 0; i < boundaries.length; i++) {
+      final candidateKind = independentSketches
+          ? entries[i].layer
+          : ParcelLayer.landBlock;
+      if (candidateKind != ParcelLayer.landBlock) continue;
+      for (final other in activeBlocks) {
+        if (topology.interiorsOverlap(boundaries[i], other)) {
+          throw StateError(
+            'New land block overlaps an existing active land block.',
+          );
+        }
+      }
+      for (final other in accepted) {
+        if (topology.interiorsOverlap(boundaries[i], other)) {
+          throw StateError(
+            'New land blocks in the same batch overlap.',
+          );
+        }
+      }
+      accepted.add(boundaries[i]);
+    }
+  }
+
+  /// Scope rule for the block-on-block guard.
+  ///
+  /// - Different non-null projects are the only scope that skips the check.
+  /// - Any combination that involves NULL is checked, because NULL means
+  ///   "undetermined" during transition and is not a real project.
+  bool _sameProjectScope(String? a, String? b) {
+    if (a != null && b != null && a != b) return false;
+    return true;
+  }
+
+  /// Decodes a persisted boundary payload into a WGS84 polygon.
+  Wgs84Polygon _decodeBoundary(Object? raw) {
+    if (raw is List) {
+      final vertices = raw.map((point) {
+        final item = point as Map;
+        return Wgs84Vertex(
+          latitude: (item['latitude'] as num).toDouble(),
+          longitude: (item['longitude'] as num).toDouble(),
+          altitudeM: (item['altitudeM'] as num?)?.toDouble(),
+        );
+      });
+      return Wgs84Polygon.fromVertices(vertices);
+    }
+    if (raw is Map) {
+      final outer = raw['outerRing'] as List;
+      final inner = (raw['innerRings'] as List?) ?? const [];
+      final vertices = outer.map((point) {
+        final item = point as Map;
+        return Wgs84Vertex(
+          latitude: (item['latitude'] as num).toDouble(),
+          longitude: (item['longitude'] as num).toDouble(),
+          altitudeM: (item['altitudeM'] as num?)?.toDouble(),
+        );
+      });
+      final holes = inner.map((ring) {
+        return (ring as List).map((point) {
+          final item = point as Map;
+          return Wgs84Vertex(
+            latitude: (item['latitude'] as num).toDouble(),
+            longitude: (item['longitude'] as num).toDouble(),
+            altitudeM: (item['altitudeM'] as num?)?.toDouble(),
+          );
+        });
+      });
+      return Wgs84Polygon.fromVertices(vertices, holes: holes);
+    }
+    throw const FormatException('Unsupported boundary encoding.');
   }
 
   /// Explicitly restores a missing parcel-side ID on a historical linked row.
@@ -472,20 +624,81 @@ class LandParcelSpatialSyncWorkflow {
         'A new production block cannot have a parent or spatial identity.',
       );
     }
+    // P02A: a production land block must never carry crops. This rejects
+    // callers that reach the workflow directly, bypassing the application
+    // service layer.
+    if (crops.isNotEmpty) {
+      throw const FormatException(
+        'A production land block cannot carry crops.',
+      );
+    }
+    // P02A: project identity is a first-class field. The caller must supply
+    // the project id from the project catalog; the code prefix is used
+    // only for numbering and is not treated as a project identifier.
+    if (draft.projectId == null || draft.projectId!.trim().isEmpty) {
+      throw const FormatException(
+        'A production land block requires a project id on the draft.',
+      );
+    }
     return createPrepared(
       crops: crops,
       temporalState: temporalState,
-      prepare: (tx, surveys) =>
-          SqliteProductionParcelNumberAllocator(tx).saveLandBlock(
-            farmId: draft.farmId,
-            projectCode: projectCode,
-            save: (code) async => draft.updateMetadata(
-              parcelCode: code.toString(),
-              actorMembershipId: draft.createdBy,
-              occurredAt: draft.createdAt,
-            ),
+      prepare: (tx, surveys) async {
+        // P02A: block-on-block guard for production block creation.
+        // Runs inside the transaction, re-reads the current persisted state
+        // and enforces the same project / NULL rule as subdivision.
+        await _guardProductionBlockOverlaps(
+          tx: tx,
+          farmId: draft.farmId,
+          candidateProjectId: draft.projectId,
+          candidateBoundary: draft.boundary,
+        );
+        return SqliteProductionParcelNumberAllocator(tx).saveLandBlock(
+          farmId: draft.farmId,
+          projectCode: projectCode,
+          save: (code) async => draft.updateMetadata(
+            parcelCode: code.toString(),
+            actorMembershipId: draft.createdBy,
+            occurredAt: draft.createdAt,
           ),
+        );
+      },
     );
+  }
+
+  /// P02A production-block guard. Rejects a new production land block whose
+  /// interior overlaps any active land block within the same project scope.
+  ///
+  /// Scope rule matches subdivision:
+  /// - X vs X: check.
+  /// - X vs Y (different): skip.
+  /// - NULL vs anything: check (NULL is transitional, not a real project).
+  Future<void> _guardProductionBlockOverlaps({
+    required Transaction tx,
+    required String farmId,
+    required String? candidateProjectId,
+    required Wgs84Polygon candidateBoundary,
+  }) async {
+    final rows = await tx.query(
+      SqliteLandParcelRepository.parcelTable,
+      columns: ['id', 'payload_json', 'kind', 'parent_block_id', 'project_id'],
+      where: 'farm_id = ? AND active = 1',
+      whereArgs: [farmId],
+    );
+    const topology = Wgs84Topology();
+    for (final row in rows) {
+      if ((row['kind'] as String?) != 'landBlock') continue;
+      if ((row['parent_block_id'] as String?) != null) continue;
+      final rowProject = row['project_id'] as String?;
+      if (!_sameProjectScope(candidateProjectId, rowProject)) continue;
+      final decoded = jsonDecode(row['payload_json'] as String) as Map;
+      final other = _decodeBoundary(decoded['boundary']);
+      if (topology.interiorsOverlap(candidateBoundary, other)) {
+        throw StateError(
+          'New production land block overlaps an existing active land block.',
+        );
+      }
+    }
   }
 
   /// Creates one field plot without requiring complete coverage of its block.
@@ -583,11 +796,10 @@ class LandParcelSpatialSyncWorkflow {
             provinceCode: draft.provinceCode,
             districtCode: draft.districtCode,
             villageCode: draft.villageCode,
-            legacyMetadata: {
-              ...draft.legacyMetadata,
-              'parcelLayer': ParcelLayer.fieldPlot.name,
-              'parentLandBlockId': parent.id,
-            },
+            projectId: parent.projectId,
+            kind: ParcelLayer.fieldPlot,
+            parentBlockId: parent.id,
+            legacyMetadata: draft.legacyMetadata,
           ),
         );
       },

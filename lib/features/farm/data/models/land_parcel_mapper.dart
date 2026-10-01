@@ -36,7 +36,13 @@ abstract final class LandParcelMapper {
     'verificationStatus': parcel.verificationStatus.name,
     'boundaryConfidence': parcel.boundaryConfidence,
     'boundaryVersion': parcel.boundaryVersion,
-    'legacyMetadata': parcel.legacyMetadata,
+    // P02A: canonical typed fields.
+    'projectId': parcel.projectId,
+    'kind': _kindName(parcel.kind),
+    'parentBlockId': parcel.parentBlockId,
+    // P02A: legacy mirror only for backward compatibility.
+    // Old keys are removed before writing canonical values.
+    'legacyMetadata': _compatibleLegacyMetadata(parcel),
     if (includeHistory)
       'boundaryHistory': parcel.boundaryHistory
           .map(boundaryVersionToJson)
@@ -48,6 +54,41 @@ abstract final class LandParcelMapper {
     Iterable<Map<String, Object?>>? history,
   }) {
     final historyMaps = history ?? _mapList(json['boundaryHistory']);
+    final legacyMetadata = _objectMap(json['legacyMetadata']);
+
+    // P02A: prefer typed fields when present.
+    // "Field present but null" is distinct from "field missing".
+    final String? projectId;
+    if (json.containsKey('projectId')) {
+      projectId = _optionalString(json['projectId']);
+    } else {
+      // Old format: no project id at all.
+      projectId = null;
+    }
+
+    final ParcelLayer kind;
+    if (json.containsKey('kind')) {
+      kind = _requireKind(json['kind']);
+    } else {
+      // Old format: fall back to legacyMetadata.
+      kind = _legacyKind(legacyMetadata);
+    }
+
+    final String? parentBlockId;
+    if (json.containsKey('parentBlockId')) {
+      // Field present — null means independent.
+      parentBlockId = _optionalString(json['parentBlockId']);
+    } else {
+      // Old format: fall back to legacyMetadata.
+      parentBlockId = _legacyParent(legacyMetadata);
+    }
+
+    if (kind == ParcelLayer.landBlock && parentBlockId != null) {
+      throw const FormatException(
+        'A land block must not have a parent block id.',
+      );
+    }
+
     return LandParcel.rehydrate(
       id: _string(json, 'id'),
       farmId: _string(json, 'farmId'),
@@ -87,7 +128,10 @@ abstract final class LandParcelMapper {
       boundaryConfidence: _optionalNumber(json['boundaryConfidence']),
       boundaryVersion: _integer(json, 'boundaryVersion'),
       boundaryHistory: historyMaps.map(boundaryVersionFromJson).toList(),
-      legacyMetadata: _objectMap(json['legacyMetadata']),
+      legacyMetadata: legacyMetadata,
+      projectId: projectId,
+      kind: kind,
+      parentBlockId: parentBlockId,
     );
   }
 
@@ -141,6 +185,68 @@ abstract final class LandParcelMapper {
     sourceFileName: _optionalString(json['sourceFileName']),
     sourceFileHash: _optionalString(json['sourceFileHash']),
   );
+
+  // ---------------------------------------------------------------------------
+  // P02A: canonical field handling
+  // ---------------------------------------------------------------------------
+
+  /// Writes a metadata mirror. Removes the old keys first so that a
+  /// detached plot does not silently keep a stale parent link.
+  static Map<String, Object?> _compatibleLegacyMetadata(LandParcel parcel) {
+    final metadata = Map<String, Object?>.of(parcel.legacyMetadata);
+    metadata.remove('parcelLayer');
+    metadata.remove('parentLandBlockId');
+    if (parcel.kind == ParcelLayer.fieldPlot) {
+      metadata['parcelLayer'] = 'fieldPlot';
+    }
+    if (parcel.parentBlockId != null) {
+      metadata['parentLandBlockId'] = parcel.parentBlockId;
+    }
+    return metadata;
+  }
+
+  static String _kindName(ParcelLayer kind) => switch (kind) {
+    ParcelLayer.landBlock => 'landBlock',
+    ParcelLayer.fieldPlot => 'fieldPlot',
+  };
+
+  /// Parses a canonical `kind` value. Unknown values are a hard error.
+  static ParcelLayer _requireKind(Object? value) {
+    if (value is String) {
+      switch (value) {
+        case 'landBlock':
+          return ParcelLayer.landBlock;
+        case 'fieldPlot':
+          return ParcelLayer.fieldPlot;
+      }
+    }
+    throw FormatException('Unsupported land parcel kind: $value');
+  }
+
+  /// Reads the legacy `parcelLayer` metadata value for old payloads.
+  static ParcelLayer _legacyKind(Map<String, Object?> metadata) {
+    final raw = metadata['parcelLayer'];
+    if (raw == null) {
+      // Contract: a parcel with no legacy kind is a land block.
+      return ParcelLayer.landBlock;
+    }
+    if (raw is String) {
+      switch (raw) {
+        case 'landBlock':
+          return ParcelLayer.landBlock;
+        case 'fieldPlot':
+          return ParcelLayer.fieldPlot;
+      }
+    }
+    throw FormatException('Unsupported legacy parcelLayer value: $raw');
+  }
+
+  static String? _legacyParent(Map<String, Object?> metadata) =>
+      _optionalString(metadata['parentLandBlockId']);
+
+  // ---------------------------------------------------------------------------
+  // Geometry / primitives
+  // ---------------------------------------------------------------------------
 
   static Object _polygonToJson(Wgs84Polygon polygon) => polygon.holes.isEmpty
       ? polygon.vertices.map(_vertexToJson).toList(growable: false)

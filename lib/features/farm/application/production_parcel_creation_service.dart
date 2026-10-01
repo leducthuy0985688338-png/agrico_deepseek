@@ -1,4 +1,5 @@
 import '../../../core/permissions/authorization.dart';
+import '../../../core/project/agrico_project.dart';
 import '../../../core/spatial/domain/entities/spatial_temporal.dart';
 import '../domain/entities/land_parcel.dart';
 import '../domain/entities/land_survey.dart';
@@ -42,51 +43,54 @@ class ProductionParcelCreationService {
     }
   }
 
+  /// Verifies that the supplied (id, code) pair matches the configured
+  /// project. When a project catalog is introduced, this is where the pair
+  /// will be validated against the catalog instead of the shipped constant.
+  void _requireProjectMatches({
+    required AgricoProject project,
+    required String projectCode,
+  }) {
+    if (project.code != projectCode) {
+      throw const FormatException(
+        'Project code does not match the configured project.',
+      );
+    }
+  }
+
+  /// Creates a production land block.
+  ///
+  /// P02A contract:
+  /// - The draft must carry the configured project id.
+  /// - A production land block must never carry crops. Crops belong to
+  ///   field plots only; any caller bypassing the UI is rejected here.
   Future<LandParcel> createLandBlock({
     required AuthorizationSubject subject,
     required LandParcel draft,
     required String projectCode,
+    required AgricoProject project,
     List<CropRecord> crops = const [],
   }) {
     _authorize(subject, draft);
-    final normalized = <CropRecord>[];
-    for (var index = 0; index < crops.length; index++) {
-      final crop = crops[index];
-      if (crop.cropType.trim().isEmpty ||
-          crop.unit.trim().isEmpty ||
-          !crop.quantity.isFinite ||
-          crop.quantity <= 0 ||
-          (crop.ageMonths != null && crop.ageMonths! < 0)) {
-        throw const FormatException(
-          'Invalid crop type, unit, quantity or age.',
-        );
-      }
-      normalized.add(
-        CropRecord(
-          id: 'crop-${draft.id}-$index',
-          parcelId: draft.id,
-          cropType: crop.cropType.trim(),
-          quantity: crop.quantity,
-          unit: crop.unit.trim(),
-          variety: crop.variety,
-          plantingYear: crop.plantingYear,
-          plantingDate: crop.plantingDate,
-          ageMonths: crop.ageMonths,
-          growthStage: crop.growthStage,
-          condition: crop.condition,
-          notes: crop.notes,
-          active: crop.active,
-          createdAt: draft.createdAt,
-          createdBy: subject.membershipId,
-          updatedAt: draft.updatedAt,
-          updatedBy: subject.membershipId,
-        ),
+    _requireProjectMatches(project: project, projectCode: projectCode);
+    if (draft.projectId == null || draft.projectId!.trim().isEmpty) {
+      throw const FormatException(
+        'A production land block requires a project id on the draft.',
+      );
+    }
+    if (draft.projectId != project.id) {
+      throw const FormatException(
+        'Production block draft must carry the configured project id.',
+      );
+    }
+    if (crops.isNotEmpty) {
+      throw const FormatException(
+        'A production land block cannot carry crops.',
       );
     }
     return repository.createLandBlock(
       draft: draft,
       projectCode: projectCode,
-      crops: normalized,
+      crops: const [],
       temporalState: SpatialTemporalState.baseline,
     );
   }

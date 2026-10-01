@@ -242,10 +242,9 @@ void main() {
       boundarySource: BoundarySource.googleEarth,
       verificationStatus: BoundaryVerificationStatus.measured,
       actorMembershipId: 'member-1', occurredAt: time,
-      legacyMetadata: const {
-        'parcelLayer': 'fieldPlot',
-        'parentLandBlockId': 'parcel-1',
-      },
+      // P02A: parent link uses the typed field, not legacy metadata.
+      kind: ParcelLayer.fieldPlot,
+      parentBlockId: 'parcel-1',
     );
     await tester.pumpWidget(app(LandParcelDetailScreen(
       controller: controller(source: [parcel(), child]),
