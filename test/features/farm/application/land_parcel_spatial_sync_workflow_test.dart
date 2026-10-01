@@ -136,8 +136,8 @@ void main() {
         ],
       );
       expect(saved.map((p) => p.parcelCode).toList(), [
-        'AGR-NONG-L001-T001',
-        'AGR-NONG-L001-T002',
+        'AGR-NONG-T001',
+        'AGR-NONG-T002',
       ]);
       final surveys = SqliteLandSurveyRepository(database);
       expect((await surveys.listCrops('batch-1')).single.cropType, 'Peanut');
@@ -200,7 +200,7 @@ void main() {
         expectedParentBoundaryVersion: parent.boundaryVersion,
         temporalState: SpatialTemporalState.underConstruction,
       );
-      expect(saved.parcelCode, 'AGR-NONG-L001-T001');
+      expect(saved.parcelCode, 'AGR-NONG-T001');
     },
   );
 
@@ -257,7 +257,7 @@ void main() {
         expectedParentBoundaryVersion: parent.boundaryVersion,
         temporalState: SpatialTemporalState.underConstruction,
       );
-      expect(plot.parcelCode, 'AGR-NONG-L001-T001');
+      expect(plot.parcelCode, 'AGR-NONG-T001');
       expect(plot.layer, ParcelLayer.fieldPlot);
       expect(plot.parentLandBlockId, parent.id);
       expect(plot.areaM2, lessThan(parent.areaM2));
@@ -320,7 +320,7 @@ void main() {
         throwsA(isA<DatabaseException>()),
       );
       final next = await save(plotDraft('plot-2', offset: .0002));
-      expect(next.parcelCode, 'AGR-NONG-L001-T002');
+      expect(next.parcelCode, 'AGR-NONG-T002');
       expect(await database.query('land_parcels'), hasLength(3));
       expect(await database.query('land_parcel_spatial_links'), hasLength(3));
     },

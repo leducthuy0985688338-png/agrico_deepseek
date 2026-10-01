@@ -2,7 +2,7 @@ import 'package:agrico_deepseek/core/identity/domain/production_parcel_reference
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('block and plot codes use the approved production hierarchy', () {
+  test('block and plot codes use the project-scoped production numbering', () {
     final block = ProductionParcelReferenceCode.landBlock(
       projectCode: 'AGR-NONG',
       landBlockNumber: 1,
@@ -12,9 +12,9 @@ void main() {
       number: 2,
     );
     expect(block.toString(), 'AGR-NONG-L001');
-    expect(plot.toString(), 'AGR-NONG-L001-T002');
+    expect(plot.toString(), 'AGR-NONG-T002');
     expect(plot.projectCode, block.projectCode);
-    expect(plot.landBlockNumber, block.landBlockNumber);
+    expect(plot.landBlockNumber, isNull);
   });
 
   test('number width expands beyond 999 without truncation', () {
@@ -27,7 +27,7 @@ void main() {
         parent: block,
         number: 1001,
       ).toString(),
-      'AGR-NONG-L1000-T1001',
+      'AGR-NONG-T1001',
     );
   });
 

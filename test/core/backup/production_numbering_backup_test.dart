@@ -110,6 +110,30 @@ void main() {
     },
   );
 
+  test(
+    'parented production plot requires the shared plot counter table',
+    () async {
+      await save(primary, 'block');
+      expect(await save(primary, 'plot', plot: true), 'AGR-NONG-T001');
+      final bytes = _rewrite(
+        await backup(),
+        (tables) => tables.remove(
+          SqliteProductionParcelNumberAllocator.standaloneTable,
+        ),
+      );
+      await expectLater(
+        validate(bytes),
+        throwsA(
+          isA<RestorePreflightException>().having(
+            (e) => e.reason,
+            'reason',
+            'tables',
+          ),
+        ),
+      );
+    },
+  );
+
   test('standalone production code requires its counter table', () async {
     expect(await saveStandalone(primary, 'standalone'), 'AGR-NONG-T001');
     final bytes = _rewrite(
@@ -189,17 +213,15 @@ void main() {
           ),
         ),
       );
-      for (final parent in [0, 1]) {
+      for (final counterTable in [
+        SqliteProductionParcelNumberAllocator.table,
+        SqliteProductionParcelNumberAllocator.standaloneTable,
+      ]) {
         await expectLater(
           validate(
             _rewrite(original, (tables) {
-              final rows =
-                  tables[SqliteProductionParcelNumberAllocator.table] as List;
-              (rows.singleWhere(
-                        (row) => (row as Map)['parent_block_number'] == parent,
-                      )
-                      as Map)['last_sequence'] =
-                  0;
+              final rows = tables[counterTable] as List;
+              (rows.single as Map)['last_sequence'] = 0;
             }),
           ),
           throwsA(
@@ -209,7 +231,7 @@ void main() {
           ),
         );
       }
-      expect(await save(primary, 'next', plot: true), 'AGR-NONG-L001-T002');
+      expect(await save(primary, 'next', plot: true), 'AGR-NONG-T002');
     },
   );
   test(
@@ -221,7 +243,7 @@ void main() {
       final counts = await validate(bytes);
       expect(
         counts['agrico.db/${SqliteProductionParcelNumberAllocator.table}'],
-        2,
+        1,
       );
       await save(primary, 'later', plot: true);
       await primary.close();
@@ -236,7 +258,11 @@ void main() {
         '${directory.path}/agrico_costs.db',
       );
       expect(await primary.query('land_parcels'), hasLength(2));
-      expect(await save(primary, 'after', plot: true), 'AGR-NONG-L001-T002');
+      expect(
+        await saveStandalone(primary, 'after-standalone'),
+        'AGR-NONG-T002',
+      );
+      expect(await save(primary, 'after', plot: true), 'AGR-NONG-T003');
       expect(await save(primary, 'block-after'), 'AGR-NONG-L002');
       expect(await activation.previousBackup(), isNotNull);
     },

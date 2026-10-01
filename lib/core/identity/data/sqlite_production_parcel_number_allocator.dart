@@ -8,6 +8,8 @@ class SqliteProductionParcelNumberAllocator
   const SqliteProductionParcelNumberAllocator(this.transaction);
   final Transaction transaction;
   static const table = 'agrico_production_parcel_sequences_v4';
+  // Historical table name retained: this now numbers ALL field plots.
+  // Parent identity is stored on the parcel, never in its reference code.
   static const standaloneTable =
       'agrico_production_standalone_plot_sequences_v1';
 
@@ -82,7 +84,7 @@ class SqliteProductionParcelNumberAllocator
     if (parentNumber == null) {
       throw const FormatException('A field plot must belong to a land block.');
     }
-    final number = await _next(farmId, parent.projectCode, parentNumber);
+    final number = await _nextStandalone(farmId, parent.projectCode);
     return save(
       ProductionParcelReferenceCode.fieldPlot(parent: parent, number: number),
     );

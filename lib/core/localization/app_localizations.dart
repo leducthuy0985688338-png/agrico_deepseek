@@ -817,6 +817,9 @@ class AppLocalizations {
       'production.create.standalone': 'Thửa độc lập',
       'production.standalone.create': 'Tạo Thửa độc lập',
       'production.plot.create': 'Tạo Thửa trong Lô',
+      'production.plot.fitBlock': 'Hiện toàn bộ lô đất',
+      'production.plot.outsideBlock':
+          'Thửa vượt ra ngoài ranh giới lô. Hãy vẽ lại bên trong đường viền xanh.',
       'production.plot.hint':
           'Chạm các góc rồi khép kín từng Thửa trong Lô. Các Thửa có thể chung cạnh nhưng không chồng lấn. Có thể chừa đất cho đường, giếng và thủy lợi.',
       'production.code.onSave': 'Mẫu mã; số thực tế được cấp khi lưu',
@@ -1030,6 +1033,9 @@ class AppLocalizations {
       'production.create.standalone': 'ແປງດິນເອກະລາດ',
       'production.standalone.create': 'ສ້າງແປງດິນເອກະລາດ',
       'production.plot.create': 'ສ້າງແປງໃນເຂດຜະລິດ',
+      'production.plot.fitBlock': 'ສະແດງຂອບເຂດດິນທັງໝົດ',
+      'production.plot.outsideBlock':
+          'ຮູບທີ່ແຕ້ມຢູ່ນອກຂອບເຂດດິນ. ກະລຸນາແຕ້ມພາຍໃນເສັ້ນສີຂຽວ.',
       'production.plot.hint':
           'ແຕ້ມແປງພາຍໃນເຂດປັດຈຸບັນ. ສາມາດເວັ້ນພື້ນທີ່ສຳລັບທາງ, ນ້ຳບາດານ ແລະ ຊົນລະປະທານ.',
       'production.code.onSave': 'ຕົວຢ່າງລະຫັດ; ກຳນົດເລກເມື່ອບັນທຶກ',
@@ -1237,6 +1243,9 @@ class AppLocalizations {
       'production.create.standalone': 'Standalone plot',
       'production.standalone.create': 'Create standalone plot',
       'production.plot.create': 'Create plots within block',
+      'production.plot.fitBlock': 'Show whole land block',
+      'production.plot.outsideBlock':
+          'The plot extends outside its land block. Redraw inside the green boundary.',
       'production.plot.hint':
           'Tap the corners and close each plot inside the block. Shared edges are allowed; overlapping interiors are rejected. Leave space for roads, wells and irrigation as needed.',
       'production.code.onSave':

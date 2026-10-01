@@ -1,3 +1,4 @@
+import 'dart:ui' as ui;
 import 'package:agrico_deepseek/core/geography/domain/administrative_catalog_repository.dart';
 import 'package:agrico_deepseek/core/geography/domain/entities/administrative_unit.dart';
 import 'package:agrico_deepseek/core/localization/app_localizations.dart';
@@ -13,6 +14,31 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test(
+    'parent boundary overlay shows outline and preserves hole interiors',
+    () async {
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      const painter = ParcelBoundaryOverlayPainter([
+        [Offset(10, 10), Offset(90, 10), Offset(90, 90), Offset(10, 90)],
+        [Offset(40, 40), Offset(60, 40), Offset(60, 60), Offset(40, 60)],
+      ]);
+      painter.paint(canvas, const Size(100, 100));
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(100, 100);
+      final bytes = (await image.toByteData(
+        format: ui.ImageByteFormat.rawRgba,
+      ))!;
+      int alpha(int x, int y) => bytes.getUint8((y * 100 + x) * 4 + 3);
+      expect(alpha(10, 20), 255);
+      expect(alpha(25, 25), greaterThan(0));
+      expect(alpha(50, 50), 0);
+      expect(alpha(2, 2), 0);
+      image.dispose();
+      picture.dispose();
+    },
+  );
+
   testWidgets('undo and redraw keep the remaining numbered draft points', (
     tester,
   ) async {

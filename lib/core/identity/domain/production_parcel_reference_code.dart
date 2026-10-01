@@ -1,4 +1,4 @@
-﻿/// Production codes are independent of villages, households and crop seasons.
+/// Production codes are independent of villages, households and crop seasons.
 /// This is a display code; it does not replace business or spatial identity.
 class ProductionParcelReferenceCode {
   ProductionParcelReferenceCode.landBlock({
@@ -20,7 +20,7 @@ class ProductionParcelReferenceCode {
     required ProductionParcelReferenceCode parent,
     required int number,
   }) : projectCode = parent.projectCode,
-       landBlockNumber = parent.landBlockNumber,
+       landBlockNumber = null,
        fieldPlotNumber = number {
     if (parent.landBlockNumber == null || parent.fieldPlotNumber != null) {
       throw const FormatException('A field plot must belong to a land block.');

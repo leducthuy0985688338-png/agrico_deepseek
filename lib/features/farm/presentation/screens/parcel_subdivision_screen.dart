@@ -42,6 +42,22 @@ class ParcelSubdivisionScreen extends StatefulWidget {
 
 class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   late final Future<(LandParcel, String?)> source = _load();
+  final _drawingTransform = TransformationController();
+  bool get _useSchematicMap => widget.useSchematicMap || widget.productionPlots;
+
+  void _zoomDrawing(double factor, Size size) {
+    final current = _drawingTransform.value;
+    final scale = current.getMaxScaleOnAxis();
+    final nextScale = (scale * factor).clamp(1.0, 12.0).toDouble();
+    final center = Offset(size.width / 2, size.height / 2);
+    final scene = _drawingTransform.toScene(center);
+    _drawingTransform.value = Matrix4.identity()
+      ..setEntry(0, 0, nextScale)
+      ..setEntry(1, 1, nextScale)
+      ..setEntry(0, 3, center.dx - scene.dx * nextScale)
+      ..setEntry(1, 3, center.dy - scene.dy * nextScale);
+  }
+
   final names = <TextEditingController>[];
   final retiredNames = <TextEditingController>[];
   final details = <_SketchDraft>[];
@@ -57,12 +73,11 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
   bool showFieldPlots = true;
   GoogleMapController? mapController;
   List<Offset> draftScreenPoints = const [];
+  List<List<Offset>> sourceScreenRings = const [];
   final completedScreenRings = <List<Offset>>[];
   int projectionRevision = 0;
   Offset? lastMapPointer;
-  bool cameraMoved = false;
   bool previewing = false;
-  bool fittingInitialCamera = true;
 
   int _layerOrdinal(int index) {
     final layer = details[index].layer;
@@ -90,6 +105,10 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
               ),
             ),
           );
+      final parcel = (await source).$1;
+      final sourceCoordinates = await Future.wait(
+        [parcel.boundary.vertices, ...parcel.boundary.holes].map(project),
+      );
       final coordinates = await project(vertices);
       final completed = await Future.wait(
         cuts.map((cut) => project(cut.enclosedPolygon!.vertices)),
@@ -99,6 +118,9 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
       Offset position(ScreenCoordinate coordinate) =>
           Offset(coordinate.x / pixelRatio, coordinate.y / pixelRatio);
       setState(() {
+        sourceScreenRings = sourceCoordinates
+            .map((ring) => ring.map(position).toList())
+            .toList();
         draftScreenPoints = coordinates.map(position).toList();
         completedScreenRings
           ..clear()
@@ -143,6 +165,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
 
   @override
   void dispose() {
+    _drawingTransform.dispose();
     for (final name in names) {
       name.dispose();
     }
@@ -289,7 +312,13 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
           final summary = AppLocalizations.of(
             context,
           ).text('subdivision.invalidCut');
-          previewError = error is FormatException || error is StateError
+          previewError =
+              error is FormatException &&
+                  error.message == 'Field plot extends outside its land block.'
+              ? AppLocalizations.of(
+                  context,
+                ).text('production.plot.outsideBlock')
+              : error is FormatException || error is StateError
               ? '$summary\n$error'
               : summary;
           previewing = false;
@@ -359,7 +388,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
     final east = vertices.map((v) => v.longitude).reduce(math.max);
     final draft = [?start, ...waypoints];
     final boundaries = <Polygon>{
-      if (showLandBlock)
+      if (widget.productionPlots || showLandBlock)
         Polygon(
           polygonId: const PolygonId('source-area'),
           points: vertices.map(point).toList(),
@@ -412,16 +441,8 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                   target: point(parcel.centroid),
                   zoom: 16,
                 ),
-                onCameraMoveStarted: () => cameraMoved = true,
                 onCameraIdle: () {
-                  if (fittingInitialCamera) {
-                    cameraMoved = false;
-                    return;
-                  }
-                  if (cameraMoved) {
-                    cameraMoved = false;
-                    _refreshDraftScreenPoints();
-                  }
+                  _refreshDraftScreenPoints();
                 },
                 onMapCreated: (controller) async {
                   mapController = controller;
@@ -436,7 +457,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                       ),
                     );
                   }
-                  fittingInitialCamera = false;
+                  await _refreshDraftScreenPoints();
                 },
                 onTap: (location) => _chooseVertex(
                   parcel,
@@ -487,6 +508,15 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
               ),
             ),
           ),
+          if (widget.productionPlots || showLandBlock)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  key: const Key('subdivision-source-overlay'),
+                  painter: ParcelBoundaryOverlayPainter(sourceScreenRings),
+                ),
+              ),
+            ),
           Positioned.fill(
             child: IgnorePointer(
               child: CustomPaint(
@@ -521,20 +551,40 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                 ),
               ),
             ),
-          if (start != null && waypoints.length >= 2)
-            Positioned(
-              bottom: 12,
-              left: 12,
-              right: 12,
-              child: FilledButton.icon(
-                key: const Key('subdivision-close-outline'),
-                onPressed: previewing ? null : () => _finish(parcel),
-                icon: const Icon(Icons.check_circle_outline),
-                label: Text(
-                  AppLocalizations.of(context).text('subdivision.closeOutline'),
-                ),
+          Positioned(
+            top: 12,
+            right: 12,
+            child: Material(
+              color: Colors.white,
+              elevation: 4,
+              borderRadius: BorderRadius.circular(12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    key: const Key('subdivision-zoom-in'),
+                    icon: const Icon(Icons.add),
+                    onPressed: () async {
+                      final controller = mapController;
+                      if (controller == null) return;
+                      await controller.animateCamera(CameraUpdate.zoomIn());
+                      await _refreshDraftScreenPoints();
+                    },
+                  ),
+                  IconButton(
+                    key: const Key('subdivision-zoom-out'),
+                    icon: const Icon(Icons.remove),
+                    onPressed: () async {
+                      final controller = mapController;
+                      if (controller == null) return;
+                      await controller.animateCamera(CameraUpdate.zoomOut());
+                      await _refreshDraftScreenPoints();
+                    },
+                  ),
+                ],
               ),
             ),
+          ),
           for (var i = 0; i < draftScreenPoints.length; i++)
             if (draftScreenPoints[i].dx >= 0 &&
                 draftScreenPoints[i].dy >= 0 &&
@@ -606,15 +656,16 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
               if (!widget.productionPlots)
                 Text(l10n.text('subdivision.instruction')),
               Text(l10n.text('subdivision.editSelected')),
-              if (!widget.useSchematicMap)
+              if (!_useSchematicMap)
                 Wrap(
                   spacing: 8,
                   children: [
                     FilterChip(
                       label: Text(l10n.text('parcel.layer.landBlock')),
-                      selected: showLandBlock,
-                      onSelected: (value) =>
-                          setState(() => showLandBlock = value),
+                      selected: widget.productionPlots || showLandBlock,
+                      onSelected: widget.productionPlots
+                          ? null
+                          : (value) => setState(() => showLandBlock = value),
                     ),
                     FilterChip(
                       label: Text(l10n.text('parcel.layer.fieldPlot')),
@@ -624,8 +675,34 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                     ),
                   ],
                 ),
-              if (!widget.useSchematicMap)
-                Text(l10n.text('subdivision.layerHint')),
+              if (!_useSchematicMap) Text(l10n.text('subdivision.layerHint')),
+              if (!_useSchematicMap)
+                TextButton.icon(
+                  key: const Key('subdivision-fit-source'),
+                  onPressed: () async {
+                    final controller = mapController;
+                    if (controller == null) return;
+                    final vertices = parcel.boundary.vertices;
+                    await controller.animateCamera(
+                      CameraUpdate.newLatLngBounds(
+                        LatLngBounds(
+                          southwest: LatLng(
+                            vertices.map((v) => v.latitude).reduce(math.min),
+                            vertices.map((v) => v.longitude).reduce(math.min),
+                          ),
+                          northeast: LatLng(
+                            vertices.map((v) => v.latitude).reduce(math.max),
+                            vertices.map((v) => v.longitude).reduce(math.max),
+                          ),
+                        ),
+                        48,
+                      ),
+                    );
+                    await _refreshDraftScreenPoints();
+                  },
+                  icon: const Icon(Icons.center_focus_strong),
+                  label: Text(l10n.text('production.plot.fitBlock')),
+                ),
               SizedBox(
                 height: 128,
                 child: start == null
@@ -673,8 +750,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                                 icon: const Icon(Icons.restart_alt),
                                 label: Text(l10n.text('subdivision.reset')),
                               ),
-                              if (widget.useSchematicMap &&
-                                  waypoints.length >= 2)
+                              if (waypoints.length >= 2)
                                 FilledButton.icon(
                                   key: const Key('subdivision-close-outline'),
                                   onPressed: previewing
@@ -696,32 +772,82 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                   previewError!,
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
-              if (!widget.useSchematicMap)
-                SizedBox(height: 480, child: _satelliteMap(parcel, fragments))
+              if (!_useSchematicMap)
+                SizedBox(height: 640, child: _satelliteMap(parcel, fragments))
               else
                 SizedBox(
                   height: 420,
                   child: LayoutBuilder(
                     builder: (context, box) {
                       final size = Size(box.maxWidth, box.maxHeight);
-                      return GestureDetector(
-                        key: const Key('subdivision-map'),
-                        onTapDown: (details) =>
-                            _choose(parcel, details.localPosition, size),
-                        child: CustomPaint(
-                          size: size,
-                          painter: _CutPainter(
-                            parcel.boundary,
-                            [?start, ...waypoints],
-                            fragments,
-                            -1,
+                      return Stack(
+                        children: [
+                          Positioned.fill(
+                            child: InteractiveViewer(
+                              transformationController: _drawingTransform,
+                              minScale: 1,
+                              maxScale: 12,
+                              child: SizedBox(
+                                width: size.width,
+                                height: size.height,
+                                child: GestureDetector(
+                                  key: const Key('subdivision-map'),
+                                  onTapUp: (details) => _choose(
+                                    parcel,
+                                    details.localPosition,
+                                    size,
+                                  ),
+                                  child: CustomPaint(
+                                    size: size,
+                                    painter: _CutPainter(
+                                      parcel.boundary,
+                                      [?start, ...waypoints],
+                                      fragments,
+                                      -1,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
+                          Positioned(
+                            right: 8,
+                            top: 8,
+                            child: Material(
+                              color: Colors.white,
+                              elevation: 4,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    key: const Key('drawing-zoom-in'),
+                                    icon: const Icon(Icons.add),
+                                    onPressed: () => _zoomDrawing(1.5, size),
+                                  ),
+                                  IconButton(
+                                    key: const Key('drawing-zoom-out'),
+                                    icon: const Icon(Icons.remove),
+                                    onPressed: () =>
+                                        _zoomDrawing(1 / 1.5, size),
+                                  ),
+                                  IconButton(
+                                    key: const Key('drawing-zoom-reset'),
+                                    icon: const Icon(Icons.center_focus_strong),
+                                    onPressed: () {
+                                      _drawingTransform.value =
+                                          Matrix4.identity();
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       );
                     },
                   ),
                 ),
-              if (widget.useSchematicMap && preview != null) ...[
+              if (_useSchematicMap && preview != null) ...[
                 Text(l10n.text('subdivision.overview')),
                 SizedBox(
                   height: 180,
@@ -1275,4 +1401,46 @@ class _CutPainter extends CustomPainter {
       old.cut != cut ||
       old.children != children ||
       old.selected != selected;
+}
+
+/// The parent boundary is drawn above the platform map even when native
+/// polygon rendering or satellite tiles are unavailable. Hole interiors remain clear.
+class ParcelBoundaryOverlayPainter extends CustomPainter {
+  const ParcelBoundaryOverlayPainter(this.rings);
+  final List<List<Offset>> rings;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path()..fillType = PathFillType.evenOdd;
+    for (final ring in rings) {
+      if (ring.length < 3) continue;
+      path.moveTo(ring.first.dx, ring.first.dy);
+      for (final point in ring.skip(1)) {
+        path.lineTo(point.dx, point.dy);
+      }
+      path.close();
+    }
+    canvas.drawPath(
+      path,
+      Paint()..color = Colors.green.withValues(alpha: 0.12),
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 8,
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = Colors.green.shade800
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4,
+    );
+  }
+
+  @override
+  bool shouldRepaint(ParcelBoundaryOverlayPainter oldDelegate) =>
+      oldDelegate.rings != rings;
 }

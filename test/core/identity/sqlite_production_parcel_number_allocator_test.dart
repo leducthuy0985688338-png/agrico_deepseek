@@ -39,18 +39,18 @@ void main() {
     ),
   );
   test(
-    'farm project and parent counters are independent and durable',
+    'plot numbers share project scope across parents and survive schema reopen',
     () async {
       expect(await block('farm-1', 'AGR-NONG'), 'AGR-NONG-L001');
       expect(await block('farm-1', 'AGR-NONG'), 'AGR-NONG-L002');
       expect(await block('farm-2', 'AGR-NONG'), 'AGR-NONG-L001');
       expect(await block('farm-1', 'AGR-OTHER'), 'AGR-OTHER-L001');
-      expect(await plot('farm-1', 1), 'AGR-NONG-L001-T001');
-      expect(await plot('farm-1', 1), 'AGR-NONG-L001-T002');
-      expect(await plot('farm-1', 2), 'AGR-NONG-L002-T001');
-      expect(await plot('farm-2', 1), 'AGR-NONG-L001-T001');
+      expect(await plot('farm-1', 1), 'AGR-NONG-T001');
+      expect(await plot('farm-1', 1), 'AGR-NONG-T002');
+      expect(await plot('farm-1', 2), 'AGR-NONG-T003');
+      expect(await plot('farm-2', 1), 'AGR-NONG-T001');
       await SqliteProductionParcelNumberAllocator.createSchema(db);
-      expect(await plot('farm-1', 1), 'AGR-NONG-L001-T003');
+      expect(await plot('farm-1', 1), 'AGR-NONG-T004');
     },
   );
 
@@ -96,13 +96,41 @@ void main() {
   );
 
   test(
-    'standalone plot counter is independent from block and parented plots',
+    'standalone and parented plots share one counter independent from blocks',
     () async {
       expect(await block('farm-1', 'AGR-NONG'), 'AGR-NONG-L001');
       expect(await standalonePlot('farm-1', 'AGR-NONG'), 'AGR-NONG-T001');
       expect(await standalonePlot('farm-1', 'AGR-NONG'), 'AGR-NONG-T002');
-      expect(await plot('farm-1', 1), 'AGR-NONG-L001-T001');
+      expect(await plot('farm-1', 1), 'AGR-NONG-T003');
+      expect(await standalonePlot('farm-1', 'AGR-NONG'), 'AGR-NONG-T004');
+      expect(await plot('farm-1', 2), 'AGR-NONG-T005');
+      expect(await standalonePlot('farm-1', 'AGR-OTHER'), 'AGR-OTHER-T001');
       expect(await block('farm-1', 'AGR-NONG'), 'AGR-NONG-L002');
+    },
+  );
+  test(
+    'failed parented plot save preserves the shared standalone number',
+    () async {
+      expect(await standalonePlot('farm-1', 'AGR-NONG'), 'AGR-NONG-T001');
+      await expectLater(
+        db.transaction(
+          (tx) => SqliteProductionParcelNumberAllocator(tx).saveFieldPlot<void>(
+            farmId: 'farm-1',
+            parent: ProductionParcelReferenceCode.landBlock(
+              projectCode: 'AGR-NONG',
+              landBlockNumber: 2,
+            ),
+            save: (code) async {
+              await tx.insert('records', {'code': code.toString()});
+              throw StateError('Save failed');
+            },
+          ),
+        ),
+        throwsStateError,
+      );
+      expect(await db.query('records'), isEmpty);
+      expect(await standalonePlot('farm-1', 'AGR-NONG'), 'AGR-NONG-T002');
+      expect(await plot('farm-1', 1), 'AGR-NONG-T003');
     },
   );
 }

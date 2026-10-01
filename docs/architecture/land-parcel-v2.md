@@ -342,3 +342,11 @@ Các liên kết kho/tài chính/mùa vụ được mô tả theo những nguồ
 - Old test data was cleared from the test device.
 - Full analyzer still reports 5 warnings and 162 infos; these remain unresolved.
 - This checkpoint is an intermediate implementation of the target architecture.
+
+## P02C — unified field plot numbering
+
+New standalone and parented plots share one farm/project T sequence.
+Parent relations remain in parentLandBlockId; they are absent from the code.
+The existing standalone counter table name is retained for database continuity.
+Existing codes are not rewritten. Legacy nested-code backup validation remains
+for reading older snapshots. P02C validation: all 1016 tests passed; debug APK build passed. Device drawing and saving passed. Production drawing uses a zoomable Flutter schematic of the stored boundary; satellite imagery is unavailable in this mode.
