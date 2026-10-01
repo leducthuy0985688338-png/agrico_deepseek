@@ -755,6 +755,28 @@ class AppLocalizations {
       'auth.demoHint': '💡 (Nhấn nút để vào Demo, không cần mật khẩu)',
       'common.loading': 'Đang tải…',
       'common.retry': 'Thử lại',
+      "parentRelation.title": "Liên kết Thửa–Lô",
+      "parentRelation.independent": "Thửa độc lập",
+      "parentRelation.unavailable": "Không xem được lô liên kết",
+      "parentRelation.hint":
+          "Chọn lô cùng dự án hoặc để thửa độc lập. Mã thửa và ranh giới được giữ nguyên.",
+      "parentRelation.noBlocks": "Chưa có lô đang hoạt động trong cùng dự án.",
+      "parentRelation.error.permissionDenied":
+          "Bạn không có quyền thay đổi liên kết này.",
+      "parentRelation.error.invalidPlot":
+          "Thửa không tồn tại, đã ngừng sử dụng hoặc không phải thửa ruộng.",
+      "parentRelation.error.changed":
+          "Dữ liệu đã thay đổi. Quay lại hồ sơ và mở thao tác này lần nữa.",
+      "parentRelation.error.invalidParent":
+          "Lô đích không hợp lệ hoặc đã ngừng sử dụng.",
+      "parentRelation.error.projectMismatch":
+          "Thửa và lô đích phải có cùng dự án đã xác định.",
+      "parentRelation.error.outsideBlock":
+          "Thửa không nằm hoàn toàn trong vùng đất hợp lệ của lô đích.",
+      "parentRelation.error.overlap":
+          "Thửa chồng lấn một thửa khác đã thuộc lô đích.",
+      "parentRelation.error.persistence":
+          "Không lưu được liên kết. Vui lòng thử lại.",
       'common.cancel': 'Hủy',
       'common.save': 'Lưu',
       'error.unauthorized': 'Bạn không có quyền thực hiện thao tác này.',
@@ -972,6 +994,25 @@ class AppLocalizations {
       'auth.demoHint': '💡 (ກົດປຸ່ມເພື່ອເຂົ້າ Demo ໂດຍບໍ່ຕ້ອງໃສ່ລະຫັດ)',
       'common.loading': 'ກຳລັງໂຫຼດ…',
       'common.retry': 'ລອງໃໝ່',
+      "parentRelation.title": "ເຊື່ອມຕໍ່ແປງ–ຕອນດິນ",
+      "parentRelation.independent": "ແປງດິນອິດສະຫຼະ",
+      "parentRelation.unavailable": "ບໍ່ສາມາດເບິ່ງຕອນດິນທີ່ເຊື່ອມຕໍ່",
+      "parentRelation.hint":
+          "ເລືອກຕອນດິນໃນໂຄງການດຽວກັນ ຫຼື ໃຫ້ແປງດິນເປັນອິດສະຫຼະ. ລະຫັດ ແລະ ຂອບເຂດບໍ່ປ່ຽນ.",
+      "parentRelation.noBlocks": "ບໍ່ມີຕອນດິນທີ່ໃຊ້ງານໃນໂຄງການດຽວກັນ.",
+      "parentRelation.error.permissionDenied": "ທ່ານບໍ່ມີສິດປ່ຽນການເຊື່ອມຕໍ່.",
+      "parentRelation.error.invalidPlot": "ແປງດິນບໍ່ມີ ຫຼື ບໍ່ໄດ້ໃຊ້ງານ.",
+      "parentRelation.error.changed":
+          "ຂໍ້ມູນປ່ຽນແລ້ວ. ກັບໄປເປີດໜ້າຂໍ້ມູນອີກຄັ້ງ.",
+      "parentRelation.error.invalidParent":
+          "ຕອນດິນປາຍທາງບໍ່ຖືກຕ້ອງ ຫຼື ບໍ່ໄດ້ໃຊ້ງານ.",
+      "parentRelation.error.projectMismatch":
+          "ແປງ ແລະ ຕອນດິນຕ້ອງຢູ່ໃນໂຄງການດຽວກັນ.",
+      "parentRelation.error.outsideBlock":
+          "ແປງດິນບໍ່ໄດ້ຢູ່ພາຍໃນຂອບເຂດທີ່ໃຊ້ໄດ້ຂອງຕອນດິນ.",
+      "parentRelation.error.overlap": "ແປງດິນທັບຊ້ອນກັບແປງອື່ນໃນຕອນດິນປາຍທາງ.",
+      "parentRelation.error.persistence":
+          "ບັນທຶກການເຊື່ອມຕໍ່ບໍ່ໄດ້. ກະລຸນາລອງອີກ.",
       'common.cancel': 'ຍົກເລີກ',
       'common.save': 'ບັນທຶກ',
       'error.unauthorized': 'ທ່ານບໍ່ມີສິດເຮັດລາຍການນີ້.',
@@ -1181,6 +1222,28 @@ class AppLocalizations {
       'auth.demoHint': '💡 (Tap to enter the demo without a password)',
       'common.loading': 'Loading…',
       'common.retry': 'Retry',
+      "parentRelation.title": "Plot–block relation",
+      "parentRelation.independent": "Independent plot",
+      "parentRelation.unavailable": "Linked block unavailable",
+      "parentRelation.hint":
+          "Choose a block in the same project or leave the plot independent. The plot code and boundary stay unchanged.",
+      "parentRelation.noBlocks": "No active blocks in the same project.",
+      "parentRelation.error.permissionDenied":
+          "You do not have permission to change this relation.",
+      "parentRelation.error.invalidPlot":
+          "The plot is missing, inactive or has the wrong kind.",
+      "parentRelation.error.changed":
+          "Data changed. Return to the plot record and reopen this editor.",
+      "parentRelation.error.invalidParent":
+          "The target block is invalid or inactive.",
+      "parentRelation.error.projectMismatch":
+          "The plot and target block must have the same identified project.",
+      "parentRelation.error.outsideBlock":
+          "The plot is not fully inside the usable area of the target block.",
+      "parentRelation.error.overlap":
+          "The plot overlaps another plot in the target block.",
+      "parentRelation.error.persistence":
+          "Could not save the relation. Please try again.",
       'common.cancel': 'Cancel',
       'common.save': 'Save',
       'error.unauthorized': 'You do not have permission for this action.',

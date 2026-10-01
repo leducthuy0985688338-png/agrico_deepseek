@@ -8,6 +8,7 @@ import '../../application/land_parcel_boundary_consistency_queries.dart';
 import '../../application/land_parcel_application_service.dart';
 import '../../application/land_parcel_use_cases.dart';
 import '../../application/production_parcel_creation_service.dart';
+import '../../application/land_parcel_parent_service.dart';
 import '../../data/interchange/kml_interchange.dart';
 import '../../domain/entities/land_parcel.dart';
 import '../../domain/entities/land_survey.dart';
@@ -84,6 +85,7 @@ class LandParcelController extends ChangeNotifier {
     this.boundaryConsistencyQueries,
     this.reconcileLegacySpatialIdentity,
     this.productionCreation,
+    this.parentRelations,
   });
 
   final AuthorizationSubject subject;
@@ -91,6 +93,7 @@ class LandParcelController extends ChangeNotifier {
   final LandSurveyRepository surveys;
   final CreateLandParcel createLandParcel;
   final ProductionParcelCreationService? productionCreation;
+  final LandParcelParentService? parentRelations;
   final UpdateLandParcelMetadata updateMetadata;
   final CompleteGpsMeasurement completeGpsMeasurement;
   final VerifyBoundary verifyBoundary;
@@ -153,6 +156,15 @@ class LandParcelController extends ChangeNotifier {
         loaded.add(
           LandParcelViewData(
             parcel: parcel,
+            parentLandBlock: parcel.parentBlockId == null
+                ? null
+                : source
+                      .where(
+                        (p) =>
+                            p.id == parcel.parentBlockId &&
+                            can(PermissionCodes.fieldView, parcelId: p.id),
+                      )
+                      .firstOrNull,
             boundaryConsistency:
                 await boundaryConsistencyQueries?.check(parcel) ??
                 LandParcelBoundaryConsistency.unlinked,

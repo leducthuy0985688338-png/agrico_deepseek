@@ -350,3 +350,18 @@ Parent relations remain in parentLandBlockId; they are absent from the code.
 The existing standalone counter table name is retained for database continuity.
 Existing codes are not rewritten. Legacy nested-code backup validation remains
 for reading older snapshots. P02C validation: all 1016 tests passed; debug APK build passed. Device drawing and saving passed. Production drawing uses a zoomable Flutter schematic of the stored boundary; satellite imagery is unavailable in this mode.
+
+## P02D — editable plot–block relations
+
+The plot detail provides an editor for attaching, transferring and detaching
+field plots. Blocks offered belong to the same identified project and farm.
+The application requires farm-wide view/edit access and validates active state,
+plot and target snapshots, containment and destination sibling overlap inside
+one repository transaction. Null target means explicit detachment.
+The operation preserves business code/ID, project, geometry, immutable boundary
+history, spatial feature/revisions/links, crops and numbering counters.
+Lists and details show the current block or independent status. Existing
+updateKind and repository transactions are reused; no new parcel store or
+schema migration is introduced. Relationship audit currently uses updatedBy
+and updatedAt; a separate relation-event history is not introduced here.
+P02D validation is pending local execution.

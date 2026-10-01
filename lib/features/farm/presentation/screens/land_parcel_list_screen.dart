@@ -185,61 +185,72 @@ class _LandParcelListScreenState extends State<LandParcelListScreen> {
           )
         else ...[
           if (items.any((item) => item.parcel.layer == ParcelLayer.landBlock))
-            Padding(padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text(l10n.text('parcel.layer.landBlock'),
-                style: Theme.of(context).textTheme.titleMedium)),
-          ...items.where((item) => item.parcel.layer == ParcelLayer.landBlock).map(
-            (item) => _parcelCard(context, item, l10n, controller)),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                l10n.text('parcel.layer.landBlock'),
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+          ...items
+              .where((item) => item.parcel.layer == ParcelLayer.landBlock)
+              .map((item) => _parcelCard(context, item, l10n, controller)),
           if (items.any((item) => item.parcel.layer == ParcelLayer.fieldPlot))
-            Padding(padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text(l10n.text('parcel.layer.fieldPlot'),
-                style: Theme.of(context).textTheme.titleMedium)),
-          ...items.where((item) => item.parcel.layer == ParcelLayer.fieldPlot).map(
-            (item) => _parcelCard(context, item, l10n, controller)),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                l10n.text('parcel.layer.fieldPlot'),
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+          ...items
+              .where((item) => item.parcel.layer == ParcelLayer.fieldPlot)
+              .map((item) => _parcelCard(context, item, l10n, controller)),
         ],
       ],
     );
   }
 
-  Widget _parcelCard(BuildContext context, LandParcelViewData item,
-      AppLocalizations l10n, LandParcelController controller) =>
-          Card(
-              child: ListTile(
-                key: Key('parcel-${item.parcel.id}'),
-                title: Text('${item.parcel.parcelCode} · ${item.parcel.name}'),
-                subtitle: Text(
-                  [
-                    if (item.parcel.parentLandBlockId != null)
-                      l10n.text('parcel.layer.${item.parcel.layer.name}'),
-                    if (item.village.isNotEmpty) item.village,
-                    if (!widget.landOnly && item.owner.isNotEmpty) item.owner,
-                    '${item.parcel.areaHa.toStringAsFixed(2)} ha',
-                    l10n.text(
-                      'verification.${item.parcel.verificationStatus.name}',
-                    ),
-                    l10n.text(
-                      'boundary.audit.${item.boundaryConsistency.name}',
-                    ),
-                    if (item.cropSummary.isNotEmpty) item.cropSummary,
-                  ].join(' · '),
-                ),
-                trailing: Icon(
-                  item.parcel.active ? Icons.check_circle : Icons.pause_circle,
-                ),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (routeContext) =>
-                        widget.detailBuilder?.call(
-                          routeContext,
-                          item.parcel.id,
-                        ) ??
-                        LandParcelDetailScreen(
-                          landOnly: widget.landOnly,
-                          controller: controller,
-                          parcelId: item.parcel.id,
-                        ),
-                  ),
-                ),
+  Widget _parcelCard(
+    BuildContext context,
+    LandParcelViewData item,
+    AppLocalizations l10n,
+    LandParcelController controller,
+  ) => Card(
+    child: ListTile(
+      key: Key('parcel-${item.parcel.id}'),
+      title: Text('${item.parcel.parcelCode} · ${item.parcel.name}'),
+      subtitle: Text(
+        [
+          if (item.parcel.kind == ParcelLayer.fieldPlot)
+            item.parcel.parentBlockId == null
+                ? l10n.text('parentRelation.independent')
+                : item.parentLandBlock == null
+                ? l10n.text('parentRelation.unavailable')
+                : '${l10n.text('subdivision.parentBlock')}: '
+                      '${item.parentLandBlock!.parcelCode} · ${item.parentLandBlock!.name}',
+          if (item.village.isNotEmpty) item.village,
+          if (!widget.landOnly && item.owner.isNotEmpty) item.owner,
+          '${item.parcel.areaHa.toStringAsFixed(2)} ha',
+          l10n.text('verification.${item.parcel.verificationStatus.name}'),
+          l10n.text('boundary.audit.${item.boundaryConsistency.name}'),
+          if (item.cropSummary.isNotEmpty) item.cropSummary,
+        ].join(' · '),
+      ),
+      trailing: Icon(
+        item.parcel.active ? Icons.check_circle : Icons.pause_circle,
+      ),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (routeContext) =>
+              widget.detailBuilder?.call(routeContext, item.parcel.id) ??
+              LandParcelDetailScreen(
+                landOnly: widget.landOnly,
+                controller: controller,
+                parcelId: item.parcel.id,
               ),
-            );
+        ),
+      ),
+    ),
+  );
 }

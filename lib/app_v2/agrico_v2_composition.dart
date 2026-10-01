@@ -52,6 +52,7 @@ import '../features/farm/domain/geometry/wgs84_geometry.dart';
 import '../features/farm/presentation/controllers/land_parcel_controller.dart';
 import '../features/farm/presentation/platform/land_parcel_platform_io.dart';
 import '../features/farm/presentation/screens/land_parcel_detail_screen.dart';
+import '../features/farm/application/land_parcel_parent_service.dart';
 import '../features/farm/presentation/screens/land_parcel_form_screen.dart';
 import '../features/farm/presentation/screens/land_parcel_list_screen.dart';
 import '../features/farm/presentation/widgets/boundary_workflow_widgets.dart';
@@ -149,6 +150,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       surveys: SqliteLandSurveyRepository(database),
       createLandParcel: CreateLandParcel(application),
       productionCreation: productionCreation,
+      parentRelations: LandParcelParentService(parcels),
       updateMetadata: UpdateLandParcelMetadata(application),
       completeGpsMeasurement: CompleteGpsMeasurement(application),
       verifyBoundary: VerifyBoundary(application),

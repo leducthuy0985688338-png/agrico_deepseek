@@ -9,6 +9,7 @@ import '../../domain/entities/land_parcel.dart';
 import '../../domain/entities/land_survey.dart';
 import '../controllers/land_parcel_controller.dart';
 import 'boundary_history_screen.dart';
+import 'land_parcel_parent_screen.dart';
 
 class LandParcelDetailScreen extends StatefulWidget {
   const LandParcelDetailScreen({
@@ -54,6 +55,27 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
   void dispose() {
     widget.controller.removeListener(_changed);
     super.dispose();
+  }
+
+  Future<void> _editParent(LandParcel parcel) async {
+    final controller = widget.controller;
+    final service = controller.parentRelations;
+    if (service == null) {
+      return;
+    }
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => LandParcelParentScreen(
+          subject: controller.subject,
+          plot: parcel,
+          service: service,
+        ),
+      ),
+    );
+    if (changed == true && mounted) {
+      await controller.loadList();
+      await controller.loadDetail(widget.parcelId);
+    }
   }
 
   void _changed() {
@@ -127,9 +149,9 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
                   children: [
                     Text(l10n.text('boundary.reconciliation.required')),
                     if (data.boundaryIssue != null)
-                      Text(l10n.text(
-                        'boundary.issue.${data.boundaryIssue!.name}',
-                      )),
+                      Text(
+                        l10n.text('boundary.issue.${data.boundaryIssue!.name}'),
+                      ),
                   ],
                 ),
               ),
@@ -145,16 +167,22 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
                   children: [
                     Text(l10n.text('boundary.reconciliation.eligible')),
                     if (controller.reconcileLegacySpatialIdentity != null &&
-                        controller.can(PermissionCodes.fieldEdit,
-                            parcelId: parcel.id) &&
-                        controller.can(PermissionCodes.fieldBoundaryVerify,
-                            parcelId: parcel.id))
+                        controller.can(
+                          PermissionCodes.fieldEdit,
+                          parcelId: parcel.id,
+                        ) &&
+                        controller.can(
+                          PermissionCodes.fieldBoundaryVerify,
+                          parcelId: parcel.id,
+                        ))
                       FilledButton.tonal(
                         key: const Key('repair-legacy-spatial-identity'),
                         onPressed: _isReconciling
                             ? null
                             : () => _confirmReconciliation(parcel.id),
-                        child: Text(l10n.text('boundary.reconciliation.action')),
+                        child: Text(
+                          l10n.text('boundary.reconciliation.action'),
+                        ),
                       ),
                   ],
                 ),
@@ -165,14 +193,37 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
             style: Theme.of(context).textTheme.titleLarge,
           ),
           Text(l10n.text('parcel.layer.${parcel.layer.name}')),
-          if (parcel.layer == ParcelLayer.fieldPlot &&
-              data.parentLandBlock != null)
-            Text('${l10n.text('subdivision.parentBlock')}: '
-              '${data.parentLandBlock!.parcelCode} · '
-              '${data.parentLandBlock!.name}',
-              key: const Key('parcel-parent-land-block')),
-          if (data.village.isNotEmpty || (!widget.landOnly && data.owner.isNotEmpty))
-            Text(widget.landOnly ? data.village : '${data.village} · ${data.owner}'),
+          if (parcel.layer == ParcelLayer.fieldPlot) ...[
+            Text(
+              data.parentLandBlock == null
+                  ? (parcel.parentBlockId == null
+                        ? l10n.text('parentRelation.independent')
+                        : l10n.text('parentRelation.unavailable'))
+                  : '${l10n.text('subdivision.parentBlock')}: '
+                        '${data.parentLandBlock!.parcelCode} · ${data.parentLandBlock!.name}',
+              key: const Key('parcel-parent-land-block'),
+            ),
+            if (parcel.active &&
+                controller.parentRelations != null &&
+                controller.subject.dataScopes.contains(DataScope.allFarm) &&
+                controller.can(PermissionCodes.fieldEdit, parcelId: parcel.id))
+              Align(
+                alignment: Alignment.centerLeft,
+                child: FilledButton.tonalIcon(
+                  key: const Key('edit-parcel-parent'),
+                  onPressed: () => _editParent(parcel),
+                  icon: const Icon(Icons.account_tree_outlined),
+                  label: Text(l10n.text('parentRelation.title')),
+                ),
+              ),
+          ],
+          if (data.village.isNotEmpty ||
+              (!widget.landOnly && data.owner.isNotEmpty))
+            Text(
+              widget.landOnly
+                  ? data.village
+                  : '${data.village} · ${data.owner}',
+            ),
           if (parcel.verificationStatus !=
                   BoundaryVerificationStatus.verified &&
               controller.can(
@@ -282,37 +333,30 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
                       )
                       .toList(),
           ),
-          _section(
-            context,
-            l10n.text('survey.attachment'),
-            [
-              if (data.attachments.isEmpty)
-                Text(l10n.text('attachment.empty')),
-              ...data.attachments.map(
-                        (attachment) => ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(
-                            _attachmentIcon(attachment.attachmentType),
-                          ),
-                          title: Text(attachment.fileName),
-                          subtitle: Text(attachment.mimeType),
-                          onTap: attachment.localReference == null ||
-                                  widget.onOpenAttachment == null
-                              ? null
-                              : () => widget.onOpenAttachment!(attachment),
-                        ),
-                      ),
-              if (widget.onAttachRequested != null &&
-                  controller.can(PermissionCodes.fieldEdit,
-                      parcelId: parcel.id))
-                OutlinedButton.icon(
-                  key: const Key('attach-parcel-file'),
-                  onPressed: widget.onAttachRequested,
-                  icon: const Icon(Icons.attach_file),
-                  label: Text(l10n.text('attachment.addMetadata')),
-                ),
-            ],
-          ),
+          _section(context, l10n.text('survey.attachment'), [
+            if (data.attachments.isEmpty) Text(l10n.text('attachment.empty')),
+            ...data.attachments.map(
+              (attachment) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(_attachmentIcon(attachment.attachmentType)),
+                title: Text(attachment.fileName),
+                subtitle: Text(attachment.mimeType),
+                onTap:
+                    attachment.localReference == null ||
+                        widget.onOpenAttachment == null
+                    ? null
+                    : () => widget.onOpenAttachment!(attachment),
+              ),
+            ),
+            if (widget.onAttachRequested != null &&
+                controller.can(PermissionCodes.fieldEdit, parcelId: parcel.id))
+              OutlinedButton.icon(
+                key: const Key('attach-parcel-file'),
+                onPressed: widget.onAttachRequested,
+                icon: const Icon(Icons.attach_file),
+                label: Text(l10n.text('attachment.addMetadata')),
+              ),
+          ]),
           _section(context, l10n.text('googleEarth.title'), [
             Wrap(
               spacing: 8,
@@ -405,19 +449,29 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(AppLocalizations.of(dialogContext)
-            .text('boundary.reconciliation.action')),
-        content: Text(AppLocalizations.of(dialogContext)
-            .text('boundary.reconciliation.confirm')),
+        title: Text(
+          AppLocalizations.of(
+            dialogContext,
+          ).text('boundary.reconciliation.action'),
+        ),
+        content: Text(
+          AppLocalizations.of(
+            dialogContext,
+          ).text('boundary.reconciliation.confirm'),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(AppLocalizations.of(dialogContext).text('common.cancel')),
+            child: Text(
+              AppLocalizations.of(dialogContext).text('common.cancel'),
+            ),
           ),
           FilledButton(
             key: const Key('confirm-repair-legacy-spatial-identity'),
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(AppLocalizations.of(dialogContext).text('common.confirm')),
+            child: Text(
+              AppLocalizations.of(dialogContext).text('common.confirm'),
+            ),
           ),
         ],
       ),
