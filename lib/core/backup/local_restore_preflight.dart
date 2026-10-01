@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:sqflite/sqflite.dart';
@@ -92,12 +92,14 @@ class LocalRestorePreflight {
               'parcel_derivations',
               'farm_tasks_v2',
               'agrico_production_parcel_sequences_v4',
+              'agrico_production_standalone_plot_sequences_v1',
               'inventory_items_v2',
               'inventory_movements_v2',
             }
           : <String>{};
       final missing = tables.difference(saved.keys.toSet());
       final productionCode = RegExp(r'^(.+)-L([0-9]{3,})(?:-T([0-9]{3,}))?$');
+      final standaloneProductionCode = RegExp(r'^(.+)-T([0-9]{3,})$');
       final productionRows = (saved['land_parcels'] as List? ?? const []).where(
         (raw) {
           final row = raw as Map;
@@ -122,8 +124,19 @@ class LocalRestorePreflight {
               match.group(1) == location.join('-'));
         },
       );
+      final standaloneProductionRows =
+          (saved['land_parcels'] as List? ?? const []).where((raw) {
+            final row = raw as Map;
+            final code = row['parcel_code']?.toString() ?? '';
+            return productionCode.firstMatch(code) == null &&
+                standaloneProductionCode.hasMatch(code);
+          });
       if (missing.contains('agrico_production_parcel_sequences_v4') &&
           productionRows.isNotEmpty) {
+        throw RestorePreflightException('tables', database: databaseName);
+      }
+      if (missing.contains('agrico_production_standalone_plot_sequences_v1') &&
+          standaloneProductionRows.isNotEmpty) {
         throw RestorePreflightException('tables', database: databaseName);
       }
       const inventoryTables = {'inventory_items_v2', 'inventory_movements_v2'};
@@ -228,6 +241,34 @@ class LocalRestorePreflight {
               (plot != null && plot < 1) ||
               !covers(0, block) ||
               (plot != null && !covers(block, plot))) {
+            throw RestorePreflightException(
+              'integrity',
+              database: databaseName,
+              step: step,
+            );
+          }
+        }
+      }
+      if (databaseName == 'agrico.db' &&
+          tables.contains('agrico_production_standalone_plot_sequences_v1')) {
+        step = 'production numbering';
+        final standaloneCounters = await staged.query(
+          'agrico_production_standalone_plot_sequences_v1',
+        );
+        for (final raw in standaloneProductionRows) {
+          final row = raw as Map;
+          final match = standaloneProductionCode.firstMatch(
+            row['parcel_code'] as String,
+          )!;
+          final project = match.group(1)!;
+          final plot = int.parse(match.group(2)!);
+          final covered = standaloneCounters.any(
+            (counter) =>
+                counter['farm_id'] == row['farm_id'] &&
+                counter['project_code'] == project &&
+                (counter['last_sequence']! as int) >= plot,
+          );
+          if (plot < 1 || !covered) {
             throw RestorePreflightException(
               'integrity',
               database: databaseName,

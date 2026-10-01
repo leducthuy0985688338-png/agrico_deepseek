@@ -64,6 +64,22 @@ void main() {
                 save: persist,
               );
       });
+  Future<String> saveStandalone(Database db, String id) => db.transaction((tx) {
+    final allocator = SqliteProductionParcelNumberAllocator(tx);
+    return allocator.saveStandaloneFieldPlot(
+      farmId: 'farm',
+      projectCode: 'AGR-NONG',
+      save: (code) async {
+        await tx.insert('land_parcels', {
+          'id': id,
+          'farm_id': 'farm',
+          'parcel_code': code.toString(),
+        });
+        return code.toString();
+      },
+    );
+  });
+
   Future<Uint8List> backup() =>
       LocalDatabaseSnapshot.create(primary, costsDatabase: costs);
   Future<Map<String, int>> validate(Uint8List bytes) =>
@@ -74,6 +90,66 @@ void main() {
         factory: databaseFactoryFfi,
         temporaryDirectory: directory.path,
       );
+
+  test(
+    'older backups may omit the empty standalone production counter table',
+    () async {
+      final bytes = _rewrite(
+        await backup(),
+        (tables) => tables.remove(
+          SqliteProductionParcelNumberAllocator.standaloneTable,
+        ),
+      );
+      final counts = await validate(bytes);
+      expect(
+        counts.containsKey(
+          'agrico.db/${SqliteProductionParcelNumberAllocator.standaloneTable}',
+        ),
+        isFalse,
+      );
+    },
+  );
+
+  test('standalone production code requires its counter table', () async {
+    expect(await saveStandalone(primary, 'standalone'), 'AGR-NONG-T001');
+    final bytes = _rewrite(
+      await backup(),
+      (tables) =>
+          tables.remove(SqliteProductionParcelNumberAllocator.standaloneTable),
+    );
+    await expectLater(
+      validate(bytes),
+      throwsA(
+        isA<RestorePreflightException>().having(
+          (e) => e.reason,
+          'reason',
+          'tables',
+        ),
+      ),
+    );
+  });
+
+  test(
+    'reduced standalone counter fails production numbering reconciliation',
+    () async {
+      expect(await saveStandalone(primary, 'standalone'), 'AGR-NONG-T001');
+      final original = await backup();
+      final bytes = _rewrite(original, (tables) {
+        final rows =
+            tables[SqliteProductionParcelNumberAllocator.standaloneTable]
+                as List;
+        (rows.single as Map)['last_sequence'] = 0;
+      });
+      await expectLater(
+        validate(bytes),
+        throwsA(
+          isA<RestorePreflightException>()
+              .having((e) => e.reason, 'reason', 'integrity')
+              .having((e) => e.step, 'step', 'production numbering'),
+        ),
+      );
+    },
+  );
 
   test(
     'pre-numbering backups may omit the empty production counter table',
@@ -162,6 +238,44 @@ void main() {
       expect(await primary.query('land_parcels'), hasLength(2));
       expect(await save(primary, 'after', plot: true), 'AGR-NONG-L001-T002');
       expect(await save(primary, 'block-after'), 'AGR-NONG-L002');
+      expect(await activation.previousBackup(), isNotNull);
+    },
+  );
+  test(
+    'activation restores standalone production counter and resumes numbering',
+    () async {
+      expect(await saveStandalone(primary, 'standalone'), 'AGR-NONG-T001');
+      final bytes = await backup();
+      final counts = await validate(bytes);
+      expect(
+        counts['agrico.db/${SqliteProductionParcelNumberAllocator.standaloneTable}'],
+        1,
+      );
+
+      expect(
+        await saveStandalone(primary, 'standalone-later'),
+        'AGR-NONG-T002',
+      );
+
+      await primary.close();
+      await costs.close();
+
+      final activation = LocalRestoreActivation(directory, databaseFactoryFfi);
+      await activation.schedule(bytes);
+      expect(await activation.applyPending(), isTrue);
+
+      primary = await databaseFactoryFfi.openDatabase(
+        '${directory.path}/agrico.db',
+      );
+      costs = await databaseFactoryFfi.openDatabase(
+        '${directory.path}/agrico_costs.db',
+      );
+
+      expect(await primary.query('land_parcels'), hasLength(1));
+      expect(
+        await saveStandalone(primary, 'standalone-after'),
+        'AGR-NONG-T002',
+      );
       expect(await activation.previousBackup(), isNotNull);
     },
   );

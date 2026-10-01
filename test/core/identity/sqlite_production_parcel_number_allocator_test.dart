@@ -31,6 +31,13 @@ void main() {
     ),
   );
 
+  Future<String> standalonePlot(String farm, String project) => db.transaction(
+    (tx) => SqliteProductionParcelNumberAllocator(tx).saveStandaloneFieldPlot(
+      farmId: farm,
+      projectCode: project,
+      save: (code) async => code.toString(),
+    ),
+  );
   test(
     'farm project and parent counters are independent and durable',
     () async {
@@ -85,6 +92,17 @@ void main() {
         await db.query(SqliteProductionParcelNumberAllocator.table),
         hasLength(1),
       );
+    },
+  );
+
+  test(
+    'standalone plot counter is independent from block and parented plots',
+    () async {
+      expect(await block('farm-1', 'AGR-NONG'), 'AGR-NONG-L001');
+      expect(await standalonePlot('farm-1', 'AGR-NONG'), 'AGR-NONG-T001');
+      expect(await standalonePlot('farm-1', 'AGR-NONG'), 'AGR-NONG-T002');
+      expect(await plot('farm-1', 1), 'AGR-NONG-L001-T001');
+      expect(await block('farm-1', 'AGR-NONG'), 'AGR-NONG-L002');
     },
   );
 }

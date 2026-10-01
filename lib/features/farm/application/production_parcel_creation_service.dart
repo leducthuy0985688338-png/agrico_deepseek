@@ -1,3 +1,4 @@
+import '../domain/geometry/parcel_subdivision_plan.dart';
 import '../../../core/permissions/authorization.dart';
 import '../../../core/project/agrico_project.dart';
 import '../../../core/spatial/domain/entities/spatial_temporal.dart';
@@ -95,6 +96,40 @@ class ProductionParcelCreationService {
     );
   }
 
+  /// Creates a production field plot without a parent land block.
+  ///
+  /// The standalone plot owns its project identity directly and uses the
+  /// project-scoped standalone numbering namespace.
+  Future<LandParcel> createStandaloneFieldPlot({
+    required AuthorizationSubject subject,
+    required LandParcel draft,
+    required String projectCode,
+    required AgricoProject project,
+  }) {
+    _authorize(subject, draft);
+    _requireProjectMatches(project: project, projectCode: projectCode);
+    if (draft.projectId == null || draft.projectId!.trim().isEmpty) {
+      throw const FormatException(
+        'A standalone production field plot requires a project id on the draft.',
+      );
+    }
+    if (draft.projectId != project.id) {
+      throw const FormatException(
+        'Standalone production plot draft must carry the configured project id.',
+      );
+    }
+    if (draft.parentLandBlockId != null) {
+      throw const FormatException(
+        'A standalone production field plot cannot have a parent land block.',
+      );
+    }
+    return repository.createStandaloneFieldPlot(
+      draft: draft,
+      projectCode: projectCode,
+      temporalState: SpatialTemporalState.underConstruction,
+    );
+  }
+
   Future<LandParcel> createFieldPlot({
     required AuthorizationSubject subject,
     required LandParcel draft,
@@ -109,6 +144,41 @@ class ProductionParcelCreationService {
     }
     return repository.createFieldPlot(
       draft: draft,
+      parentLandBlockId: parentLandBlockId,
+      expectedParentBoundaryVersion: expectedParentBoundaryVersion,
+      temporalState: SpatialTemporalState.underConstruction,
+    );
+  }
+
+  Future<List<LandParcel>> createFieldPlots({
+    required AuthorizationSubject subject,
+    required List<LandParcel> drafts,
+    required String parentLandBlockId,
+    required int expectedParentBoundaryVersion,
+    required List<ParcelSketchDetails> details,
+  }) {
+    if (drafts.isEmpty ||
+        drafts.length != details.length ||
+        parentLandBlockId.trim().isEmpty ||
+        expectedParentBoundaryVersion < 1) {
+      throw const FormatException('Invalid field plot batch.');
+    }
+    for (var i = 0; i < drafts.length; i++) {
+      _authorize(subject, drafts[i], parentId: parentLandBlockId);
+      final entry = details[i];
+      if (entry.layer != ParcelLayer.fieldPlot ||
+          entry.parentSketchIndex != null ||
+          (entry.cropType?.trim().isNotEmpty == true &&
+              (entry.cropQuantity == null ||
+                  !entry.cropQuantity!.isFinite ||
+                  entry.cropQuantity! <= 0 ||
+                  entry.cropUnit?.trim().isEmpty != false))) {
+        throw const FormatException('Invalid plot layer, parent or crop.');
+      }
+    }
+    return repository.createFieldPlots(
+      drafts: drafts,
+      details: details,
       parentLandBlockId: parentLandBlockId,
       expectedParentBoundaryVersion: expectedParentBoundaryVersion,
       temporalState: SpatialTemporalState.underConstruction,

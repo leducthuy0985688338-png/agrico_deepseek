@@ -140,14 +140,15 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       landSurveyRepository: SqliteLandSurveyRepository(database),
     );
     const platform = MobileLandParcelPlatformGateway();
+    final productionCreation = ProductionParcelCreationService(
+      SpatialProductionParcelCreationRepository(spatialSyncWorkflow),
+    );
     final controller = LandParcelController(
       subject: subject,
       parcels: parcels,
       surveys: SqliteLandSurveyRepository(database),
       createLandParcel: CreateLandParcel(application),
-      productionCreation: ProductionParcelCreationService(
-        SpatialProductionParcelCreationRepository(spatialSyncWorkflow),
-      ),
+      productionCreation: productionCreation,
       updateMetadata: UpdateLandParcelMetadata(application),
       completeGpsMeasurement: CompleteGpsMeasurement(application),
       verifyBoundary: VerifyBoundary(application),
@@ -171,6 +172,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       subject: subject,
       spatial: spatial,
       spatialWorkflow: spatialSyncWorkflow,
+      productionCreation: productionCreation,
       controller: controller,
       taskController: taskController,
       application: application,
@@ -207,11 +209,13 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
             parcels: deps.controller.parcels,
             onSubdivisionSaved: deps.controller.loadList,
             onSubdivideRequested: () => ParcelSubdivisionScreen(
+              productionPlots: true,
               subject: deps.subject,
               sourceParcelId: id,
               service: ParcelSubdivisionService(
                 parcels: deps.controller.parcels,
                 workflow: deps.spatialWorkflow,
+                productionCreation: deps.productionCreation,
               ),
               administrativeCatalog: SqliteAdministrativeCatalog(deps.database),
             ),
@@ -598,6 +602,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
               parcelCode: value.parcelCode,
               projectId: AgricoProject.defaultProject.id,
               projectCode: AgricoProject.defaultProject.code,
+              productionKind: value.productionKind,
               name: value.name,
               vertices: draft.boundary.vertices.toList(),
               source: draft.source,
@@ -764,6 +769,7 @@ class _V2Dependencies {
     required this.subject,
     required this.spatial,
     required this.spatialWorkflow,
+    required this.productionCreation,
     required this.controller,
     required this.taskController,
     required this.application,
@@ -776,6 +782,7 @@ class _V2Dependencies {
   final AuthorizationSubject subject;
   final SpatialPersistenceComposition spatial;
   final LandParcelSpatialSyncWorkflow spatialWorkflow;
+  final ProductionParcelCreationService productionCreation;
   final LandParcelController controller;
   final FarmTaskController taskController;
   final LandParcelApplicationService application;

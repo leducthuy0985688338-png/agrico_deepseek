@@ -1,3 +1,4 @@
+import 'package:agrico_deepseek/features/farm/domain/geometry/parcel_subdivision_plan.dart';
 import 'package:agrico_deepseek/core/identity/data/sqlite_production_parcel_number_allocator.dart';
 import 'package:agrico_deepseek/core/identity/data/sqlite_parcel_number_sequence.dart';
 import 'package:agrico_deepseek/core/spatial/data/spatial_persistence_composition.dart';
@@ -90,12 +91,15 @@ void main() {
     String id, {
     double offset = 0,
     String farmId = 'farm-1',
+    String projectId = 'PROJ-A',
+    ParcelLayer kind = ParcelLayer.landBlock,
   }) => LandParcel.create(
     id: id,
     farmId: farmId,
     parcelCode: 'DRAFT',
-    name: 'Thửa $id',
-    projectId: 'PROJ-A',
+    name: 'ThÃ¡Â»Â­a $id',
+    projectId: projectId,
+    kind: kind,
     boundary: Wgs84Polygon.fromVertices([
       Wgs84Vertex(latitude: 16.5001, longitude: 104.7001 + offset),
       Wgs84Vertex(latitude: 16.5001, longitude: 104.7003 + offset),
@@ -106,6 +110,136 @@ void main() {
     verificationStatus: BoundaryVerificationStatus.draft,
     actorMembershipId: 'member-1',
     occurredAt: createdAt,
+  );
+
+  test(
+    'production batch saves shared-edge plots crops and land use without changing parent',
+    () async {
+      await SqliteProductionParcelNumberAllocator.createSchema(database);
+      final parent = await workflow.createProductionLandBlock(
+        draft: createParcel(),
+        projectCode: 'AGR-NONG',
+        temporalState: SpatialTemporalState.baseline,
+      );
+      final saved = await workflow.createProductionFieldPlots(
+        drafts: [plotDraft('batch-1'), plotDraft('batch-2', offset: 0.0002)],
+        parentLandBlockId: parent.id,
+        expectedParentBoundaryVersion: parent.boundaryVersion,
+        temporalState: SpatialTemporalState.underConstruction,
+        details: const [
+          ParcelSketchDetails(
+            cropType: 'Peanut',
+            cropQuantity: 10,
+            cropUnit: 'plants',
+          ),
+          ParcelSketchDetails(),
+        ],
+      );
+      expect(saved.map((p) => p.parcelCode).toList(), [
+        'AGR-NONG-L001-T001',
+        'AGR-NONG-L001-T002',
+      ]);
+      final surveys = SqliteLandSurveyRepository(database);
+      expect((await surveys.listCrops('batch-1')).single.cropType, 'Peanut');
+      expect(await surveys.getLandUseProfile('batch-2'), isNotNull);
+      for (final plot in saved) {
+        final persisted = (await parcels.getById(
+          farmId: 'farm-1',
+          id: plot.id,
+        ))!;
+        expect(persisted.parentLandBlockId, parent.id);
+        expect(
+          await LandParcelBoundaryConsistencyQueries(
+            links: links,
+            features: spatial.featureRepository,
+            revisions: spatial.revisionRepository,
+          ).check(persisted),
+          LandParcelBoundaryConsistency.consistent,
+        );
+      }
+      final unchanged = (await parcels.getById(
+        farmId: 'farm-1',
+        id: parent.id,
+      ))!;
+      expect(unchanged.active, isTrue);
+      expect(unchanged.boundaryVersion, parent.boundaryVersion);
+      expect(unchanged.boundary, parent.boundary);
+      expect(
+        saved.fold<double>(0, (sum, p) => sum + p.areaM2),
+        lessThan(parent.areaM2),
+      );
+    },
+  );
+
+  test(
+    'overlap in later batch member rolls back all plots links and numbers',
+    () async {
+      await SqliteProductionParcelNumberAllocator.createSchema(database);
+      final parent = await workflow.createProductionLandBlock(
+        draft: createParcel(),
+        projectCode: 'AGR-NONG',
+        temporalState: SpatialTemporalState.baseline,
+      );
+      await expectLater(
+        workflow.createProductionFieldPlots(
+          drafts: [plotDraft('batch-1'), plotDraft('batch-2', offset: 0.0001)],
+          parentLandBlockId: parent.id,
+          expectedParentBoundaryVersion: parent.boundaryVersion,
+          temporalState: SpatialTemporalState.underConstruction,
+          details: const [ParcelSketchDetails(), ParcelSketchDetails()],
+        ),
+        throwsFormatException,
+      );
+      for (final id in ['batch-1', 'batch-2']) {
+        expect(await parcels.getById(farmId: 'farm-1', id: id), isNull);
+        expect(await links.findByLandParcelId(id), isNull);
+      }
+      final saved = await workflow.createProductionFieldPlot(
+        draft: plotDraft('retry'),
+        parentLandBlockId: parent.id,
+        expectedParentBoundaryVersion: parent.boundaryVersion,
+        temporalState: SpatialTemporalState.underConstruction,
+      );
+      expect(saved.parcelCode, 'AGR-NONG-L001-T001');
+    },
+  );
+
+  test(
+    'standalone production field plot receives project code without parent',
+    () async {
+      await SqliteProductionParcelNumberAllocator.createSchema(database);
+
+      final saved = await workflow.createProductionStandaloneFieldPlot(
+        draft: plotDraft(
+          'standalone-1',
+          projectId: 'agrico-nong',
+          kind: ParcelLayer.fieldPlot,
+        ),
+        projectCode: 'AGR-NONG',
+        temporalState: SpatialTemporalState.underConstruction,
+      );
+
+      expect(saved.parcelCode, 'AGR-NONG-T001');
+      expect(saved.layer, ParcelLayer.fieldPlot);
+      expect(saved.parentLandBlockId, isNull);
+      expect(saved.projectId, 'agrico-nong');
+
+      final persisted = await parcels.getById(farmId: 'farm-1', id: saved.id);
+      expect(persisted, isNotNull);
+      expect(persisted!.parcelCode, 'AGR-NONG-T001');
+      expect(persisted.layer, ParcelLayer.fieldPlot);
+      expect(persisted.parentLandBlockId, isNull);
+      expect(persisted.projectId, 'agrico-nong');
+
+      expect(
+        await LandParcelBoundaryConsistencyQueries(
+          links: links,
+          features: spatial.featureRepository,
+          revisions: spatial.revisionRepository,
+        ).check(persisted),
+        LandParcelBoundaryConsistency.consistent,
+      );
+    },
   );
 
   test(
@@ -267,9 +401,9 @@ void main() {
                 id: 'household-1',
                 farmId: 'farm-1',
                 householdCode: houseCode,
-                headOfHouseholdName: 'ສົມພອນ',
+                headOfHouseholdName: 'Ã ÂºÂªÃ ÂºÂ»Ã ÂºÂ¡Ã ÂºÅ¾Ã ÂºÂ­Ã Âºâ„¢',
                 administrativeLocation: const AdministrativeLocation(
-                  countryName: 'Lào',
+                  countryName: 'LÃƒÂ o',
                   countryCode: 'LA',
                   provinceName: 'Savannakhet',
                   provinceCode: 'SVK',
@@ -351,7 +485,7 @@ void main() {
             districtCode: 'NONG',
             villageCode: 'TAKO',
             legacyMetadata: const {
-              'country': 'Lào',
+              'country': 'LÃƒÂ o',
               'province': 'Savannakhet',
               'district': 'Nong',
               'village': 'Ta Ko',
@@ -426,7 +560,7 @@ void main() {
             districtCode: 'NONG',
             villageCode: 'TAKO',
             legacyMetadata: const {
-              'country': 'Lào',
+              'country': 'LÃƒÂ o',
               'province': 'Savannakhet',
               'district': 'Nong',
               'village': 'Ta Ko',
@@ -584,7 +718,7 @@ void main() {
     final draft = CropRecord(
       id: 'draft-crop',
       parcelId: 'draft',
-      cropType: 'ມັນຕົ້ນ',
+      cropType: 'Ã ÂºÂ¡Ã ÂºÂ±Ã Âºâ„¢Ã Âºâ€¢Ã ÂºÂ»Ã Â»â€°Ã Âºâ„¢',
       ageMonths: 18,
       quantity: 12,
       unit: 'plants',
@@ -614,7 +748,10 @@ void main() {
     expect(saved.isSuccess, isTrue);
     final crops = await surveys.listCrops('with-crop');
     expect(crops, hasLength(1));
-    expect(crops.single.cropType, 'ມັນຕົ້ນ');
+    expect(
+      crops.single.cropType,
+      'Ã ÂºÂ¡Ã ÂºÂ±Ã Âºâ„¢Ã Âºâ€¢Ã ÂºÂ»Ã Â»â€°Ã Âºâ„¢',
+    );
     expect(crops.single.ageMonths, 18);
     expect(crops.single.parcelId, 'with-crop');
     expect(crops.single.createdBy, 'member-1');
@@ -662,7 +799,9 @@ void main() {
         updatedAt: createdAt,
         updatedBy: 'member-1',
       );
-      await surveys.createCrop(crop('crop-existing', 'ມັນຕົ້ນ'));
+      await surveys.createCrop(
+        crop('crop-existing', 'Ã ÂºÂ¡Ã ÂºÂ±Ã Âºâ„¢Ã Âºâ€¢Ã ÂºÂ»Ã Â»â€°Ã Âºâ„¢'),
+      );
       final before = (await parcels.getById(
         farmId: parcel.farmId,
         id: parcel.id,
@@ -693,10 +832,19 @@ void main() {
 
       final result = await application.updateLandParcelMetadata(
         subject,
-        command([crop('crop-existing', 'ຢາງພາລາ', ageMonths: 42)]),
+        command([
+          crop(
+            'crop-existing',
+            'Ã ÂºÂ¢Ã ÂºÂ²Ã Âºâ€¡Ã ÂºÅ¾Ã ÂºÂ²Ã ÂºÂ¥Ã ÂºÂ²',
+            ageMonths: 42,
+          ),
+        ]),
       );
       expect(result.isSuccess, isTrue);
-      expect((await surveys.listCrops(parcel.id)).single.cropType, 'ຢາງພາລາ');
+      expect(
+        (await surveys.listCrops(parcel.id)).single.cropType,
+        'Ã ÂºÂ¢Ã ÂºÂ²Ã Âºâ€¡Ã ÂºÅ¾Ã ÂºÂ²Ã ÂºÂ¥Ã ÂºÂ²',
+      );
       expect((await surveys.listCrops(parcel.id)).single.ageMonths, 42);
       final after = (await parcels.getById(
         farmId: parcel.farmId,
@@ -727,7 +875,10 @@ void main() {
         ),
       );
       expect(rejected.status, LandParcelApplicationStatus.validationFailed);
-      expect((await surveys.listCrops(parcel.id)).single.cropType, 'ຢາງພາລາ');
+      expect(
+        (await surveys.listCrops(parcel.id)).single.cropType,
+        'Ã ÂºÂ¢Ã ÂºÂ²Ã Âºâ€¡Ã ÂºÅ¾Ã ÂºÂ²Ã ÂºÂ¥Ã ÂºÂ²',
+      );
       expect(
         (await parcels.getById(farmId: parcel.farmId, id: parcel.id))!.name,
         'Changed crop parcel',
@@ -2014,6 +2165,7 @@ void main() {
       expect(revisionsAfter.single.revision, 1);
     },
   );
+
   test(
     'createSpatialForParcelScoped creates Spatial state without persisting LandParcel',
     () async {
@@ -2157,39 +2309,36 @@ void main() {
     },
   );
 
-  test(
-    'production block rejects a NULL project candidate',
-    () async {
-      await SqliteProductionParcelNumberAllocator.createSchema(database);
-      // A draft without a project id. Built directly rather than via the
-      // shared helper, which always stamps PROJ-A.
-      final draft = LandParcel.create(
-        id: 'no-project',
-        farmId: 'farm-1',
-        parcelCode: 'P-NOP',
-        name: 'Parcel no-project',
-        boundary: Wgs84Polygon.fromVertices(const [
-          Wgs84Vertex(latitude: 16.5000, longitude: 104.7000),
-          Wgs84Vertex(latitude: 16.5000, longitude: 104.7010),
-          Wgs84Vertex(latitude: 16.5010, longitude: 104.7010),
-          Wgs84Vertex(latitude: 16.5010, longitude: 104.7000),
-        ]),
-        boundarySource: BoundarySource.gps,
-        verificationStatus: BoundaryVerificationStatus.measured,
-        actorMembershipId: 'member-1',
-        occurredAt: createdAt,
-        projectId: null,
-      );
-      expect(
-        () => workflow.createProductionLandBlock(
-          draft: draft,
-          projectCode: 'AGR-NONG',
-          temporalState: SpatialTemporalState.baseline,
-        ),
-        throwsFormatException,
-      );
-    },
-  );
+  test('production block rejects a NULL project candidate', () async {
+    await SqliteProductionParcelNumberAllocator.createSchema(database);
+    // A draft without a project id. Built directly rather than via the
+    // shared helper, which always stamps PROJ-A.
+    final draft = LandParcel.create(
+      id: 'no-project',
+      farmId: 'farm-1',
+      parcelCode: 'P-NOP',
+      name: 'Parcel no-project',
+      boundary: Wgs84Polygon.fromVertices(const [
+        Wgs84Vertex(latitude: 16.5000, longitude: 104.7000),
+        Wgs84Vertex(latitude: 16.5000, longitude: 104.7010),
+        Wgs84Vertex(latitude: 16.5010, longitude: 104.7010),
+        Wgs84Vertex(latitude: 16.5010, longitude: 104.7000),
+      ]),
+      boundarySource: BoundarySource.gps,
+      verificationStatus: BoundaryVerificationStatus.measured,
+      actorMembershipId: 'member-1',
+      occurredAt: createdAt,
+      projectId: null,
+    );
+    expect(
+      () => workflow.createProductionLandBlock(
+        draft: draft,
+        projectCode: 'AGR-NONG',
+        temporalState: SpatialTemporalState.baseline,
+      ),
+      throwsFormatException,
+    );
+  });
 
   test(
     'production block rejects a candidate overlapping a NULL project block',

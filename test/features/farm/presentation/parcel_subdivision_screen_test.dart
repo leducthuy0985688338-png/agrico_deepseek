@@ -13,8 +13,9 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('undo and redraw keep the remaining numbered draft points',
-      (tester) async {
+  testWidgets('undo and redraw keep the remaining numbered draft points', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1;
     addTearDown(() {
@@ -22,7 +23,10 @@ void main() {
       tester.view.resetDevicePixelRatio();
     });
     final parcel = LandParcel.create(
-      id: 'source', farmId: 'farm', parcelCode: 'SOURCE', name: 'Nguồn',
+      id: 'source',
+      farmId: 'farm',
+      parcelCode: 'SOURCE',
+      name: 'Nguồn',
       boundary: Wgs84Polygon.fromVertices(const [
         Wgs84Vertex(latitude: 16, longitude: 106),
         Wgs84Vertex(latitude: 16, longitude: 106.002),
@@ -31,36 +35,46 @@ void main() {
       ]),
       boundarySource: BoundarySource.googleEarth,
       verificationStatus: BoundaryVerificationStatus.measured,
-      actorMembershipId: 'member', occurredAt: DateTime.utc(2026, 9, 28),
+      actorMembershipId: 'member',
+      occurredAt: DateTime.utc(2026, 9, 28),
     );
     const subject = AuthorizationSubject(
-      userId: 'user', membershipId: 'member', farmId: 'farm',
+      userId: 'user',
+      membershipId: 'member',
+      farmId: 'farm',
       permissionCodes: {PermissionCodes.fieldView},
       dataScopes: {DataScope.allFarm},
     );
-    await tester.pumpWidget(MaterialApp(
-      locale: const Locale('vi'),
-      supportedLocales: AppLocalizations.supportedLocales,
-      localizationsDelegates: const [
-        AppLocalizations.delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      home: ParcelSubdivisionScreen(
-        useSchematicMap: true, subject: subject, sourceParcelId: 'source',
-        service: ParcelSubdivisionService(
-          parcels: _ParcelRepository(parcel), workflow: _UnusedWorkflow()),
-        administrativeCatalog: _EmptyCatalog(),
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('vi'),
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: ParcelSubdivisionScreen(
+          useSchematicMap: true,
+          subject: subject,
+          sourceParcelId: 'source',
+          service: ParcelSubdivisionService(
+            parcels: _ParcelRepository(parcel),
+            workflow: _UnusedWorkflow(),
+          ),
+          administrativeCatalog: _EmptyCatalog(),
+        ),
       ),
-    ));
+    );
     await tester.pumpAndSettle();
     final map = find.byKey(const Key('subdivision-map'));
     await tester.ensureVisible(map);
     await tester.pumpAndSettle();
     var count = 0;
     for (final position in [
-      const Offset(140, 140), const Offset(220, 140),
+      const Offset(140, 140),
+      const Offset(220, 140),
       const Offset(220, 220),
     ]) {
       await tester.ensureVisible(map);
@@ -68,52 +82,271 @@ void main() {
       await tester.tapAt(tester.getTopLeft(map) + position);
       await tester.pumpAndSettle();
       count++;
-      expect(tester.widget<Text>(find.byKey(
-        const Key('subdivision-point-count'), skipOffstage: false)).data,
-        'Số điểm đã chọn: $count');
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(
+                const Key('subdivision-point-count'),
+                skipOffstage: false,
+              ),
+            )
+            .data,
+        'Số điểm đã chọn: $count',
+      );
     }
     final undo = find.byKey(const Key('subdivision-undo-point'));
     await tester.ensureVisible(undo);
     await tester.tap(undo);
     await tester.pumpAndSettle();
-    expect(tester.widget<Text>(find.byKey(
-      const Key('subdivision-point-count'), skipOffstage: false)).data,
-      'Số điểm đã chọn: 2');
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(
+              const Key('subdivision-point-count'),
+              skipOffstage: false,
+            ),
+          )
+          .data,
+      'Số điểm đã chọn: 2',
+    );
     await tester.ensureVisible(map);
     await tester.tapAt(tester.getTopLeft(map) + const Offset(160, 230));
     await tester.pumpAndSettle();
-    expect(tester.widget<Text>(find.byKey(
-      const Key('subdivision-point-count'), skipOffstage: false)).data,
-      'Số điểm đã chọn: 3');
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(
+              const Key('subdivision-point-count'),
+              skipOffstage: false,
+            ),
+          )
+          .data,
+      'Số điểm đã chọn: 3',
+    );
     final reset = find.byKey(const Key('subdivision-reset-cut'));
     await tester.ensureVisible(reset);
     await tester.tap(reset);
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('subdivision-point-count'),
-      skipOffstage: false), findsNothing);
+    expect(
+      find.byKey(const Key('subdivision-point-count'), skipOffstage: false),
+      findsNothing,
+    );
     await tester.ensureVisible(map);
     await tester.tapAt(tester.getTopLeft(map) + const Offset(140, 140));
     await tester.pumpAndSettle();
-    expect(tester.widget<Text>(find.byKey(
-      const Key('subdivision-point-count'), skipOffstage: false)).data,
-      'Số điểm đã chọn: 1');
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(
+              const Key('subdivision-point-count'),
+              skipOffstage: false,
+            ),
+          )
+          .data,
+      'Số điểm đã chọn: 1',
+    );
     for (final position in [
-      const Offset(220, 140), const Offset(220, 220),
-      const Offset(140, 220), const Offset(140, 140),
+      const Offset(220, 140),
+      const Offset(220, 220),
+      const Offset(140, 220),
+      const Offset(140, 140),
     ]) {
       await tester.ensureVisible(map);
       await tester.pumpAndSettle();
       await tester.tapAt(tester.getTopLeft(map) + position);
       await tester.pumpAndSettle();
     }
-    expect(find.byKey(const Key('subdivision-point-count'),
-      skipOffstage: false), findsNothing);
-    expect(find.byKey(const Key('subdivision-name-0'),
-      skipOffstage: false), findsOneWidget);
+    expect(
+      find.byKey(const Key('subdivision-point-count'), skipOffstage: false),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('subdivision-name-0'), skipOffstage: false),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('two independent sketches can share an edge',
-      (tester) async {
+  testWidgets(
+    'production drawing keeps undo helpers and fixes the parent without village',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final parcel = LandParcel.create(
+        id: 'source',
+        farmId: 'farm',
+        parcelCode: 'AGR-NONG-L001',
+        name: 'Nguồn',
+        boundary: Wgs84Polygon.fromVertices(const [
+          Wgs84Vertex(latitude: 16, longitude: 106),
+          Wgs84Vertex(latitude: 16, longitude: 106.002),
+          Wgs84Vertex(latitude: 16.002, longitude: 106.002),
+          Wgs84Vertex(latitude: 16.002, longitude: 106),
+        ]),
+        boundarySource: BoundarySource.googleEarth,
+        verificationStatus: BoundaryVerificationStatus.measured,
+        actorMembershipId: 'member',
+        occurredAt: DateTime.utc(2026, 9, 28),
+      );
+      const subject = AuthorizationSubject(
+        userId: 'user',
+        membershipId: 'member',
+        farmId: 'farm',
+        permissionCodes: {PermissionCodes.fieldView},
+        dataScopes: {DataScope.allFarm},
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('vi'),
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: ParcelSubdivisionScreen(
+            productionPlots: true,
+            useSchematicMap: true,
+            subject: subject,
+            sourceParcelId: 'source',
+            service: ParcelSubdivisionService(
+              parcels: _ParcelRepository(parcel),
+              workflow: _UnusedWorkflow(),
+            ),
+            administrativeCatalog: _EmptyCatalog(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Tạo Thửa trong Lô'), findsOneWidget);
+      final map = find.byKey(const Key('subdivision-map'));
+      await tester.ensureVisible(map);
+      await tester.pumpAndSettle();
+      var count = 0;
+      for (final position in [
+        const Offset(340, 140),
+        const Offset(420, 140),
+        const Offset(420, 220),
+      ]) {
+        await tester.ensureVisible(map);
+        await tester.pumpAndSettle();
+        await tester.tapAt(tester.getTopLeft(map) + position);
+        await tester.pumpAndSettle();
+        count++;
+        expect(
+          tester
+              .widget<Text>(
+                find.byKey(
+                  const Key('subdivision-point-count'),
+                  skipOffstage: false,
+                ),
+              )
+              .data,
+          'Số điểm đã chọn: $count',
+        );
+      }
+      final undo = find.byKey(const Key('subdivision-undo-point'));
+      await tester.ensureVisible(undo);
+      await tester.tap(undo);
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(
+                const Key('subdivision-point-count'),
+                skipOffstage: false,
+              ),
+            )
+            .data,
+        'Số điểm đã chọn: 2',
+      );
+      await tester.ensureVisible(map);
+      await tester.tapAt(tester.getTopLeft(map) + const Offset(360, 230));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(
+                const Key('subdivision-point-count'),
+                skipOffstage: false,
+              ),
+            )
+            .data,
+        'Số điểm đã chọn: 3',
+      );
+      final reset = find.byKey(const Key('subdivision-reset-cut'));
+      await tester.ensureVisible(reset);
+      await tester.tap(reset);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('subdivision-point-count'), skipOffstage: false),
+        findsNothing,
+      );
+      await tester.ensureVisible(map);
+      await tester.tapAt(tester.getTopLeft(map) + const Offset(340, 140));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(
+                const Key('subdivision-point-count'),
+                skipOffstage: false,
+              ),
+            )
+            .data,
+        'Số điểm đã chọn: 1',
+      );
+      for (final position in [
+        const Offset(420, 140),
+        const Offset(420, 220),
+        const Offset(340, 220),
+        const Offset(340, 140),
+      ]) {
+        await tester.ensureVisible(map);
+        await tester.pumpAndSettle();
+        await tester.tapAt(tester.getTopLeft(map) + position);
+        await tester.pumpAndSettle();
+      }
+      // The fourth tap auto-accepts the draft: the point counter disappears
+      // because the outline was closed. The naming card is now visible.
+      expect(
+        find.byKey(const Key('subdivision-point-count'), skipOffstage: false),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('subdivision-name-0'), skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('subdivision-layer-0'), skipOffstage: false),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('subdivision-parent-0'), skipOffstage: false),
+        findsNothing,
+      );
+      await tester.ensureVisible(find.byKey(const Key('subdivision-name-0')));
+      await tester.enterText(
+        find.byKey(const Key('subdivision-name-0')),
+        'Plot A',
+      );
+      await tester.pump();
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(const Key('subdivision-save'), skipOffstage: false),
+            )
+            .onPressed,
+        isNotNull,
+      );
+    },
+  );
+
+  testWidgets('two independent sketches can share an edge', (tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1;
     addTearDown(() {
@@ -121,7 +354,10 @@ void main() {
       tester.view.resetDevicePixelRatio();
     });
     final parcel = LandParcel.create(
-      id: 'source', farmId: 'farm', parcelCode: 'SOURCE', name: 'Nguồn',
+      id: 'source',
+      farmId: 'farm',
+      parcelCode: 'SOURCE',
+      name: 'Nguồn',
       boundary: Wgs84Polygon.fromVertices(const [
         Wgs84Vertex(latitude: 16, longitude: 106),
         Wgs84Vertex(latitude: 16, longitude: 106.002),
@@ -130,30 +366,38 @@ void main() {
       ]),
       boundarySource: BoundarySource.googleEarth,
       verificationStatus: BoundaryVerificationStatus.measured,
-      actorMembershipId: 'member', occurredAt: DateTime.utc(2026, 9, 28),
+      actorMembershipId: 'member',
+      occurredAt: DateTime.utc(2026, 9, 28),
     );
     const subject = AuthorizationSubject(
-      userId: 'user', membershipId: 'member', farmId: 'farm',
+      userId: 'user',
+      membershipId: 'member',
+      farmId: 'farm',
       permissionCodes: {PermissionCodes.fieldView},
       dataScopes: {DataScope.allFarm},
     );
-    await tester.pumpWidget(MaterialApp(
-      locale: const Locale('vi'),
-      supportedLocales: AppLocalizations.supportedLocales,
-      localizationsDelegates: const [
-        AppLocalizations.delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      home: ParcelSubdivisionScreen(
-        useSchematicMap: true,
-        subject: subject, sourceParcelId: 'source',
-        service: ParcelSubdivisionService(
-          parcels: _ParcelRepository(parcel), workflow: _UnusedWorkflow()),
-        administrativeCatalog: _EmptyCatalog(),
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('vi'),
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: ParcelSubdivisionScreen(
+          useSchematicMap: true,
+          subject: subject,
+          sourceParcelId: 'source',
+          service: ParcelSubdivisionService(
+            parcels: _ParcelRepository(parcel),
+            workflow: _UnusedWorkflow(),
+          ),
+          administrativeCatalog: _EmptyCatalog(),
+        ),
       ),
-    ));
+    );
     await tester.pumpAndSettle();
     final map = find.byKey(const Key('subdivision-map'));
     await tester.ensureVisible(map);
@@ -162,15 +406,24 @@ void main() {
     final origin = tester.getTopLeft(map);
     final scale = (size.height - 40) / 0.002;
     for (final (lat, lon) in [
-      (16.0006, 106.00005), (16.0006, 106.0014),
-      (16.0014, 106.0014), (16.0014, 106.0006),
+      (16.0006, 106.00005),
+      (16.0006, 106.0014),
+      (16.0014, 106.0014),
+      (16.0014, 106.0006),
     ]) {
-      await tester.tapAt(origin + Offset((lon - 106.001) * scale +
-        size.width / 2, (16.001 - lat) * scale + size.height / 2));
+      await tester.tapAt(
+        origin +
+            Offset(
+              (lon - 106.001) * scale + size.width / 2,
+              (16.001 - lat) * scale + size.height / 2,
+            ),
+      );
       await tester.pumpAndSettle();
     }
-    final done = find.byKey(const Key('subdivision-close-outline'),
-      skipOffstage: false);
+    final done = find.byKey(
+      const Key('subdivision-close-outline'),
+      skipOffstage: false,
+    );
     await tester.ensureVisible(done);
     await tester.tap(done);
     await tester.pumpAndSettle();
@@ -181,11 +434,18 @@ void main() {
     await tester.pumpAndSettle();
     final nextOrigin = tester.getTopLeft(map);
     for (final (lat, lon) in [
-      (16.0006, 106.0014), (16.0006, 106.0018),
-      (16.0014, 106.0018), (16.0014, 106.0014),
+      (16.0006, 106.0014),
+      (16.0006, 106.0018),
+      (16.0014, 106.0018),
+      (16.0014, 106.0014),
     ]) {
-      await tester.tapAt(nextOrigin + Offset((lon - 106.001) * scale +
-        size.width / 2, (16.001 - lat) * scale + size.height / 2));
+      await tester.tapAt(
+        nextOrigin +
+            Offset(
+              (lon - 106.001) * scale + size.width / 2,
+              (16.001 - lat) * scale + size.height / 2,
+            ),
+      );
       await tester.pumpAndSettle();
     }
     await tester.ensureVisible(done);
@@ -198,8 +458,9 @@ void main() {
     expect(find.textContaining('hai vùng đất không chồng lấn'), findsNothing);
   });
 
-  testWidgets('drawing the photographed outline previews two closed parcels',
-      (tester) async {
+  testWidgets('drawing the photographed outline previews two closed parcels', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1;
     addTearDown(() {
@@ -207,7 +468,10 @@ void main() {
       tester.view.resetDevicePixelRatio();
     });
     final parcel = LandParcel.create(
-      id: 'source', farmId: 'farm', parcelCode: 'SOURCE', name: 'Nguồn',
+      id: 'source',
+      farmId: 'farm',
+      parcelCode: 'SOURCE',
+      name: 'Nguồn',
       boundary: Wgs84Polygon.fromVertices(const [
         Wgs84Vertex(latitude: 16, longitude: 106),
         Wgs84Vertex(latitude: 16, longitude: 106.002),
@@ -216,24 +480,32 @@ void main() {
       ]),
       boundarySource: BoundarySource.gps,
       verificationStatus: BoundaryVerificationStatus.measured,
-      actorMembershipId: 'member', occurredAt: DateTime.utc(2026, 9, 28),
+      actorMembershipId: 'member',
+      occurredAt: DateTime.utc(2026, 9, 28),
     );
     const subject = AuthorizationSubject(
-      userId: 'user', membershipId: 'member', farmId: 'farm',
+      userId: 'user',
+      membershipId: 'member',
+      farmId: 'farm',
       permissionCodes: {PermissionCodes.fieldView},
       dataScopes: {DataScope.allFarm},
     );
-    await tester.pumpWidget(MaterialApp(
-      locale: const Locale('vi'),
-      localizationsDelegates: const [AppLocalizations.delegate],
-      home: ParcelSubdivisionScreen(
-        useSchematicMap: true,
-        subject: subject, sourceParcelId: 'source',
-        service: ParcelSubdivisionService(
-          parcels: _ParcelRepository(parcel), workflow: _UnusedWorkflow()),
-        administrativeCatalog: _EmptyCatalog(),
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('vi'),
+        localizationsDelegates: const [AppLocalizations.delegate],
+        home: ParcelSubdivisionScreen(
+          useSchematicMap: true,
+          subject: subject,
+          sourceParcelId: 'source',
+          service: ParcelSubdivisionService(
+            parcels: _ParcelRepository(parcel),
+            workflow: _UnusedWorkflow(),
+          ),
+          administrativeCatalog: _EmptyCatalog(),
+        ),
       ),
-    ));
+    );
     await tester.pumpAndSettle();
     final map = find.byKey(const Key('subdivision-map'));
     await tester.ensureVisible(map);
@@ -241,7 +513,8 @@ void main() {
     final size = tester.getSize(map);
     final origin = tester.getTopLeft(map);
     final scale = (size.width - 40) / 0.002 < (size.height - 40) / 0.002
-        ? (size.width - 40) / 0.002 : (size.height - 40) / 0.002;
+        ? (size.width - 40) / 0.002
+        : (size.height - 40) / 0.002;
     Future<void> tap(double lat, double lon) async {
       final x = (lon - 106.001) * scale + size.width / 2;
       final y = (16.001 - lat) * scale + size.height / 2;
@@ -249,18 +522,20 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    await tap(16.002, 106);           // First boundary point.
-    await tap(16.002, 106.001);       // Trace the top boundary.
+    await tap(16.002, 106); // First boundary point.
+    await tap(16.002, 106.001); // Trace the top boundary.
     await tap(16.002, 106.002);
-    await tap(16.0015, 106.002);      // Right boundary anchor.
-    await tap(16.00135, 106.0016);   // Interior bends.
+    await tap(16.0015, 106.002); // Right boundary anchor.
+    await tap(16.00135, 106.0016); // Interior bends.
     await tap(16.0013, 106.001);
     await tap(16.0014, 106.0003);
-    await tap(16.0017, 106);         // Second boundary anchor.
-    final done = find.byKey(const Key('subdivision-close-outline'),
-      skipOffstage: false);
+    await tap(16.0017, 106); // Second boundary anchor.
+    final done = find.byKey(
+      const Key('subdivision-close-outline'),
+      skipOffstage: false,
+    );
     await tester.ensureVisible(done);
-    await tester.tap(done);          // Explicit Google Earth style Done step.
+    await tester.tap(done); // Explicit Google Earth style Done step.
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('subdivision-name-0')), findsOneWidget);
@@ -273,8 +548,16 @@ class _ParcelRepository implements LandParcelRepository {
   final LandParcel parcel;
 
   @override
-  Future<LandParcel?> getById({required String farmId, required String id})
-      async => farmId == parcel.farmId && id == parcel.id ? parcel : null;
+  Future<LandParcel?> getById({
+    required String farmId,
+    required String id,
+  }) async => farmId == parcel.farmId && id == parcel.id ? parcel : null;
+
+  @override
+  Future<List<LandParcel>> listByFarm(
+    String farmId, {
+    bool includeInactive = false,
+  }) async => farmId == parcel.farmId ? [parcel] : const [];
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

@@ -69,6 +69,16 @@ void main() {
     }
   });
 
+  test('standalone field plot uses the project-scoped T sequence format', () {
+    final plot = ProductionParcelReferenceCode.standaloneFieldPlot(
+      projectCode: 'AGR-NONG',
+      number: 1,
+    );
+
+    expect(plot.toString(), 'AGR-NONG-T001');
+    expect(plot.projectCode, 'AGR-NONG');
+    expect(plot.fieldPlotNumber, 1);
+  });
   test('a plot cannot act as the parent of another plot', () {
     final block = ProductionParcelReferenceCode.landBlock(
       projectCode: 'AGR-NONG',

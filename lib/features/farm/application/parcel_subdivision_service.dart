@@ -1,3 +1,5 @@
+import '../domain/geometry/field_plot_placement.dart';
+import 'production_parcel_creation_service.dart';
 import '../../../core/permissions/authorization.dart';
 import '../domain/entities/land_parcel.dart';
 import '../domain/geometry/parcel_subdivision_plan.dart';
@@ -7,8 +9,10 @@ import 'land_parcel_spatial_sync_workflow.dart';
 
 class ParcelSubdivisionPreview {
   const ParcelSubdivisionPreview({
-    required this.source, required this.boundaries,
-    required this.areasM2, required this.perimetersM,
+    required this.source,
+    required this.boundaries,
+    required this.areasM2,
+    required this.perimetersM,
   });
 
   final LandParcel source;
@@ -18,17 +22,27 @@ class ParcelSubdivisionPreview {
 }
 
 class ParcelSubdivisionService {
-  const ParcelSubdivisionService({required this.parcels, required this.workflow});
+  const ParcelSubdivisionService({
+    required this.parcels,
+    required this.workflow,
+    this.productionCreation,
+  });
 
   final LandParcelRepository parcels;
   final LandParcelSpatialSyncWorkflow workflow;
+  final ProductionParcelCreationService? productionCreation;
 
-  void _authorize(AuthorizationSubject subject, String parcelId,
-      String permission) {
+  void _authorize(
+    AuthorizationSubject subject,
+    String parcelId,
+    String permission,
+  ) {
     if (!const AuthorizationService().can(
-      subject: subject, permission: permission,
-      resource: ResourceContext(farmId: subject.farmId, fieldId: parcelId),
-    ) || !subject.dataScopes.contains(DataScope.allFarm)) {
+          subject: subject,
+          permission: permission,
+          resource: ResourceContext(farmId: subject.farmId, fieldId: parcelId),
+        ) ||
+        !subject.dataScopes.contains(DataScope.allFarm)) {
       throw StateError('Parcel subdivision requires farm-wide access.');
     }
   }
@@ -39,31 +53,68 @@ class ParcelSubdivisionService {
     required Wgs84Vertex cutStart,
     required Wgs84Vertex cutEnd,
     List<Wgs84Vertex> cutWaypoints = const [],
-  }) => previewPlan(subject: subject, sourceParcelId: sourceParcelId,
-    cuts: [ParcelSubdivisionCut(fragmentIndex: 0,
-      path: [cutStart, ...cutWaypoints, cutEnd])]);
+  }) => previewPlan(
+    subject: subject,
+    sourceParcelId: sourceParcelId,
+    cuts: [
+      ParcelSubdivisionCut(
+        fragmentIndex: 0,
+        path: [cutStart, ...cutWaypoints, cutEnd],
+      ),
+    ],
+  );
 
   Future<ParcelSubdivisionPreview> previewPlan({
     required AuthorizationSubject subject,
     required String sourceParcelId,
     required List<ParcelSubdivisionCut> cuts,
     bool independentSketches = false,
+    bool productionPlots = false,
   }) async {
     _authorize(subject, sourceParcelId, PermissionCodes.fieldView);
     final source = await parcels.getById(
-        farmId: subject.farmId, id: sourceParcelId);
+      farmId: subject.farmId,
+      id: sourceParcelId,
+    );
     if (source == null || !source.active) {
       throw StateError('Source parcel is missing or inactive.');
     }
     final plan = const ParcelSubdivisionPlan();
     final boundaries = independentSketches
-        ? plan.sketches(cuts) : plan.apply(source.boundary, cuts);
+        ? plan.sketches(cuts)
+        : plan.apply(source.boundary, cuts);
+    if (productionPlots) {
+      if (source.layer != ParcelLayer.landBlock ||
+          source.parentLandBlockId != null) {
+        throw StateError('The current parcel must be a land block.');
+      }
+      final siblings = await parcels.listByFarm(subject.farmId);
+      final existing = siblings
+          .where(
+            (p) =>
+                p.active &&
+                p.layer == ParcelLayer.fieldPlot &&
+                p.parentLandBlockId == source.id,
+          )
+          .map((p) => p.boundary)
+          .toList();
+      for (final boundary in boundaries) {
+        const FieldPlotPlacement().validate(
+          block: source.boundary,
+          plot: boundary,
+          existingPlots: existing,
+        );
+        existing.add(boundary);
+      }
+    }
     final geometry = const Wgs84GeometryService();
     return ParcelSubdivisionPreview(
       source: source,
       boundaries: boundaries,
       areasM2: boundaries.map((part) => geometry.measure(part).areaM2).toList(),
-      perimetersM: boundaries.map((part) => geometry.measure(part).perimeterM).toList(),
+      perimetersM: boundaries
+          .map((part) => geometry.measure(part).perimeterM)
+          .toList(),
     );
   }
 
@@ -77,11 +128,19 @@ class ParcelSubdivisionService {
     List<Wgs84Vertex> cutWaypoints = const [],
     required String firstName,
     required String secondName,
-  }) => savePlan(subject: subject, sourceParcelId: sourceParcelId,
-    villageId: villageId, expectedBoundaryVersion: expectedBoundaryVersion,
-    cuts: [ParcelSubdivisionCut(fragmentIndex: 0,
-      path: [cutStart, ...cutWaypoints, cutEnd])],
-    names: [firstName, secondName]);
+  }) => savePlan(
+    subject: subject,
+    sourceParcelId: sourceParcelId,
+    villageId: villageId,
+    expectedBoundaryVersion: expectedBoundaryVersion,
+    cuts: [
+      ParcelSubdivisionCut(
+        fragmentIndex: 0,
+        path: [cutStart, ...cutWaypoints, cutEnd],
+      ),
+    ],
+    names: [firstName, secondName],
+  );
 
   Future<List<LandParcel>> savePlan({
     required AuthorizationSubject subject,
@@ -96,13 +155,68 @@ class ParcelSubdivisionService {
     _authorize(subject, sourceParcelId, PermissionCodes.fieldEdit);
     _authorize(subject, sourceParcelId, PermissionCodes.fieldCreate);
     return workflow.subdividePlan(
-      farmId: subject.farmId, sourceParcelId: sourceParcelId,
-      villageId: villageId, expectedBoundaryVersion: expectedBoundaryVersion,
-      cuts: cuts, names: names,
+      farmId: subject.farmId,
+      sourceParcelId: sourceParcelId,
+      villageId: villageId,
+      expectedBoundaryVersion: expectedBoundaryVersion,
+      cuts: cuts,
+      names: names,
       independentSketches: independentSketches,
       details: details,
       actorMembershipId: subject.membershipId,
       occurredAt: DateTime.now().toUtc(),
+    );
+  }
+
+  Future<List<LandParcel>> saveProductionPlots({
+    required AuthorizationSubject subject,
+    required String sourceParcelId,
+    required int expectedBoundaryVersion,
+    required List<ParcelSubdivisionCut> cuts,
+    required List<String> names,
+    required List<ParcelSketchDetails> details,
+  }) async {
+    final service = productionCreation;
+    if (service == null) {
+      throw StateError('Production creation is unavailable.');
+    }
+    final preview = await previewPlan(
+      subject: subject,
+      sourceParcelId: sourceParcelId,
+      cuts: cuts,
+      independentSketches: true,
+      productionPlots: true,
+    );
+    if (preview.boundaries.length != names.length ||
+        names.length != details.length) {
+      throw const FormatException('Missing plot names or details.');
+    }
+    final time = DateTime.now().toUtc();
+    return service.createFieldPlots(
+      subject: subject,
+      parentLandBlockId: sourceParcelId,
+      expectedParentBoundaryVersion: expectedBoundaryVersion,
+      details: details,
+      drafts: [
+        for (var i = 0; i < names.length; i++)
+          LandParcel.create(
+            id: workflow.identityGenerator.newId('land-parcel'),
+            farmId: subject.farmId,
+            parcelCode: 'DRAFT',
+            name: names[i].trim(),
+            boundary: preview.boundaries[i],
+            boundarySource: BoundarySource.manual,
+            verificationStatus: BoundaryVerificationStatus.draft,
+            actorMembershipId: subject.membershipId,
+            occurredAt: time,
+            kind: ParcelLayer.fieldPlot,
+            parentBlockId: sourceParcelId,
+            legacyMetadata: {
+              'parcelLayer': ParcelLayer.fieldPlot.name,
+              'parentLandBlockId': sourceParcelId,
+            },
+          ),
+      ],
     );
   }
 }

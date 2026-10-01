@@ -245,6 +245,7 @@ class LandParcelController extends ChangeNotifier {
     required String parcelCode,
     String? projectId,
     String? projectCode,
+    ParcelLayer productionKind = ParcelLayer.landBlock,
     required String name,
     required List<Wgs84Vertex> vertices,
     required BoundarySource source,
@@ -265,6 +266,13 @@ class LandParcelController extends ChangeNotifier {
       return const LandParcelApplicationResult.failure(
         LandParcelApplicationStatus.validationFailed,
         'landParcel.geometry.invalid',
+      );
+    }
+
+    if (productionKind == ParcelLayer.fieldPlot && projectCode == null) {
+      return const LandParcelApplicationResult.failure(
+        LandParcelApplicationStatus.validationFailed,
+        'landParcel.project.missing',
       );
     }
 
@@ -307,27 +315,36 @@ class LandParcelController extends ChangeNotifier {
               'landParcel.project.missing',
             );
           }
-          final saved = await service.createLandBlock(
-            subject: subject,
-            projectCode: projectCode,
-            project: AgricoProject.defaultProject,
-            draft: LandParcel.create(
-              id: id,
-              farmId: subject.farmId,
-              parcelCode: 'DRAFT',
-              name: name,
-              boundary: Wgs84Polygon.fromVertices(vertices),
-              boundarySource: source,
-              verificationStatus: BoundaryVerificationStatus.draft,
-              actorMembershipId: subject.membershipId,
-              occurredAt: DateTime.now().toUtc(),
-              active: legacyMetadata['active'] != false,
-              horizontalAccuracyM: horizontalAccuracyM,
-              boundaryConfidence: boundaryConfidence,
-              projectId: projectId,
-              legacyMetadata: legacyMetadata,
-            ),
+          final draft = LandParcel.create(
+            id: id,
+            farmId: subject.farmId,
+            parcelCode: 'DRAFT',
+            name: name,
+            boundary: Wgs84Polygon.fromVertices(vertices),
+            boundarySource: source,
+            verificationStatus: BoundaryVerificationStatus.draft,
+            actorMembershipId: subject.membershipId,
+            occurredAt: DateTime.now().toUtc(),
+            active: legacyMetadata['active'] != false,
+            horizontalAccuracyM: horizontalAccuracyM,
+            boundaryConfidence: boundaryConfidence,
+            projectId: projectId,
+            kind: productionKind,
+            legacyMetadata: legacyMetadata,
           );
+          final saved = productionKind == ParcelLayer.landBlock
+              ? await service.createLandBlock(
+                  subject: subject,
+                  projectCode: projectCode,
+                  project: AgricoProject.defaultProject,
+                  draft: draft,
+                )
+              : await service.createStandaloneFieldPlot(
+                  subject: subject,
+                  projectCode: projectCode,
+                  project: AgricoProject.defaultProject,
+                  draft: draft,
+                );
           result = LandParcelApplicationResult.success(
             saved,
             'landParcel.create.success',

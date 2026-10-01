@@ -31,12 +31,10 @@ import 'land_parcel_boundary_consistency_queries.dart';
 /// Atomically synchronizes one LandParcel state with its stable Spatial Core
 /// projection.
 ///
-/// Creation establishes the persistent LandParcel-to-SpatialFeature identity.
-/// Updates resolve SpatialFeature identity from that persisted association
-/// rather than trusting a caller-supplied SpatialFeature id.
-///
-/// Spatial identities are generated internally while revision numbers are
-/// derived from persisted Spatial Core state.
+/// Every public entry point runs inside a single shared transaction so the
+/// parcel, its immutable boundary history, the spatial link, the
+/// SpatialFeature and its first revision either commit together or roll back
+/// together.
 class LandParcelSpatialSyncWorkflow {
   const LandParcelSpatialSyncWorkflow({
     required this.transaction,
@@ -48,37 +46,11 @@ class LandParcelSpatialSyncWorkflow {
   final LandParcelSpatialProjection projection;
   final SpatialIdentityGenerator identityGenerator;
 
-  /// Creates two child parcels, their spatial identities, and their lineage
-  /// in one SQLite transaction. The source boundary and identity are retained.
-  Future<List<LandParcel>> subdivide({
-    required String farmId,
-    required String sourceParcelId,
-    required String villageId,
-    required int expectedBoundaryVersion,
-    required Wgs84Vertex cutStart,
-    required Wgs84Vertex cutEnd,
-    List<Wgs84Vertex> cutWaypoints = const [],
-    required String firstName,
-    required String secondName,
-    required String actorMembershipId,
-    required DateTime occurredAt,
-  }) => subdividePlan(
-    farmId: farmId,
-    sourceParcelId: sourceParcelId,
-    villageId: villageId,
-    expectedBoundaryVersion: expectedBoundaryVersion,
-    cuts: [
-      ParcelSubdivisionCut(
-        fragmentIndex: 0,
-        path: [cutStart, ...cutWaypoints, cutEnd],
-      ),
-    ],
-    names: [firstName, secondName],
-    actorMembershipId: actorMembershipId,
-    occurredAt: occurredAt,
-  );
-
-  /// Saves all final fragments and their direct source lineage atomically.
+  /// Subdivide [sourceParcelId] into fragments along [cuts].
+  ///
+  /// All fragments share the same transaction. When [independentSketches] is
+  /// true the fragments are produced as standalone field plots, otherwise the
+  /// source land block is deactivated once the fragments have been written.
   Future<List<LandParcel>> subdividePlan({
     required String farmId,
     required String sourceParcelId,
@@ -86,10 +58,10 @@ class LandParcelSpatialSyncWorkflow {
     required int expectedBoundaryVersion,
     required List<ParcelSubdivisionCut> cuts,
     required List<String> names,
-    bool independentSketches = false,
-    List<ParcelSketchDetails> details = const [],
     required String actorMembershipId,
     required DateTime occurredAt,
+    bool independentSketches = false,
+    List<ParcelSketchDetails> details = const [],
   }) async {
     if (cuts.isEmpty ||
         cuts.length > 99 ||
@@ -219,7 +191,7 @@ class LandParcelSpatialSyncWorkflow {
 
         // P02A: block-on-block guard. A new land block must not overlap the
         // interior of any other active land block in the same project.
-        // NULL project is transitional and is still compared — it is not
+        // NULL project is transitional and is still compared ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â it is not
         // treated as a real project.
         await _guardBlockOverlaps(
           tx: tx,
@@ -259,13 +231,11 @@ class LandParcelSpatialSyncWorkflow {
               occurredAt: occurredAt,
               // P02A: typed fields. Project inherits from the source.
               projectId: source.projectId,
-              kind: independentSketches
-                  ? entry.layer
-                  : ParcelLayer.landBlock,
+              kind: independentSketches ? entry.layer : ParcelLayer.landBlock,
               parentBlockId:
                   independentSketches && entry.layer == ParcelLayer.fieldPlot
-                      ? parentId
-                      : null,
+                  ? parentId
+                  : null,
               countryCode: source.countryCode,
               provinceCode: source.provinceCode,
               districtCode: source.districtCode,
@@ -383,13 +353,7 @@ class LandParcelSpatialSyncWorkflow {
   }) async {
     final rows = await tx.query(
       SqliteLandParcelRepository.parcelTable,
-      columns: [
-        'id',
-        'payload_json',
-        'kind',
-        'parent_block_id',
-        'project_id',
-      ],
+      columns: ['id', 'payload_json', 'kind', 'parent_block_id', 'project_id'],
       where: 'farm_id = ? AND active = 1',
       whereArgs: [farmId],
     );
@@ -426,9 +390,7 @@ class LandParcelSpatialSyncWorkflow {
       }
       for (final other in accepted) {
         if (topology.interiorsOverlap(boundaries[i], other)) {
-          throw StateError(
-            'New land blocks in the same batch overlap.',
-          );
+          throw StateError('New land blocks in the same batch overlap.');
         }
       }
       accepted.add(boundaries[i]);
@@ -703,79 +665,31 @@ class LandParcelSpatialSyncWorkflow {
 
   /// Creates one field plot without requiring complete coverage of its block.
   /// The parent, existing plots, code and spatial writes share one transaction.
-  Future<LandParcel> createProductionFieldPlot({
+  Future<LandParcel> createProductionStandaloneFieldPlot({
     required LandParcel draft,
-    required String parentLandBlockId,
-    required int expectedParentBoundaryVersion,
+    required String projectCode,
     required SpatialTemporalState temporalState,
   }) {
-    if (parentLandBlockId.trim().isEmpty ||
-        draft.id == parentLandBlockId ||
-        !draft.active ||
+    if (draft.kind != ParcelLayer.fieldPlot ||
+        draft.parentBlockId != null ||
+        draft.projectId == null ||
+        draft.projectId!.trim().isEmpty ||
         draft.spatialFeatureId != null ||
+        !draft.active ||
         draft.boundaryVersion != 1) {
       throw const FormatException(
-        'A field plot requires a new draft and distinct parent.',
+        'Standalone production field plot draft is invalid.',
       );
     }
+
     return createPrepared(
       temporalState: temporalState,
-      prepare: (tx, surveys) async {
-        final parcels = SqliteLandParcelRepository(tx);
-        final parent = await parcels.getById(
+      prepare: (tx, surveys) {
+        return SqliteProductionParcelNumberAllocator(
+          tx,
+        ).saveStandaloneFieldPlot(
           farmId: draft.farmId,
-          id: parentLandBlockId,
-        );
-        if (parent == null ||
-            !parent.active ||
-            parent.layer != ParcelLayer.landBlock ||
-            parent.parentLandBlockId != null ||
-            parent.boundaryVersion != expectedParentBoundaryVersion) {
-          throw StateError(
-            'Parent land block is missing, inactive or changed.',
-          );
-        }
-        final spatial = SpatialPersistenceComposition(tx);
-        if (parent.spatialFeatureId == null ||
-            await LandParcelBoundaryConsistencyQueries(
-                  links: SqliteLandParcelSpatialLinkRepository(tx),
-                  features: spatial.featureRepository,
-                  revisions: spatial.revisionRepository,
-                ).check(parent) !=
-                LandParcelBoundaryConsistency.consistent) {
-          throw StateError('Parent land block boundary needs reconciliation.');
-        }
-        final match = RegExp(r'^(.+)-L([0-9]+)$').firstMatch(parent.parcelCode);
-        if (match == null) {
-          throw const FormatException(
-            'Parent requires a production land block code.',
-          );
-        }
-        final parentCode = ProductionParcelReferenceCode.landBlock(
-          projectCode: match.group(1)!,
-          landBlockNumber: int.parse(match.group(2)!),
-        );
-        if (parentCode.toString() != parent.parcelCode) {
-          throw const FormatException(
-            'Parent production code is not canonical.',
-          );
-        }
-        final siblings = await parcels.listByFarm(draft.farmId);
-        const FieldPlotPlacement().validate(
-          block: parent.boundary,
-          plot: draft.boundary,
-          existingPlots: siblings
-              .where(
-                (item) =>
-                    item.active &&
-                    item.layer == ParcelLayer.fieldPlot &&
-                    item.parentLandBlockId == parent.id,
-              )
-              .map((item) => item.boundary),
-        );
-        return SqliteProductionParcelNumberAllocator(tx).saveFieldPlot(
-          farmId: draft.farmId,
-          parent: parentCode,
+          projectCode: projectCode,
           save: (code) async => LandParcel.create(
             id: draft.id,
             farmId: draft.farmId,
@@ -789,19 +703,214 @@ class LandParcelSpatialSyncWorkflow {
             ownerHouseholdId: draft.ownerHouseholdId,
             ownerDisplayName: draft.ownerDisplayName,
             ownerContact: draft.ownerContact,
+            active: draft.active,
             horizontalAccuracyM: draft.horizontalAccuracyM,
             boundaryConfidence: draft.boundaryConfidence,
-            note: draft.boundaryHistory.first.note,
             countryCode: draft.countryCode,
             provinceCode: draft.provinceCode,
             districtCode: draft.districtCode,
             villageCode: draft.villageCode,
-            projectId: parent.projectId,
+            projectId: draft.projectId,
             kind: ParcelLayer.fieldPlot,
-            parentBlockId: parent.id,
+            parentBlockId: null,
             legacyMetadata: draft.legacyMetadata,
           ),
         );
+      },
+    );
+  }
+
+  Future<LandParcel> createProductionFieldPlot({
+    required LandParcel draft,
+    required String parentLandBlockId,
+    required int expectedParentBoundaryVersion,
+    required SpatialTemporalState temporalState,
+  }) => createPrepared(
+    temporalState: temporalState,
+    prepare: (tx, surveys) => _prepareProductionFieldPlot(
+      tx: tx,
+      draft: draft,
+      parentLandBlockId: parentLandBlockId,
+      expectedParentBoundaryVersion: expectedParentBoundaryVersion,
+    ),
+  );
+
+  Future<LandParcel> _prepareProductionFieldPlot({
+    required Transaction tx,
+    required LandParcel draft,
+    required String parentLandBlockId,
+    required int expectedParentBoundaryVersion,
+  }) async {
+    if (parentLandBlockId.trim().isEmpty ||
+        draft.id == parentLandBlockId ||
+        !draft.active ||
+        draft.spatialFeatureId != null ||
+        draft.boundaryVersion != 1) {
+      throw const FormatException(
+        'A field plot requires a new draft and distinct parent.',
+      );
+    }
+    final parcels = SqliteLandParcelRepository(tx);
+    final parent = await parcels.getById(
+      farmId: draft.farmId,
+      id: parentLandBlockId,
+    );
+    if (parent == null ||
+        !parent.active ||
+        parent.layer != ParcelLayer.landBlock ||
+        parent.parentLandBlockId != null ||
+        parent.boundaryVersion != expectedParentBoundaryVersion) {
+      throw StateError('Parent land block is missing, inactive or changed.');
+    }
+    final spatial = SpatialPersistenceComposition(tx);
+    if (parent.spatialFeatureId == null ||
+        await LandParcelBoundaryConsistencyQueries(
+              links: SqliteLandParcelSpatialLinkRepository(tx),
+              features: spatial.featureRepository,
+              revisions: spatial.revisionRepository,
+            ).check(parent) !=
+            LandParcelBoundaryConsistency.consistent) {
+      throw StateError('Parent land block boundary needs reconciliation.');
+    }
+    final match = RegExp(r'^(.+)-L([0-9]+)$').firstMatch(parent.parcelCode);
+    if (match == null) {
+      throw const FormatException(
+        'Parent requires a production land block code.',
+      );
+    }
+    final parentCode = ProductionParcelReferenceCode.landBlock(
+      projectCode: match.group(1)!,
+      landBlockNumber: int.parse(match.group(2)!),
+    );
+    if (parentCode.toString() != parent.parcelCode) {
+      throw const FormatException('Parent production code is not canonical.');
+    }
+    final siblings = await parcels.listByFarm(draft.farmId);
+    const FieldPlotPlacement().validate(
+      block: parent.boundary,
+      plot: draft.boundary,
+      existingPlots: siblings
+          .where(
+            (item) =>
+                item.active &&
+                item.layer == ParcelLayer.fieldPlot &&
+                item.parentLandBlockId == parent.id,
+          )
+          .map((item) => item.boundary),
+    );
+    return SqliteProductionParcelNumberAllocator(tx).saveFieldPlot(
+      farmId: draft.farmId,
+      parent: parentCode,
+      save: (code) async => LandParcel.create(
+        id: draft.id,
+        farmId: draft.farmId,
+        parcelCode: code.toString(),
+        name: draft.name,
+        boundary: draft.boundary,
+        boundarySource: draft.boundarySource,
+        verificationStatus: draft.verificationStatus,
+        actorMembershipId: draft.createdBy,
+        occurredAt: draft.createdAt,
+        ownerHouseholdId: draft.ownerHouseholdId,
+        ownerDisplayName: draft.ownerDisplayName,
+        ownerContact: draft.ownerContact,
+        horizontalAccuracyM: draft.horizontalAccuracyM,
+        boundaryConfidence: draft.boundaryConfidence,
+        note: draft.boundaryHistory.first.note,
+        countryCode: draft.countryCode,
+        provinceCode: draft.provinceCode,
+        districtCode: draft.districtCode,
+        villageCode: draft.villageCode,
+        // P02A: typed fields. The plot inherits the parent's project.
+        projectId: parent.projectId,
+        kind: ParcelLayer.fieldPlot,
+        parentBlockId: parent.id,
+        legacyMetadata: draft.legacyMetadata,
+      ),
+    );
+  }
+
+  Future<List<LandParcel>> createProductionFieldPlots({
+    required List<LandParcel> drafts,
+    required String parentLandBlockId,
+    required int expectedParentBoundaryVersion,
+    required SpatialTemporalState temporalState,
+    required List<ParcelSketchDetails> details,
+  }) {
+    if (drafts.isEmpty ||
+        details.length != drafts.length ||
+        drafts.map((draft) => draft.id).toSet().length != drafts.length ||
+        drafts.map((draft) => draft.farmId).toSet().length != 1) {
+      throw const FormatException('Invalid production plot batch.');
+    }
+    late Transaction tx;
+    final created = <LandParcel>[];
+    return transaction.run<List<LandParcel>>(
+      (parcels, links, spatial) async {
+        for (final draft in drafts) {
+          final prepared = await _prepareProductionFieldPlot(
+            tx: tx,
+            draft: draft,
+            parentLandBlockId: parentLandBlockId,
+            expectedParentBoundaryVersion: expectedParentBoundaryVersion,
+          );
+          final featureId = identityGenerator.newId('spatial-feature');
+          await createScoped(
+            parcels: parcels,
+            links: links,
+            spatial: spatial,
+            parcel: prepared,
+            temporalState: temporalState,
+            spatialLinkId: identityGenerator.newId('spatial-link'),
+            spatialFeatureId: featureId,
+            spatialRevisionId: identityGenerator.newId('spatial-revision'),
+          );
+          created.add(prepared.assignSpatialFeatureId(featureId));
+        }
+        return created;
+      },
+      beforeCreate: (scoped, surveys) async {
+        tx = scoped;
+      },
+      afterCreate: (surveys) async {
+        for (var i = 0; i < created.length; i++) {
+          final child = created[i];
+          final entry = details[i];
+          // P02A: profiles and crops belong to field plots only.
+          if (child.layer != ParcelLayer.fieldPlot) continue;
+          await surveys.saveLandUseProfile(
+            LandUseProfile(
+              parcelId: child.id,
+              landUseType: entry.landUseType,
+              currentCondition: entry.landCondition,
+              clearingStatus: entry.clearingStatus,
+              readinessStatus: entry.readinessStatus,
+              notes: entry.notes?.trim().isEmpty == true
+                  ? null
+                  : entry.notes?.trim(),
+              updatedAt: child.updatedAt,
+              updatedBy: child.updatedBy,
+            ),
+          );
+          if (entry.cropType?.trim().isNotEmpty == true) {
+            await surveys.createCrop(
+              CropRecord(
+                id: identityGenerator.newId('crop'),
+                parcelId: child.id,
+                cropType: entry.cropType!.trim(),
+                quantity: entry.cropQuantity!,
+                unit: entry.cropUnit!.trim(),
+                condition: CropCondition.growing,
+                growthStage: entry.cropGrowthStage,
+                active: true,
+                createdAt: child.createdAt,
+                createdBy: child.createdBy,
+                updatedAt: child.updatedAt,
+                updatedBy: child.updatedBy,
+              ),
+            );
+          }
+        }
       },
     );
   }

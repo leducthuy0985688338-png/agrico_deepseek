@@ -1,3 +1,4 @@
+import 'package:agrico_deepseek/features/farm/domain/geometry/parcel_subdivision_plan.dart';
 import 'package:agrico_deepseek/core/permissions/authorization.dart';
 import 'package:agrico_deepseek/core/project/agrico_project.dart';
 import 'package:agrico_deepseek/core/spatial/domain/entities/spatial_temporal.dart';
@@ -36,7 +37,7 @@ LandParcel draft({
   id: 'draft',
   farmId: farm,
   parcelCode: 'DRAFT',
-  name: 'Lô',
+  name: 'LÃ´',
   boundary: Wgs84Polygon.fromVertices(const [
     Wgs84Vertex(latitude: 16, longitude: 106),
     Wgs84Vertex(latitude: 16, longitude: 106.01),
@@ -51,6 +52,55 @@ LandParcel draft({
 );
 
 void main() {
+  test(
+    'batch authorizes every member and rejects invalid crop before persistence',
+    () async {
+      final repo = _Creation();
+      final service = ProductionParcelCreationService(repo);
+      expect(
+        () => service.createFieldPlots(
+          subject: subject(),
+          drafts: [
+            draft(),
+            draft(farm: 'other'),
+          ],
+          parentLandBlockId: 'block',
+          expectedParentBoundaryVersion: 1,
+          details: const [ParcelSketchDetails(), ParcelSketchDetails()],
+        ),
+        throwsStateError,
+      );
+      expect(
+        () => service.createFieldPlots(
+          subject: subject(),
+          drafts: [draft()],
+          parentLandBlockId: 'block',
+          expectedParentBoundaryVersion: 1,
+          details: const [
+            ParcelSketchDetails(
+              cropType: 'Peanut',
+              cropQuantity: 0,
+              cropUnit: 'plants',
+            ),
+          ],
+        ),
+        throwsFormatException,
+      );
+      expect(repo.calls, 0);
+      await service.createFieldPlots(
+        subject: subject(),
+        drafts: [draft()],
+        parentLandBlockId: 'block',
+        expectedParentBoundaryVersion: 2,
+        details: const [ParcelSketchDetails()],
+      );
+      expect(repo.calls, 1);
+      expect(repo.parent, 'block');
+      expect(repo.version, 2);
+      expect(repo.state, SpatialTemporalState.underConstruction);
+    },
+  );
+
   test('GPS and imported creation require their source permissions', () {
     final repo = _Creation();
     final service = ProductionParcelCreationService(repo);
@@ -151,6 +201,7 @@ void main() {
       expect(repo.calls, 2);
     },
   );
+
   test(
     'inactive missing permission and partial scope requests never reach persistence',
     () {
@@ -183,6 +234,7 @@ void main() {
       expect(repo.calls, 0);
     },
   );
+
   test(
     'cross farm forged actor and invalid parent version never reach persistence',
     () {
@@ -212,6 +264,27 @@ void main() {
     },
   );
 
+  test(
+    'standalone field plot authorizes without parent and forwards project identity',
+    () async {
+      final repo = _Creation();
+      final service = ProductionParcelCreationService(repo);
+
+      final saved = await service.createStandaloneFieldPlot(
+        subject: subject(),
+        draft: draft(),
+        projectCode: _project.code,
+        project: _project,
+      );
+
+      expect(saved.id, 'draft');
+      expect(repo.calls, 1);
+      expect(repo.project, _project.code);
+      expect(repo.parent, isNull);
+      expect(repo.version, isNull);
+      expect(repo.state, SpatialTemporalState.underConstruction);
+    },
+  );
   test('missing or mismatched project id is rejected before numbering', () {
     final repo = _Creation();
     final service = ProductionParcelCreationService(repo);
@@ -256,6 +329,7 @@ class _Creation implements ProductionParcelCreationRepository {
   String? parent;
   int? version;
   SpatialTemporalState? state;
+
   @override
   Future<LandParcel> createLandBlock({
     required LandParcel draft,
@@ -266,6 +340,20 @@ class _Creation implements ProductionParcelCreationRepository {
     calls++;
     project = projectCode;
     receivedCrops = crops;
+    state = temporalState;
+    return draft;
+  }
+
+  @override
+  Future<LandParcel> createStandaloneFieldPlot({
+    required LandParcel draft,
+    required String projectCode,
+    required SpatialTemporalState temporalState,
+  }) async {
+    calls++;
+    project = projectCode;
+    parent = null;
+    version = null;
     state = temporalState;
     return draft;
   }
@@ -282,5 +370,20 @@ class _Creation implements ProductionParcelCreationRepository {
     version = expectedParentBoundaryVersion;
     state = temporalState;
     return draft;
+  }
+
+  @override
+  Future<List<LandParcel>> createFieldPlots({
+    required List<LandParcel> drafts,
+    required String parentLandBlockId,
+    required int expectedParentBoundaryVersion,
+    required SpatialTemporalState temporalState,
+    required List<ParcelSketchDetails> details,
+  }) async {
+    calls++;
+    parent = parentLandBlockId;
+    version = expectedParentBoundaryVersion;
+    state = temporalState;
+    return drafts;
   }
 }

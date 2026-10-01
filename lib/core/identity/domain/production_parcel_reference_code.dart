@@ -1,4 +1,4 @@
-/// Production codes are independent of villages, households and crop seasons.
+﻿/// Production codes are independent of villages, households and crop seasons.
 /// This is a display code; it does not replace business or spatial identity.
 class ProductionParcelReferenceCode {
   ProductionParcelReferenceCode.landBlock({
@@ -8,20 +8,28 @@ class ProductionParcelReferenceCode {
     _validate();
   }
 
+  ProductionParcelReferenceCode.standaloneFieldPlot({
+    required this.projectCode,
+    required int number,
+  }) : landBlockNumber = null,
+       fieldPlotNumber = number {
+    _validate();
+  }
+
   ProductionParcelReferenceCode.fieldPlot({
     required ProductionParcelReferenceCode parent,
     required int number,
   }) : projectCode = parent.projectCode,
        landBlockNumber = parent.landBlockNumber,
        fieldPlotNumber = number {
-    if (parent.fieldPlotNumber != null) {
+    if (parent.landBlockNumber == null || parent.fieldPlotNumber != null) {
       throw const FormatException('A field plot must belong to a land block.');
     }
     _validate();
   }
 
   final String projectCode;
-  final int landBlockNumber;
+  final int? landBlockNumber;
   final int? fieldPlotNumber;
 
   void _validate() {
@@ -33,8 +41,9 @@ class ProductionParcelReferenceCode {
             .any((part) => RegExp(r'^[LT][0-9]+$').hasMatch(part))) {
       throw const FormatException('Invalid production project code.');
     }
-    if (landBlockNumber < 1 ||
-        (fieldPlotNumber != null && fieldPlotNumber! < 1)) {
+    if ((landBlockNumber != null && landBlockNumber! < 1) ||
+        (fieldPlotNumber != null && fieldPlotNumber! < 1) ||
+        (landBlockNumber == null && fieldPlotNumber == null)) {
       throw const FormatException(
         'Production parcel numbers must be positive.',
       );
@@ -43,9 +52,13 @@ class ProductionParcelReferenceCode {
 
   @override
   String toString() {
-    final block = '$projectCode-L${landBlockNumber.toString().padLeft(3, '0')}';
+    if (landBlockNumber == null) {
+      return '$projectCode-T${fieldPlotNumber!.toString().padLeft(3, '0')}';
+    }
+    final block =
+        '$projectCode-L${landBlockNumber!.toString().padLeft(3, '0')}';
     return fieldPlotNumber == null
         ? block
-        : '$block-T${fieldPlotNumber.toString().padLeft(3, '0')}';
+        : '$block-T${fieldPlotNumber!.toString().padLeft(3, '0')}';
   }
 }

@@ -196,6 +196,7 @@ class LandParcelFormValue {
     this.districtCode,
     this.villageCode,
     this.autoNumber = false,
+    this.productionKind = ParcelLayer.landBlock,
     this.villageId,
     this.ownerHouseholdId,
     required this.householdCode,
@@ -221,6 +222,7 @@ class LandParcelFormValue {
   final String? districtCode;
   final String? villageCode;
   final bool autoNumber;
+  final ParcelLayer productionKind;
   final String? villageId;
   final String? ownerHouseholdId;
   final String householdCode;
@@ -287,6 +289,7 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
   final Map<AdministrativeLevel, String> selectedAdministrativeIds = {};
   String? selectedExistingHouseholdId;
   bool saving = false;
+  ParcelLayer productionKind = ParcelLayer.landBlock;
   late bool active;
   late LandUseType landUseType;
   late LandCondition landCondition;
@@ -325,8 +328,9 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
         AdministrativeLevel.village,
       ]) {
         final choices = _adminChoices(level);
-        if (choices.isNotEmpty)
+        if (choices.isNotEmpty) {
           selectedAdministrativeIds[level] = choices.first.id;
+        }
       }
     }
     active = widget.parcel?.active ?? true;
@@ -335,7 +339,7 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
     clearingStatus = widget.landUse?.clearingStatus ?? ClearingStatus.unknown;
     readinessStatus =
         widget.landUse?.readinessStatus ?? ReadinessStatus.unknown;
-    boundaryDraft = boundaryDraft;
+    boundaryDraft = widget.boundaryDraft;
   }
 
   @override
@@ -357,7 +361,9 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
             parcel == null
                 ? (widget.productionProjectCode == null
                       ? 'parcel.create.title'
-                      : 'production.block.create')
+                      : productionKind == ParcelLayer.landBlock
+                      ? 'production.block.create'
+                      : 'production.standalone.create')
                 : 'parcel.edit.title',
           ),
         ),
@@ -369,11 +375,40 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
           children: [
             _section(context, l10n.text('parcel.section.identity'), [
               if (parcel == null && widget.productionProjectCode != null)
+                DropdownButtonFormField<ParcelLayer>(
+                  key: const Key('production-create-kind'),
+                  initialValue: productionKind,
+                  decoration: InputDecoration(
+                    labelText: l10n.text('production.create.kind'),
+                  ),
+                  items: [
+                    DropdownMenuItem(
+                      value: ParcelLayer.landBlock,
+                      child: Text(l10n.text('production.create.landBlock')),
+                    ),
+                    DropdownMenuItem(
+                      value: ParcelLayer.fieldPlot,
+                      child: Text(l10n.text('production.create.standalone')),
+                    ),
+                  ],
+                  onChanged: saving
+                      ? null
+                      : (value) {
+                          if (value != null) {
+                            setState(() => productionKind = value);
+                          }
+                        },
+                ),
+              if (parcel == null && widget.productionProjectCode != null)
                 ListTile(
-                  key: const Key('production-block-code'),
+                  key: Key(
+                    productionKind == ParcelLayer.landBlock
+                        ? 'production-block-code'
+                        : 'production-standalone-code',
+                  ),
                   title: Text(l10n.text('parcel.code')),
                   subtitle: Text(
-                    '${widget.productionProjectCode}-L001 — ${l10n.text('production.code.onSave')}',
+                    '${widget.productionProjectCode}-${productionKind == ParcelLayer.landBlock ? 'L001' : 'T001'} — ${l10n.text('production.code.onSave')}',
                   ),
                 )
               else if (parcel == null && widget.administrativeUnits.isNotEmpty)
@@ -747,8 +782,9 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
           for (final child in levels.skip(levels.indexOf(level) + 1)) {
             selectedAdministrativeIds.remove(child);
             final next = _adminChoices(child);
-            if (next.isNotEmpty)
+            if (next.isNotEmpty) {
               selectedAdministrativeIds[child] = next.first.id;
+            }
           }
         }),
         validator: (id) => id == null
@@ -872,6 +908,7 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
       await widget.onSubmit(
         LandParcelFormValue(
           parcelCode: fields['code']!.text.trim(),
+          productionKind: productionKind,
           name: fields['name']!.text.trim(),
           active: active,
           country:
