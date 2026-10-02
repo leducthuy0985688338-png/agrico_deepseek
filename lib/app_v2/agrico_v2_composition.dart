@@ -471,6 +471,10 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
                   : value.ownerName,
               active: value.active,
               crops: value.crops,
+              expectedUpdatedAt: parcel.updatedAt,
+              expectedCropUpdates: {
+                for (final crop in data.crops) crop.id: crop.updatedAt,
+              },
             );
 
             if (!editContext.mounted) return;

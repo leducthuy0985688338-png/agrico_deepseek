@@ -135,6 +135,8 @@ class UpdateLandParcelMetadataCommand {
     this.districtCode,
     this.villageCode,
     this.crops,
+    this.expectedUpdatedAt,
+    this.expectedCropUpdates,
   });
 
   final String farmId;
@@ -154,6 +156,8 @@ class UpdateLandParcelMetadataCommand {
 
   /// Null leaves crops untouched; a list replaces the active crop set.
   final List<CropRecord>? crops;
+  final DateTime? expectedUpdatedAt;
+  final Map<String, DateTime>? expectedCropUpdates;
 }
 
 class ReplaceBoundaryCommand {
@@ -387,13 +391,7 @@ class LandParcelApplicationService implements LandParcelApplication {
       final crops = <CropRecord>[];
       for (var index = 0; index < command.crops.length; index++) {
         final draft = command.crops[index];
-        if (draft.cropType.trim().isEmpty ||
-            draft.unit.trim().isEmpty ||
-            !draft.quantity.isFinite ||
-            draft.quantity <= 0 ||
-            (draft.ageMonths != null && draft.ageMonths! < 0)) {
-          throw const FormatException('Invalid crop type, unit, or quantity.');
-        }
+        draft.validate();
         crops.add(
           CropRecord(
             id: 'crop-${command.id}-$index',
@@ -401,13 +399,17 @@ class LandParcelApplicationService implements LandParcelApplication {
             cropType: draft.cropType.trim(),
             quantity: draft.quantity,
             unit: draft.unit.trim(),
-            variety: draft.variety,
+            variety: draft.variety?.trim().isEmpty == true
+                ? null
+                : draft.variety?.trim(),
             plantingYear: draft.plantingYear,
             plantingDate: draft.plantingDate,
             ageMonths: draft.ageMonths,
             growthStage: draft.growthStage,
             condition: draft.condition,
-            notes: draft.notes,
+            notes: draft.notes?.trim().isEmpty == true
+                ? null
+                : draft.notes?.trim(),
             active: draft.active,
             createdAt: command.occurredAt,
             createdBy: command.actorMembershipId,
@@ -1083,19 +1085,28 @@ class LandParcelApplicationService implements LandParcelApplication {
           id: command.parcelId,
         );
         if (stored == null) throw StateError('Parcel not found.');
+        if (command.expectedUpdatedAt != null &&
+            stored.updatedAt != command.expectedUpdatedAt) {
+          throw const FormatException('crop.changed');
+        }
         final next = _updatedMetadata(stored, command);
         await parcels.update(next);
         final current = await surveys.listCrops(command.parcelId);
         final byId = {for (final crop in current) crop.id: crop};
+        final expected = command.expectedCropUpdates;
+        if (expected != null &&
+            (expected.length != current.length ||
+                current.any((crop) => expected[crop.id] != crop.updatedAt))) {
+          throw const FormatException('crop.changed');
+        }
         final retained = <String>{};
+        final requestedIds = <String>{};
         for (var index = 0; index < requested.length; index++) {
           final value = requested[index];
-          if (value.cropType.trim().isEmpty ||
-              value.unit.trim().isEmpty ||
-              !value.quantity.isFinite ||
-              value.quantity <= 0 ||
-              (value.ageMonths != null && value.ageMonths! < 0)) {
-            throw const FormatException('Invalid crop type, unit or quantity.');
+          value.validate();
+          if (value.parcelId != command.parcelId ||
+              !requestedIds.add(value.id)) {
+            throw const FormatException('crop.validation.failed');
           }
           final original = byId[value.id];
           if (original == null && !value.id.startsWith('draft-')) {
@@ -1115,12 +1126,16 @@ class LandParcelApplicationService implements LandParcelApplication {
             unit: value.unit.trim(),
             condition: value.condition,
             active: true,
-            variety: value.variety,
+            variety: value.variety?.trim().isEmpty == true
+                ? null
+                : value.variety?.trim(),
             plantingYear: value.plantingYear,
             plantingDate: value.plantingDate,
             ageMonths: value.ageMonths,
             growthStage: value.growthStage,
-            notes: value.notes,
+            notes: value.notes?.trim().isEmpty == true
+                ? null
+                : value.notes?.trim(),
             createdAt: original?.createdAt ?? command.occurredAt,
             createdBy: original?.createdBy ?? command.actorMembershipId,
             updatedAt: command.occurredAt,
@@ -1166,7 +1181,9 @@ class LandParcelApplicationService implements LandParcelApplication {
     } on FormatException catch (error) {
       return LandParcelApplicationResult.failure(
         LandParcelApplicationStatus.validationFailed,
-        'crop.validation.failed',
+        error.message == 'crop.changed'
+            ? 'crop.changed'
+            : 'crop.validation.failed',
         error: error,
       );
     } catch (error) {

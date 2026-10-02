@@ -423,6 +423,8 @@ class LandParcelController extends ChangeNotifier {
     String? ownerDisplayName,
     required bool active,
     List<CropRecord>? crops,
+    DateTime? expectedUpdatedAt,
+    Map<String, DateTime>? expectedCropUpdates,
   }) async {
     _phase(ParcelPresentationPhase.saving);
 
@@ -439,6 +441,8 @@ class LandParcelController extends ChangeNotifier {
         ownerDisplayName: ownerDisplayName,
         active: active,
         crops: crops,
+        expectedUpdatedAt: expectedUpdatedAt,
+        expectedCropUpdates: expectedCropUpdates,
       ),
     );
 

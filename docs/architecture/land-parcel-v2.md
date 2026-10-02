@@ -375,3 +375,14 @@ P02D validation is pending local execution.
 - Stable parcel ID, production code, project, parent and SpatialFeature ID are preserved. Boundary history and spatial revision are appended atomically; the latest spatial temporal state is preserved for boundary changes.
 - Verified replacements retain explicit confirmation and boundary verification permission. Existing GPS/import replacements also pass the transaction placement checks.
 - Validation: pending Windows targeted analyze, backend/widget tests, full regression and device restart test.
+
+
+## P02F — crop editor completion (2026-10-02)
+
+- Extends the existing parcel form crop editor and existing atomic metadata/crop update. No new crop store, schema or alternative save service.
+- Crop type, variety, quantity/unit, planting date/year, condition, growth stage, recorded age and notes can be edited. Optional text/date/year fields can be explicitly cleared. Calendar dates are stored without time-of-day semantics; year is derived from a supplied date when omitted. Date/year disagreement is rejected. Future planting dates remain allowed for planned crops.
+- Shared CropRecord validation rejects empty type/unit, nonfinite or nonpositive quantity, negative age and invalid planting year. UI rejects invalid calendar dates before returning a draft.
+- Existing crop IDs, parcel IDs and creation audit are preserved on edit; removal archives a record. Duplicate draft IDs and foreign parcel IDs are rejected atomically.
+- Production edit wiring passes parcel and active crop timestamps from the displayed snapshot. A stale crop editor fails without restoring removed crops or overwriting fresh metadata.
+- Crop changes do not create boundary history, spatial revisions, links or production sequence increments. Parent transfers/detachments and boundary edits retain crop ownership by parcel ID.
+- Validation pending Windows analyze, backend/widget tests, full regression and device persistence checks.

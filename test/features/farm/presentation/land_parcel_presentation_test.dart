@@ -229,10 +229,13 @@ void main() {
     expect(find.text('ຮູບ.jpg'), findsOneWidget);
   });
 
-  testWidgets('reopened field plot detail displays its saved parent block',
-      (tester) async {
+  testWidgets('reopened field plot detail displays its saved parent block', (
+    tester,
+  ) async {
     final child = LandParcel.create(
-      id: 'plot-1', farmId: 'farm-1', parcelCode: 'T-001',
+      id: 'plot-1',
+      farmId: 'farm-1',
+      parcelCode: 'T-001',
       name: 'Thửa lạc',
       boundary: Wgs84Polygon.fromVertices(const [
         Wgs84Vertex(latitude: 16.5, longitude: 104.7),
@@ -241,39 +244,49 @@ void main() {
       ]),
       boundarySource: BoundarySource.googleEarth,
       verificationStatus: BoundaryVerificationStatus.measured,
-      actorMembershipId: 'member-1', occurredAt: time,
+      actorMembershipId: 'member-1',
+      occurredAt: time,
       // P02A: parent link uses the typed field, not legacy metadata.
       kind: ParcelLayer.fieldPlot,
       parentBlockId: 'parcel-1',
     );
-    await tester.pumpWidget(app(LandParcelDetailScreen(
-      controller: controller(source: [parcel(), child]),
-      parcelId: child.id,
-    ), locale: 'vi'));
+    await tester.pumpWidget(
+      app(
+        LandParcelDetailScreen(
+          controller: controller(source: [parcel(), child]),
+          parcelId: child.id,
+        ),
+        locale: 'vi',
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.textContaining('T-001 · Thửa lạc'), findsOneWidget);
     expect(find.textContaining('P-001 · Lô cà phê ກາເຟ'), findsWidgets);
     expect(find.byKey(const Key('parcel-parent-land-block')), findsOneWidget);
   });
 
-  testWidgets('parcel retains its owner name snapshot after household rename',
-      (tester) async {
+  testWidgets('parcel retains its owner name snapshot after household rename', (
+    tester,
+  ) async {
     final savedParcel = parcel().updateMetadata(
       ownerDisplayName: 'Tên chủ hộ lúc tạo thửa',
-      actorMembershipId: 'member-1', occurredAt: time,
+      actorMembershipId: 'member-1',
+      occurredAt: time,
     );
     final value = controller(source: [savedParcel]);
     await tester.pumpWidget(app(LandParcelListScreen(controller: value)));
     await tester.pumpAndSettle();
     expect(value.visibleItems.single.owner, 'Tên chủ hộ lúc tạo thửa');
-    await tester.enterText(find.byKey(const Key('parcel-search')),
-        'Tên chủ hộ lúc tạo thửa');
+    await tester.enterText(
+      find.byKey(const Key('parcel-search')),
+      'Tên chủ hộ lúc tạo thửa',
+    );
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('parcel-parcel-1')), findsOneWidget);
 
-    await tester.pumpWidget(app(LandParcelDetailScreen(
-      controller: value, parcelId: 'parcel-1',
-    )));
+    await tester.pumpWidget(
+      app(LandParcelDetailScreen(controller: value, parcelId: 'parcel-1')),
+    );
     await tester.pumpAndSettle();
     expect(find.textContaining('Tên chủ hộ lúc tạo thửa'), findsWidgets);
     expect(find.text('ນາງ ສົມພອນ'), findsNothing);
@@ -419,14 +432,19 @@ void main() {
     },
   );
 
-  testWidgets('attachment action is visible only with edit permission',
-      (tester) async {
+  testWidgets('attachment action is visible only with edit permission', (
+    tester,
+  ) async {
     var picked = 0;
-    await tester.pumpWidget(app(LandParcelDetailScreen(
-      controller: controller(),
-      parcelId: 'parcel-1',
-      onAttachRequested: () => picked++,
-    )));
+    await tester.pumpWidget(
+      app(
+        LandParcelDetailScreen(
+          controller: controller(),
+          parcelId: 'parcel-1',
+          onAttachRequested: () => picked++,
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     final add = find.byKey(const Key('attach-parcel-file'));
     await tester.scrollUntilVisible(add, 300);
@@ -434,11 +452,17 @@ void main() {
     expect(picked, 1);
 
     await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pumpWidget(app(LandParcelDetailScreen(
-      controller: controller(permissions: const {PermissionCodes.fieldView}),
-      parcelId: 'parcel-1',
-      onAttachRequested: () => picked++,
-    )));
+    await tester.pumpWidget(
+      app(
+        LandParcelDetailScreen(
+          controller: controller(
+            permissions: const {PermissionCodes.fieldView},
+          ),
+          parcelId: 'parcel-1',
+          onAttachRequested: () => picked++,
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('attach-parcel-file')), findsNothing);
   });
@@ -489,26 +513,36 @@ void main() {
 
   testWidgets('crop age can be edited in years and months', (tester) async {
     LandParcelFormValue? submitted;
-    await tester.pumpWidget(app(LandParcelFormScreen(
-      parcel: parcel(),
-      household: household(),
-      crops: [crop('c-1', 'Coffee')],
-      onSubmit: (value) async {
-        submitted = value;
-      },
-    )));
+    await tester.pumpWidget(
+      app(
+        LandParcelFormScreen(
+          parcel: parcel(),
+          household: household(),
+          crops: [crop('c-1', 'Coffee')],
+          onSubmit: (value) async {
+            submitted = value;
+          },
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     await tester.dragUntilVisible(
       find.byKey(const Key('crop-c-1')),
       find.byType(ListView),
       const Offset(0, -300),
     );
-    await tester.tap(find.descendant(
-      of: find.byKey(const Key('crop-c-1')),
-      matching: find.byIcon(Icons.edit),
-    ));
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const Key('crop-c-1')),
+        matching: find.byIcon(Icons.edit),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('crop-age-years')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('crop-age-years')), '3');
+    await tester.ensureVisible(find.byKey(const Key('crop-age-months')));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('crop-age-months')), '6');
     await tester.tap(find.byKey(const Key('save-crop')));
     await tester.pumpAndSettle();
@@ -523,12 +557,19 @@ void main() {
     expect(submitted?.crops.single.ageMonths, 42);
   });
 
-  testWidgets('land-only form does not render stored household information',
-      (tester) async {
-    await tester.pumpWidget(app(LandParcelFormScreen(
-      landOnly: true, parcel: parcel(), household: household(),
-      onSubmit: (_) async {},
-    )));
+  testWidgets('land-only form does not render stored household information', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      app(
+        LandParcelFormScreen(
+          landOnly: true,
+          parcel: parcel(),
+          household: household(),
+          onSubmit: (_) async {},
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.text('ນາງ ສົມພອນ'), findsNothing);
     expect(find.text('H-01'), findsNothing);
@@ -574,9 +615,7 @@ void main() {
               onPressed: () async {
                 accepted = await showDialog<LandParcelImportPreview>(
                   context: context,
-                  builder: (_) => KmlBoundaryPicker(
-                    previews: [first, second],
-                  ),
+                  builder: (_) => KmlBoundaryPicker(previews: [first, second]),
                 );
               },
               child: const Text('Open preview'),
@@ -588,9 +627,11 @@ void main() {
     await tester.tap(find.text('Open preview'));
     await tester.pumpAndSettle();
     expect(
-      tester.widget<FilledButton>(
-        find.byKey(const Key('confirm-create-import-preview')),
-      ).onPressed,
+      tester
+          .widget<FilledButton>(
+            find.byKey(const Key('confirm-create-import-preview')),
+          )
+          .onPressed,
       isNull,
     );
     await tester.tap(find.text('Second parcel'));

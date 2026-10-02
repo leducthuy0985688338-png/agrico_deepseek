@@ -342,7 +342,10 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
                           subtitle: Text(
                             '${crop.quantity} ${crop.unit} · ${l10n.text('crop.condition.${crop.condition.name}')}'
                             '${crop.growthStage == null ? '' : ' · ${l10n.text('crop.growthStage.${crop.growthStage!.name}')}'}'
-                            '${cropAgeSuffix(l10n, crop)}',
+                            '${cropAgeSuffix(l10n, crop)}'
+                            '${crop.variety == null ? '' : '\n${l10n.text('crop.variety')}: ${crop.variety}'}'
+                            '${crop.plantingDate == null ? (crop.plantingYear == null ? '' : '\n${l10n.text('crop.plantingYear')}: ${crop.plantingYear}') : '\n${l10n.text('crop.plantingDate')}: ${crop.plantingDate!.toIso8601String().split('T').first}'}'
+                            '${crop.notes == null ? '' : '\n${crop.notes}'}',
                           ),
                         ),
                       )

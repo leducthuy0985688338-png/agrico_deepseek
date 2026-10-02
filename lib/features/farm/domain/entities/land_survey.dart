@@ -1,16 +1,39 @@
-﻿import 'land_parcel.dart';
+import 'land_parcel.dart';
 
 enum LandUseType { agricultural, residential, forest, pasture, mixed, other }
 
-enum LandCondition { unknown, unused, cultivated, degraded, flooded, other, resting, notCultivated }
+enum LandCondition {
+  unknown,
+  unused,
+  cultivated,
+  degraded,
+  flooded,
+  other,
+  resting,
+  notCultivated,
+}
 
-enum ClearingStatus { unknown, notRequired, notStarted, partial, completed, inProgress }
+enum ClearingStatus {
+  unknown,
+  notRequired,
+  notStarted,
+  partial,
+  completed,
+  inProgress,
+}
 
 enum ReadinessStatus { unknown, notReady, preparation, ready }
 
 enum CropCondition { unknown, planned, growing, healthy, stressed, harvested }
 
-enum CropGrowthStage { seedling, vegetative, flowering, fruiting, mature, dormant }
+enum CropGrowthStage {
+  seedling,
+  vegetative,
+  flowering,
+  fruiting,
+  mature,
+  dormant,
+}
 
 enum ParcelAttachmentType { photo, document, other }
 
@@ -175,14 +198,10 @@ class LandUseProfile {
   /// Application layer must NOT duplicate this validation.
   void validate() {
     if (parcelId.trim().isEmpty) {
-      throw const FormatException(
-        'LandUseProfile parcelId cannot be blank.',
-      );
+      throw const FormatException('LandUseProfile parcelId cannot be blank.');
     }
     if (updatedBy.trim().isEmpty) {
-      throw const FormatException(
-        'LandUseProfile updatedBy cannot be blank.',
-      );
+      throw const FormatException('LandUseProfile updatedBy cannot be blank.');
     }
     if (notes != null && notes!.trim().isEmpty) {
       throw const FormatException(
@@ -228,6 +247,7 @@ class CropRecord {
   final String? variety;
   final int? plantingYear;
   final DateTime? plantingDate;
+
   /// Age recorded for this crop, in complete months; null when unknown.
   final int? ageMonths;
   final CropGrowthStage? growthStage;
@@ -239,6 +259,24 @@ class CropRecord {
   final DateTime updatedAt;
   final String updatedBy;
   final int schemaVersion;
+
+  void validate() {
+    if (id.trim().isEmpty ||
+        parcelId.trim().isEmpty ||
+        cropType.trim().isEmpty ||
+        unit.trim().isEmpty ||
+        !quantity.isFinite ||
+        quantity <= 0 ||
+        (ageMonths != null && ageMonths! < 0) ||
+        (plantingYear != null && (plantingYear! < 1 || plantingYear! > 9999)) ||
+        (plantingDate != null &&
+            (plantingDate!.year < 1 || plantingDate!.year > 9999)) ||
+        (plantingDate != null &&
+            plantingYear != null &&
+            plantingDate!.year != plantingYear)) {
+      throw const FormatException('crop.validation.failed');
+    }
+  }
 }
 
 class ParcelAttachment {
