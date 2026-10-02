@@ -10,6 +10,7 @@ import '../../domain/entities/land_survey.dart';
 import '../controllers/land_parcel_controller.dart';
 import 'boundary_history_screen.dart';
 import 'land_parcel_parent_screen.dart';
+import 'land_parcel_boundary_edit_screen.dart';
 
 class LandParcelDetailScreen extends StatefulWidget {
   const LandParcelDetailScreen({
@@ -75,6 +76,21 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
     if (changed == true && mounted) {
       await controller.loadList();
       await controller.loadDetail(widget.parcelId);
+    }
+  }
+
+  Future<void> _editBoundary(LandParcel parcel) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => LandParcelBoundaryEditScreen(
+          controller: widget.controller,
+          parcel: parcel,
+        ),
+      ),
+    );
+    if (changed == true && mounted) {
+      await widget.controller.loadList();
+      await widget.controller.loadDetail(widget.parcelId);
     }
   }
 
@@ -192,6 +208,22 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
             '${parcel.areaHa.toStringAsFixed(2)} ha · ${l10n.text('verification.${parcel.verificationStatus.name}')}',
             style: Theme.of(context).textTheme.titleLarge,
           ),
+          if (parcel.active &&
+              controller.replaceBoundary != null &&
+              controller.subject.dataScopes.contains(DataScope.allFarm) &&
+              controller.can(
+                PermissionCodes.fieldBoundaryEdit,
+                parcelId: parcel.id,
+              ))
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.tonalIcon(
+                key: const Key('edit-parcel-boundary'),
+                onPressed: () => _editBoundary(parcel),
+                icon: const Icon(Icons.polyline_outlined),
+                label: Text(l10n.text('boundaryEdit.title')),
+              ),
+            ),
           Text(l10n.text('parcel.layer.${parcel.layer.name}')),
           if (parcel.layer == ParcelLayer.fieldPlot) ...[
             Text(

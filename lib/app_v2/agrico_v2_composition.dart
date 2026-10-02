@@ -151,6 +151,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       createLandParcel: CreateLandParcel(application),
       productionCreation: productionCreation,
       parentRelations: LandParcelParentService(parcels),
+      replaceBoundary: ReplaceBoundary(application),
       updateMetadata: UpdateLandParcelMetadata(application),
       completeGpsMeasurement: CompleteGpsMeasurement(application),
       verifyBoundary: VerifyBoundary(application),

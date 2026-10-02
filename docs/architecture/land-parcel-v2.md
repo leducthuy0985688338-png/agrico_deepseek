@@ -365,3 +365,13 @@ updateKind and repository transactions are reused; no new parcel store or
 schema migration is introduced. Relationship audit currently uses updatedBy
 and updatedAt; a separate relation-event history is not introduced here.
 P02D validation is pending local execution.
+
+
+## P02E — production boundary editing (2026-10-02)
+
+- Reuses ReplaceBoundary and the atomic parcel/spatial update workflow; no schema or parallel store.
+- Offline schematic editor displays the original outline, parent, siblings and active children. Choose a corner then tap its new position, or redraw; pan/pinch and explicit zoom controls only change the camera. Holes are displayed and preserved; hole editing is outside this checkpoint.
+- Before boundary writes, the transaction rereads the parcel, checks the editor snapshot and sequential boundary version, then validates current parent containment and sibling overlap or active child containment and same-project block overlap. Shared edges are permitted; independent field plots retain their existing placement policy.
+- Stable parcel ID, production code, project, parent and SpatialFeature ID are preserved. Boundary history and spatial revision are appended atomically; the latest spatial temporal state is preserved for boundary changes.
+- Verified replacements retain explicit confirmation and boundary verification permission. Existing GPS/import replacements also pass the transaction placement checks.
+- Validation: pending Windows targeted analyze, backend/widget tests, full regression and device restart test.

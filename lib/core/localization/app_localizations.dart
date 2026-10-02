@@ -756,6 +756,29 @@ class AppLocalizations {
       'common.loading': 'Đang tải…',
       'common.retry': 'Thử lại',
       "parentRelation.title": "Liên kết Thửa–Lô",
+      "boundaryEdit.title": "Sửa ranh giới",
+      "boundaryEdit.hint":
+          "Chọn số góc rồi chạm vị trí mới. Vẽ lại để đặt các góc theo thứ tự; kéo để di chuyển, dùng +/− hoặc hai ngón tay để thu phóng. Khi lưu, cạnh cuối sẽ nối về góc đầu.",
+      "boundaryEdit.legend":
+          "Xanh lá: Lô · Xanh dương: Thửa liên quan · Xám: ranh giới cũ · Cam: ranh giới mới · Tím: vùng loại trừ giữ nguyên.",
+      "boundaryEdit.zoomIn": "Phóng to",
+      "boundaryEdit.zoomOut": "Thu nhỏ",
+      "boundaryEdit.fit": "Vừa khung",
+      "boundaryEdit.points": "Số góc",
+      "boundaryEdit.redraw": "Vẽ lại",
+      "boundaryEdit.remove": "Bỏ góc",
+      "boundaryEdit.reset": "Khôi phục bản đang sửa",
+      "boundaryEdit.changed":
+          "Hồ sơ đã thay đổi hoặc ngừng hoạt động. Mở lại hồ sơ trước khi sửa.",
+      "boundaryEdit.invalidParent":
+          "Lô cha không còn hợp lệ. Kiểm tra liên kết Thửa–Lô.",
+      "boundaryEdit.outside":
+          "Ranh giới Thửa vượt ra ngoài Lô hoặc phủ vùng loại trừ.",
+      "boundaryEdit.overlap":
+          "Ranh giới mới chồng lấn mảnh hiện có. Có thể chung cạnh nhưng không chung phần diện tích.",
+      "boundaryEdit.childrenOutside":
+          "Không thể lưu: ranh giới Lô mới không bao trọn các Thửa con đang hoạt động.",
+
       "parentRelation.independent": "Thửa độc lập",
       "parentRelation.unavailable": "Không xem được lô liên kết",
       "parentRelation.hint":
@@ -995,6 +1018,24 @@ class AppLocalizations {
       'common.loading': 'ກຳລັງໂຫຼດ…',
       'common.retry': 'ລອງໃໝ່',
       "parentRelation.title": "ເຊື່ອມຕໍ່ແປງ–ຕອນດິນ",
+      "boundaryEdit.title": "ແກ້ໄຂຂອບເຂດ",
+      "boundaryEdit.hint":
+          "ເລືອກເລກຈຸດແລ້ວແຕະຕຳແໜ່ງໃໝ່. ລາກເພື່ອເລື່ອນ ແລະໃຊ້ສອງນິ້ວເພື່ອຊູມ.",
+      "boundaryEdit.legend":
+          "ຂຽວ: ຕອນດິນ · ຟ້າ: ແປງ · ເທົາ: ເກົ່າ · ສົ້ມ: ໃໝ່ · ມ່ວງ: ພື້ນທີ່ຍົກເວັ້ນ.",
+      "boundaryEdit.zoomIn": "ຂະຫຍາຍ",
+      "boundaryEdit.zoomOut": "ຫຍໍ້",
+      "boundaryEdit.fit": "ພໍດີກອບ",
+      "boundaryEdit.points": "ຈຳນວນຈຸດ",
+      "boundaryEdit.redraw": "ແຕ້ມໃໝ່",
+      "boundaryEdit.remove": "ລຶບຈຸດ",
+      "boundaryEdit.reset": "ກັບຄືນຂອບເຂດເກົ່າ",
+      "boundaryEdit.changed": "ຂໍ້ມູນປ່ຽນແລ້ວ. ເປີດໃໝ່ກ່ອນແກ້ໄຂ.",
+      "boundaryEdit.invalidParent": "ຕອນດິນແມ່ບໍ່ຖືກຕ້ອງ.",
+      "boundaryEdit.outside": "ແປງຢູ່ນອກຕອນດິນ.",
+      "boundaryEdit.overlap": "ຂອບເຂດໃໝ່ທັບຊ້ອນພື້ນທີ່ອື່ນ.",
+      "boundaryEdit.childrenOutside": "ບັນທຶກບໍ່ໄດ້: ຕອນດິນໃໝ່ບໍ່ຄຸມແປງລູກ.",
+
       "parentRelation.independent": "ແປງດິນອິດສະຫຼະ",
       "parentRelation.unavailable": "ບໍ່ສາມາດເບິ່ງຕອນດິນທີ່ເຊື່ອມຕໍ່",
       "parentRelation.hint":
@@ -1223,6 +1264,29 @@ class AppLocalizations {
       'common.loading': 'Loading…',
       'common.retry': 'Retry',
       "parentRelation.title": "Plot–block relation",
+      "boundaryEdit.title": "Edit boundary",
+      "boundaryEdit.hint":
+          "Select a corner number, then tap its new position. Redraw to place corners in order. Drag to pan; use +/− or pinch to zoom. Saving closes the last edge.",
+      "boundaryEdit.legend":
+          "Green: block · Blue: related plots · Grey: old outline · Orange: new outline · Purple: preserved exclusions.",
+      "boundaryEdit.zoomIn": "Zoom in",
+      "boundaryEdit.zoomOut": "Zoom out",
+      "boundaryEdit.fit": "Fit view",
+      "boundaryEdit.points": "Corners",
+      "boundaryEdit.redraw": "Redraw",
+      "boundaryEdit.remove": "Remove corner",
+      "boundaryEdit.reset": "Reset draft",
+      "boundaryEdit.changed":
+          "Record changed or became inactive. Reopen before editing.",
+      "boundaryEdit.invalidParent":
+          "Parent block is no longer valid. Check the plot–block relation.",
+      "boundaryEdit.outside":
+          "Plot extends outside its block or covers an exclusion.",
+      "boundaryEdit.overlap":
+          "New boundary overlaps an existing parcel. Shared edges are allowed.",
+      "boundaryEdit.childrenOutside":
+          "Cannot save: the new block boundary does not contain every active child plot.",
+
       "parentRelation.independent": "Independent plot",
       "parentRelation.unavailable": "Linked block unavailable",
       "parentRelation.hint":

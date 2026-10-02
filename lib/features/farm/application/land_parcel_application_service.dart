@@ -1,4 +1,4 @@
-﻿import 'dart:typed_data';
+import 'dart:typed_data';
 
 import '../../../core/permissions/authorization.dart';
 import '../data/interchange/kml_interchange.dart';
@@ -151,6 +151,7 @@ class UpdateLandParcelMetadataCommand {
   final String? provinceCode;
   final String? districtCode;
   final String? villageCode;
+
   /// Null leaves crops untouched; a list replaces the active crop set.
   final List<CropRecord>? crops;
 }
@@ -163,6 +164,9 @@ class ReplaceBoundaryCommand {
     required this.source,
     required this.actorMembershipId,
     required this.occurredAt,
+    this.expectedBoundaryVersion,
+    this.expectedUpdatedAt,
+    this.holes = const [],
     this.horizontalAccuracyM,
     this.boundaryConfidence,
     this.confirmVerifiedReplacement = false,
@@ -177,6 +181,9 @@ class ReplaceBoundaryCommand {
   final BoundarySource source;
   final String actorMembershipId;
   final DateTime occurredAt;
+  final int? expectedBoundaryVersion;
+  final DateTime? expectedUpdatedAt;
+  final List<List<Wgs84Vertex>> holes;
   final double? horizontalAccuracyM;
   final double? boundaryConfidence;
   final bool confirmVerifiedReplacement;
@@ -294,7 +301,8 @@ abstract interface class LandParcelApplication {
   });
 
   /// Explicit, permission-gated repair for an otherwise consistent legacy row.
-  Future<LandParcelApplicationResult<LandParcel>> reconcileLegacySpatialIdentity(
+  Future<LandParcelApplicationResult<LandParcel>>
+  reconcileLegacySpatialIdentity(
     AuthorizationSubject subject, {
     required String farmId,
     required String parcelId,
@@ -410,11 +418,16 @@ class LandParcelApplicationService implements LandParcelApplication {
       }
       final workflow = spatialWorkflow;
       if (command.autoNumber) {
-        if (workflow == null || command.villageId == null ||
+        if (workflow == null ||
+            command.villageId == null ||
             command.villageId!.trim().isEmpty ||
-            command.countryCode == null || command.provinceCode == null ||
-            command.districtCode == null || command.villageCode == null) {
-          throw const FormatException('Catalogued administrative location is required.');
+            command.countryCode == null ||
+            command.provinceCode == null ||
+            command.districtCode == null ||
+            command.villageCode == null) {
+          throw const FormatException(
+            'Catalogued administrative location is required.',
+          );
         }
         final saved = await workflow.createPreparedWithAllocator(
           temporalState: SpatialTemporalState.baseline,
@@ -432,8 +445,10 @@ class LandParcelApplicationService implements LandParcelApplication {
                 districtCode: command.districtCode!,
                 villageCode: command.villageCode!,
                 save: (code) async => LandParcel.create(
-                  id: command.id, farmId: command.farmId,
-                  parcelCode: code, name: command.name,
+                  id: command.id,
+                  farmId: command.farmId,
+                  parcelCode: code,
+                  name: command.name,
                   countryCode: command.countryCode,
                   provinceCode: command.provinceCode,
                   districtCode: command.districtCode,
@@ -450,13 +465,22 @@ class LandParcelApplicationService implements LandParcelApplication {
               );
             }
             Future<LandParcel> forHousehold(Household household) async {
-              final match = RegExp(r'^H([0-9]{5})$').firstMatch(household.householdCode);
-              if (match == null || household.farmId != command.farmId ||
-                  household.administrativeLocation.countryCode != command.countryCode ||
-                  household.administrativeLocation.provinceCode != command.provinceCode ||
-                  household.administrativeLocation.districtCode != command.districtCode ||
-                  household.administrativeLocation.villageCode != command.villageCode) {
-                throw const FormatException('Selected household does not match the parcel location.');
+              final match = RegExp(
+                r'^H([0-9]{5})$',
+              ).firstMatch(household.householdCode);
+              if (match == null ||
+                  household.farmId != command.farmId ||
+                  household.administrativeLocation.countryCode !=
+                      command.countryCode ||
+                  household.administrativeLocation.provinceCode !=
+                      command.provinceCode ||
+                  household.administrativeLocation.districtCode !=
+                      command.districtCode ||
+                  household.administrativeLocation.villageCode !=
+                      command.villageCode) {
+                throw const FormatException(
+                  'Selected household does not match the parcel location.',
+                );
               }
               return numbers.saveParcel(
                 farmId: command.farmId,
@@ -467,8 +491,10 @@ class LandParcelApplicationService implements LandParcelApplication {
                 districtCode: command.districtCode!,
                 villageCode: command.villageCode!,
                 save: (code) async => LandParcel.create(
-                  id: command.id, farmId: command.farmId,
-                  parcelCode: code, name: command.name,
+                  id: command.id,
+                  farmId: command.farmId,
+                  parcelCode: code,
+                  name: command.name,
                   ownerHouseholdId: household.id,
                   ownerDisplayName: household.headOfHouseholdName,
                   ownerContact: household.phone,
@@ -489,25 +515,35 @@ class LandParcelApplicationService implements LandParcelApplication {
             }
 
             if (command.ownerHouseholdId != null) {
-              final existing = await surveys.getHousehold(command.ownerHouseholdId!);
+              final existing = await surveys.getHousehold(
+                command.ownerHouseholdId!,
+              );
               if (existing == null || !existing.active) {
-                throw const FormatException('Selected household is unavailable.');
+                throw const FormatException(
+                  'Selected household is unavailable.',
+                );
               }
               return forHousehold(existing);
             }
             final name = command.ownerDisplayName?.trim() ?? '';
-            if (name.isEmpty) throw const FormatException('Household head is required.');
+            if (name.isEmpty) {
+              throw const FormatException('Household head is required.');
+            }
             return numbers.saveHousehold(
               farmId: command.farmId,
               save: (code) async {
                 final location = AdministrativeLocation(
-                  countryName: command.legacyMetadata['country'] as String? ?? '',
+                  countryName:
+                      command.legacyMetadata['country'] as String? ?? '',
                   countryCode: command.countryCode,
-                  provinceName: command.legacyMetadata['province'] as String? ?? '',
+                  provinceName:
+                      command.legacyMetadata['province'] as String? ?? '',
                   provinceCode: command.provinceCode,
-                  districtName: command.legacyMetadata['district'] as String? ?? '',
+                  districtName:
+                      command.legacyMetadata['district'] as String? ?? '',
                   districtCode: command.districtCode,
-                  villageName: command.legacyMetadata['village'] as String? ?? '',
+                  villageName:
+                      command.legacyMetadata['village'] as String? ?? '',
                   villageCode: command.villageCode,
                 );
                 final household = Household(
@@ -521,11 +557,22 @@ class LandParcelApplicationService implements LandParcelApplication {
                   createdBy: command.actorMembershipId,
                   updatedAt: command.occurredAt,
                   updatedBy: command.actorMembershipId,
-                  phone: (command.legacyMetadata['phone'] as String?)?.trim().isEmpty == true
-                      ? null : (command.legacyMetadata['phone'] as String?)?.trim(),
+                  phone:
+                      (command.legacyMetadata['phone'] as String?)
+                              ?.trim()
+                              .isEmpty ==
+                          true
+                      ? null
+                      : (command.legacyMetadata['phone'] as String?)?.trim(),
                   alternativeContact:
-                      (command.legacyMetadata['alternativeContact'] as String?)?.trim().isEmpty == true
-                          ? null : (command.legacyMetadata['alternativeContact'] as String?)?.trim(),
+                      (command.legacyMetadata['alternativeContact'] as String?)
+                              ?.trim()
+                              .isEmpty ==
+                          true
+                      ? null
+                      : (command.legacyMetadata['alternativeContact']
+                                as String?)
+                            ?.trim(),
                 );
                 household.validate();
                 await surveys.createHousehold(household);
@@ -534,7 +581,10 @@ class LandParcelApplicationService implements LandParcelApplication {
             );
           },
         );
-        return LandParcelApplicationResult.success(saved, 'landParcel.create.success');
+        return LandParcelApplicationResult.success(
+          saved,
+          'landParcel.create.success',
+        );
       }
       if (workflow != null) {
         final spatialFeatureId = workflow.identityGenerator.newId(
@@ -651,6 +701,16 @@ class LandParcelApplicationService implements LandParcelApplication {
       id: command.parcelId,
     );
     if (parcel == null) return _notFound();
+    if (!parcel.active ||
+        (command.expectedBoundaryVersion != null &&
+            command.expectedBoundaryVersion != parcel.boundaryVersion) ||
+        (command.expectedUpdatedAt != null &&
+            command.expectedUpdatedAt != parcel.updatedAt)) {
+      return const LandParcelApplicationResult.failure(
+        LandParcelApplicationStatus.validationFailed,
+        'boundaryEdit.changed',
+      );
+    }
     if (parcel.verificationStatus == BoundaryVerificationStatus.verified) {
       if (!command.confirmVerifiedReplacement) {
         return const LandParcelApplicationResult.failure(
@@ -664,7 +724,10 @@ class LandParcelApplicationService implements LandParcelApplication {
     }
     try {
       final updated = parcel.replaceBoundary(
-        boundary: Wgs84Polygon.fromVertices(command.vertices),
+        boundary: Wgs84Polygon.fromVertices(
+          command.vertices,
+          holes: command.holes,
+        ),
         source: command.source,
         verificationStatus: BoundaryVerificationStatus.measured,
         actorMembershipId: command.actorMembershipId,
@@ -680,6 +743,7 @@ class LandParcelApplicationService implements LandParcelApplication {
       final workflow = spatialWorkflow;
       if (workflow != null) {
         await workflow.update(
+          expectedParcel: parcel,
           parcel: updated,
           temporalState: SpatialTemporalState.operational,
         );
@@ -690,7 +754,7 @@ class LandParcelApplicationService implements LandParcelApplication {
         //
         // A genuinely legacy parcel (spatialFeatureId == null) may
         // still use the compatibility repository path.
-        if (updated.spatialFeatureId != null) {
+        if (updated.spatialFeatureId != null || updated.projectId != null) {
           return LandParcelApplicationResult.failure(
             LandParcelApplicationStatus.persistenceFailed,
             'landParcel.spatial.workflowRequired',
@@ -712,7 +776,13 @@ class LandParcelApplicationService implements LandParcelApplication {
         'landParcel.boundary.replaceSuccess',
       );
     } on FormatException catch (error) {
-      return _validation(error);
+      return LandParcelApplicationResult.failure(
+        LandParcelApplicationStatus.validationFailed,
+        error.message.toString().startsWith('boundaryEdit.')
+            ? error.message.toString()
+            : 'landParcel.geometry.invalid',
+        error: error,
+      );
     } catch (error) {
       return _persistence(error);
     }
@@ -831,7 +901,8 @@ class LandParcelApplicationService implements LandParcelApplication {
     try {
       final consistency = await boundaryConsistencyQueries?.check(parcel);
       if (consistency == LandParcelBoundaryConsistency.needsReconciliation ||
-          consistency == LandParcelBoundaryConsistency.repairableLegacyIdentity) {
+          consistency ==
+              LandParcelBoundaryConsistency.repairableLegacyIdentity) {
         return const LandParcelApplicationResult.failure(
           LandParcelApplicationStatus.validationFailed,
           'boundary.reconciliation.required',
@@ -862,7 +933,8 @@ class LandParcelApplicationService implements LandParcelApplication {
   }
 
   @override
-  Future<LandParcelApplicationResult<LandParcel>> reconcileLegacySpatialIdentity(
+  Future<LandParcelApplicationResult<LandParcel>>
+  reconcileLegacySpatialIdentity(
     AuthorizationSubject subject, {
     required String farmId,
     required String parcelId,
@@ -902,8 +974,7 @@ class LandParcelApplicationService implements LandParcelApplication {
   }
 
   @override
-  Future<LandParcelApplicationResult<LandUseProfile>>
-      updateLandUseProfile(
+  Future<LandParcelApplicationResult<LandUseProfile>> updateLandUseProfile(
     AuthorizationSubject subject,
     UpdateLandUseProfileCommand command,
   ) async {
@@ -929,22 +1000,25 @@ class LandParcelApplicationService implements LandParcelApplication {
       );
       final updated = LandUseProfile(
         parcelId: command.parcelId,
-        landUseType: command.landUseType ??
-            existing?.landUseType ??
-            LandUseType.other,
-        currentCondition: command.currentCondition ??
+        landUseType:
+            command.landUseType ?? existing?.landUseType ?? LandUseType.other,
+        currentCondition:
+            command.currentCondition ??
             existing?.currentCondition ??
             LandCondition.unknown,
-        clearingStatus: command.clearingStatus ??
+        clearingStatus:
+            command.clearingStatus ??
             existing?.clearingStatus ??
             ClearingStatus.unknown,
-        readinessStatus: command.readinessStatus ??
+        readinessStatus:
+            command.readinessStatus ??
             existing?.readinessStatus ??
             ReadinessStatus.unknown,
         notes: command.notes ?? existing?.notes,
         updatedAt: command.occurredAt,
         updatedBy: command.actorMembershipId,
-        schemaVersion: existing?.schemaVersion ?? LandUseProfile.currentSchemaVersion,
+        schemaVersion:
+            existing?.schemaVersion ?? LandUseProfile.currentSchemaVersion,
       );
       updated.validate();
       await surveyRepository.saveLandUseProfile(updated);
@@ -1000,89 +1074,91 @@ class LandParcelApplicationService implements LandParcelApplication {
     }
     try {
       final requested = command.crops!;
-      final updated = await workflow.transaction.runBusiness<LandParcel>(
-        (parcels, surveys) async {
-          final stored = await parcels.getById(
-            farmId: command.farmId,
-            id: command.parcelId,
+      final updated = await workflow.transaction.runBusiness<LandParcel>((
+        parcels,
+        surveys,
+      ) async {
+        final stored = await parcels.getById(
+          farmId: command.farmId,
+          id: command.parcelId,
+        );
+        if (stored == null) throw StateError('Parcel not found.');
+        final next = _updatedMetadata(stored, command);
+        await parcels.update(next);
+        final current = await surveys.listCrops(command.parcelId);
+        final byId = {for (final crop in current) crop.id: crop};
+        final retained = <String>{};
+        for (var index = 0; index < requested.length; index++) {
+          final value = requested[index];
+          if (value.cropType.trim().isEmpty ||
+              value.unit.trim().isEmpty ||
+              !value.quantity.isFinite ||
+              value.quantity <= 0 ||
+              (value.ageMonths != null && value.ageMonths! < 0)) {
+            throw const FormatException('Invalid crop type, unit or quantity.');
+          }
+          final original = byId[value.id];
+          if (original == null && !value.id.startsWith('draft-')) {
+            throw const FormatException('Crop does not belong to this parcel.');
+          }
+          final id =
+              original?.id ??
+              'crop-${command.parcelId}-${command.occurredAt.microsecondsSinceEpoch}-$index';
+          if (!retained.add(id)) {
+            throw const FormatException('Duplicate crop identity.');
+          }
+          final crop = CropRecord(
+            id: id,
+            parcelId: command.parcelId,
+            cropType: value.cropType.trim(),
+            quantity: value.quantity,
+            unit: value.unit.trim(),
+            condition: value.condition,
+            active: true,
+            variety: value.variety,
+            plantingYear: value.plantingYear,
+            plantingDate: value.plantingDate,
+            ageMonths: value.ageMonths,
+            growthStage: value.growthStage,
+            notes: value.notes,
+            createdAt: original?.createdAt ?? command.occurredAt,
+            createdBy: original?.createdBy ?? command.actorMembershipId,
+            updatedAt: command.occurredAt,
+            updatedBy: command.actorMembershipId,
           );
-          if (stored == null) throw StateError('Parcel not found.');
-          final next = _updatedMetadata(stored, command);
-          await parcels.update(next);
-          final current = await surveys.listCrops(command.parcelId);
-          final byId = {for (final crop in current) crop.id: crop};
-          final retained = <String>{};
-          for (var index = 0; index < requested.length; index++) {
-            final value = requested[index];
-            if (value.cropType.trim().isEmpty ||
-                value.unit.trim().isEmpty ||
-                !value.quantity.isFinite ||
-                value.quantity <= 0 ||
-                (value.ageMonths != null && value.ageMonths! < 0)) {
-              throw const FormatException('Invalid crop type, unit or quantity.');
-            }
-            final original = byId[value.id];
-            if (original == null && !value.id.startsWith('draft-')) {
-              throw const FormatException('Crop does not belong to this parcel.');
-            }
-            final id = original?.id ??
-                'crop-${command.parcelId}-${command.occurredAt.microsecondsSinceEpoch}-$index';
-            if (!retained.add(id)) {
-              throw const FormatException('Duplicate crop identity.');
-            }
-            final crop = CropRecord(
-              id: id,
-              parcelId: command.parcelId,
-              cropType: value.cropType.trim(),
-              quantity: value.quantity,
-              unit: value.unit.trim(),
-              condition: value.condition,
-              active: true,
-              variety: value.variety,
-              plantingYear: value.plantingYear,
-              plantingDate: value.plantingDate,
-              ageMonths: value.ageMonths,
-              growthStage: value.growthStage,
-              notes: value.notes,
-              createdAt: original?.createdAt ?? command.occurredAt,
-              createdBy: original?.createdBy ?? command.actorMembershipId,
-              updatedAt: command.occurredAt,
-              updatedBy: command.actorMembershipId,
+          if (original == null) {
+            await surveys.createCrop(crop);
+          } else {
+            await surveys.updateCrop(crop);
+          }
+        }
+        for (final crop in current) {
+          if (!retained.contains(crop.id)) {
+            await surveys.updateCrop(
+              CropRecord(
+                id: crop.id,
+                parcelId: crop.parcelId,
+                cropType: crop.cropType,
+                quantity: crop.quantity,
+                unit: crop.unit,
+                condition: crop.condition,
+                active: false,
+                variety: crop.variety,
+                plantingYear: crop.plantingYear,
+                plantingDate: crop.plantingDate,
+                ageMonths: crop.ageMonths,
+                growthStage: crop.growthStage,
+                notes: crop.notes,
+                createdAt: crop.createdAt,
+                createdBy: crop.createdBy,
+                updatedAt: command.occurredAt,
+                updatedBy: command.actorMembershipId,
+              ),
             );
-            if (original == null) {
-              await surveys.createCrop(crop);
-            } else {
-              await surveys.updateCrop(crop);
-            }
           }
-          for (final crop in current) {
-            if (!retained.contains(crop.id)) {
-              await surveys.updateCrop(
-                CropRecord(
-                  id: crop.id,
-                  parcelId: crop.parcelId,
-                  cropType: crop.cropType,
-                  quantity: crop.quantity,
-                  unit: crop.unit,
-                  condition: crop.condition,
-                  active: false,
-                  variety: crop.variety,
-                  plantingYear: crop.plantingYear,
-                  plantingDate: crop.plantingDate,
-                  ageMonths: crop.ageMonths,
-                  growthStage: crop.growthStage,
-                  notes: crop.notes,
-                  createdAt: crop.createdAt,
-                  createdBy: crop.createdBy,
-                  updatedAt: command.occurredAt,
-                  updatedBy: command.actorMembershipId,
-                ),
-              );
-            }
-          }
-          return next;
-        },
-      );
+        }
+        return next;
+      });
       return LandParcelApplicationResult.success(
         updated,
         'landParcel.update.success',

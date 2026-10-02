@@ -1084,6 +1084,7 @@ class LandParcelSpatialSyncWorkflow {
     required LandParcel parcel,
     required SpatialTemporalState temporalState,
     String? changeReason,
+    bool preserveTemporalState = false,
   }) async {
     final link = await links.findByLandParcelId(parcel.id);
 
@@ -1153,7 +1154,9 @@ class LandParcelSpatialSyncWorkflow {
       spatialFeatureId: spatialFeatureId,
       spatialRevisionId: spatialRevisionId,
       spatialRevision: latestRevision.revision + 1,
-      temporalState: temporalState,
+      temporalState: preserveTemporalState
+          ? latestRevision.temporalState
+          : temporalState,
       effectiveFrom: parcel.updatedAt,
       changeReason: changeReason,
     );
@@ -1165,6 +1168,7 @@ class LandParcelSpatialSyncWorkflow {
   }
 
   Future<void> update({
+    LandParcel? expectedParcel,
     required LandParcel parcel,
     required SpatialTemporalState temporalState,
   }) {
@@ -1173,10 +1177,82 @@ class LandParcelSpatialSyncWorkflow {
         parcels: parcels,
         links: links,
         spatial: spatial,
+        expectedParcel: expectedParcel,
         parcel: parcel,
         temporalState: temporalState,
       ),
     );
+  }
+
+  Future<void> _validateBoundaryReplacement(
+    LandParcelRepository parcels,
+    LandParcel candidate,
+  ) async {
+    final all = await parcels.listByFarm(candidate.farmId);
+    const placement = FieldPlotPlacement();
+    if (candidate.layer == ParcelLayer.fieldPlot &&
+        candidate.parentBlockId != null) {
+      final parent = await parcels.getById(
+        farmId: candidate.farmId,
+        id: candidate.parentBlockId!,
+      );
+      if (parent == null ||
+          !parent.active ||
+          parent.layer != ParcelLayer.landBlock ||
+          parent.parentBlockId != null ||
+          parent.projectId != candidate.projectId) {
+        throw const FormatException('boundaryEdit.invalidParent');
+      }
+      try {
+        placement.validate(
+          block: parent.boundary,
+          plot: candidate.boundary,
+          existingPlots: all
+              .where(
+                (p) =>
+                    p.active &&
+                    p.id != candidate.id &&
+                    p.layer == ParcelLayer.fieldPlot &&
+                    p.parentBlockId == parent.id,
+              )
+              .map((p) => p.boundary),
+        );
+      } on FormatException catch (e) {
+        throw FormatException(
+          e.message == 'Field plot overlaps an existing field plot.'
+              ? 'boundaryEdit.overlap'
+              : 'boundaryEdit.outside',
+        );
+      }
+    } else if (candidate.layer == ParcelLayer.landBlock) {
+      for (final child in all.where(
+        (p) =>
+            p.active &&
+            p.layer == ParcelLayer.fieldPlot &&
+            p.parentBlockId == candidate.id,
+      )) {
+        try {
+          placement.validate(block: candidate.boundary, plot: child.boundary);
+        } on FormatException {
+          throw const FormatException('boundaryEdit.childrenOutside');
+        }
+      }
+      for (final other in all.where(
+        (p) =>
+            p.active &&
+            p.id != candidate.id &&
+            p.layer == ParcelLayer.landBlock &&
+            p.parentBlockId == null &&
+            _sameProjectScope(p.projectId, candidate.projectId),
+      )) {
+        if (const Wgs84Topology().interiorsOverlap(
+          candidate.boundary,
+          other.boundary,
+        )) {
+          throw const FormatException('boundaryEdit.overlap');
+        }
+      }
+    }
   }
 
   /// Updates LandParcel and its Spatial projection using repositories that
@@ -1185,9 +1261,32 @@ class LandParcelSpatialSyncWorkflow {
     required LandParcelRepository parcels,
     required LandParcelSpatialLinkRepository links,
     required SpatialPersistenceComposition spatial,
+    LandParcel? expectedParcel,
     required LandParcel parcel,
     required SpatialTemporalState temporalState,
   }) async {
+    final current = await parcels.getById(farmId: parcel.farmId, id: parcel.id);
+    if (current == null) {
+      throw const FormatException('boundaryEdit.changed');
+    }
+    if (expectedParcel != null &&
+        (current.updatedAt != expectedParcel.updatedAt ||
+            current.boundaryVersion != expectedParcel.boundaryVersion ||
+            current.parentBlockId != expectedParcel.parentBlockId ||
+            current.projectId != expectedParcel.projectId)) {
+      throw const FormatException('boundaryEdit.changed');
+    }
+    final boundaryChanged = current.boundaryVersion != parcel.boundaryVersion;
+    if (boundaryChanged) {
+      if (!current.active ||
+          parcel.boundaryVersion != current.boundaryVersion + 1 ||
+          parcel.parentBlockId != current.parentBlockId ||
+          parcel.projectId != current.projectId ||
+          parcel.kind != current.kind) {
+        throw const FormatException('boundaryEdit.changed');
+      }
+      await _validateBoundaryReplacement(parcels, parcel);
+    }
     await parcels.update(parcel);
 
     await updateSpatialForParcelScoped(
@@ -1195,6 +1294,7 @@ class LandParcelSpatialSyncWorkflow {
       spatial: spatial,
       parcel: parcel,
       temporalState: temporalState,
+      preserveTemporalState: boundaryChanged,
     );
   }
 }

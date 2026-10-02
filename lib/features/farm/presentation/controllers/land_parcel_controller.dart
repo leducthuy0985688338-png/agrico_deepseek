@@ -86,6 +86,7 @@ class LandParcelController extends ChangeNotifier {
     this.reconcileLegacySpatialIdentity,
     this.productionCreation,
     this.parentRelations,
+    this.replaceBoundary,
   });
 
   final AuthorizationSubject subject;
@@ -94,6 +95,7 @@ class LandParcelController extends ChangeNotifier {
   final CreateLandParcel createLandParcel;
   final ProductionParcelCreationService? productionCreation;
   final LandParcelParentService? parentRelations;
+  final ReplaceBoundary? replaceBoundary;
   final UpdateLandParcelMetadata updateMetadata;
   final CompleteGpsMeasurement completeGpsMeasurement;
   final VerifyBoundary verifyBoundary;
