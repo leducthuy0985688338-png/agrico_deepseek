@@ -45,14 +45,25 @@ class LocalDatabaseSnapshot {
         final data = <String, Object?>{};
         for (final table in tables) {
           final name = table['name']! as String;
+          if (name.startsWith('company_catalog_sync_')) {
+            continue;
+          }
           if (!RegExp(r'^[a-zA-Z_][a-zA-Z_0-9]*$').hasMatch(name)) {
             throw const FormatException('Invalid SQLite table name.');
           }
           final rows = await tx.rawQuery('SELECT * FROM "$name"');
-          data[name] = rows.map((row) => row.map((key, value) => MapEntry(
-                key,
-                value is Uint8List ? {'blobBase64': base64Encode(value)} : value,
-              ))).toList();
+          data[name] = rows
+              .map(
+                (row) => row.map(
+                  (key, value) => MapEntry(
+                    key,
+                    value is Uint8List
+                        ? {'blobBase64': base64Encode(value)}
+                        : value,
+                  ),
+                ),
+              )
+              .toList();
         }
         return <String, Object?>{
           'databaseVersion': schema.first['user_version'],
@@ -79,7 +90,8 @@ class LocalDatabaseSnapshot {
   static Map<String, Map<String, dynamic>> decodeDatabases(Uint8List bytes) {
     final root = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
     if (root['format'] != format ||
-        (root['version'] != 1 && root['version'] != 2 &&
+        (root['version'] != 1 &&
+            root['version'] != 2 &&
             root['version'] != version)) {
       throw const FormatException('Unsupported AGRICO backup format.');
     }

@@ -182,6 +182,25 @@ class LocalRestoreActivation {
             }
           }
         }
+        // Device send authority cannot be resurrected by a backup restore.
+        final syncTables = await tx.rawQuery(
+          "SELECT name FROM main.sqlite_master WHERE type='table' "
+          "AND name LIKE 'company_catalog_sync_%'",
+        );
+        for (final row in syncTables) {
+          final table = row['name']! as String;
+          _checkName(table);
+          await tx.execute('DELETE FROM main."$table"');
+        }
+        if (syncTables.any(
+          (r) => r['name'] == 'company_catalog_sync_device_v1',
+        )) {
+          await tx.execute('''INSERT INTO company_catalog_sync_device_v1
+            (farm_id,restore_blocked) SELECT DISTINCT farm_id,1
+            FROM company_catalog_entries_v1
+            UNION SELECT DISTINCT farm_id,1 FROM company_catalog_requests_v1
+            UNION SELECT 'local-farm',1''');
+        }
         for (final alias in ['main', 'restore_costs']) {
           if ((await tx.rawQuery(
             'PRAGMA $alias.foreign_key_check',

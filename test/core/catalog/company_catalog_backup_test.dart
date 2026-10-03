@@ -5,6 +5,7 @@ import 'package:agrico_deepseek/core/backup/local_database_snapshot.dart';
 import 'package:agrico_deepseek/core/backup/local_restore_preflight.dart';
 import 'package:agrico_deepseek/core/backup/local_restore_activation_io.dart';
 import 'package:agrico_deepseek/core/catalog/company_catalog.dart';
+import 'package:agrico_deepseek/core/catalog/sync/catalog_sync_journal.dart';
 import 'package:agrico_deepseek/core/catalog/sqlite_company_catalog.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -62,7 +63,15 @@ void main() {
     'snapshot includes catalog and audit; new backup passes preflight',
     () async {
       await seed();
+      expect(await primary.query(CatalogSyncJournal.outbox), hasLength(1));
       final bytes = await snapshot();
+      final envelope = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+      final body =
+          jsonDecode(envelope['payload'] as String) as Map<String, dynamic>;
+      final tables = body['databases']['agrico.db']['tables'] as Map;
+      for (final table in CatalogSyncJournal.tables) {
+        expect(tables.containsKey(table), isFalse);
+      }
       final counts = await validate(bytes);
       expect(counts['agrico.db/company_catalog_entries_v1'], 1);
       expect(counts['agrico.db/company_catalog_audit_v1'], 1);
@@ -106,6 +115,46 @@ void main() {
       );
       expect(await primary.query(SqliteCompanyCatalog.entriesTable), isEmpty);
       expect(await primary.query(SqliteCompanyCatalog.auditTable), isEmpty);
+      expect(await primary.query(CatalogSyncJournal.outbox), isEmpty);
+      expect(await primary.query(CatalogSyncJournal.shadow), isEmpty);
+      expect(
+        (await primary.query(
+          CatalogSyncJournal.device,
+          where: 'farm_id=?',
+          whereArgs: ['local-farm'],
+        )).single['restore_blocked'],
+        1,
+      );
+    },
+  );
+  test(
+    'restoring A05 business data retains masters but never send intent',
+    () async {
+      await seed();
+      final bytes = await snapshot();
+      await validate(bytes);
+      await primary.close();
+      await costs.close();
+      final activation = LocalRestoreActivation(dir, databaseFactoryFfi);
+      await activation.schedule(bytes);
+      expect(await activation.applyPending(), isTrue);
+      primary = await databaseFactoryFfi.openDatabase('${dir.path}/agrico.db');
+      costs = await databaseFactoryFfi.openDatabase(
+        '${dir.path}/agrico_costs.db',
+      );
+      expect(
+        await primary.query(SqliteCompanyCatalog.entriesTable),
+        hasLength(1),
+      );
+      expect(await primary.query(CatalogSyncJournal.outbox), isEmpty);
+      expect(
+        (await primary.query(
+          CatalogSyncJournal.device,
+          where: 'farm_id=?',
+          whereArgs: ['farm'],
+        )).single['restore_blocked'],
+        1,
+      );
     },
   );
 }

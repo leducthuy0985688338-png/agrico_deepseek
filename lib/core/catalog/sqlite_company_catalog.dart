@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:sqflite/sqflite.dart';
 import 'company_catalog.dart';
+import 'sync/catalog_sync_journal.dart';
 
 class SqliteCompanyCatalog implements CompanyCatalogRepository {
   const SqliteCompanyCatalog(this.database);
@@ -11,6 +12,7 @@ class SqliteCompanyCatalog implements CompanyCatalogRepository {
   static const auditTable = 'company_catalog_audit_v1';
   static Future<void> createSchema(Database db) async {
     await db.transaction((tx) async {
+      await CatalogSyncJournal.createSchema(tx);
       await tx.execute('''CREATE TABLE IF NOT EXISTS $entriesTable (
         id TEXT PRIMARY KEY, farm_id TEXT NOT NULL, kind TEXT NOT NULL,
         code TEXT NOT NULL, name TEXT NOT NULL, name_key TEXT NOT NULL,
@@ -96,6 +98,22 @@ class SqliteCompanyCatalog implements CompanyCatalogRepository {
       'before_json': before == null ? null : jsonEncode(before),
       'after_json': jsonEncode(after),
     });
+    // One transaction commits both the business mutation and its send intent.
+    // Adoption does not grant an actor permission to publish old snapshots.
+    if (action != 'adopt') {
+      await CatalogSyncJournal.append(
+        tx,
+        farmId: farmId,
+        actorUid: actor,
+        entity: action == 'request' || action == 'resolve'
+            ? 'request'
+            : 'entry',
+        targetId: target,
+        payload: after,
+        reason: reason,
+        occurredAt: time,
+      );
+    }
   }
 
   @override
