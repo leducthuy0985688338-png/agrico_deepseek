@@ -25,3 +25,13 @@ Protocol tables are excluded from backups. Activation clears device protocol tab
 ## Validation
 
 The checkpoint adds real SQLite tests for actor/farm separation, expired or denied sessions, staff versus manager selection, atomic rollback, ordered cloud versions, idempotent acknowledgements, invalid receipts, conflict barriers and restore blocking. Existing catalog and backup tests must also pass, followed by the full suite. No Firebase deployment or APK installation is necessary at checkpoint 1.
+
+## Sender coordinator checkpoint
+
+`CatalogSyncSender` drains actor-owned commands in cloud-version order, with a bounded operation budget and one shared in-flight Future for concurrent calls. It checks the session, authenticated UID and current local permissions before each send. Disposal or a session change during a server request leaves the operation pending for its original actor to reconcile later. Definitive server denials and conflicts remain durable barriers; uncertain network outcomes and unexpected failures preserve the pending command.
+
+The transport contract requires atomic compare-and-swap with an immutable receipt and complete-command verification on retry. Receipts must match operation, actor, farm, entity, target, version and canonical payload before SQLite acknowledgement. Changing an object obtained from the command payload cannot mutate the stored command.
+
+Fifteen real-SQLite coordinator tests cover ordered sends, outages, lost responses after a remote commit, conflict barriers, definitive denials, SDK/session mismatches, forged receipts, concurrent calls, permission loss, disposal, unexpected failures, operation budgets and restore isolation. The test transport models the protocol; it is not a Firebase emulator or a production gateway.
+
+This checkpoint deliberately has no Firebase adapter, no app wiring and no new deployed Rules. Remaining checkpoints above still apply. Local Flutter tests must pass before implementing the server adapter/Rules and receiver against this contract.
