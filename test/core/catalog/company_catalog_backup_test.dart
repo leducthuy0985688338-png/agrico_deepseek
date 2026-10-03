@@ -43,6 +43,17 @@ void main() {
       );
   Future<void> seed() async {
     await SqliteCompanyCatalog.createSchema(primary);
+    await primary.insert(CatalogSyncJournal.conflicts, {
+      'farm_id': 'farm',
+      'reader_uid': 'admin',
+      'entity': 'entry',
+      'target_id': 'u',
+      'cloud_version': 1,
+      'operation_id': 'remote-op',
+      'remote_json': '{}',
+      'local_json': null,
+      'failure': 'catalog.changed',
+    });
     await primary.insert(CatalogSyncJournal.inbox, {
       'farm_id': 'farm',
       'reader_uid': 'admin',
@@ -127,6 +138,7 @@ void main() {
       expect(await primary.query(SqliteCompanyCatalog.auditTable), isEmpty);
       expect(await primary.query(CatalogSyncJournal.outbox), isEmpty);
       expect(await primary.query(CatalogSyncJournal.inbox), isEmpty);
+      expect(await primary.query(CatalogSyncJournal.conflicts), isEmpty);
       expect(await primary.query(CatalogSyncJournal.shadow), isEmpty);
       expect(
         (await primary.query(
@@ -159,6 +171,7 @@ void main() {
       );
       expect(await primary.query(CatalogSyncJournal.outbox), isEmpty);
       expect(await primary.query(CatalogSyncJournal.inbox), isEmpty);
+      expect(await primary.query(CatalogSyncJournal.conflicts), isEmpty);
       expect(
         (await primary.query(
           CatalogSyncJournal.device,

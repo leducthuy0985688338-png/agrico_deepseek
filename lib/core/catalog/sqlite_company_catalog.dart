@@ -178,7 +178,7 @@ class SqliteCompanyCatalog implements CompanyCatalogRepository {
             whereArgs: [entry.id, entry.farmId],
           );
         }
-        await _project(tx, entry);
+        await projectEntry(tx, entry);
         await _audit(
           tx,
           farmId: entry.farmId,
@@ -200,7 +200,9 @@ class SqliteCompanyCatalog implements CompanyCatalogRepository {
     }
   }
 
-  static Future<void> _project(DatabaseExecutor tx, CatalogEntry e) async {
+  /// Internal business projection shared by local saves and verified receives.
+  /// The caller owns the transaction, identity checks and authorization.
+  static Future<void> projectEntry(DatabaseExecutor tx, CatalogEntry e) async {
     if (e.kind == CatalogKind.machine || e.kind == CatalogKind.worker) {
       final old = await tx.query(
         'parcel_work_resources',
