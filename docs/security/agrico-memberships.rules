@@ -1,14 +1,129 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /agrico_memberships/{uid} {
-      // Reading an inactive profile lets the app revoke its previous cache.
-      allow get: if request.auth != null && request.auth.uid == uid;
+    function signedIn() { return request.auth != null; }
+    function actor() {
+      return get(/databases/$(database)/documents/agrico_memberships/$(request.auth.uid)).data;
+    }
+    function authority() {
+      return get(/databases/$(database)/documents/agrico_access_admins/$(request.auth.uid)).data;
+    }
+    function policy(farm) {
+      return get(/databases/$(database)/documents/agrico_access_policy/$(farm)).data;
+    }
+    function isAdmin(farm) {
+      let a = authority();
+      let m = actor();
+      return signedIn() && a.active == true && a.farmId == farm
+        && m.active == true && m.farmId == farm
+        && m.userId == request.auth.uid && m.membershipId == request.auth.uid
+        && m.offlineUntil > request.time
+        && !m.get('deniedPermissions', []).hasAny(['account.view', 'account.manage', 'role.manage']);
+    }
+    function validScopes(s) { return s is list && s.size() <= 9 && s.hasOnly(["allFarm", "team", "assignedFields", "assignedTasks", "own", "project", "department", "assignedMachines", "assignedWarehouses"]); }
+    function validRole(r, names, allowed) {
+      return r is map && r.size() == 2 && r.role in names
+        && r.scopes is list && r.scopes.size() > 0 && r.scopes.size() <= 9
+        && r.scopes.hasOnly(allowed);
+    }
+    function validRoles(r) {
+      let names = ["systemAdmin", "director", "operationsManager", "departmentManager", "teamLeader", "agronomist", "gisOfficer", "machineOperator", "fieldWorker", "equipmentCoordinator", "warehouseKeeper", "purchasingOfficer", "accountant", "cashier", "hrOfficer", "officeStaff", "auditor"];
+      let allowed = ["allFarm", "team", "assignedFields", "assignedTasks", "own", "project", "department", "assignedMachines", "assignedWarehouses"];
+      return r is list && r.size() > 0 && r.size() <= 4
+        && validRole(r[0], names, allowed)
+        && (r.size() <= 1 || validRole(r[1], names, allowed))
+        && (r.size() <= 2 || validRole(r[2], names, allowed))
+        && (r.size() <= 3 || validRole(r[3], names, allowed));
+    }
+    function idList(v) { return v is list && v.size() <= 100; }
+    function valid(d, uid) {
+      let p = policy(d.farmId);
+      return d.keys().hasOnly(['schemaVersion', 'userId', 'membershipId', 'farmId', 'active', 'roles',
+        'offlineUntil', 'extraPermissions', 'deniedPermissions', 'extraPermissionScopes',
+        'projectIds', 'departmentIds', 'teamIds', 'fieldIds', 'taskIds', 'machineIds', 'warehouseIds',
+        'displayName', 'adminRevision', 'adminAuditId', 'updatedBy', 'updatedAt'])
+        && d.schemaVersion == 1 && d.userId == uid && d.membershipId == uid
+        && uid.matches('^[A-Za-z0-9_-]{1,128}$') && d.farmId is string && d.farmId == 'local-farm'
+        && d.active is bool && validRoles(d.roles)
+        && d.displayName is string && d.displayName.size() > 0 && d.displayName.size() <= 100
+        && d.extraPermissions is list && d.deniedPermissions is list
+        && d.extraPermissions.concat(d.deniedPermissions).hasOnly(["field.view", "household.create", "household.edit", "field.create", "field.edit", "field.delete", "field.measure", "field.boundary.edit", "field.boundary.verify", "field.google_earth.import", "field.google_earth.export", "task.view", "task.create", "task.edit", "task.assign", "task.complete", "inventory.view", "inventory.manage", "task.verify", "chat.view", "chat.send", "cloud.sync", "cloud.restore", "administrative_catalog.manage", "local_backup.export", "account.view", "account.manage", "role.manage", "catalog.view", "catalog.manage", "catalog.request", "production.plan", "production.approve", "crop.view", "crop.edit", "machine.view", "machine.assign", "machine.log", "machine.maintain", "machine.verify", "inventory.request", "inventory.receive", "inventory.issue", "inventory.count", "inventory.adjust", "inventory.approve", "purchase.view", "purchase.request", "purchase.edit", "purchase.approve", "finance.view", "finance.create", "finance.post", "finance.approve", "finance.correct", "cash.view", "cash.record", "employee.view", "employee.edit", "attendance.record", "attendance.verify", "payroll.view", "payroll.manage", "payroll.approve", "office.view", "office.edit", "report.operations", "report.finance", "report.personnel", "audit.view", "audit.review", "data.export"])
+        && validScopes(d.extraPermissionScopes)
+        && (d.extraPermissions.size() == 0 || d.extraPermissionScopes.size() > 0)
+        && idList(d.projectIds) && idList(d.departmentIds) && idList(d.teamIds)
+        && idList(d.fieldIds) && idList(d.taskIds) && idList(d.machineIds) && idList(d.warehouseIds)
+        && d.offlineUntil is timestamp && (!d.active || d.offlineUntil > request.time)
+        && p.maxOfflineDays is int && p.maxOfflineDays >= 1
+        && p.maxOfflineDays <= 90
+        && (!d.active || d.offlineUntil <= request.time + duration.value(p.maxOfflineDays, 'd'))
+        && d.adminRevision is int && d.adminAuditId is string
+        && d.updatedBy == request.auth.uid && d.updatedAt == request.time;
+    }
+    function audited(d, uid, before) {
+      let a = getAfter(/databases/$(database)/documents/agrico_access_audit/$(d.adminAuditId)).data;
+      return !exists(/databases/$(database)/documents/agrico_access_audit/$(d.adminAuditId))
+        && a.actorUid == request.auth.uid && a.targetUid == uid && a.farmId == d.farmId
+        && a.revision == d.adminRevision && a.occurredAt == request.time
+        && a.before == before;
+    }
+    function renewable(uid) {
+      let p = policy(resource.data.farmId);
+      let d = request.resource.data;
+      return signedIn() && request.auth.uid == uid && resource.data.userId == uid
+        && resource.data.membershipId == uid && resource.data.active == true
+        && p.autoRenew == true && p.offlineDays is int && p.offlineDays >= 1 && p.offlineDays <= 90
+        && p.offlineDays <= p.maxOfflineDays
+        && d.diff(resource.data).affectedKeys().hasOnly(['offlineUntil', 'leaseRenewedAt'])
+        && d.leaseRenewedAt == request.time && d.offlineUntil is timestamp
+        && d.offlineUntil > request.time && d.offlineUntil >= resource.data.offlineUntil
+        && d.offlineUntil <= request.time + duration.value(p.offlineDays, 'd');
+    }
+    match /agrico_access_admins/{uid} {
+      allow get: if signedIn() && uid == request.auth.uid;
       allow list, create, update, delete: if false;
     }
-    // Legacy global collections are closed until scoped sync is implemented.
-    match /{document=**} {
-      allow read, write: if false;
+    match /agrico_access_policy/{farm} {
+      allow get: if signedIn() && actor().farmId == farm && actor().active == true;
+      allow list, create, update, delete: if false;
     }
+    match /agrico_memberships/{uid} {
+      allow get: if signedIn() && (uid == request.auth.uid
+        || (!exists(/databases/$(database)/documents/agrico_memberships/$(uid))
+          && isAdmin(actor().farmId))
+        || (exists(/databases/$(database)/documents/agrico_memberships/$(uid))
+          && isAdmin(resource.data.farmId)));
+      allow list: if isAdmin(resource.data.farmId) && request.query.limit <= 200;
+      allow create: if isAdmin(request.resource.data.farmId) && uid != request.auth.uid
+        && !exists(/databases/$(database)/documents/agrico_access_admins/$(uid))
+        && valid(request.resource.data, uid) && request.resource.data.adminRevision == 1
+        && audited(request.resource.data, uid, null);
+      allow update: if renewable(uid) || (isAdmin(resource.data.farmId) && uid != request.auth.uid
+        && !exists(/databases/$(database)/documents/agrico_access_admins/$(uid))
+        && request.resource.data.farmId == resource.data.farmId
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.membershipId == resource.data.membershipId
+        && valid(request.resource.data, uid)
+        && request.resource.data.adminRevision == resource.data.get('adminRevision', 0) + 1
+        && audited(request.resource.data, uid, resource.data));
+      allow delete: if false;
+    }
+    match /agrico_access_audit/{id} {
+      allow get: if isAdmin(resource.data.farmId);
+      allow list: if isAdmin(resource.data.farmId) && request.query.limit <= 200;
+      allow create: if isAdmin(request.resource.data.farmId)
+        && request.resource.data.keys().hasOnly(['farmId', 'actorUid', 'targetUid', 'revision', 'reason', 'occurredAt', 'before', 'after'])
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.reason is string && request.resource.data.reason.size() > 0
+        && request.resource.data.reason.size() <= 500
+        && request.resource.data.occurredAt == request.time
+        && getAfter(/databases/$(database)/documents/agrico_memberships/$(request.resource.data.targetUid)).data == request.resource.data.after
+        && request.resource.data.after.updatedAt == request.time
+        && request.resource.data.after.updatedBy == request.auth.uid
+        && request.resource.data.before != request.resource.data.after
+        && request.resource.data.after.adminAuditId == id
+        && request.resource.data.after.adminRevision == request.resource.data.revision;
+      allow update, delete: if false;
+    }
+    match /{document=**} { allow read, write: if false; }
   }
 }

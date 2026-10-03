@@ -1,3 +1,6 @@
+import '../core/auth/admin/company_account_admin_screen.dart';
+import '../core/auth/admin/company_account_admin_service.dart';
+import '../core/auth/admin/firebase_company_account_admin_repository.dart';
 import '../features/farm/application/production_parcel_creation_service.dart';
 import '../features/farm/data/adapters/spatial_production_parcel_creation_repository.dart';
 import 'dart:convert';
@@ -262,6 +265,21 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         'settings': () => push(
           V2SettingsScreen(
             onSignOut: widget.onSignOut,
+            onOpenAccounts:
+                const AuthorizationService().can(
+                  subject: deps.subject,
+                  permission: PermissionCodes.accountView,
+                  resource: ResourceContext(farmId: deps.subject.farmId),
+                )
+                ? () => push(
+                    CompanyAccountAdminScreen(
+                      service: CompanyAccountAdminService(
+                        repository: FirebaseCompanyAccountAdminRepository(),
+                        subject: deps.subject,
+                      ),
+                    ),
+                  )
+                : null,
             sessionOffline: widget.sessionOffline,
             offlineUntil: deps.subject.validUntil,
           ),

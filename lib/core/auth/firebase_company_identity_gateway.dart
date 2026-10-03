@@ -57,9 +57,12 @@ class FirebaseCompanyIdentityGateway implements CompanyIdentityGateway {
           .doc(userId)
           .get(const GetOptions(source: Source.server))
           .timeout(timeout);
-      final data = snapshot.data();
+      var data = snapshot.data();
       if (data == null || snapshot.metadata.isFromCache) {
         throw const AccessFailure('membershipDenied');
+      }
+      if (data['active'] == true) {
+        data = await _renewIfNeeded(userId, data);
       }
       final deadline = data['offlineUntil'];
       if (deadline is! Timestamp) {
@@ -80,6 +83,61 @@ class FirebaseCompanyIdentityGateway implements CompanyIdentityGateway {
     } on FormatException {
       throw const AccessFailure('membershipInvalid');
     }
+  }
+
+  Future<Map<String, dynamic>> _renewIfNeeded(
+    String uid,
+    Map<String, dynamic> data,
+  ) async {
+    final until = data['offlineUntil'];
+    final now = DateTime.now().toUtc();
+    if (until is! Timestamp ||
+        until.toDate().isAfter(now.add(const Duration(days: 1)))) {
+      return data;
+    }
+    final policyDoc = await firestore
+        .collection('agrico_access_policy')
+        .doc(data['farmId'] as String)
+        .get(const GetOptions(source: Source.server))
+        .timeout(timeout);
+    final policy = policyDoc.data();
+    if (policy == null || policy['autoRenew'] != true) {
+      return data;
+    }
+    final days = policy['offlineDays'];
+    if (days is! int || days < 1 || days > 90) {
+      throw const AccessFailure('membershipInvalid');
+    }
+    final ref = firestore.collection('agrico_memberships').doc(uid);
+    await firestore.runTransaction((tx) async {
+      final latest = await tx.get(ref);
+      final current = latest.data();
+      if (current == null || current['active'] != true) {
+        throw const AccessFailure('membershipDenied');
+      }
+      final old = current['offlineUntil'];
+      if (old is! Timestamp) {
+        throw const AccessFailure('membershipInvalid');
+      }
+      final deadline = DateTime.now()
+          .toUtc()
+          .add(Duration(days: days))
+          .subtract(const Duration(minutes: 5));
+      if (!old.toDate().isBefore(deadline)) {
+        return;
+      }
+      tx.update(ref, {
+        'offlineUntil': Timestamp.fromDate(deadline),
+        'leaseRenewedAt': FieldValue.serverTimestamp(),
+      });
+    }, timeout: timeout);
+    final renewed = await ref
+        .get(const GetOptions(source: Source.server))
+        .timeout(timeout);
+    if (renewed.metadata.isFromCache || renewed.data() == null) {
+      throw const AccessFailure('membershipDenied');
+    }
+    return renewed.data()!;
   }
 
   @override

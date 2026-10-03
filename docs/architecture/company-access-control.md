@@ -53,3 +53,9 @@ References:
 ## A02 rollout
 
 See [Firebase account setup](../security/firebase-account-setup.md). Demo login and automatic full-access subjects are removed. Server-read memberships bind cached sessions to Firebase UID/project and the existing local-farm. Offline access has an administrator-issued deadline; expired, revoked or mismatched sessions fail closed. Unsupported legacy routes remain closed while per-operation scoped service guards and shared catalogs are implemented. Individual account/role management through an in-app Admin screen and business-data sync/outbox remain pending.
+
+## A03 — Account access administration
+
+Account access is managed online with farm-scoped Firestore transactions, expected revisions and mandatory append-only before/after audits. The client cannot edit its own grant, any registered root administrator, the server administrator registry, or the offline policy. The server checks active authority and membership, farm, expiry and explicit permission denials on every change. Up to four role assignments can be saved per membership; scopes remain per role/per permission.
+
+An active user can renew only its unchanged grant's offline deadline when enabled by a Console-managed company policy; the server validates the requested deadline against `request.time`. A disconnected device keeps the previously verified expiry and never renews locally. Locking AGRICO access does not disable Firebase Auth or delete SQLite business data. Authentication user creation remains in Console for the Spark-compatible checkpoint. See `docs/security/company-account-admin-setup.md` for bootstrap, policy, index, verification and deferred module scope.
