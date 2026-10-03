@@ -7,6 +7,7 @@ import '../../domain/entities/land_survey.dart';
 import '../../domain/geometry/wgs84_geometry.dart';
 import '../widgets/crop_age_label.dart';
 import '../widgets/crop_editor_dialog.dart';
+import '../../../../core/catalog/company_catalog.dart';
 
 class LandParcelBoundaryDraft {
   LandParcelBoundaryDraft({required this.boundary, required this.source})
@@ -76,6 +77,7 @@ class LandParcelFormScreen extends StatefulWidget {
   const LandParcelFormScreen({
     super.key,
     this.parcel,
+    this.catalog,
     this.household,
     this.crops = const [],
     this.administrativeUnits = const [],
@@ -92,6 +94,7 @@ class LandParcelFormScreen extends StatefulWidget {
     this.onImportRequested,
     required this.onSubmit,
   });
+  final CompanyCatalogService? catalog;
   final LandParcel? parcel;
   final Household? household;
   final List<CropRecord> crops;
@@ -721,6 +724,7 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
     final value = await showDialog<CropRecord>(
       context: context,
       builder: (_) => CropEditorDialog(
+        catalog: widget.catalog,
         original: original,
         parcelId: widget.parcel?.id ?? 'draft',
       ),

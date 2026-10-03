@@ -25,7 +25,12 @@ void main() {
       userId: 'user',
       membershipId: 'actor',
       farmId: 'farm-1',
-      permissionCodes: {PermissionCodes.fieldView, PermissionCodes.fieldEdit},
+      permissionCodes: {
+        PermissionCodes.fieldView,
+        PermissionCodes.fieldEdit,
+        PermissionCodes.catalogView,
+        PermissionCodes.catalogManage,
+      },
       dataScopes: {DataScope.allFarm},
     );
     await tester.pumpWidget(

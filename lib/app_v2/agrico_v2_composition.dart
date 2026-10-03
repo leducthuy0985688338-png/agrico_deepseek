@@ -12,6 +12,9 @@ import 'package:sqflite/sqflite.dart';
 import '../core/project/agrico_project.dart';
 import '../core/localization/app_localizations.dart';
 import '../core/geography/data/sqlite_administrative_catalog.dart';
+import '../core/catalog/company_catalog.dart';
+import '../core/catalog/sqlite_company_catalog.dart';
+import '../core/catalog/company_catalog_screen.dart';
 import '../core/geography/application/manage_administrative_catalog.dart';
 import '../core/geography/presentation/administrative_catalog_screen.dart';
 
@@ -104,6 +107,8 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     await SqliteParcelWorkRepository.createSchema(database);
     await SqliteFarmTaskRepository.createSchema(database);
     await SqliteInventoryRepository.createSchema(database);
+    await SqliteCompanyCatalog.createSchema(database);
+    await SqliteCompanyCatalog(database).adoptExisting(subject.farmId);
     await SqliteParcelLandHistoryRepository.createSchema(database);
     await SqliteParcelNumberSequence.reconcileExistingHouseholds(database);
     await SqliteFinanceDocumentRepository.createSchema(database);
@@ -202,6 +207,10 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
             onSubdivisionSaved: deps.controller.loadList,
             onSubdivideRequested: () => ParcelSubdivisionScreen(
               productionPlots: true,
+              catalog: CompanyCatalogService(
+                repository: SqliteCompanyCatalog(deps.database),
+                subject: deps.subject,
+              ),
               subject: deps.subject,
               sourceParcelId: id,
               service: ParcelSubdivisionService(
@@ -223,6 +232,10 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
             subject: deps.subject,
             service: ParcelWorkService(
               SqliteParcelWorkRepository(deps.database),
+              catalog: CompanyCatalogService(
+                repository: SqliteCompanyCatalog(deps.database),
+                subject: deps.subject,
+              ),
             ),
           ),
         ),
@@ -259,12 +272,31 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
             parcels: deps.controller.items.map((item) => item.parcel).toList(),
             resources: ParcelWorkService(
               SqliteParcelWorkRepository(deps.database),
+              catalog: CompanyCatalogService(
+                repository: SqliteCompanyCatalog(deps.database),
+                subject: deps.subject,
+              ),
             ),
           ),
         ),
         'settings': () => push(
           V2SettingsScreen(
             onSignOut: widget.onSignOut,
+            onOpenCatalog:
+                const AuthorizationService().can(
+                  subject: deps.subject,
+                  permission: PermissionCodes.catalogView,
+                  resource: ResourceContext(farmId: deps.subject.farmId),
+                )
+                ? () => push(
+                    CompanyCatalogScreen(
+                      service: CompanyCatalogService(
+                        repository: SqliteCompanyCatalog(deps.database),
+                        subject: deps.subject,
+                      ),
+                    ),
+                  )
+                : null,
             onOpenAccounts:
                 const AuthorizationService().can(
                   subject: deps.subject,
@@ -425,6 +457,10 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       MaterialPageRoute(
         builder: (editContext) => LandParcelFormScreen(
           landOnly: true,
+          catalog: CompanyCatalogService(
+            repository: SqliteCompanyCatalog(deps.database),
+            subject: deps.subject,
+          ),
           parcel: parcel,
           household: data.household,
           crops: data.crops,
@@ -556,6 +592,10 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       MaterialPageRoute(
         builder: (_) => LandParcelFormScreen(
           landOnly: true,
+          catalog: CompanyCatalogService(
+            repository: SqliteCompanyCatalog(deps.database),
+            subject: deps.subject,
+          ),
           productionProjectId: AgricoProject.defaultProject.id,
           productionProjectCode: AgricoProject.defaultProject.code,
           onGpsRequested: () => _measureGpsForCreate(context),

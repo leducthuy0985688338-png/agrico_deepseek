@@ -12,7 +12,7 @@ void main() {
     userId: 'user',
     membershipId: 'actor',
     farmId: 'farm-1',
-    permissionCodes: {PermissionCodes.fieldView},
+    permissionCodes: {PermissionCodes.fieldView, PermissionCodes.catalogView},
     dataScopes: {DataScope.allFarm},
   );
   MachineModel machine(String id, String name) => MachineModel(
@@ -93,7 +93,7 @@ void main() {
   });
 
   test(
-    'imports only selected reviewed resources with edit permission',
+    'imports only selected reviewed resources with catalog management permission',
     () async {
       final repo = _Repository([]);
       final reconciliation = WorkResourceReconciliation(
@@ -118,7 +118,12 @@ void main() {
         userId: 'user',
         membershipId: 'actor',
         farmId: 'farm-1',
-        permissionCodes: {PermissionCodes.fieldView, PermissionCodes.fieldEdit},
+        permissionCodes: {
+          PermissionCodes.fieldView,
+          PermissionCodes.fieldEdit,
+          PermissionCodes.catalogView,
+          PermissionCodes.catalogManage,
+        },
         dataScopes: {DataScope.allFarm},
       );
       await expectLater(

@@ -97,7 +97,12 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
           ),
         ],
       ),
-      floatingActionButton: canManage
+      floatingActionButton:
+          const AuthorizationService().can(
+            subject: widget.subject,
+            permission: PermissionCodes.catalogManage,
+            resource: ResourceContext(farmId: widget.subject.farmId),
+          )
           ? FloatingActionButton(
               key: const Key('inventory-add'),
               onPressed: add,

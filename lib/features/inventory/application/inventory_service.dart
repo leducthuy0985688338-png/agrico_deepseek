@@ -29,7 +29,7 @@ class InventoryService {
   }
 
   Future<void> register(AuthorizationSubject subject, InventoryItem item) {
-    _authorize(subject, PermissionCodes.inventoryManage);
+    _authorize(subject, PermissionCodes.catalogManage);
     if (item.farmId != subject.farmId) {
       throw StateError('Item is outside the current farm.');
     }

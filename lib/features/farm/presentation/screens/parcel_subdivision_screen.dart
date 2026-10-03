@@ -14,6 +14,8 @@ import '../../domain/entities/land_parcel.dart';
 import '../../domain/entities/land_survey.dart';
 import '../../domain/geometry/wgs84_geometry.dart';
 import '../../domain/geometry/parcel_subdivision_plan.dart';
+import '../../../../core/catalog/company_catalog.dart';
+import '../../../../core/catalog/catalog_value_picker.dart';
 
 class ParcelSubdivisionScreen extends StatefulWidget {
   const ParcelSubdivisionScreen({
@@ -24,8 +26,10 @@ class ParcelSubdivisionScreen extends StatefulWidget {
     required this.administrativeCatalog,
     this.useSchematicMap = false,
     this.productionPlots = false,
+    this.catalog,
   });
 
+  final CompanyCatalogService? catalog;
   final AuthorizationSubject subject;
   final String sourceParcelId;
   final ParcelSubdivisionService service;
@@ -914,7 +918,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                           if (!widget.productionPlots)
                             DropdownButtonFormField<ParcelLayer>(
                               key: Key('subdivision-layer-$i'),
-                              value: details[i].layer,
+                              initialValue: details[i].layer,
                               decoration: InputDecoration(
                                 labelText: l10n.text('subdivision.layer'),
                               ),
@@ -944,7 +948,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                               details[i].layer == ParcelLayer.fieldPlot)
                             DropdownButtonFormField<int?>(
                               key: Key('subdivision-parent-$i'),
-                              value: details[i].parentSketchIndex,
+                              initialValue: details[i].parentSketchIndex,
                               decoration: InputDecoration(
                                 labelText: l10n.text('subdivision.parentBlock'),
                               ),
@@ -1024,13 +1028,23 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                               labelText: l10n.text('subdivision.notes'),
                             ),
                           ),
-                          TextField(
-                            controller: details[i].cropType,
-                            onChanged: (_) => setState(() {}),
-                            decoration: InputDecoration(
-                              labelText: l10n.text('crop.type'),
+                          if (widget.catalog != null)
+                            CatalogValuePicker(
+                              service: widget.catalog!,
+                              kind: CatalogKind.crop,
+                              controller: details[i].cropType,
+                              label: l10n.text('crop.type'),
+                              allowEmpty: true,
+                              onSelected: () => setState(() {}),
+                            )
+                          else
+                            TextField(
+                              controller: details[i].cropType,
+                              onChanged: (_) => setState(() {}),
+                              decoration: InputDecoration(
+                                labelText: l10n.text('crop.type'),
+                              ),
                             ),
-                          ),
                           if (details[i].cropType.text.trim().isNotEmpty) ...[
                             TextField(
                               controller: details[i].cropQuantity,
@@ -1039,14 +1053,22 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                                 labelText: l10n.text('crop.quantity'),
                               ),
                             ),
-                            TextField(
-                              controller: details[i].cropUnit,
-                              decoration: InputDecoration(
-                                labelText: l10n.text('crop.unit'),
+                            if (widget.catalog != null)
+                              CatalogValuePicker(
+                                service: widget.catalog!,
+                                kind: CatalogKind.unit,
+                                controller: details[i].cropUnit,
+                                label: l10n.text('crop.unit'),
+                              )
+                            else
+                              TextField(
+                                controller: details[i].cropUnit,
+                                decoration: InputDecoration(
+                                  labelText: l10n.text('crop.unit'),
+                                ),
                               ),
-                            ),
                             DropdownButtonFormField<CropGrowthStage?>(
-                              value: details[i].cropGrowthStage,
+                              initialValue: details[i].cropGrowthStage,
                               decoration: InputDecoration(
                                 labelText: l10n.text('crop.growthStage'),
                               ),
@@ -1104,7 +1126,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
     List<T> options,
     ValueChanged<T> onChanged,
   ) => DropdownButtonFormField<T>(
-    value: value,
+    initialValue: value,
     decoration: InputDecoration(labelText: l10n.text(labelKey)),
     items: [
       for (final option in options)

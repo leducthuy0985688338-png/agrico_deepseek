@@ -6,6 +6,7 @@ import '../../domain/entities/land_survey.dart';
 import '../../domain/repositories/land_survey_repository.dart';
 import '../models/land_survey_mapper.dart';
 import 'sqlite_land_parcel_repository.dart';
+import '../../../../core/catalog/sqlite_catalog_policy.dart';
 
 class SqliteLandSurveyRepository implements LandSurveyRepository {
   SqliteLandSurveyRepository(Database database) : _executor = database;
@@ -132,16 +133,33 @@ class SqliteLandSurveyRepository implements LandSurveyRepository {
     idColumn: 'parcel_id',
   );
   @override
-  Future<void> createCrop(CropRecord value) => _executor
-      .insert(
-        cropsTable,
-        _cropRow(value),
-        conflictAlgorithm: ConflictAlgorithm.abort,
-      )
-      .then((_) {});
+  Future<void> createCrop(CropRecord value) async {
+    await SqliteCatalogPolicy.crop(
+      _executor,
+      id: value.id,
+      parcelId: value.parcelId,
+      type: value.cropType,
+      unit: value.unit,
+    );
+    await _executor.insert(
+      cropsTable,
+      _cropRow(value),
+      conflictAlgorithm: ConflictAlgorithm.abort,
+    );
+  }
+
   @override
-  Future<void> updateCrop(CropRecord value) =>
-      _update(cropsTable, _cropRow(value), value.id);
+  Future<void> updateCrop(CropRecord value) async {
+    await SqliteCatalogPolicy.crop(
+      _executor,
+      id: value.id,
+      parcelId: value.parcelId,
+      type: value.cropType,
+      unit: value.unit,
+    );
+    await _update(cropsTable, _cropRow(value), value.id);
+  }
+
   @override
   Future<List<CropRecord>> listCrops(
     String parcelId, {

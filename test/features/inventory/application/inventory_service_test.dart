@@ -12,6 +12,7 @@ void main() {
     permissionCodes: {
       PermissionCodes.inventoryView,
       PermissionCodes.inventoryManage,
+      PermissionCodes.catalogManage,
     },
     dataScopes: {DataScope.allFarm},
   );
@@ -30,6 +31,28 @@ void main() {
     unit: 'kg',
     unitPrice: 100,
     supplier: 'A',
+  );
+
+  test(
+    'stock movement permission does not grant master catalog registration',
+    () {
+      final repository = _Inventory();
+      const stockManager = AuthorizationSubject(
+        userId: 'stock',
+        membershipId: 'stock',
+        farmId: 'farm-1',
+        permissionCodes: {
+          PermissionCodes.inventoryView,
+          PermissionCodes.inventoryManage,
+        },
+        dataScopes: {DataScope.allFarm},
+      );
+      expect(
+        () => InventoryService(repository).register(stockManager, item),
+        throwsStateError,
+      );
+      expect(repository.items, isEmpty);
+    },
   );
 
   test('reads by farm and rejects unauthorized or cross-farm writes', () async {

@@ -18,8 +18,10 @@ class LocalRestoreActivation {
   final Directory directory;
   final DatabaseFactory factory;
 
-  File get _pending => File(p.join(directory.path, 'agrico-restore-pending.json'));
-  File get _result => File(p.join(directory.path, 'agrico-restore-result.json'));
+  File get _pending =>
+      File(p.join(directory.path, 'agrico-restore-pending.json'));
+  File get _result =>
+      File(p.join(directory.path, 'agrico-restore-result.json'));
 
   Future<void> schedule(Uint8List bytes) async {
     LocalMediaSnapshot.validate(bytes);
@@ -32,17 +34,17 @@ class LocalRestoreActivation {
     }
     final id = DateTime.now().microsecondsSinceEpoch.toString();
     final temporary = File('${_pending.path}.tmp');
-    await temporary.writeAsString(jsonEncode({
-      'id': id,
-      'backup': base64Encode(bytes),
-    }), flush: true);
+    await temporary.writeAsString(
+      jsonEncode({'id': id, 'backup': base64Encode(bytes)}),
+      flush: true,
+    );
     await temporary.rename(_pending.path);
   }
 
   Future<bool> applyPending() async {
     if (!await _pending.exists()) return false;
-    final pending = jsonDecode(await _pending.readAsString())
-        as Map<String, dynamic>;
+    final pending =
+        jsonDecode(await _pending.readAsString()) as Map<String, dynamic>;
     final id = pending['id'] as String;
     if (!RegExp(r'^\d+$').hasMatch(id)) {
       throw const FormatException('Invalid restore identifier.');
@@ -51,7 +53,9 @@ class LocalRestoreActivation {
     LocalMediaSnapshot.validate(Uint8List.fromList(bytes));
     final primaryPath = p.join(directory.path, 'agrico.db');
     final costsPath = p.join(directory.path, 'agrico_costs.db');
-    final previous = File(p.join(directory.path, 'agrico-before-restore-$id.json'));
+    final previous = File(
+      p.join(directory.path, 'agrico-before-restore-$id.json'),
+    );
     Database? primary;
     Database? costs;
     try {
@@ -73,7 +77,9 @@ class LocalRestoreActivation {
       await costs.close();
       costs = null;
       final materialized = await LocalMediaSnapshot.materialize(
-          Uint8List.fromList(bytes), directory);
+        Uint8List.fromList(bytes),
+        directory,
+      );
       await _replaceBoth(primaryPath, costsPath, materialized);
       // The SQLite commit has completed. A later status-file or cleanup error
       // must not be reported as a rolled-back restore.
@@ -102,23 +108,30 @@ class LocalRestoreActivation {
     }
   }
 
-  Future<void> _replaceBoth(String mainPath, String costsPath,
-      Uint8List bytes) async {
+  Future<void> _replaceBoth(
+    String mainPath,
+    String costsPath,
+    Uint8List bytes,
+  ) async {
     final data = LocalDatabaseSnapshot.decodeDatabases(bytes);
     final db = await factory.openDatabase(mainPath);
     var committed = false;
     try {
       await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
-      if ((await db.rawQuery('PRAGMA journal_mode=DELETE')).single.values.single
-          .toString().toLowerCase() != 'delete') {
+      if ((await db.rawQuery(
+            'PRAGMA journal_mode=DELETE',
+          )).single.values.single.toString().toLowerCase() !=
+          'delete') {
         throw StateError('Main database cannot use rollback journal.');
       }
       await db.execute('PRAGMA synchronous=FULL');
       await db.execute('PRAGMA foreign_keys=OFF');
       await db.execute('ATTACH DATABASE ? AS restore_costs', [costsPath]);
       await db.rawQuery('PRAGMA restore_costs.wal_checkpoint(TRUNCATE)');
-      if ((await db.rawQuery('PRAGMA restore_costs.journal_mode=DELETE'))
-          .single.values.single.toString().toLowerCase() != 'delete') {
+      if ((await db.rawQuery(
+            'PRAGMA restore_costs.journal_mode=DELETE',
+          )).single.values.single.toString().toLowerCase() !=
+          'delete') {
         throw StateError('Costs database cannot use rollback journal.');
       }
       await db.execute('PRAGMA restore_costs.synchronous=FULL');
@@ -127,7 +140,25 @@ class LocalRestoreActivation {
           'agrico.db': 'main',
           'agrico_costs.db': 'restore_costs',
         }.entries) {
-          final tables = data[entry.key]!['tables'] as Map<String, dynamic>;
+          final tables = Map<String, dynamic>.from(
+            data[entry.key]!['tables'] as Map<String, dynamic>,
+          );
+          if (entry.key == 'agrico.db') {
+            final installed = await tx.rawQuery(
+              "SELECT name FROM main.sqlite_master WHERE type='table' AND name='company_catalog_entries_v1'",
+            );
+            if (installed.isNotEmpty &&
+                !tables.containsKey('company_catalog_entries_v1')) {
+              for (final name in [
+                'company_catalog_entries_v1',
+                'company_catalog_requests_v1',
+                'company_catalog_audit_v1',
+                'company_catalog_bootstrap_v1',
+              ]) {
+                tables[name] = <dynamic>[];
+              }
+            }
+          }
           for (final table in tables.keys) {
             if (table == 'android_metadata') continue;
             _checkName(table);
@@ -138,7 +169,9 @@ class LocalRestoreActivation {
             for (final item in table.value as List) {
               final row = item as Map<String, dynamic>;
               final columns = row.keys.toList();
-              for (final column in columns) { _checkName(column); }
+              for (final column in columns) {
+                _checkName(column);
+              }
               final names = columns.map((name) => '"$name"').join(', ');
               final placeholders = List.filled(columns.length, '?').join(', ');
               await tx.rawInsert(
@@ -150,12 +183,18 @@ class LocalRestoreActivation {
           }
         }
         for (final alias in ['main', 'restore_costs']) {
-          if ((await tx.rawQuery('PRAGMA $alias.foreign_key_check')).isNotEmpty) {
+          if ((await tx.rawQuery(
+            'PRAGMA $alias.foreign_key_check',
+          )).isNotEmpty) {
             throw const FormatException('Restored foreign keys are invalid.');
           }
-          if ((await tx.rawQuery('PRAGMA $alias.integrity_check'))
-              .single.values.single != 'ok') {
-            throw const FormatException('Restored SQLite integrity check failed.');
+          if ((await tx.rawQuery(
+                'PRAGMA $alias.integrity_check',
+              )).single.values.single !=
+              'ok') {
+            throw const FormatException(
+              'Restored SQLite integrity check failed.',
+            );
           }
         }
       });
@@ -192,12 +231,17 @@ class LocalRestoreActivation {
   }
 
   Future<Uint8List?> previousBackup() async {
-    final previous = directory.listSync().whereType<File>()
-        .where((file) => p.basename(file.path)
-            .startsWith('agrico-before-restore-') &&
-            p.basename(file.path).endsWith('.json'))
-        .toList()
-      ..sort((a, b) => b.path.compareTo(a.path));
+    final previous =
+        directory
+            .listSync()
+            .whereType<File>()
+            .where(
+              (file) =>
+                  p.basename(file.path).startsWith('agrico-before-restore-') &&
+                  p.basename(file.path).endsWith('.json'),
+            )
+            .toList()
+          ..sort((a, b) => b.path.compareTo(a.path));
     return previous.isEmpty ? null : previous.first.readAsBytes();
   }
 }
@@ -210,7 +254,9 @@ Future<void> applyPendingRestore() async {
   } catch (_) {
     final pending = File(p.join(directory.path, 'agrico-restore-pending.json'));
     if (await pending.exists()) {
-      await pending.rename('${pending.path}.${DateTime.now().microsecondsSinceEpoch}.failed');
+      await pending.rename(
+        '${pending.path}.${DateTime.now().microsecondsSinceEpoch}.failed',
+      );
     }
     await activation._writeResult('failed');
   }

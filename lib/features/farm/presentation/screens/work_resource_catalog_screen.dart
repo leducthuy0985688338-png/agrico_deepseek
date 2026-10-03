@@ -105,9 +105,11 @@ class _WorkResourceCatalogScreenState extends State<WorkResourceCatalogScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final canEdit =
-        widget.subject.permissionCodes.contains(PermissionCodes.fieldEdit) &&
-        widget.subject.dataScopes.contains(DataScope.allFarm);
+    final canEdit = const AuthorizationService().can(
+      subject: widget.subject,
+      permission: PermissionCodes.catalogManage,
+      resource: ResourceContext(farmId: widget.subject.farmId),
+    );
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.text('work.${widget.kind.name}')),

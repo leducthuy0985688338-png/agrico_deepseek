@@ -2,14 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../domain/entities/land_survey.dart';
+import '../../../../core/catalog/company_catalog.dart';
+import '../../../../core/catalog/catalog_value_picker.dart';
 
 class CropEditorDialog extends StatefulWidget {
   const CropEditorDialog({
     super.key,
     required this.original,
     required this.parcelId,
+    this.catalog,
   });
 
+  final CompanyCatalogService? catalog;
   final CropRecord? original;
   final String parcelId;
 
@@ -154,11 +158,21 @@ class _CropEditorDialogState extends State<CropEditorDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
-              key: const Key('crop-type'),
-              controller: type,
-              decoration: InputDecoration(labelText: l10n.text('crop.type')),
-            ),
+            if (widget.catalog != null)
+              CatalogValuePicker(
+                key: const Key('crop-type'),
+                service: widget.catalog!,
+                kind: CatalogKind.crop,
+                controller: type,
+                originalValue: widget.original?.cropType,
+                label: l10n.text('crop.type'),
+              )
+            else
+              TextField(
+                key: const Key('crop-type'),
+                controller: type,
+                decoration: InputDecoration(labelText: l10n.text('crop.type')),
+              ),
             TextField(
               key: const Key('crop-quantity'),
               controller: quantity,
@@ -169,11 +183,21 @@ class _CropEditorDialogState extends State<CropEditorDialog> {
                 labelText: l10n.text('crop.quantity'),
               ),
             ),
-            TextField(
-              key: const Key('crop-unit'),
-              controller: unit,
-              decoration: InputDecoration(labelText: l10n.text('crop.unit')),
-            ),
+            if (widget.catalog != null)
+              CatalogValuePicker(
+                key: const Key('crop-unit'),
+                service: widget.catalog!,
+                kind: CatalogKind.unit,
+                controller: unit,
+                originalValue: widget.original?.unit,
+                label: l10n.text('crop.unit'),
+              )
+            else
+              TextField(
+                key: const Key('crop-unit'),
+                controller: unit,
+                decoration: InputDecoration(labelText: l10n.text('crop.unit')),
+              ),
             TextField(
               key: const Key('crop-variety'),
               controller: variety,

@@ -45,6 +45,7 @@ void main() {
         PermissionCodes.taskCreate,
         PermissionCodes.taskComplete,
         PermissionCodes.fieldView,
+        PermissionCodes.catalogView,
       },
       dataScopes: {DataScope.allFarm},
     );

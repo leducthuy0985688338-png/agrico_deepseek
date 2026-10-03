@@ -59,3 +59,10 @@ See [Firebase account setup](../security/firebase-account-setup.md). Demo login 
 Account access is managed online with farm-scoped Firestore transactions, expected revisions and mandatory append-only before/after audits. The client cannot edit its own grant, any registered root administrator, the server administrator registry, or the offline policy. The server checks active authority and membership, farm, expiry and explicit permission denials on every change. Up to four role assignments can be saved per membership; scopes remain per role/per permission.
 
 An active user can renew only its unchanged grant's offline deadline when enabled by a Console-managed company policy; the server validates the requested deadline against `request.time`. A disconnected device keeps the previously verified expiry and never renews locally. Locking AGRICO access does not disable Firebase Auth or delete SQLite business data. Authentication user creation remains in Console for the Spark-compatible checkpoint. See `docs/security/company-account-admin-setup.md` for bootstrap, policy, index, verification and deferred module scope.
+
+
+## A04: local company catalogs
+
+`catalog.view` opens the company catalog in Settings. `catalog.manage` controls master creation and correction; `catalog.request` submits a suggestion without creating a master. Field editing and inventory management no longer grant catalog editing. Explicit denied permissions and session expiry apply at transaction boundaries.
+
+A04 persists master entries, suggestions and audit records in SQLite. It adopts existing resources, inventory units/materials and crop snapshots once, retaining their identifiers. Active catalog choices replace free crop/unit input in the authenticated production forms. Historical snapshots remain readable and can be retained unchanged. See `company-catalog.md`. This checkpoint does not synchronize catalogs across devices or add a Firebase catalog write rule.

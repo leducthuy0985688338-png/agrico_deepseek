@@ -18,6 +18,7 @@ void main() {
       permissionCodes: {
         PermissionCodes.inventoryView,
         PermissionCodes.inventoryManage,
+        PermissionCodes.catalogManage,
       },
       dataScopes: {DataScope.allFarm},
     );

@@ -2,6 +2,8 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../domain/entities/inventory_item.dart';
 import '../../domain/repositories/inventory_repository.dart';
+import '../../../../core/catalog/sqlite_company_catalog.dart';
+import '../../../../core/catalog/company_catalog.dart';
 
 class SqliteInventoryRepository implements InventoryRepository {
   const SqliteInventoryRepository(this.database);
@@ -55,16 +57,45 @@ class SqliteInventoryRepository implements InventoryRepository {
     if (item.stock != 0) {
       throw const FormatException('Opening stock requires a receipt.');
     }
-    await database.insert(itemsTable, {
-      'id': item.id,
-      'farm_id': item.farmId,
-      'code': item.code,
-      'name': item.name,
-      'unit': item.unit,
-      'unit_price': item.unitPrice,
-      'supplier': item.supplier,
-      'stock': item.stock,
-    }, conflictAlgorithm: ConflictAlgorithm.abort);
+    await database.transaction((tx) async {
+      if (await SqliteCompanyCatalog.hasTable(
+        tx,
+        SqliteCompanyCatalog.entriesTable,
+      )) {
+        final unit = await tx.query(
+          SqliteCompanyCatalog.entriesTable,
+          where: 'farm_id=? AND kind=? AND name=? AND active=1',
+          whereArgs: [item.farmId, CatalogKind.unit.name, item.unit],
+        );
+        if (unit.isEmpty) throw const CatalogFailure('catalog.unitRequired');
+        final existing = await tx.query(
+          SqliteCompanyCatalog.entriesTable,
+          where:
+              'id=? AND farm_id=? AND kind=? AND code=? AND name=? AND unit_id=? AND active=1',
+          whereArgs: [
+            item.id,
+            item.farmId,
+            CatalogKind.material.name,
+            item.code,
+            item.name,
+            unit.single['id'],
+          ],
+        );
+        if (existing.isEmpty) {
+          throw const CatalogFailure('catalog.invalidSelection');
+        }
+      }
+      await tx.insert(itemsTable, {
+        'id': item.id,
+        'farm_id': item.farmId,
+        'code': item.code,
+        'name': item.name,
+        'unit': item.unit,
+        'unit_price': item.unitPrice,
+        'supplier': item.supplier,
+        'stock': item.stock,
+      }, conflictAlgorithm: ConflictAlgorithm.abort);
+    });
   }
 
   @override

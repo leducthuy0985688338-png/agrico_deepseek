@@ -8,6 +8,31 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test(
+    'land editing alone cannot create or import machine catalog entries',
+    () {
+      final repo = _ResourceRepository();
+      final service = ParcelWorkService(repo);
+      const editor = AuthorizationSubject(
+        userId: 'editor',
+        membershipId: 'editor',
+        farmId: 'farm-1',
+        permissionCodes: {PermissionCodes.fieldView, PermissionCodes.fieldEdit},
+        dataScopes: {DataScope.allFarm},
+      );
+      const resource = WorkResource(
+        id: 'm',
+        farmId: 'farm-1',
+        kind: WorkResourceKind.machine,
+        code: 'M01',
+        name: 'Machine',
+      );
+      expect(() => service.register(editor, resource), throwsStateError);
+      expect(() => service.registerBatch(editor, [resource]), throwsStateError);
+      expect(repo.saved, isEmpty);
+    },
+  );
+
   testWidgets('machine catalog saves to the shared work resource repository', (
     tester,
   ) async {
@@ -25,7 +50,12 @@ void main() {
       userId: 'user',
       membershipId: 'member',
       farmId: 'farm-1',
-      permissionCodes: {PermissionCodes.fieldView, PermissionCodes.fieldEdit},
+      permissionCodes: {
+        PermissionCodes.fieldView,
+        PermissionCodes.fieldEdit,
+        PermissionCodes.catalogView,
+        PermissionCodes.catalogManage,
+      },
       dataScopes: {DataScope.allFarm},
     );
     await tester.pumpWidget(

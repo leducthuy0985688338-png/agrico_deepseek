@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:sqflite/sqflite.dart';
@@ -95,6 +95,10 @@ class LocalRestorePreflight {
               'agrico_production_standalone_plot_sequences_v1',
               'inventory_items_v2',
               'inventory_movements_v2',
+              'company_catalog_entries_v1',
+              'company_catalog_requests_v1',
+              'company_catalog_audit_v1',
+              'company_catalog_bootstrap_v1',
             }
           : <String>{};
       final missing = tables.difference(saved.keys.toSet());
@@ -137,6 +141,16 @@ class LocalRestorePreflight {
       }
       if (missing.contains('agrico_production_standalone_plot_sequences_v1') &&
           standaloneProductionRows.isNotEmpty) {
+        throw RestorePreflightException('tables', database: databaseName);
+      }
+      const catalogTables = {
+        'company_catalog_entries_v1',
+        'company_catalog_requests_v1',
+        'company_catalog_audit_v1',
+        'company_catalog_bootstrap_v1',
+      };
+      if (saved.keys.any(catalogTables.contains) &&
+          !saved.keys.toSet().containsAll(catalogTables)) {
         throw RestorePreflightException('tables', database: databaseName);
       }
       const inventoryTables = {'inventory_items_v2', 'inventory_movements_v2'};
@@ -286,6 +300,27 @@ class LocalRestorePreflight {
       }
       if ((await staged.rawQuery('PRAGMA foreign_key_check')).isNotEmpty) {
         throw RestorePreflightException('foreignKeys', database: databaseName);
+      }
+      if (databaseName == 'agrico.db' && tables.containsAll(catalogTables)) {
+        final invalidUnits = await staged.rawQuery('''
+          SELECT e.id FROM company_catalog_entries_v1 e
+          LEFT JOIN company_catalog_entries_v1 u ON u.id=e.unit_id
+          WHERE (e.unit_id IS NOT NULL AND (u.id IS NULL OR u.kind!='unit' OR u.farm_id!=e.farm_id))
+            OR (e.kind='unit' AND e.unit_id IS NOT NULL)
+            OR (e.kind IN ('crop','material') AND e.unit_id IS NULL) LIMIT 1
+        ''');
+        final invalidRequests = await staged.rawQuery('''
+          SELECT r.id FROM company_catalog_requests_v1 r
+          LEFT JOIN company_catalog_entries_v1 e ON e.id=r.entry_id
+          WHERE r.entry_id IS NOT NULL AND (e.id IS NULL OR e.farm_id!=r.farm_id OR e.kind!=r.kind) LIMIT 1
+        ''');
+        if (invalidUnits.isNotEmpty || invalidRequests.isNotEmpty) {
+          throw RestorePreflightException(
+            'integrity',
+            database: databaseName,
+            step: 'catalog',
+          );
+        }
       }
       if (databaseName == 'agrico.db' && tables.containsAll(inventoryTables)) {
         step = 'inventory reconciliation';
