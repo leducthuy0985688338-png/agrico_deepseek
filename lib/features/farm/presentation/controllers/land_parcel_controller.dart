@@ -119,10 +119,29 @@ class LandParcelController extends ChangeNotifier {
   LandParcelBoundaryConsistency? boundaryConsistencyFilter;
   String? villageFilter;
 
-  bool can(String permission, {String? parcelId}) => authorization.can(
+  bool can(String permission, {String? parcelId}) {
+    final parcel = detail?.parcel.id == parcelId
+        ? detail?.parcel
+        : items.where((item) => item.parcel.id == parcelId).firstOrNull?.parcel;
+    return authorization.can(
+      subject: subject,
+      permission: permission,
+      resource: ResourceContext(
+        farmId: subject.farmId,
+        fieldId: parcelId,
+        projectId: parcel?.projectId,
+      ),
+    );
+  }
+
+  bool _canParcel(String permission, LandParcel parcel) => authorization.can(
     subject: subject,
     permission: permission,
-    resource: ResourceContext(farmId: subject.farmId, fieldId: parcelId),
+    resource: ResourceContext(
+      farmId: parcel.farmId,
+      fieldId: parcel.id,
+      projectId: parcel.projectId,
+    ),
   );
 
   List<LandParcelViewData> get visibleItems => items
@@ -154,7 +173,7 @@ class LandParcelController extends ChangeNotifier {
       };
       final loaded = <LandParcelViewData>[];
       for (final parcel in source) {
-        if (!can(PermissionCodes.fieldView, parcelId: parcel.id)) continue;
+        if (!_canParcel(PermissionCodes.fieldView, parcel)) continue;
         loaded.add(
           LandParcelViewData(
             parcel: parcel,
@@ -164,14 +183,18 @@ class LandParcelController extends ChangeNotifier {
                       .where(
                         (p) =>
                             p.id == parcel.parentBlockId &&
-                            can(PermissionCodes.fieldView, parcelId: p.id),
+                            _canParcel(PermissionCodes.fieldView, p),
                       )
                       .firstOrNull,
             boundaryConsistency:
                 await boundaryConsistencyQueries?.check(parcel) ??
                 LandParcelBoundaryConsistency.unlinked,
             household: households[parcel.ownerHouseholdId],
-            crops: await surveys.listCrops(parcel.id),
+            crops:
+                subject.validUntil == null ||
+                    _canParcel(PermissionCodes.cropView, parcel)
+                ? await surveys.listCrops(parcel.id)
+                : const [],
           ),
         );
       }
@@ -184,13 +207,6 @@ class LandParcelController extends ChangeNotifier {
 
   Future<void> loadDetail(String parcelId) async {
     _phase(ParcelPresentationPhase.loading);
-    if (!can(PermissionCodes.fieldView, parcelId: parcelId)) {
-      _phase(
-        ParcelPresentationPhase.permissionDenied,
-        'error.permissionDenied',
-      );
-      return;
-    }
     try {
       final parcel = await parcels.getById(
         farmId: subject.farmId,
@@ -203,10 +219,23 @@ class LandParcelController extends ChangeNotifier {
         );
         return;
       }
+      if (!_canParcel(PermissionCodes.fieldView, parcel)) {
+        detail = null;
+        _phase(
+          ParcelPresentationPhase.permissionDenied,
+          'error.permissionDenied',
+        );
+        return;
+      }
       final diagnosis = await boundaryConsistencyQueries?.diagnose(parcel);
       detail = LandParcelViewData(
         parcel: parcel,
-        parentLandBlock: parcel.parentLandBlockId == null
+        parentLandBlock:
+            parcel.parentLandBlockId == null ||
+                !can(
+                  PermissionCodes.fieldView,
+                  parcelId: parcel.parentLandBlockId,
+                )
             ? null
             : await parcels.getById(
                 farmId: subject.farmId,
@@ -219,7 +248,11 @@ class LandParcelController extends ChangeNotifier {
             ? null
             : await surveys.getHousehold(parcel.ownerHouseholdId!),
         landUse: await surveys.getLandUseProfile(parcel.id),
-        crops: await surveys.listCrops(parcel.id, includeInactive: true),
+        crops:
+            subject.validUntil == null ||
+                _canParcel(PermissionCodes.cropView, parcel)
+            ? await surveys.listCrops(parcel.id, includeInactive: true)
+            : const [],
         surveys: await surveys.listSurveys(parcel.id),
         attachments: await surveys.listAttachments(parcel.id),
       );

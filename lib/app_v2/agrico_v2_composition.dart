@@ -3,7 +3,7 @@ import '../features/farm/data/adapters/spatial_production_parcel_creation_reposi
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+
 import 'package:sqflite/sqflite.dart';
 
 import '../core/project/agrico_project.dart';
@@ -11,7 +11,7 @@ import '../core/localization/app_localizations.dart';
 import '../core/geography/data/sqlite_administrative_catalog.dart';
 import '../core/geography/application/manage_administrative_catalog.dart';
 import '../core/geography/presentation/administrative_catalog_screen.dart';
-import '../core/backup/local_backup_screen.dart';
+
 import '../core/identity/data/sqlite_parcel_number_sequence.dart';
 import '../core/identity/data/sqlite_production_parcel_number_allocator.dart';
 import '../core/permissions/authorization.dart';
@@ -25,21 +25,19 @@ import '../features/farm/data/local/sqlite_land_parcel_spatial_link_repository.d
 import '../features/farm/data/adapters/land_parcel_spatial_transaction.dart';
 import '../features/farm/data/interchange/kml_interchange.dart';
 import '../features/farm/application/land_parcel_use_cases.dart';
-import '../features/farm/data/legacy/land_parcel_legacy_migration.dart';
-import '../features/farm/data/legacy/legacy_field_adapter.dart';
+
 import '../features/farm/data/local/sqlite_land_parcel_repository.dart';
 import '../features/farm/data/local/sqlite_land_survey_repository.dart';
 import '../features/farm/data/local/sqlite_parcel_work_repository.dart';
 import '../features/farm/application/parcel_work_service.dart';
 import '../features/farm/application/farm_task_service.dart';
 import '../features/farm/data/local/sqlite_farm_task_repository.dart';
-import '../features/inventory/application/inventory_service.dart';
+
 import '../features/inventory/data/local/sqlite_inventory_repository.dart';
-import '../features/inventory/presentation/inventory_catalog_screen.dart';
+
 import '../features/farm/presentation/controllers/farm_task_controller.dart';
 import '../features/farm/presentation/screens/farm_task_screen.dart';
-import '../features/farm/domain/entities/parcel_work.dart';
-import '../features/farm/presentation/screens/work_resource_catalog_screen.dart';
+
 import '../features/farm/presentation/screens/parcel_work_screen.dart';
 import '../features/farm/data/local/sqlite_parcel_land_history_repository.dart';
 import '../features/farm/application/parcel_land_history_service.dart';
@@ -57,21 +55,26 @@ import '../features/farm/presentation/screens/land_parcel_form_screen.dart';
 import '../features/farm/presentation/screens/land_parcel_list_screen.dart';
 import '../features/farm/presentation/widgets/boundary_workflow_widgets.dart';
 import '../features/finance/data/local/sqlite_finance_document_repository.dart';
-import '../features/finance/presentation/finance_documents_screen.dart';
-import '../models/field_model.dart';
-import '../providers/production_season_provider.dart';
 
-import '../screens/ai_chat_screen.dart';
+import '../models/field_model.dart';
 
 import '../screens/field_gps_measure_screen.dart';
-import '../screens/fuel_screen.dart';
 
 import '../services/field_database.dart';
 import 'agrico_app_shell.dart';
 import 'v2_settings_screen.dart';
 
 class AgricoV2Root extends StatefulWidget {
-  const AgricoV2Root({super.key, required this.userId});
+  const AgricoV2Root({
+    super.key,
+    required this.userId,
+    required this.subject,
+    required this.onSignOut,
+    this.sessionOffline = false,
+  });
+  final AuthorizationSubject subject;
+  final VoidCallback onSignOut;
+  final bool sessionOffline;
   final String userId;
   @override
   State<AgricoV2Root> createState() => _AgricoV2RootState();
@@ -81,6 +84,14 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
   late final Future<_V2Dependencies> dependencies = _bootstrap();
 
   Future<_V2Dependencies> _bootstrap() async {
+    final subject = widget.subject;
+    if (!subject.active ||
+        subject.farmId != 'local-farm' ||
+        subject.userId != widget.userId ||
+        subject.validUntil == null ||
+        !DateTime.now().isBefore(subject.validUntil!)) {
+      throw StateError('Invalid company session.');
+    }
     final sharedDatabase = FieldDatabase();
     final database = await sharedDatabase.database;
     final spatial = SpatialPersistenceComposition(database);
@@ -98,31 +109,6 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     await administrativeCatalog.seedInitialLocation();
     final finance = SqliteFinanceDocumentRepository(database);
     final parcels = SqliteLandParcelRepository(database);
-    final legacyFields = await sharedDatabase.getAll();
-    await const LandParcelLegacyMigration().migrate(
-      legacyRecords: legacyFields,
-      policy: LegacyFieldMigrationPolicy(
-        farmId: 'local-farm',
-        actorMembershipId: 'local-membership',
-        occurredAt: DateTime.now().toUtc(),
-        parcelCode: (field) => field.id,
-        isActive: (_) => true,
-        boundarySource: (field) => switch (field.measurementMethod) {
-          'gps' => BoundarySource.gps,
-          'manual' => BoundarySource.manual,
-          _ => BoundarySource.imported,
-        },
-        verificationStatus: (_) => BoundaryVerificationStatus.draft,
-      ),
-      repository: parcels,
-    );
-    final subject = AuthorizationSubject(
-      userId: widget.userId.isEmpty ? 'local-user' : widget.userId,
-      membershipId: 'local-membership',
-      farmId: 'local-farm',
-      permissionCodes: PermissionCodes.values,
-      dataScopes: const {DataScope.allFarm},
-    );
     final spatialSyncWorkflow = LandParcelSpatialSyncWorkflow(
       transaction: LandParcelSpatialTransaction(database),
       projection: const DefaultLandParcelSpatialProjection(),
@@ -264,37 +250,6 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         ),
       );
       final legacy = <String, VoidCallback>{
-        'machines': () => push(
-          WorkResourceCatalogScreen(
-            kind: WorkResourceKind.machine,
-            subject: deps.subject,
-            service: ParcelWorkService(
-              SqliteParcelWorkRepository(deps.database),
-            ),
-          ),
-        ),
-        'employees': () => push(
-          WorkResourceCatalogScreen(
-            kind: WorkResourceKind.worker,
-            subject: deps.subject,
-            service: ParcelWorkService(
-              SqliteParcelWorkRepository(deps.database),
-            ),
-          ),
-        ),
-        'finance': () => push(
-          FinanceDocumentsScreen(
-            repository: deps.finance,
-            organizationId: deps.subject.farmId,
-          ),
-        ),
-        'warehouse': () => push(
-          InventoryCatalogScreen(
-            subject: deps.subject,
-            service: InventoryService(SqliteInventoryRepository(deps.database)),
-          ),
-        ),
-        'fuel': () => push(const FuelScreen()),
         'tasks': () => push(
           FarmTaskScreen(
             controller: deps.taskController,
@@ -304,21 +259,13 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
             ),
           ),
         ),
-        'ai': () => push(const AiChatScreen()),
         'settings': () => push(
           V2SettingsScreen(
-            onOpenBackup:
-                deps.subject.permissionCodes.contains(
-                  PermissionCodes.localBackupExport,
-                )
-                ? () => push(LocalBackupScreen(database: deps.database))
-                : null,
+            onSignOut: widget.onSignOut,
+            sessionOffline: widget.sessionOffline,
+            offlineUntil: deps.subject.validUntil,
           ),
         ),
-        if (deps.subject.permissionCodes.contains(
-          PermissionCodes.localBackupExport,
-        ))
-          'backup': () => push(LocalBackupScreen(database: deps.database)),
         if (deps.subject.permissionCodes.contains(
           PermissionCodes.administrativeCatalogManage,
         ))
@@ -329,6 +276,14 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
             ),
           ),
       };
+      // Unsupported routes stay closed until domain-level scope guards exist.
+      if (!const AuthorizationService().can(
+        subject: deps.subject,
+        permission: PermissionCodes.taskView,
+        resource: ResourceContext(farmId: deps.subject.farmId),
+      )) {
+        legacy.remove('tasks');
+      }
       return AnimatedBuilder(
         animation: Listenable.merge([deps.controller, deps.taskController]),
         builder: (context, _) => AgricoAppShell(
@@ -341,9 +296,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
               deps.controller.phase == ParcelPresentationPhase.persistenceError
               ? null
               : deps.controller.items.length,
-          seasonCount: context.watch<ProductionSeasonProvider>().isLoading
-              ? null
-              : context.watch<ProductionSeasonProvider>().allSeasons.length,
+          seasonCount: null,
           taskCount: deps.taskController.hasError
               ? null
               : deps.taskController.items.length,

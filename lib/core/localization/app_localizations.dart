@@ -26,6 +26,33 @@ class AppLocalizations {
   }
 
   static const _shellVi = <String, String>{
+    'auth.companyTitle': 'Tài khoản AGRICO',
+    'auth.companyHint':
+        'Đăng nhập lần đầu cần mạng và tài khoản do công ty cấp. Phiên đã xác thực có thể mở lại offline trong thời hạn được cấp.',
+    'auth.companyEmail': 'Email công ty',
+    'auth.retryConnection': 'Kiểm tra kết nối lại',
+    'auth.signOut': 'Đăng xuất',
+    'auth.offlineMode': 'Đang dùng phiên offline',
+    'auth.onlineMode': 'Đã kiểm tra quyền qua mạng',
+    'auth.access.credentialsRequired': 'Nhập email và mật khẩu.',
+    'auth.access.invalidCredentials':
+        'Không thể xác thực tài khoản. Kiểm tra thông tin hoặc liên hệ Admin.',
+    'auth.access.membershipDenied':
+        'Tài khoản chưa được cấp quyền hợp lệ cho trang trại này, đã hết hạn hoặc đã bị khóa.',
+    'auth.access.membershipInvalid':
+        'Hồ sơ quyền chưa đúng cấu trúc. Liên hệ Admin.',
+    'auth.access.onlineRequired':
+        'Cần có mạng để xác thực hoặc làm mới phiên. Không thể đăng nhập lần đầu offline.',
+    'auth.access.sessionExpired':
+        'Phiên offline đã hết hạn hoặc thời gian thiết bị không hợp lệ. Kết nối mạng để kiểm tra lại.',
+    'auth.access.setupRequired':
+        'Firebase chưa được cấu hình đầy đủ. Admin cần bật đăng nhập Email/Password và cấp hồ sơ quyền.',
+    'auth.access.tryLater': 'Có quá nhiều lần thử. Hãy thử lại sau.',
+    'auth.access.identityChanged': 'Tài khoản đã thay đổi. Hãy đăng nhập lại.',
+    'auth.access.signOutFailed':
+        'Phiên cục bộ đã đóng. Hãy thử đăng xuất lại khi có mạng.',
+    'auth.access.resetSent':
+        'Nếu email hợp lệ, hướng dẫn đặt lại mật khẩu sẽ được gửi.',
     'nav.home': 'Trang chủ',
     'nav.modules': 'Phân hệ',
     'nav.create': 'Thêm mới',
@@ -269,6 +296,29 @@ class AppLocalizations {
     'gps.permissionDenied': 'Quyền vị trí bị từ chối.',
   };
   static const _shellLo = <String, String>{
+    'auth.companyTitle': 'ບັນຊີ AGRICO',
+    'auth.companyHint':
+        'ການເຂົ້າຄັ້ງທຳອິດຕ້ອງມີອິນເຕີເນັດ ແລະ ບັນຊີຈາກບໍລິສັດ. ສາມາດໃຊ້ອອບລາຍໄດ້ໃນໄລຍະທີ່ອະນຸຍາດ.',
+    'auth.companyEmail': 'ອີເມວບໍລິສັດ',
+    'auth.retryConnection': 'ກວດກາການເຊື່ອມຕໍ່ອີກຄັ້ງ',
+    'auth.signOut': 'ອອກຈາກລະບົບ',
+    'auth.offlineMode': 'ກຳລັງໃຊ້ອອບລາຍ',
+    'auth.onlineMode': 'ໄດ້ກວດສິດຜ່ານອິນເຕີເນັດ',
+    'auth.access.credentialsRequired': 'ປ້ອນອີເມວ ແລະ ລະຫັດຜ່ານ.',
+    'auth.access.invalidCredentials':
+        'ບໍ່ສາມາດຢືນຢັນບັນຊີ. ກວດຂໍ້ມູນ ຫຼື ຕິດຕໍ່ Admin.',
+    'auth.access.membershipDenied':
+        'ບັນຊີບໍ່ມີສິດທີ່ຖືກຕ້ອງ ໝົດອາຍຸ ຫຼື ຖືກລັອກ.',
+    'auth.access.membershipInvalid': 'ຂໍ້ມູນສິດບໍ່ຖືກຕ້ອງ. ຕິດຕໍ່ Admin.',
+    'auth.access.onlineRequired': 'ຕ້ອງມີອິນເຕີເນັດເພື່ອຢືນຢັນ ຫຼື ຕໍ່ອາຍຸ.',
+    'auth.access.sessionExpired': 'ເຊດຊັນໝົດອາຍຸ ຫຼື ເວລາອຸປະກອນບໍ່ຖືກຕ້ອງ.',
+    'auth.access.setupRequired':
+        'Firebase ຍັງບໍ່ພ້ອມ. Admin ຕ້ອງເປີດ Email/Password ແລະ ກຳນົດສິດ.',
+    'auth.access.tryLater': 'ມີການລອງຫຼາຍເກີນໄປ. ກະລຸນາລອງພາຍຫຼັງ.',
+    'auth.access.identityChanged': 'ບັນຊີປ່ຽນແລ້ວ. ກະລຸນາເຂົ້າໃໝ່.',
+    'auth.access.signOutFailed':
+        'ປິດເຊດຊັນແລ້ວ. ລອງອອກອີກຄັ້ງເມື່ອມີອິນເຕີເນັດ.',
+    'auth.access.resetSent': 'ຖ້າອີເມວຖືກຕ້ອງ ຈະສົ່ງຄຳແນະນຳປ່ຽນລະຫັດ.',
     'nav.home': 'ໜ້າຫຼັກ',
     'nav.modules': 'ໂມດູນ',
     'nav.create': 'ເພີ່ມໃໝ່',
@@ -501,6 +551,32 @@ class AppLocalizations {
     'gps.permissionDenied': 'ສິດທີ່ຕັ້ງຖືກປະຕິເສດ.',
   };
   static const _shellEn = <String, String>{
+    'auth.companyTitle': 'AGRICO account',
+    'auth.companyHint':
+        'First sign-in needs internet and a company account. A verified session can reopen offline until its deadline.',
+    'auth.companyEmail': 'Company email',
+    'auth.retryConnection': 'Retry connection',
+    'auth.signOut': 'Sign out',
+    'auth.offlineMode': 'Using offline session',
+    'auth.onlineMode': 'Access verified online',
+    'auth.access.credentialsRequired': 'Enter email and password.',
+    'auth.access.invalidCredentials':
+        'Unable to authenticate. Check credentials or contact Admin.',
+    'auth.access.membershipDenied':
+        'This account has no valid membership, has expired or is disabled.',
+    'auth.access.membershipInvalid': 'Invalid access profile. Contact Admin.',
+    'auth.access.onlineRequired':
+        'Connect to authenticate or renew the session. First sign-in is unavailable offline.',
+    'auth.access.sessionExpired':
+        'Session expired or device time is invalid. Connect to verify access.',
+    'auth.access.setupRequired':
+        'Firebase setup is incomplete. Admin must enable Email/Password and provision membership.',
+    'auth.access.tryLater': 'Too many attempts. Try again later.',
+    'auth.access.identityChanged': 'Account changed. Sign in again.',
+    'auth.access.signOutFailed':
+        'Local session closed. Retry sign-out when connected.',
+    'auth.access.resetSent':
+        'If the email is eligible, password reset instructions will be sent.',
     'nav.home': 'Home',
     'nav.modules': 'Modules',
     'nav.create': 'Create',

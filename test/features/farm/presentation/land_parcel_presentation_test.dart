@@ -92,6 +92,7 @@ void main() {
 
   LandParcelController controller({
     Set<String>? permissions,
+    AuthorizationSubject? access,
     List<LandParcel>? source,
     ExternalFileOpener? fileOpener,
     GoogleEarthOpener? googleEarthOpener,
@@ -116,13 +117,15 @@ void main() {
       repository: parcelRepository,
     );
     return LandParcelController(
-      subject: AuthorizationSubject(
-        userId: 'user-1',
-        membershipId: 'member-1',
-        farmId: 'farm-1',
-        permissionCodes: permissions ?? PermissionCodes.values,
-        dataScopes: const {DataScope.allFarm},
-      ),
+      subject:
+          access ??
+          AuthorizationSubject(
+            userId: 'user-1',
+            membershipId: 'member-1',
+            farmId: 'farm-1',
+            permissionCodes: permissions ?? PermissionCodes.values,
+            dataScopes: const {DataScope.allFarm},
+          ),
       parcels: parcelRepository,
       surveys: surveyRepository,
       createLandParcel: CreateLandParcel(application),
@@ -148,6 +151,102 @@ void main() {
     ],
     home: child,
   );
+
+  LandParcel scopedParcel(String id, String project, {String? parent}) =>
+      LandParcel.create(
+        id: id,
+        farmId: 'farm-1',
+        parcelCode: 'P-$id',
+        name: id,
+        projectId: project,
+        boundary: parcel().boundary,
+        boundarySource: BoundarySource.manual,
+        verificationStatus: BoundaryVerificationStatus.draft,
+        actorMembershipId: 'member-1',
+        occurredAt: time,
+        kind: parent == null ? ParcelLayer.landBlock : ParcelLayer.fieldPlot,
+        parentBlockId: parent,
+      );
+
+  test('project membership filters parcels before loading detail', () async {
+    final value = controller(
+      source: [
+        scopedParcel('allowed', 'PROJ-X'),
+        scopedParcel('denied', 'PROJ-Y'),
+      ],
+      access: AuthorizationSubject(
+        userId: 'user-1',
+        membershipId: 'member-1',
+        farmId: 'farm-1',
+        permissionCodes: const {
+          PermissionCodes.fieldView,
+          PermissionCodes.cropView,
+        },
+        dataScopes: const {DataScope.project},
+        projectIds: const {'PROJ-X'},
+        permissionScopes: const {
+          PermissionCodes.fieldView: {DataScope.project},
+          PermissionCodes.cropView: {DataScope.project},
+        },
+        validUntil: DateTime.utc(2030),
+      ),
+    );
+    await value.loadList();
+    expect(value.items.map((i) => i.parcel.id), ['allowed']);
+    await value.loadDetail('allowed');
+    expect(value.detail?.parcel.id, 'allowed');
+    await value.loadDetail('denied');
+    expect(value.phase, ParcelPresentationPhase.permissionDenied);
+    expect(value.detail, isNull);
+  });
+
+  test(
+    'assigned plot does not disclose unassigned parent or crop records',
+    () async {
+      final value = controller(
+        source: [
+          scopedParcel('block', 'PROJ-X'),
+          scopedParcel('plot', 'PROJ-X', parent: 'block'),
+        ],
+        access: AuthorizationSubject(
+          userId: 'user-1',
+          membershipId: 'member-1',
+          farmId: 'farm-1',
+          permissionCodes: const {PermissionCodes.fieldView},
+          dataScopes: const {DataScope.assignedFields},
+          assignedFieldIds: const {'plot'},
+          permissionScopes: const {
+            PermissionCodes.fieldView: {DataScope.assignedFields},
+          },
+          validUntil: DateTime.utc(2030),
+        ),
+      );
+      await value.loadList();
+      expect(value.items.single.parcel.id, 'plot');
+      expect(value.items.single.parentLandBlock, isNull);
+      expect(value.items.single.crops, isEmpty);
+      await value.loadDetail('plot');
+      expect(value.detail?.parentLandBlock, isNull);
+      expect(value.detail?.crops, isEmpty);
+    },
+  );
+
+  test('expired session cannot expose parcels from shared SQLite', () async {
+    final value = controller(
+      access: AuthorizationSubject(
+        userId: 'user-1',
+        membershipId: 'member-1',
+        farmId: 'farm-1',
+        permissionCodes: const {PermissionCodes.fieldView},
+        dataScopes: const {DataScope.allFarm},
+        validUntil: DateTime.utc(2000),
+      ),
+    );
+    await value.loadList();
+    expect(value.items, isEmpty);
+    await value.loadDetail('parcel-1');
+    expect(value.phase, ParcelPresentationPhase.permissionDenied);
+  });
 
   testWidgets('list renders loading, canonical data, search and empty state', (
     tester,

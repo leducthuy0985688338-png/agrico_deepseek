@@ -180,6 +180,7 @@ class AuthorizationSubject {
     this.assignedMachineIds = const {},
     this.assignedWarehouseIds = const {},
     this.permissionScopes = const {},
+    this.validUntil,
   });
 
   final String userId;
@@ -191,6 +192,9 @@ class AuthorizationSubject {
   final Set<String> assignedFieldIds;
   final Set<String> assignedTaskIds;
   final bool active;
+
+  /// Session deadline, checked again for every authorization decision.
+  final DateTime? validUntil;
   final Set<String> projectIds;
   final Set<String> departmentIds;
   final Set<String> assignedMachineIds;
@@ -225,7 +229,8 @@ class ResourceContext {
 }
 
 class AuthorizationService {
-  const AuthorizationService();
+  const AuthorizationService({this.clock});
+  final DateTime Function()? clock;
 
   bool can({
     required AuthorizationSubject subject,
@@ -233,6 +238,8 @@ class AuthorizationService {
     required ResourceContext resource,
   }) {
     if (!subject.active ||
+        (subject.validUntil != null &&
+            !(clock ?? DateTime.now)().isBefore(subject.validUntil!)) ||
         subject.farmId != resource.farmId ||
         !subject.permissionCodes.contains(permission)) {
       return false;

@@ -1,6 +1,6 @@
-# Company access control — A01
+# Company access control — A01/A02
 
-Status: pure policy foundation, not deployed account security. Existing demo login and full-access composition remain unchanged. No database migration or device-data deletion.
+Status: A01 policy foundation is now connected to the A02 real Firebase login/session gate. Firebase account provisioning and rules publishing are still operational setup steps, not performed by the patch. No business-data migration or deletion.
 
 ## Approved templates
 
@@ -49,3 +49,7 @@ No phase may erase the current saved parcels/crops. No client role template by i
 References:
 - https://help.farmbrite.com/help/how-can-i-create-a-user-with-limited-access-to-my-farmbrite-account
 - https://learn.microsoft.com/en-us/dynamics365/fin-ops-core/dev-itpro/sysadmin/role-based-security
+
+## A02 rollout
+
+See [Firebase account setup](../security/firebase-account-setup.md). Demo login and automatic full-access subjects are removed. Server-read memberships bind cached sessions to Firebase UID/project and the existing local-farm. Offline access has an administrator-issued deadline; expired, revoked or mismatched sessions fail closed. Unsupported legacy routes remain closed while per-operation scoped service guards and shared catalogs are implemented. Individual account/role management through an in-app Admin screen and business-data sync/outbox remain pending.
