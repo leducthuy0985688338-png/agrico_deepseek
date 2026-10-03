@@ -217,15 +217,25 @@ class CatalogSyncProjection {
       whereArgs: [s.farmId, entity, id],
       limit: 1,
     );
-    if (dirty.isNotEmpty) {
-      throw const CatalogFailure('catalog.offlineEditConflict');
-    }
     final shadows = await tx.query(
       CatalogSyncJournal.shadow,
       where: 'farm_id=? AND entity=? AND target_id=?',
       whereArgs: [s.farmId, entity, id],
     );
     final shadow = shadows.isEmpty ? null : shadows.single;
+    if (dirty.isNotEmpty) {
+      if (shadow != null &&
+          shadow['cloud_version'] == remote.version &&
+          shadow['operation_id'] == remote.operationId &&
+          jsonEncode(
+                CatalogSyncInbox.canonical(_decode(shadow['payload_json'])),
+              ) ==
+              jsonEncode(CatalogSyncInbox.canonical(p))) {
+        authorize();
+        return false;
+      }
+      throw const CatalogFailure('catalog.offlineEditConflict');
+    }
     if (shadow != null) {
       final v = shadow['cloud_version'] as int;
       if (v > remote.version) {
@@ -251,11 +261,7 @@ class CatalogSyncProjection {
     } else if (local != null) {
       throw const CatalogFailure('catalog.unpublishedLocalConflict');
     }
-    if (entity == 'entry') {
-      await _entry(tx, p, local);
-    } else {
-      await _request(tx, p, local);
-    }
+    await writeBusiness(tx, p, local, entity);
     final projected = (await tx.query(
       localTable,
       where: 'id=? AND farm_id=?',
@@ -283,7 +289,25 @@ class CatalogSyncProjection {
     authorize();
     return true;
   });
-  Future<void> _entry(
+
+  /// Internal shared writer. Caller validates the record, owns authorization,
+  /// optimistic guards, queue isolation, shadow and audit in the transaction.
+  static Future<void> writeBusiness(
+    DatabaseExecutor tx,
+    Map<String, Object?> payload,
+    Map<String, Object?>? old,
+    String entity,
+  ) async {
+    if (entity == 'entry') {
+      await _entry(tx, payload, old);
+    } else if (entity == 'request') {
+      await _request(tx, payload, old);
+    } else {
+      throw const CatalogFailure('catalog.syncInvalid');
+    }
+  }
+
+  static Future<void> _entry(
     DatabaseExecutor tx,
     Map<String, Object?> p,
     Map<String, Object?>? old,
@@ -360,7 +384,7 @@ class CatalogSyncProjection {
     );
   }
 
-  Future<void> _request(
+  static Future<void> _request(
     DatabaseExecutor tx,
     Map<String, Object?> p,
     Map<String, Object?>? old,

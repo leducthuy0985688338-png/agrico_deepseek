@@ -435,4 +435,30 @@ void main() {
       );
     },
   );
+  test(
+    'unchanged remote baseline preserves ordinary pending offline edits without new conflict',
+    () async {
+      await stage(payload('kg'));
+      await projection.apply();
+      await dirty('kg');
+      await db.update(
+        SqliteCompanyCatalog.entriesTable,
+        {'name': 'Offline'},
+        where: 'id=?',
+        whereArgs: ['kg'],
+      );
+      final result = await projection.apply();
+      expect(result.conflicts, 0);
+      expect(result.unchanged, 1);
+      expect((await local('kg'))['name'], 'Offline');
+      expect(
+        (await db.query(CatalogSyncJournal.outbox)).single['state'],
+        'pending',
+      );
+      expect(
+        (await db.query(CatalogSyncJournal.shadow)).single['cloud_version'],
+        1,
+      );
+    },
+  );
 }
