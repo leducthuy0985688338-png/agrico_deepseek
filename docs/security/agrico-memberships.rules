@@ -124,6 +124,207 @@ service cloud.firestore {
         && request.resource.data.after.adminRevision == request.resource.data.revision;
       allow update, delete: if false;
     }
+    // A05 catalog protocol. No writes are authorized by app UI alone.
+    function catPath(farm, entity, id) {
+      return /databases/$(database)/documents/agrico_catalog/$(farm)/$(entity)/$(id);
+    }
+    function catRole(r, permission) {
+      let scopes = r.get('scopes', ['allFarm']);
+      return scopes is list && scopes.size() > 0
+        && (permission == 'catalog.manage' ? (r.role == 'systemAdmin' && 'allFarm' in scopes)
+          : (r.role in ['systemAdmin','director','operationsManager','departmentManager','teamLeader','agronomist','gisOfficer','machineOperator','fieldWorker','equipmentCoordinator','warehouseKeeper','purchasingOfficer','accountant','cashier','hrOfficer','officeStaff','auditor']
+            && (permission != 'catalog.request' || r.role != 'auditor')));
+    }
+    function catAdminRole(r) {
+      return r.role == 'systemAdmin' && 'allFarm' in r.get('scopes',['allFarm']);
+    }
+    function catBuiltin(m, permission) {
+      let r = m.get('roles', []);
+      return permission == 'catalog.manage'
+        ? ((r.size() > 0 && catAdminRole(r[0])) || (r.size() > 1 && catAdminRole(r[1]))
+          || (r.size() > 2 && catAdminRole(r[2])) || (r.size() > 3 && catAdminRole(r[3])))
+        : ((r.size() > 0 && catRole(r[0], permission)) || (r.size() > 1 && catRole(r[1], permission))
+          || (r.size() > 2 && catRole(r[2], permission)) || (r.size() > 3 && catRole(r[3], permission)));
+    }
+    function catExtra(m, permission) {
+      let scopes = m.get('extraPermissionScopes', []);
+      return permission in m.get('extraPermissions', [])
+        && ('allFarm' in scopes || (permission in ['catalog.request','cloud.sync'] && 'own' in scopes));
+    }
+    function catCan(farm, permission) {
+      let m = actor();
+      return signedIn() && m.schemaVersion == 1 && farm == 'local-farm' && m.farmId == farm
+        && m.active == true && m.userId == request.auth.uid && m.membershipId == request.auth.uid
+        && m.offlineUntil > request.time
+        && !m.get('deniedPermissions', []).hasAny([permission, 'cloud.sync'])
+        && (catBuiltin(m, permission) || (catExtra(m, permission)
+          && (catBuiltin(m, 'cloud.sync') || catExtra(m, 'cloud.sync'))));
+    }
+    function catId(id) { return id is string && id.size() > 0 && id.size() <= 500 && !id.matches('.*[/].*') && id != '.' && id != '..'; }
+    function catKind(k) { return k in ['unit','crop','machine','worker','material','taskType','supplier','incomeCategory','expenseCategory']; }
+    function catKey(kind, type, value) { return kind + '~' + type + '~' + hashing.sha256(value).toHexString(); }
+    function catUsage(farm, unit) {
+      return exists(catPath(farm, 'unit_usage', unit))
+        ? get(catPath(farm, 'unit_usage', unit)).data : {'references':0, 'activeReferences':0};
+    }
+    function catRef(p, unit) { return p != null && p.get('unit_id', null) == unit ? 1 : 0; }
+    function catActiveRef(p, unit) { return catRef(p, unit) == 1 && p.active == 1 ? 1 : 0; }
+    function catUsageValid(o, unit) {
+      let prior = catUsage(o.farmId, unit);
+      let next = getAfter(catPath(o.farmId, 'unit_usage', unit)).data;
+      return next.keys().hasOnly(['references','activeReferences','operationId'])
+        && next.operationId == o.operationId
+        && next.references is int && next.activeReferences is int
+        && next.references >= 0 && next.activeReferences >= 0 && next.activeReferences <= next.references
+        && next.references == prior.references + catRef(o.payload, unit) - catRef(o.before, unit)
+        && next.activeReferences == prior.activeReferences + catActiveRef(o.payload, unit) - catActiveRef(o.before, unit);
+    }
+    function catUsageAfter(o, unit) {
+      return getAfter(catPath(o.farmId, 'unit_usage', unit)).data.operationId == o.operationId;
+    }
+    // Rules upper() folds ASCII only. Preserve EN/VN/LA canonical keys exactly.
+    function catName(name, key) {
+      let normal = name.replace('\\s+', ' ');
+      let vietnamese = '[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴĐ]';
+      let quoted = normal.split('\\\\E').join('\\E\\\\E\\Q');
+      return key is string && !key.matches('[\\s\\S]*[\\p{Ll}\\p{Lt}][\\s\\S]*')
+        && key.replace(vietnamese, '~') == normal.upper().replace(vietnamese, '~')
+        && key.matches('(?i)\\Q' + quoted + '\\E');
+    }
+    function catEntry(p, farm, id) {
+      return p.keys().hasOnly(['id','farm_id','kind','code','name','name_key','unit_id','active','revision'])
+        && p.id == id && p.farm_id == farm && catKind(p.kind)
+        && p.code is string && p.code.matches('^[A-Z0-9][A-Z0-9_-]{0,39}$')
+        && p.name is string && p.name.size() > 0 && p.name.size() <= 100
+        && p.name == p.name.replace('^\\s+|\\s+$', '')
+        && catName(p.name,p.name_key)
+        && p.active is int && p.active in [0,1] && p.revision is int && p.revision > 0
+        && (p.unit_id == null || catId(p.unit_id))
+        && (p.kind != 'unit' || p.unit_id == null)
+        && (!(p.kind in ['crop','material']) || p.unit_id != null);
+    }
+    function catKeyAfter(o, type, value, target) {
+      let d = getAfter(catPath(o.farmId, 'keys', catKey(o.payload.kind, type, value))).data;
+      return d.targetId == target && d.operationId == o.operationId;
+    }
+    function catEntryChange(o) {
+      let p = o.payload;
+      let before = o.before;
+      let usage = p.kind == 'unit' ? catUsage(o.farmId, o.targetId) : {'references':0,'activeReferences':0};
+      return (before == null || (p.code == before.code && p.kind == before.kind
+          && (p.kind != 'material' || p.unit_id == before.unit_id)))
+        && (p.unit_id == null || (get(catPath(o.farmId,'entries',p.unit_id)).data.payload.kind == 'unit'
+          && getAfter(catPath(o.farmId,'entries',p.unit_id)).data.payload.active == 1
+          && catUsageAfter(o, p.unit_id)))
+        && (before == null || before.unit_id == null || before.unit_id == p.unit_id || catUsageAfter(o, before.unit_id))
+        && (p.kind != 'unit' || ((p.active == 1 || usage.activeReferences == 0)
+          && (before == null || p.name == before.name || usage.references == 0)));
+    }
+    function catKeysProof(o) {
+      let p = o.payload;
+      let before = o.before;
+      return catKeyAfter(o,'code',p.code,o.targetId) && catKeyAfter(o,'name',p.name_key,o.targetId)
+        && (before == null || before.name_key == p.name_key || catKeyAfter(o,'name',before.name_key,null));
+    }
+    function catIso(value) {
+      return value is string && value.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3,6}Z$');
+    }
+    function catRequest(p, farm, id) {
+      return p.keys().hasOnly(['id','farm_id','actor_uid','kind','code','name','reason','created_at','status','entry_id','resolved_by','resolved_at','resolution'])
+        && p.id == id && p.farm_id == farm && catId(p.actor_uid) && catKind(p.kind)
+        && p.code is string && p.code.matches('^[A-Z0-9][A-Z0-9_-]{0,39}$')
+        && p.name is string && p.name.size() > 0 && p.name.size() <= 100
+        && p.reason is string && p.reason.size() > 0 && p.reason.size() <= 500
+        && catIso(p.created_at) && p.name.trim().size() > 0 && p.reason.trim().size() > 0;
+    }
+    function catRequestChange(o) {
+      let p = o.payload;
+      let b = o.before;
+      return ((b == null && catCan(o.farmId,'catalog.request') && p.actor_uid == request.auth.uid
+          && p.status == 'pending' && p.get('entry_id',null) == null
+          && p.get('resolved_by',null) == null && p.get('resolved_at',null) == null && p.get('resolution',null) == null)
+        || (b != null && catCan(o.farmId,'catalog.manage') && b.status == 'pending'
+          && p.actor_uid == b.actor_uid && p.kind == b.kind && p.code == b.code
+          && p.name == b.name && p.reason == b.reason && p.created_at == b.created_at
+          && p.resolved_by == request.auth.uid && p.resolved_at == o.occurredAt && p.resolution == o.reason
+          && ((p.status == 'rejected' && p.entry_id == null)
+            || (p.status == 'approved' && p.actor_uid != request.auth.uid && catId(p.entry_id)
+              && get(catPath(o.farmId,'entries',p.entry_id)).data.payload.kind == p.kind
+              && getAfter(catPath(o.farmId,'entries',p.entry_id)).data.payload.active == 1))));
+    }
+    function catOperation(o, farm, id) {
+      let collection = o.entity == 'entry' ? 'entries' : 'requests';
+      let target = catPath(farm, collection, o.targetId);
+      return o.keys().hasOnly(['operationId','farmId','actorUid','entity','targetId','baseVersion','newVersion','payload','reason','occurredAt','before','acceptedAt'])
+        && o.operationId == id && catId(id) && o.farmId == farm && o.actorUid == request.auth.uid
+        && o.entity in ['entry','request'] && catId(o.targetId) && o.payload is map
+        && o.baseVersion is int && o.baseVersion >= 0 && o.newVersion is int && o.newVersion == o.baseVersion + 1
+        && o.reason is string && o.reason.size() > 0 && o.reason.size() <= 500
+        && catIso(o.occurredAt) && o.reason.trim().size() > 0
+        && o.acceptedAt == request.time
+        && ((o.baseVersion == 0 && !exists(target) && o.before == null)
+          || (exists(target) && get(target).data.version == o.baseVersion && get(target).data.payload == o.before))
+        && getAfter(target).data == {'version':o.newVersion, 'operationId':id, 'payload':o.payload}
+        && ((o.entity == 'entry' && catCan(farm,'catalog.manage') && catKeysProof(o)) || (o.entity == 'request' && catRequest(o.payload,farm,o.targetId)));
+    }
+    function catTargetWrite(farm, entity, id) {
+      let d = request.resource.data;
+      let opPath = catPath(farm,'operations',d.operationId);
+      let o = getAfter(opPath).data;
+      return !exists(opPath) && o.entity == entity && o.targetId == id
+        && ((entity == 'entry' && catEntry(o.payload,farm,id) && catEntryChange(o))
+          || (entity == 'request' && catRequestChange(o)));
+    }
+    match /agrico_catalog/{farm}/entries/{id} {
+      allow get: if catCan(farm,'catalog.view');
+      allow list: if catCan(farm,'catalog.view') && request.query.limit <= 200;
+      allow create, update: if catTargetWrite(farm,'entry',id);
+      allow delete: if false;
+    }
+    match /agrico_catalog/{farm}/requests/{id} {
+      allow get: if catCan(farm,'catalog.manage') || (catCan(farm,'catalog.request')
+        && (!exists(catPath(farm,'requests',id)) || resource.data.payload.actor_uid == request.auth.uid));
+      allow list: if request.query.limit <= 200 && (catCan(farm,'catalog.manage')
+        || (catCan(farm,'catalog.request') && resource.data.payload.actor_uid == request.auth.uid));
+      allow create, update: if catTargetWrite(farm,'request',id);
+      allow delete: if false;
+    }
+    match /agrico_catalog/{farm}/operations/{id} {
+      // No list: staff receipts can contain only their own suggestion.
+      allow get: if catCan(farm,'catalog.manage') || (catCan(farm,'catalog.request')
+        && (!exists(catPath(farm,'operations',id)) || resource.data.actorUid == request.auth.uid));
+      allow create: if signedIn() && catOperation(request.resource.data,farm,id);
+      allow update, delete, list: if false;
+    }
+    match /agrico_catalog/{farm}/keys/{id} {
+      allow get: if catCan(farm,'catalog.manage');
+      allow list, delete: if false;
+      allow create, update: if signedIn() && catLockWrite(farm,id);
+    }
+    function catLockWrite(farm,id) {
+      let d = request.resource.data;
+      let path = catPath(farm,'operations',d.operationId);
+      let o = getAfter(path).data;
+      let p = o.payload;
+      return d.keys().hasOnly(['targetId','operationId','type','value']) && !exists(path)
+        && o.entity == 'entry' && id == catKey(p.kind,d.type,d.value)
+        && (!exists(catPath(farm,'keys',id)) || resource.data.targetId == null || resource.data.targetId == o.targetId)
+        && ((d.targetId == o.targetId && ((d.type == 'code' && d.value == p.code) || (d.type == 'name' && d.value == p.name_key)))
+          || (d.targetId == null && d.type == 'name' && o.before != null && o.before.name_key != p.name_key && d.value == o.before.name_key));
+    }
+    match /agrico_catalog/{farm}/unit_usage/{id} {
+      allow get: if catCan(farm,'catalog.manage');
+      allow list, delete: if false;
+      allow create, update: if signedIn() && catUsageWrite(farm,id);
+    }
+    function catUsageWrite(farm,id) {
+      let d = request.resource.data;
+      let path = catPath(farm,'operations',d.operationId);
+      let o = getAfter(path).data;
+      return !exists(path) && o.entity == 'entry'
+        && (catRef(o.payload,id) == 1 || catRef(o.before,id) == 1) && catUsageValid(o,id);
+    }
+
     match /{document=**} { allow read, write: if false; }
   }
 }

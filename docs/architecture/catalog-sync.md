@@ -1,8 +1,8 @@
 # A05 — catalog synchronization protocol
 
-## Checkpoint 1: durable journal (this patch)
+## Durable journal
 
-This checkpoint establishes device-only protocol persistence and atomic send intent. It does not yet connect to Firebase, publish Rules, expose a synchronization button, or claim cross-device delivery. The A04 catalog remains usable offline. Validate this foundation on the supported Windows Flutter toolchain before adding the transport and server Rules checkpoint.
+The durable journal, sender coordinator, Firebase transaction transport and server Rules are implemented. The application continues to use its offline catalog until receiving, reconciliation and lifecycle wiring are complete. This checkpoint does not enable cross-device synchronization.
 
 Every user catalog save, suggestion and resolution commits its audit and outbox operation in the same SQLite transaction. Adoption of persisted pre-A04 values does not enqueue a mutation under the migration actor: initial publication will require explicit catalog-management authority and reconciliation with the server.
 
@@ -16,15 +16,13 @@ Protocol tables are excluded from backups. Activation clears device protocol tab
 
 ## Remaining checkpoints
 
-1. Firebase transport: server-only reads; authenticated UID must match the operation actor; transaction checks base version; immutable operation receipts enable retry after a lost response. Dependencies (units before crops/materials, masters before approvals) must be respected. Initial A04 publication is explicit and restricted to managers.
-2. Server Rules: current membership, farm, lease and scoped catalog permissions; ownership-filtered suggestion queries; master code/name uniqueness; immutable codes and material units; active unit/entry checks; self-approval prohibition; audited compare-and-swap mutations. Existing A03 account Rules must remain intact. Emulator tests must exercise adversarial writes, not only the app client.
-3. Receiver/conflicts: stage and validate server data, apply projections atomically, never replace a dirty local entry without resolution, retain business IDs and historical snapshots. Reconcile restore before enabling sends; preserve revoked actors' unsent operations for controlled recovery, never resend them as another account.
-4. UI/lifecycle: pending/conflict/error counts, last successful sync, retry and resolution actions; synchronization when opening/resuming and during connectivity recovery; stop on sign-out. A synchronization attempt must not claim success from the Firestore cache.
-5. Device verification: staff suggestion on phone A, manager review on phone B, offline retries/restarts, simultaneous edits, deactivation propagation, revocation, and restore isolation.
+1. Receiver/conflicts: stage and validate server data, apply projections atomically, never replace a dirty local entry without resolution, retain business IDs and historical snapshots. Reconcile restore before enabling sends; preserve revoked actors' unsent operations for controlled recovery, never resend them as another account.
+2. UI/lifecycle: pending/conflict/error counts, last successful sync, retry and resolution actions; synchronization when opening/resuming and during connectivity recovery; stop on sign-out. A synchronization attempt must not claim success from the Firestore cache.
+3. Device verification: staff suggestion on phone A, manager review on phone B, offline retries/restarts, simultaneous edits, deactivation propagation, revocation, and restore isolation.
 
 ## Validation
 
-The checkpoint adds real SQLite tests for actor/farm separation, expired or denied sessions, staff versus manager selection, atomic rollback, ordered cloud versions, idempotent acknowledgements, invalid receipts, conflict barriers and restore blocking. Existing catalog and backup tests must also pass, followed by the full suite. No Firebase deployment or APK installation is necessary at checkpoint 1.
+The checkpoint adds real SQLite tests for actor/farm separation, expired or denied sessions, staff versus manager selection, atomic rollback, ordered cloud versions, idempotent acknowledgements, invalid receipts, conflict barriers and restore blocking. Existing catalog and backup tests must also pass, followed by the full suite. No Firebase deployment or APK installation is necessary for this source checkpoint.
 
 ## Sender coordinator checkpoint
 
@@ -34,4 +32,12 @@ The transport contract requires atomic compare-and-swap with an immutable receip
 
 Fifteen real-SQLite coordinator tests cover ordered sends, outages, lost responses after a remote commit, conflict barriers, definitive denials, SDK/session mismatches, forged receipts, concurrent calls, permission loss, disposal, unexpected failures, operation budgets and restore isolation. The test transport models the protocol; it is not a Firebase emulator or a production gateway.
 
-This checkpoint deliberately has no Firebase adapter, no app wiring and no new deployed Rules. Remaining checkpoints above still apply. Local Flutter tests must pass before implementing the server adapter/Rules and receiver against this contract.
+## Firebase transport and Rules checkpoint
+
+`FirebaseCatalogSyncTransport` uses a server transaction to commit the target, immutable operation receipt, uniqueness locks and unit-reference counters atomically. The authenticated Firebase UID must match the command actor. A retry reads the same operation receipt and verifies the complete original command before acknowledging it, even if the target has advanced. Uncertain errors retain the original operation ID; server denials and version conflicts remain durable barriers.
+
+Rules preserve the A03 account policy and validate current membership, lease, scoped catalog authority, immutable codes/material units, code/name uniqueness, active dependencies, unit references and suggestion ownership/approval. Hash lock IDs use uppercase UTF-8 SHA-256. Canonical name validation supports the app's English, Vietnamese and Lao profile. Other alphabets with case-changing letters can fail closed; extending that profile requires matching client and Emulator tests.
+
+Thirty-eight actual Firestore Emulator tests cover A03 regression and adversarial catalog writes, concurrent duplicate creation, auxiliary-write omission, forged counters/receipts, name normalization and maximum role/dependency paths. Six additional Dart tests validate receipt identity and key encoding. Flutter analysis and the full suite must pass on the supported Windows toolchain before advancing. See `docs/security/catalog-sync-setup.md`.
+
+Initial publication of adopted A04 entries still requires an explicit manager action, authoritative reconciliation and dependency ordering. Receiving, conflict resolution, restored-device reconciliation and app wiring remain pending.
