@@ -43,6 +43,16 @@ void main() {
       );
   Future<void> seed() async {
     await SqliteCompanyCatalog.createSchema(primary);
+    await primary.insert(CatalogSyncJournal.inbox, {
+      'farm_id': 'farm',
+      'reader_uid': 'admin',
+      'entity': 'entry',
+      'target_id': 'u',
+      'cloud_version': 1,
+      'operation_id': 'remote-op',
+      'payload_json': '{}',
+    });
+
     await SqliteCompanyCatalog(primary).save(
       const CatalogEntry(
         id: 'u',
@@ -116,6 +126,7 @@ void main() {
       expect(await primary.query(SqliteCompanyCatalog.entriesTable), isEmpty);
       expect(await primary.query(SqliteCompanyCatalog.auditTable), isEmpty);
       expect(await primary.query(CatalogSyncJournal.outbox), isEmpty);
+      expect(await primary.query(CatalogSyncJournal.inbox), isEmpty);
       expect(await primary.query(CatalogSyncJournal.shadow), isEmpty);
       expect(
         (await primary.query(
@@ -147,6 +158,7 @@ void main() {
         hasLength(1),
       );
       expect(await primary.query(CatalogSyncJournal.outbox), isEmpty);
+      expect(await primary.query(CatalogSyncJournal.inbox), isEmpty);
       expect(
         (await primary.query(
           CatalogSyncJournal.device,

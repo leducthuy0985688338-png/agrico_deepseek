@@ -41,3 +41,15 @@ Rules preserve the A03 account policy and validate current membership, lease, sc
 Thirty-eight actual Firestore Emulator tests cover A03 regression and adversarial catalog writes, concurrent duplicate creation, auxiliary-write omission, forged counters/receipts, name normalization and maximum role/dependency paths. Six additional Dart tests validate receipt identity and key encoding. Flutter analysis and the full suite must pass on the supported Windows toolchain before advancing. See `docs/security/catalog-sync-setup.md`.
 
 Initial publication of adopted A04 entries still requires an explicit manager action, authoritative reconciliation and dependency ordering. Receiving, conflict resolution, restored-device reconciliation and app wiring remain pending.
+
+## Receiver staging checkpoint
+
+`FirebaseCatalogReceiveTransport` queries bounded pages with `Source.server`, ordered by document ID. Staff request queries filter `payload.actor_uid`; managers may read all requests in their farm. Cache snapshots and pending local Firestore writes cannot certify received data. Authentication and project identity are checked around network reads.
+
+`CatalogSyncReceiver` shares concurrent calls, checks current permissions/session around every page, validates IDs, payload schemas, canonical names and timestamps, and stages a page atomically into `company_catalog_sync_inbox_v1`. Inbox rows are separated by reader and farm. Same-version content changes are rejected; older pages cannot regress staging. Pagination follows UTF-8 document ID ordering. A bounded run reports incomplete instead of claiming complete synchronization. Retrying starts at the beginning and is idempotent; pages are not a globally consistent snapshot and absence never means deletion.
+
+Staging does not alter business tables, shadow baselines or outbox acknowledgements. Dirty barriers are computed from all unresolved operations, including another actor's edits. Inbox data is excluded from backups and cleared by restore; receiving never clears restore blocking. Inbox reads are internal protocol operations and are not wired to UI.
+
+Eighteen receiver tests cover real SQLite atomic staging, replay/regression, dirty actor separation, privacy, authorization revocation, sign-out/disposal during reads, network errors, pagination limits/order, malformed records and restore blocking. A standalone Dart/SQLite harness can exercise this logic; supported Flutter analysis and the full suite remain required on Windows.
+
+Projection, dependency reconciliation, conflict decisions, authoritative restore recovery, explicit initial publication and app lifecycle/UI wiring remain subsequent checkpoints. This source patch does not enable device synchronization or require Rules publication.

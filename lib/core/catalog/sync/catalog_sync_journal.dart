@@ -11,7 +11,8 @@ class CatalogSyncJournal {
   static const outbox = 'company_catalog_sync_outbox_v1';
   static const shadow = 'company_catalog_sync_shadow_v1';
   static const device = 'company_catalog_sync_device_v1';
-  static const tables = {outbox, shadow, device};
+  static const inbox = 'company_catalog_sync_inbox_v1';
+  static const tables = {outbox, shadow, device, inbox};
 
   static Future<void> createSchema(DatabaseExecutor tx) async {
     await tx.execute('''CREATE TABLE IF NOT EXISTS $outbox (
@@ -34,6 +35,12 @@ class CatalogSyncJournal {
     await tx.execute('''CREATE TABLE IF NOT EXISTS $device (
       farm_id TEXT PRIMARY KEY, restore_blocked INTEGER NOT NULL DEFAULT 0
       CHECK(restore_blocked IN (0,1)))''');
+    await tx.execute('''CREATE TABLE IF NOT EXISTS $inbox (
+      farm_id TEXT NOT NULL, reader_uid TEXT NOT NULL,
+      entity TEXT NOT NULL, target_id TEXT NOT NULL,
+      cloud_version INTEGER NOT NULL, operation_id TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      PRIMARY KEY(farm_id,reader_uid,entity,target_id))''');
     await tx.execute(
       'CREATE INDEX IF NOT EXISTS idx_catalog_sync_actor ON '
       '$outbox(farm_id,actor_uid,state,sequence)',
