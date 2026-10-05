@@ -87,3 +87,13 @@ Eighteen decision tests and one projection regression cover real SQLite guarded 
 - An exact receipt can acknowledge pending or rejected commands only in dependency order and against the expected shadow baseline. Recovery checks the current SDK actor, membership, farm, lease and scoped permissions before/after reads and inside the acknowledgement transaction. Shadow advancement or an earlier unresolved command fails closed.
 - Recovery changes protocol acknowledgement/shadow only; business rows, business audits, staged downloads and recorded conflicts remain intact. The normal sender acknowledgement contract is unchanged. Restore isolation remains blocked.
 - This checkpoint has no app/UI wiring, Rules changes or deployment. Absence/rejection reconciliation, initial publication and restore reconciliation remain separate work.
+
+
+## A05 — reviewed initial master publication preparation
+
+- Existing adopted catalog masters have no implicit send authority. `CatalogInitialPublication.review` captures one manager-selected business row; `prepare` requires a reason and a fresh server-only target read. It only queues a version-0-to-1 command and writes a local `sync.prepareInitial` audit. Business identities, codes, revisions, quantities and historical records remain unchanged.
+- Any existing target on the server, including an equal payload, requires receive/reconciliation instead of initial publication. Any local outbox history, shadow, staged target or recorded conflict also blocks preparation. Repeating the action cannot create duplicate commands.
+- Absence is advisory, not a reservation. The existing sender transaction still enforces version CAS, typed name/code uniqueness, current authorization, unit references and immutable server receipts. A concurrent server creation is rejected rather than overwritten.
+- Units must be prepared first. A dependent entry requires either an active unit with an exact fresh remote shadow and matching local business fields, or one same-actor pending initial unit command with an unchanged payload and no shadow. Blocked, conflicted, foreign-actor, changed or retired units do not authorize dependencies. Multi-command unit chains require reconciliation before this action.
+- Server reads reject cache/pending-write metadata. SDK UID, membership, farm, permissions and lease are rechecked around reads and within the SQLite transaction. A changed reviewed row, restore barrier, logout or revocation prevents preparation; late revocation rolls back both command and audit.
+- This checkpoint handles one reviewed master per call. Suggestions, batch UI, initial publication scheduling and restore reconciliation remain separate. It does not wire app routes, send commands, deploy Rules or clear restore isolation.
