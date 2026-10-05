@@ -2,7 +2,7 @@
 
 ## Durable journal
 
-The durable journal, sender coordinator, Firebase transaction transport and server Rules are implemented. The application continues to use its offline catalog until receiving, reconciliation and lifecycle wiring are complete. This checkpoint does not enable cross-device synchronization.
+The durable journal, sender coordinator, Firebase transaction transport and server Rules are implemented. The application retains its offline catalog and exposes an explicit manual synchronization screen. Cross-device operation still requires deployment of A05 Rules and device verification. Automatic lifecycle/background synchronization is not enabled.
 
 Every user catalog save, suggestion and resolution commits its audit and outbox operation in the same SQLite transaction. Adoption of persisted pre-A04 values does not enqueue a mutation under the migration actor: initial publication will require explicit catalog-management authority and reconciliation with the server.
 
@@ -16,8 +16,8 @@ Protocol tables are excluded from backups. Activation clears device protocol tab
 
 ## Remaining checkpoints
 
-1. Receiver/conflicts: stage and validate server data, apply projections atomically, never replace a dirty local entry without resolution, retain business IDs and historical snapshots. Reconcile restore before enabling sends; preserve revoked actors' unsent operations for controlled recovery, never resend them as another account.
-2. UI/lifecycle: pending/conflict/error counts, last successful sync, retry and resolution actions; synchronization when opening/resuming and during connectivity recovery; stop on sign-out. A synchronization attempt must not claim success from the Firestore cache.
+1. Server receiving, guarded conflict choices and conservative restore reconciliation are implemented. Revoked actors' unsent operations remain retained; controlled recovery must never impersonate another account or force-cancel unknown outcomes.
+2. Manual UI: counts, retry, reviewed initial publication, conflict choices and restore review are wired. Persistent last-success history and optional automatic lifecycle/connectivity synchronization remain separate follow-up work. The manual workspace stops accepting actions after disposal or session change and never claims server success from cache.
 3. Device verification: staff suggestion on phone A, manager review on phone B, offline retries/restarts, simultaneous edits, deactivation propagation, revocation, and restore isolation.
 
 ## Validation
@@ -109,3 +109,21 @@ Eighteen decision tests and one projection regression cover real SQLite guarded 
 - The existing accept-remote decision path can resolve a restore mismatch before a fresh review. A keep-local decision which creates an unresolved operation keeps the restore barrier closed; reconciliation of such outgoing intent remains a separate guarded path. This checkpoint does not force-cancel those operations.
 - Page reads are not a globally atomic farm snapshot. Exact local-target reads narrow pagination races; normal sender CAS/uniqueness checks remain mandatory after release. Missing remote rows never imply a hard delete. Default review budgets are 100 records/page, 20 total pages and 5000 total records, configurable within bounded limits.
 - No protocol schema, backup format, Rules or app routes change in this checkpoint. User-facing review, conflict controls and wiring remain pending.
+
+
+### Manual application workspace
+
+Settings exposes catalog synchronization only with current farm-wide catalog.view
+and cloud.sync authorization. Opening the route reads local status only. A route-owned
+workspace serializes actions, rechecks the current application subject and Firebase UID,
+and disposes its coordinators when the screen closes. Synchronization recovers receipts,
+sends eligible current-actor commands, downloads, then projects; outstanding commands or
+conflicts prevent a completed status. This is a bounded pass; another pass may be needed.
+
+Managers review each existing untracked master before preparing its initial command;
+units come first. Preparation does not upload. Conflict decisions require a reason and
+a fresh server baseline. The screen hides keep-local during restore isolation: it would
+create a command that cannot be sent until reconciliation finishes. Restored data is only
+downloaded/projected until an explicit complete restore review is approved. Local-only
+records must each be acknowledged as retained locally; publication remains separate.
+No timers, automatic uploads, queue cancellation, Rules deployment or data reset are added.

@@ -13,6 +13,8 @@ import '../core/project/agrico_project.dart';
 import '../core/localization/app_localizations.dart';
 import '../core/geography/data/sqlite_administrative_catalog.dart';
 import '../core/catalog/company_catalog.dart';
+import '../core/catalog/sync/catalog_sync_screen.dart';
+import '../core/catalog/sync/firebase_catalog_sync_workspace.dart';
 import '../core/catalog/sqlite_company_catalog.dart';
 import '../core/catalog/company_catalog_screen.dart';
 import '../core/geography/application/manage_administrative_catalog.dart';
@@ -293,6 +295,26 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
                       service: CompanyCatalogService(
                         repository: SqliteCompanyCatalog(deps.database),
                         subject: deps.subject,
+                      ),
+                    ),
+                  )
+                : null,
+            onOpenCatalogSync:
+                const AuthorizationService().can(
+                      subject: widget.subject,
+                      permission: PermissionCodes.cloudSync,
+                      resource: ResourceContext(farmId: widget.subject.farmId),
+                    ) &&
+                    const AuthorizationService().can(
+                      subject: widget.subject,
+                      permission: PermissionCodes.catalogView,
+                      resource: ResourceContext(farmId: widget.subject.farmId),
+                    )
+                ? () => push(
+                    CatalogSyncScreen(
+                      actions: firebaseCatalogSyncWorkspace(
+                        database: deps.database,
+                        currentSubject: () => mounted ? widget.subject : null,
                       ),
                     ),
                   )

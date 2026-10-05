@@ -9,6 +9,7 @@ class V2SettingsScreen extends StatelessWidget {
     this.onSignOut,
     this.onOpenAccounts,
     this.onOpenCatalog,
+    this.onOpenCatalogSync,
     this.sessionOffline = false,
     this.offlineUntil,
   });
@@ -17,6 +18,7 @@ class V2SettingsScreen extends StatelessWidget {
   final VoidCallback? onSignOut;
   final VoidCallback? onOpenAccounts;
   final VoidCallback? onOpenCatalog;
+  final VoidCallback? onOpenCatalogSync;
   final bool sessionOffline;
   final DateTime? offlineUntil;
 
@@ -51,6 +53,13 @@ class V2SettingsScreen extends StatelessWidget {
               leading: const Icon(Icons.category_outlined),
               title: Text(l10n.text('catalog.title')),
               onTap: onOpenCatalog,
+            ),
+          if (onOpenCatalogSync != null)
+            ListTile(
+              key: const Key('company-catalog-sync-open'),
+              leading: const Icon(Icons.sync),
+              title: Text(l10n.text('catalogSync.title')),
+              onTap: onOpenCatalogSync,
             ),
           if (onOpenAccounts != null)
             ListTile(
