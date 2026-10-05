@@ -132,6 +132,20 @@ class CatalogSyncJournal {
     AuthorizationSubject subject, {
     DateTime Function()? clock,
   }) async {
+    return _candidates(subject, clock: clock, recoverRejected: false);
+  }
+
+  /// Read-only recovery may inspect rejected commands, preserving chain order.
+  Future<List<Map<String, Object?>>> recoverable(
+    AuthorizationSubject subject, {
+    DateTime Function()? clock,
+  }) => _candidates(subject, clock: clock, recoverRejected: true);
+
+  Future<List<Map<String, Object?>>> _candidates(
+    AuthorizationSubject subject, {
+    DateTime Function()? clock,
+    required bool recoverRejected,
+  }) async {
     _require(subject, PermissionCodes.cloudSync, clock: clock, own: true);
     final blocked = await database.query(
       device,
@@ -143,11 +157,11 @@ class CatalogSyncJournal {
     }
     final rows = await database.rawQuery(
       '''SELECT q.* FROM $outbox q
-      WHERE q.farm_id=? AND q.actor_uid=? AND q.state='pending'
+      WHERE q.farm_id=? AND q.actor_uid=? AND q.state IN (${recoverRejected ? "'pending','blocked','conflict'" : "'pending'"})
       AND NOT EXISTS (SELECT 1 FROM $outbox p
         WHERE p.farm_id=q.farm_id AND p.entity=q.entity AND p.target_id=q.target_id
         AND p.sequence<q.sequence AND p.state<>'acked')
-      ORDER BY q.sequence LIMIT 100''',
+      ORDER BY q.sequence LIMIT ${recoverRejected ? 1000 : 100}''',
       [subject.farmId, subject.userId],
     );
     return rows
@@ -186,7 +200,26 @@ class CatalogSyncJournal {
     int cloudVersion,
     Map<String, Object?> acceptedPayload,
   ) async {
+    await _acknowledge(operationId, cloudVersion, acceptedPayload);
+  }
+
+  /// Caller has verified the full immutable command against a server receipt.
+  /// The synchronous guard is checked inside the same transaction as the ack.
+  Future<void> acknowledgeRecovered(
+    String operationId,
+    int cloudVersion,
+    Map<String, Object?> acceptedPayload, {
+    required void Function() guard,
+  }) => _acknowledge(operationId, cloudVersion, acceptedPayload, guard: guard);
+
+  Future<void> _acknowledge(
+    String operationId,
+    int cloudVersion,
+    Map<String, Object?> acceptedPayload, {
+    void Function()? guard,
+  }) async {
     await database.transaction((tx) async {
+      guard?.call();
       final rows = await tx.query(
         outbox,
         where: 'operation_id=?',
@@ -200,11 +233,40 @@ class CatalogSyncJournal {
       if (cloudVersion != row['new_version'] ||
           jsonEncode(_canonical(payload)) !=
               jsonEncode(_canonical(acceptedPayload)) ||
-          !{'pending', 'acked'}.contains(row['state'])) {
+          !(guard == null
+                  ? {'pending', 'acked'}
+                  : {'pending', 'acked', 'blocked', 'conflict'})
+              .contains(row['state'])) {
         throw const CatalogFailure('catalog.syncInvalid');
       }
       if (row['state'] == 'acked') {
         return;
+      }
+      if (guard != null) {
+        final restored = await tx.query(
+          device,
+          where: 'farm_id=? AND restore_blocked=1',
+          whereArgs: [row['farm_id']],
+        );
+        if (restored.isNotEmpty) {
+          throw const CatalogFailure('catalog.restoreReconcileRequired');
+        }
+        final earlier = await tx.query(
+          outbox,
+          where:
+              'farm_id=? AND entity=? AND target_id=? AND sequence<? AND state<>?',
+          whereArgs: [
+            row['farm_id'],
+            row['entity'],
+            row['target_id'],
+            row['sequence'],
+            'acked',
+          ],
+          limit: 1,
+        );
+        if (earlier.isNotEmpty) {
+          throw const CatalogFailure('catalog.changed');
+        }
       }
       final prior = await tx.query(
         shadow,
@@ -229,6 +291,7 @@ class CatalogSyncJournal {
         where: 'operation_id=?',
         whereArgs: [operationId],
       );
+      guard?.call();
     });
   }
 

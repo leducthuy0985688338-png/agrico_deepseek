@@ -77,3 +77,13 @@ Any unresolved pending, blocked or conflicted outbox operation for the target bl
 The reviewed remote/local snapshots and choice are stored as `conflict.review` audit, alongside the actual business before/after audit. These are business history and therefore remain backed up. Temporary conflicts remain device protocol data. Ordinary offline edits against an unchanged cloud baseline no longer generate a new conflict during projection; a genuinely newer/different server baseline still does.
 
 Eighteen decision tests and one projection regression cover real SQLite guarded choices, rebase intent, stale server/local reviews, queue preservation, role/lease/SDK changes, network errors, concurrent requests, authorization rollback, uniqueness/references, farm privacy, request approval history and restore blocking. Supported Windows Flutter analysis and the full suite remain required. No Rules deployment, APK installation or app wiring is performed in this source checkpoint.
+
+
+## A05 — authoritative receipt recovery
+
+- `CatalogReceiptRecovery` reads existing immutable operation receipts with the original actor and farm. It never sends, cancels, reassigns or recreates an operation. Overlapping calls share one run; each run is bounded.
+- The Firebase lookup uses `Source.server`, rejects cached/pending-write snapshots and requires a committed `acceptedAt` timestamp. All ten immutable command fields are compared, including base/new versions, complete payload, reason and occurrence time.
+- An absent receipt is only a point-in-time observation: pending, blocked or conflicted operations remain unchanged. Network uncertainty also retains the exact command. The sender may later retry the same ID. There is no force-cancel path.
+- An exact receipt can acknowledge pending or rejected commands only in dependency order and against the expected shadow baseline. Recovery checks the current SDK actor, membership, farm, lease and scoped permissions before/after reads and inside the acknowledgement transaction. Shadow advancement or an earlier unresolved command fails closed.
+- Recovery changes protocol acknowledgement/shadow only; business rows, business audits, staged downloads and recorded conflicts remain intact. The normal sender acknowledgement contract is unchanged. Restore isolation remains blocked.
+- This checkpoint has no app/UI wiring, Rules changes or deployment. Absence/rejection reconciliation, initial publication and restore reconciliation remain separate work.
