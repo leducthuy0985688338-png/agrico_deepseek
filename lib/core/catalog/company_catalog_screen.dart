@@ -414,19 +414,36 @@ class _ResolveRequest extends StatefulWidget {
 class _ResolveRequestState extends State<_ResolveRequest> {
   String? entryId, error;
   final reason = TextEditingController();
+  late final TextEditingController code, name;
+  String? unitId;
+  @override
+  void initState() {
+    super.initState();
+    code = TextEditingController(text: widget.request.code);
+    name = TextEditingController(text: widget.request.name);
+    reason.text = widget.request.reason;
+    for (final e in widget.entries) {
+      if (e.active &&
+          e.kind == widget.request.kind &&
+          (e.code == widget.request.code ||
+              e.name.toUpperCase() == widget.request.name.toUpperCase())) {
+        entryId = e.id;
+        break;
+      }
+    }
+  }
+
   bool saving = false;
   @override
   void dispose() {
+    code.dispose();
+    name.dispose();
     reason.dispose();
     super.dispose();
   }
 
   Future<void> resolve(bool approve) async {
     if (saving) return;
-    if (approve && entryId == null) {
-      setState(() => error = 'catalog.selectEntry');
-      return;
-    }
     setState(() {
       saving = true;
       error = null;
@@ -435,6 +452,16 @@ class _ResolveRequestState extends State<_ResolveRequest> {
       await widget.service.resolve(
         widget.request.id,
         entryId: approve ? entryId : null,
+        createEntry: approve && entryId == null
+            ? CatalogEntry(
+                id: 'catalog-${DateTime.now().microsecondsSinceEpoch}',
+                farmId: widget.service.subject.farmId,
+                kind: widget.request.kind,
+                code: code.text.trim().toUpperCase(),
+                name: name.text.trim(),
+                unitId: widget.request.kind == CatalogKind.unit ? null : unitId,
+              )
+            : null,
         reason: reason.text,
       );
       if (mounted) Navigator.pop(context, true);
@@ -465,8 +492,12 @@ class _ResolveRequestState extends State<_ResolveRequest> {
               DropdownButtonFormField<String>(
                 key: const Key('catalog-resolve-entry'),
                 isExpanded: true,
-                initialValue: entryId,
+                initialValue: entryId ?? '',
                 items: [
+                  DropdownMenuItem(
+                    value: '',
+                    child: Text(l.text('catalog.createFromRequest')),
+                  ),
                   for (final e in widget.entries.where(
                     (e) => e.kind == widget.request.kind && e.active,
                   ))
@@ -482,8 +513,55 @@ class _ResolveRequestState extends State<_ResolveRequest> {
                       ),
                     ),
                 ],
-                onChanged: saving ? null : (v) => setState(() => entryId = v),
+                onChanged: saving
+                    ? null
+                    : (v) => setState(() => entryId = v == '' ? null : v),
               ),
+              if (entryId == null) ...[
+                TextField(
+                  key: const Key('catalog-approval-code'),
+                  controller: code,
+                  enabled: !saving,
+                  maxLength: 40,
+                  decoration: InputDecoration(
+                    labelText: l.text('catalog.code'),
+                  ),
+                ),
+                TextField(
+                  key: const Key('catalog-approval-name'),
+                  controller: name,
+                  enabled: !saving,
+                  maxLength: 100,
+                  decoration: InputDecoration(
+                    labelText: l.text('catalog.name'),
+                  ),
+                ),
+                if (widget.request.kind != CatalogKind.unit)
+                  DropdownButtonFormField<String>(
+                    key: const Key('catalog-approval-unit'),
+                    isExpanded: true,
+                    initialValue: unitId,
+                    decoration: InputDecoration(
+                      labelText: l.text('catalog.kind.unit'),
+                    ),
+                    items: [
+                      for (final u in widget.entries.where(
+                        (e) => e.kind == CatalogKind.unit && e.active,
+                      ))
+                        DropdownMenuItem(
+                          value: u.id,
+                          child: Text(
+                            '${u.name} (${u.code})',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                    onChanged: saving
+                        ? null
+                        : (v) => setState(() => unitId = v),
+                  ),
+              ],
               TextField(
                 key: const Key('catalog-resolve-reason'),
                 controller: reason,

@@ -91,6 +91,7 @@ abstract interface class CompanyCatalogRepository {
     required String reason,
     required DateTime occurredAt,
     String? entryId,
+    CatalogEntry? createEntry,
     required void Function() authorize,
   });
 }
@@ -194,6 +195,7 @@ class CompanyCatalogService {
   Future<void> resolve(
     String requestId, {
     String? entryId,
+    CatalogEntry? createEntry,
     required String reason,
   }) {
     require(PermissionCodes.catalogManage);
@@ -204,6 +206,7 @@ class CompanyCatalogService {
       reason: _reason(reason),
       occurredAt: (clock ?? DateTime.now)().toUtc(),
       entryId: entryId,
+      createEntry: createEntry,
       authorize: () => require(PermissionCodes.catalogManage),
     );
   }

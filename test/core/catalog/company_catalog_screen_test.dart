@@ -52,6 +52,7 @@ class _Repo implements CompanyCatalogRepository {
     required String reason,
     required DateTime occurredAt,
     String? entryId,
+    CatalogEntry? createEntry,
     required void Function() authorize,
   }) async {
     authorize();

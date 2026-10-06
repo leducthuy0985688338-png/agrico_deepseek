@@ -82,6 +82,87 @@ void main() {
       clock: () => now,
     );
   });
+  test('approval creates entry and resolves request atomically', () async {
+    await worker.request(
+      id: 'direct',
+      kind: CatalogKind.unit,
+      code: 'DIRECT',
+      name: 'Direct unit',
+      reason: 'Needed',
+    );
+    await admin.resolve(
+      'direct',
+      createEntry: entry(
+        'direct-unit',
+        CatalogKind.unit,
+        'DIRECT',
+        'Direct unit',
+      ),
+      reason: 'Approved',
+    );
+    expect((await admin.entries()).single.id, 'direct-unit');
+    final request = (await admin.requests()).single;
+    expect(request.status, 'approved');
+    expect(request.entryId, 'direct-unit');
+    expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(3));
+  });
+  test('duplicate creation rolls back and leaves request pending', () async {
+    await save(entry('existing', CatalogKind.unit, 'DIRECT', 'Existing'));
+    await worker.request(
+      id: 'direct',
+      kind: CatalogKind.unit,
+      code: 'DIRECT',
+      name: 'Direct unit',
+      reason: 'Needed',
+    );
+    await expectLater(
+      admin.resolve(
+        'direct',
+        createEntry: entry(
+          'new-unit',
+          CatalogKind.unit,
+          'DIRECT',
+          'Direct unit',
+        ),
+        reason: 'Approved',
+      ),
+      throwsA(
+        isA<CatalogFailure>().having(
+          (e) => e.code,
+          'code',
+          'catalog.duplicate',
+        ),
+      ),
+    );
+    expect((await admin.entries()).single.id, 'existing');
+    expect((await admin.requests()).single.status, 'pending');
+    expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(2));
+  });
+  test('self approval cannot create an entry', () async {
+    await repo.request(
+      CatalogRequest(
+        id: 'self-direct',
+        farmId: 'farm',
+        actorUid: admin.subject.userId,
+        kind: CatalogKind.unit,
+        code: 'SELF',
+        name: 'Self',
+        reason: 'Needed',
+        createdAt: now,
+      ),
+      authorize: () {},
+    );
+    await expectLater(
+      admin.resolve(
+        'self-direct',
+        createEntry: entry('self-unit', CatalogKind.unit, 'SELF', 'Self'),
+        reason: 'Approved',
+      ),
+      throwsA(isA<CatalogFailure>()),
+    );
+    expect(await admin.entries(), isEmpty);
+    expect((await admin.requests()).single.status, 'pending');
+  });
   tearDown(() async => db.close());
   test(
     'business editing never grants catalog writing, own suggestions do not create entries',

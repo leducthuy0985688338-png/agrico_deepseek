@@ -128,69 +128,15 @@ class SqliteCompanyCatalog implements CompanyCatalogRepository {
     entry.validate();
     try {
       await database.transaction((tx) async {
-        authorize();
-        final previous = await tx.query(
-          entriesTable,
-          where: 'id=?',
-          whereArgs: [entry.id],
-        );
-        final old = previous.isEmpty ? null : previous.single;
-        if ((old == null && expectedRevision != null) ||
-            (old != null &&
-                (old['revision'] != expectedRevision ||
-                    old['farm_id'] != entry.farmId ||
-                    old['kind'] != entry.kind.name ||
-                    old['code'] != entry.code))) {
-          throw const CatalogFailure('catalog.changed');
-        }
-        if (entry.unitId != null) {
-          final units = await tx.query(
-            entriesTable,
-            where: 'id=? AND farm_id=? AND kind=? AND active=1',
-            whereArgs: [entry.unitId, entry.farmId, CatalogKind.unit.name],
-          );
-          if (units.isEmpty) throw const CatalogFailure('catalog.unitRequired');
-        }
-        if (entry.kind == CatalogKind.unit &&
-            (!entry.active || (old != null && old['name'] != entry.name)) &&
-            (await tx.query(
-              entriesTable,
-              columns: ['id'],
-              where: !entry.active ? 'unit_id=? AND active=1' : 'unit_id=?',
-              whereArgs: [entry.id],
-              limit: 1,
-            )).isNotEmpty) {
-          throw const CatalogFailure('catalog.unitInUse');
-        }
-        if (old != null &&
-            entry.kind == CatalogKind.material &&
-            old['unit_id'] != entry.unitId) {
-          throw const CatalogFailure('catalog.unitImmutable');
-        }
-        final next = _row(entry, (expectedRevision ?? 0) + 1);
-        if (old == null) {
-          await tx.insert(entriesTable, next);
-        } else {
-          await tx.update(
-            entriesTable,
-            next,
-            where: 'id=? AND farm_id=?',
-            whereArgs: [entry.id, entry.farmId],
-          );
-        }
-        await projectEntry(tx, entry);
-        await _audit(
+        await _saveInTransaction(
           tx,
-          farmId: entry.farmId,
-          actor: actorUid,
-          time: occurredAt,
+          entry,
+          expectedRevision: expectedRevision,
+          actorUid: actorUid,
           reason: reason,
-          target: entry.id,
-          action: old == null ? 'create' : 'update',
-          before: old,
-          after: next,
+          occurredAt: occurredAt,
+          authorize: authorize,
         );
-        authorize();
       });
     } on DatabaseException catch (error) {
       if (error.isUniqueConstraintError()) {
@@ -198,6 +144,81 @@ class SqliteCompanyCatalog implements CompanyCatalogRepository {
       }
       rethrow;
     }
+  }
+
+  Future<void> _saveInTransaction(
+    DatabaseExecutor tx,
+    CatalogEntry entry, {
+    required int? expectedRevision,
+    required String actorUid,
+    required String reason,
+    required DateTime occurredAt,
+    required void Function() authorize,
+  }) async {
+    entry.validate();
+    authorize();
+    final previous = await tx.query(
+      entriesTable,
+      where: 'id=?',
+      whereArgs: [entry.id],
+    );
+    final old = previous.isEmpty ? null : previous.single;
+    if ((old == null && expectedRevision != null) ||
+        (old != null &&
+            (old['revision'] != expectedRevision ||
+                old['farm_id'] != entry.farmId ||
+                old['kind'] != entry.kind.name ||
+                old['code'] != entry.code))) {
+      throw const CatalogFailure('catalog.changed');
+    }
+    if (entry.unitId != null) {
+      final units = await tx.query(
+        entriesTable,
+        where: 'id=? AND farm_id=? AND kind=? AND active=1',
+        whereArgs: [entry.unitId, entry.farmId, CatalogKind.unit.name],
+      );
+      if (units.isEmpty) throw const CatalogFailure('catalog.unitRequired');
+    }
+    if (entry.kind == CatalogKind.unit &&
+        (!entry.active || (old != null && old['name'] != entry.name)) &&
+        (await tx.query(
+          entriesTable,
+          columns: ['id'],
+          where: !entry.active ? 'unit_id=? AND active=1' : 'unit_id=?',
+          whereArgs: [entry.id],
+          limit: 1,
+        )).isNotEmpty) {
+      throw const CatalogFailure('catalog.unitInUse');
+    }
+    if (old != null &&
+        entry.kind == CatalogKind.material &&
+        old['unit_id'] != entry.unitId) {
+      throw const CatalogFailure('catalog.unitImmutable');
+    }
+    final next = _row(entry, (expectedRevision ?? 0) + 1);
+    if (old == null) {
+      await tx.insert(entriesTable, next);
+    } else {
+      await tx.update(
+        entriesTable,
+        next,
+        where: 'id=? AND farm_id=?',
+        whereArgs: [entry.id, entry.farmId],
+      );
+    }
+    await projectEntry(tx, entry);
+    await _audit(
+      tx,
+      farmId: entry.farmId,
+      actor: actorUid,
+      time: occurredAt,
+      reason: reason,
+      target: entry.id,
+      action: old == null ? 'create' : 'update',
+      before: old,
+      after: next,
+    );
+    authorize();
   }
 
   /// Internal business projection shared by local saves and verified receives.
@@ -340,57 +361,86 @@ class SqliteCompanyCatalog implements CompanyCatalogRepository {
     required String reason,
     required DateTime occurredAt,
     String? entryId,
+    CatalogEntry? createEntry,
     required void Function() authorize,
   }) async {
-    await database.transaction((tx) async {
-      authorize();
-      final rows = await tx.query(
-        requestsTable,
-        where: 'id=? AND farm_id=?',
-        whereArgs: [requestId, farmId],
-      );
-      if (rows.isEmpty || rows.single['status'] != 'pending') {
-        throw const CatalogFailure('catalog.changed');
-      }
-      final old = rows.single;
-      if (entryId != null) {
-        if (old['actor_uid'] == actorUid) {
-          throw const CatalogFailure('catalog.selfApproval');
-        }
-        final targets = await tx.query(
-          entriesTable,
-          where: 'id=? AND farm_id=? AND kind=? AND active=1',
-          whereArgs: [entryId, farmId, old['kind']],
+    try {
+      await database.transaction((tx) async {
+        authorize();
+        final rows = await tx.query(
+          requestsTable,
+          where: 'id=? AND farm_id=?',
+          whereArgs: [requestId, farmId],
         );
-        if (targets.isEmpty) throw const CatalogFailure('catalog.invalid');
+        if (rows.isEmpty || rows.single['status'] != 'pending') {
+          throw const CatalogFailure('catalog.changed');
+        }
+        final old = rows.single;
+        if (createEntry != null) {
+          if (entryId != null ||
+              createEntry.farmId != farmId ||
+              createEntry.kind.name != old['kind'] ||
+              !createEntry.active) {
+            throw const CatalogFailure('catalog.invalid');
+          }
+          if (old['actor_uid'] == actorUid) {
+            throw const CatalogFailure('catalog.selfApproval');
+          }
+          await _saveInTransaction(
+            tx,
+            createEntry,
+            expectedRevision: null,
+            actorUid: actorUid,
+            reason: reason,
+            occurredAt: occurredAt,
+            authorize: authorize,
+          );
+          entryId = createEntry.id;
+        }
+        if (entryId != null) {
+          if (old['actor_uid'] == actorUid) {
+            throw const CatalogFailure('catalog.selfApproval');
+          }
+          final targets = await tx.query(
+            entriesTable,
+            where: 'id=? AND farm_id=? AND kind=? AND active=1',
+            whereArgs: [entryId, farmId, old['kind']],
+          );
+          if (targets.isEmpty) throw const CatalogFailure('catalog.invalid');
+        }
+        final next = {
+          ...old,
+          'status': entryId == null ? 'rejected' : 'approved',
+          'entry_id': entryId,
+          'resolved_by': actorUid,
+          'resolved_at': occurredAt.toUtc().toIso8601String(),
+          'resolution': reason,
+        };
+        await tx.update(
+          requestsTable,
+          next,
+          where: 'id=? AND farm_id=?',
+          whereArgs: [requestId, farmId],
+        );
+        await _audit(
+          tx,
+          farmId: farmId,
+          actor: actorUid,
+          time: occurredAt,
+          reason: reason,
+          target: requestId,
+          action: 'resolve',
+          before: old,
+          after: next,
+        );
+        authorize();
+      });
+    } on DatabaseException catch (error) {
+      if (error.isUniqueConstraintError()) {
+        throw const CatalogFailure('catalog.duplicate');
       }
-      final next = {
-        ...old,
-        'status': entryId == null ? 'rejected' : 'approved',
-        'entry_id': entryId,
-        'resolved_by': actorUid,
-        'resolved_at': occurredAt.toUtc().toIso8601String(),
-        'resolution': reason,
-      };
-      await tx.update(
-        requestsTable,
-        next,
-        where: 'id=? AND farm_id=?',
-        whereArgs: [requestId, farmId],
-      );
-      await _audit(
-        tx,
-        farmId: farmId,
-        actor: actorUid,
-        time: occurredAt,
-        reason: reason,
-        target: requestId,
-        action: 'resolve',
-        before: old,
-        after: next,
-      );
-      authorize();
-    });
+      rethrow;
+    }
   }
 
   /// One-time adoption of already persisted values; never create entries from new form input.
