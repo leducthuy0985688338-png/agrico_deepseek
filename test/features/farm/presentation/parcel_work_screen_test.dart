@@ -5,9 +5,143 @@ import 'package:agrico_deepseek/features/farm/domain/entities/parcel_work.dart';
 import 'package:agrico_deepseek/features/farm/domain/repositories/parcel_work_repository.dart';
 import 'package:agrico_deepseek/features/farm/presentation/screens/parcel_work_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('read-only event details show resources, notes and no writes', (
+    tester,
+  ) async {
+    final repository = _WorkRepository();
+    repository.savedResources.add(
+      const WorkResource(
+        id: 'm1',
+        farmId: 'farm-1',
+        kind: WorkResourceKind.machine,
+        code: 'M001',
+        name: 'Máy khai hoang',
+        active: false,
+      ),
+    );
+    repository.savedEvents.add(
+      ParcelWorkEvent(
+        id: 'e1',
+        farmId: 'farm-1',
+        parcelId: 'parcel-1',
+        phase: ParcelWorkPhase.clearing,
+        description: 'Dọn thực bì',
+        occurredAt: DateTime(2026, 10, 7, 10, 30),
+        actorMembershipId: 'actor',
+        machineIds: const ['m1'],
+        workerIds: const ['missing-worker'],
+        areaM2: 500,
+        notes: 'Ghi chú tiếng Việt · ລາວ',
+      ),
+    );
+    const subject = AuthorizationSubject(
+      userId: 'user',
+      membershipId: 'actor',
+      farmId: 'farm-1',
+      permissionCodes: {PermissionCodes.fieldView, PermissionCodes.catalogView},
+      dataScopes: {DataScope.allFarm},
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('vi'),
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: ParcelWorkScreen(
+          parcelId: 'parcel-1',
+          subject: subject,
+          service: ParcelWorkService(repository),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('work-add-event')), findsNothing);
+    await tester.tap(find.byKey(const Key('work-event-e1')));
+    await tester.pumpAndSettle();
+    final dialog = find.byKey(const Key('work-event-details'));
+    expect(dialog, findsOneWidget);
+    expect(
+      find.descendant(
+        of: dialog,
+        matching: find.textContaining('M001 · Máy khai hoang'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: dialog,
+        matching: find.textContaining('missing-worker'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Diện tích thực hiện (m²): 500.0'), findsOneWidget);
+    expect(find.text('Ghi chú: Ghi chú tiếng Việt · ລາວ'), findsOneWidget);
+    expect(find.text('Thời gian thực hiện: 2026-10-07 10:30'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('work-close-event-details')));
+    await tester.pumpAndSettle();
+    expect(dialog, findsNothing);
+    expect(repository.savedEvents, hasLength(1));
+    expect(repository.savedResources, hasLength(1));
+  });
+
+  testWidgets('event details show empty optional values', (tester) async {
+    final repository = _WorkRepository();
+    repository.savedEvents.add(
+      ParcelWorkEvent(
+        id: 'e2',
+        farmId: 'farm-1',
+        parcelId: 'parcel-1',
+        phase: ParcelWorkPhase.cultivation,
+        description: 'Canh tác',
+        occurredAt: DateTime(2026, 10, 7),
+        actorMembershipId: 'actor',
+        machineIds: const [],
+        workerIds: const ['worker-id'],
+      ),
+    );
+    const subject = AuthorizationSubject(
+      userId: 'user',
+      membershipId: 'actor',
+      farmId: 'farm-1',
+      permissionCodes: {PermissionCodes.fieldView, PermissionCodes.catalogView},
+      dataScopes: {DataScope.allFarm},
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('vi'),
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: ParcelWorkScreen(
+          parcelId: 'parcel-1',
+          subject: subject,
+          service: ParcelWorkService(repository),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('work-event-e2')));
+    await tester.pumpAndSettle();
+    expect(find.text('Máy móc: —'), findsOneWidget);
+    expect(find.text('Diện tích thực hiện (m²): —'), findsOneWidget);
+    expect(find.text('Ghi chú: —'), findsOneWidget);
+    expect(find.text('Nhân công: worker-id'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    expect(repository.savedEvents, hasLength(1));
+  });
+
   testWidgets('records clearing with a machine and shows persisted event', (
     tester,
   ) async {
@@ -36,7 +170,13 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         locale: const Locale('vi'),
-        localizationsDelegates: const [AppLocalizations.delegate],
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
         home: ParcelWorkScreen(
           parcelId: 'parcel-1',
           subject: subject,

@@ -317,6 +317,84 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
     ),
   );
 
+  Future<void> showEventDetails(
+    ParcelWorkEvent event,
+    Map<String, WorkResource> byId,
+  ) async {
+    if (event.farmId != widget.subject.farmId ||
+        event.parcelId != widget.parcelId ||
+        !widget.subject.dataScopes.contains(DataScope.allFarm) ||
+        ![
+          PermissionCodes.fieldView,
+          if (widget.initialTask != null) PermissionCodes.taskView,
+        ].every(
+          (permission) => const AuthorizationService().can(
+            subject: widget.subject,
+            permission: permission,
+            resource: ResourceContext(
+              farmId: event.farmId,
+              fieldId: event.parcelId,
+            ),
+          ),
+        )) {
+      return;
+    }
+    final l10n = AppLocalizations.of(context);
+    String resourceLabel(String id) {
+      final resource = byId[id];
+      if (resource == null) return id;
+      return '${resource.code} · ${resource.name}'
+          '${resource.active ? '' : ' · ${l10n.text('catalog.inactive')}'}';
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const Key('work-event-details'),
+        title: Text(l10n.text('work.details')),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (widget.initialTask != null)
+                  Text(
+                    '${l10n.text('task.source')}: ${widget.initialTask!.title}',
+                  ),
+                Text(
+                  '${l10n.text('work.phase')}: ${l10n.text('work.${event.phase.name}')}',
+                ),
+                Text('${l10n.text('work.description')}: ${event.description}'),
+                Text(
+                  '${l10n.text('work.occurredAt')}: ${event.occurredAt.toLocal().toString().substring(0, 16)}',
+                ),
+                Text(
+                  '${l10n.text('work.machine')}: ${event.machineIds.isEmpty ? '—' : event.machineIds.map(resourceLabel).join('; ')}',
+                ),
+                Text(
+                  '${l10n.text('work.worker')}: ${event.workerIds.isEmpty ? '—' : event.workerIds.map(resourceLabel).join('; ')}',
+                ),
+                Text('${l10n.text('work.areaM2')}: ${event.areaM2 ?? '—'}'),
+                Text('${l10n.text('work.notes')}: ${event.notes ?? '—'}'),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            key: const Key('work-close-event-details'),
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(
+              MaterialLocalizations.of(dialogContext).closeButtonLabel,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -380,6 +458,9 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
               for (final event in events)
                 Card(
                   child: ListTile(
+                    key: Key('work-event-${event.id}'),
+                    onTap: () => showEventDetails(event, byId),
+                    trailing: const Icon(Icons.chevron_right),
                     title: Text(
                       '${l10n.text('work.${event.phase.name}')} · '
                       '${event.description}',
