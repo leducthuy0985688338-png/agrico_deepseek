@@ -91,6 +91,7 @@ class LocalRestorePreflight {
               'parcel_stage_snapshots',
               'parcel_derivations',
               'farm_tasks_v2',
+              'farm_task_work_links_v1',
               'agrico_production_parcel_sequences_v4',
               'agrico_production_standalone_plot_sequences_v1',
               'inventory_items_v2',
@@ -305,6 +306,25 @@ class LocalRestorePreflight {
       }
       if ((await staged.rawQuery('PRAGMA foreign_key_check')).isNotEmpty) {
         throw RestorePreflightException('foreignKeys', database: databaseName);
+      }
+      if (databaseName == 'agrico.db' &&
+          tables.contains('farm_task_work_links_v1')) {
+        step = 'task work links';
+        final invalid = await staged.rawQuery('''
+          SELECT l.event_id FROM farm_task_work_links_v1 l
+          LEFT JOIN farm_tasks_v2 t ON t.id = l.task_id
+          LEFT JOIN parcel_work_events e ON e.id = l.event_id
+          WHERE t.id IS NULL OR e.id IS NULL OR t.parcel_id IS NULL
+            OR t.farm_id != e.farm_id OR t.parcel_id != e.parcel_id
+          LIMIT 1
+        ''');
+        if (invalid.isNotEmpty) {
+          throw RestorePreflightException(
+            'integrity',
+            database: databaseName,
+            step: step,
+          );
+        }
       }
       if (databaseName == 'agrico.db' && tables.containsAll(catalogTables)) {
         final invalidUnits = await staged.rawQuery('''

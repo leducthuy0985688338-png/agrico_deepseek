@@ -107,51 +107,59 @@ class SqliteParcelWorkRepository implements ParcelWorkRepository {
   @override
   Future<void> record(ParcelWorkEvent event) async {
     event.validate();
-    await database.transaction((tx) async {
-      final parcel = await tx.query(
-        SqliteLandParcelRepository.parcelTable,
-        columns: ['id'],
-        where: 'id = ? AND farm_id = ?',
-        whereArgs: [event.parcelId, event.farmId],
-        limit: 1,
-      );
-      if (parcel.isEmpty)
-        throw StateError('Parcel is outside the current farm.');
-      for (final (kind, ids) in [
-        (WorkResourceKind.machine, event.machineIds),
-        (WorkResourceKind.worker, event.workerIds),
-      ]) {
-        for (final id in ids) {
-          final resource = await tx.query(
-            resourcesTable,
-            columns: ['id'],
-            where: 'id = ? AND farm_id = ? AND kind = ? AND active = 1',
-            whereArgs: [id, event.farmId, kind.name],
-            limit: 1,
-          );
-          if (resource.isEmpty) {
-            throw StateError('Work resource is unavailable in this farm.');
-          }
+    await database.transaction((tx) => recordInTransaction(tx, event));
+  }
+
+  /// Shared write path so a task link and its event commit together.
+  static Future<void> recordInTransaction(
+    Transaction tx,
+    ParcelWorkEvent event,
+  ) async {
+    event.validate();
+    final parcel = await tx.query(
+      SqliteLandParcelRepository.parcelTable,
+      columns: ['id'],
+      where: 'id = ? AND farm_id = ?',
+      whereArgs: [event.parcelId, event.farmId],
+      limit: 1,
+    );
+    if (parcel.isEmpty) {
+      throw StateError('Parcel is outside the current farm.');
+    }
+    for (final (kind, ids) in [
+      (WorkResourceKind.machine, event.machineIds),
+      (WorkResourceKind.worker, event.workerIds),
+    ]) {
+      for (final id in ids) {
+        final resource = await tx.query(
+          resourcesTable,
+          columns: ['id'],
+          where: 'id = ? AND farm_id = ? AND kind = ? AND active = 1',
+          whereArgs: [id, event.farmId, kind.name],
+          limit: 1,
+        );
+        if (resource.isEmpty) {
+          throw StateError('Work resource is unavailable in this farm.');
         }
       }
-      await tx.insert(eventsTable, {
-        'id': event.id,
-        'farm_id': event.farmId,
-        'parcel_id': event.parcelId,
-        'phase': event.phase.name,
-        'description': event.description,
-        'occurred_at': event.occurredAt.toUtc().toIso8601String(),
-        'actor_membership_id': event.actorMembershipId,
-        'area_m2': event.areaM2,
-        'notes': event.notes,
-      }, conflictAlgorithm: ConflictAlgorithm.abort);
-      for (final id in [...event.machineIds, ...event.workerIds]) {
-        await tx.insert(assignmentsTable, {
-          'event_id': event.id,
-          'resource_id': id,
-        });
-      }
-    });
+    }
+    await tx.insert(eventsTable, {
+      'id': event.id,
+      'farm_id': event.farmId,
+      'parcel_id': event.parcelId,
+      'phase': event.phase.name,
+      'description': event.description,
+      'occurred_at': event.occurredAt.toUtc().toIso8601String(),
+      'actor_membership_id': event.actorMembershipId,
+      'area_m2': event.areaM2,
+      'notes': event.notes,
+    }, conflictAlgorithm: ConflictAlgorithm.abort);
+    for (final id in [...event.machineIds, ...event.workerIds]) {
+      await tx.insert(assignmentsTable, {
+        'event_id': event.id,
+        'resource_id': id,
+      });
+    }
   }
 
   @override

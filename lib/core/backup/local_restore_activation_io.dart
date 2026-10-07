@@ -154,6 +154,15 @@ class LocalRestoreActivation {
             data[entry.key]!['tables'] as Map<String, dynamic>,
           );
           if (entry.key == 'agrico.db') {
+            if (!tables.containsKey('farm_task_work_links_v1')) {
+              final links = await tx.rawQuery(
+                "SELECT name FROM main.sqlite_master WHERE type='table' "
+                "AND name='farm_task_work_links_v1'",
+              );
+              if (links.isNotEmpty) {
+                tables['farm_task_work_links_v1'] = <dynamic>[];
+              }
+            }
             final installed = await tx.rawQuery(
               "SELECT name FROM main.sqlite_master WHERE type='table' AND name='company_catalog_entries_v1'",
             );
@@ -174,8 +183,12 @@ class LocalRestoreActivation {
             _checkName(table);
             _step = '${entry.key}.delete.$table';
             if (entry.key == 'agrico.db' && table == 'land_parcels') {
-              final columns = await tx.rawQuery('PRAGMA main.table_info(land_parcels)');
-              if (columns.any((column) => column['name'] == 'parent_block_id')) {
+              final columns = await tx.rawQuery(
+                'PRAGMA main.table_info(land_parcels)',
+              );
+              if (columns.any(
+                (column) => column['name'] == 'parent_block_id',
+              )) {
                 await tx.execute(
                   'DELETE FROM main.land_parcels WHERE parent_block_id IS NOT NULL',
                 );
@@ -277,11 +290,14 @@ class LocalRestoreActivation {
   }
 
   Future<void> _writeResult(String status, {Object? failure}) async {
-    await _result.writeAsString(jsonEncode({
-      'status': status,
-      if (failure != null) 'step': _step,
-      if (failure != null) 'diagnostic': _diagnostic(failure),
-    }), flush: true);
+    await _result.writeAsString(
+      jsonEncode({
+        'status': status,
+        if (failure != null) 'step': _step,
+        if (failure != null) 'diagnostic': _diagnostic(failure),
+      }),
+      flush: true,
+    );
   }
 
   // Store categories only, never SQL arguments, business data or passwords.
@@ -291,11 +307,21 @@ class LocalRestoreActivation {
     }
     final message = failure.toString().toLowerCase();
     for (final category in [
-      'foreign key constraint', 'unique constraint', 'not null constraint',
-      'check constraint', 'no such table', 'no such column',
-      'database is locked', 'database is busy', 'readonly database',
-      'disk is full', 'rollback journal', 'cannot change',
-      'cannot delete', 'immutable', 'append-only',
+      'foreign key constraint',
+      'unique constraint',
+      'not null constraint',
+      'check constraint',
+      'no such table',
+      'no such column',
+      'database is locked',
+      'database is busy',
+      'readonly database',
+      'disk is full',
+      'rollback journal',
+      'cannot change',
+      'cannot delete',
+      'immutable',
+      'append-only',
     ]) {
       if (message.contains(category)) return '${failure.runtimeType}:$category';
     }
