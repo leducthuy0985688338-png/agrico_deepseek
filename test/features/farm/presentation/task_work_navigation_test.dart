@@ -60,6 +60,105 @@ Widget app(Widget screen) => MaterialApp(
 );
 
 void main() {
+  testWidgets('read-only task history opens without a form or writes', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final tasks = _Tasks(task());
+    final work = _Work();
+    final linked = _Links(work);
+    final event = ParcelWorkEvent(
+      id: 'history-1',
+      farmId: 'farm-1',
+      parcelId: 'parcel-1',
+      phase: ParcelWorkPhase.clearing,
+      description: 'Lần thực hiện đã lưu',
+      occurredAt: DateTime(2026, 10, 7),
+      actorMembershipId: 'member',
+      machineIds: const ['m1'],
+      workerIds: const [],
+    );
+    linked.saved.add(('task-1', event));
+    linked.saved.add((
+      'other-task',
+      ParcelWorkEvent(
+        id: 'history-2',
+        farmId: 'farm-1',
+        parcelId: 'parcel-1',
+        phase: ParcelWorkPhase.clearing,
+        description: 'Thực hiện tác vụ khác',
+        occurredAt: DateTime(2026, 10, 7),
+        actorMembershipId: 'member',
+        machineIds: const ['m1'],
+        workerIds: const [],
+      ),
+    ));
+    final controller = FarmTaskController(
+      subject: subject(
+        codes: permissions.difference({PermissionCodes.fieldEdit}),
+      ),
+      service: FarmTaskService(tasks),
+    );
+    await controller.load();
+    await tester.pumpWidget(
+      app(
+        FarmTaskScreen(
+          controller: controller,
+          resources: ParcelWorkService(work),
+          parcels: const [],
+          taskWork: TaskWorkService(linked),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('farm-task-details-task-1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('farm-task-record-work')), findsNothing);
+    await tester.tap(find.byKey(const Key('farm-task-view-work')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ParcelWorkScreen), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.textContaining('Lần thực hiện đã lưu'), findsOneWidget);
+    expect(find.textContaining('Thực hiện tác vụ khác'), findsNothing);
+    expect(find.byKey(const Key('work-add-event')), findsNothing);
+    await tester.tap(find.byIcon(Icons.refresh));
+    await tester.pumpAndSettle();
+    expect(linked.saved, hasLength(2));
+    expect(tasks.current.status, FarmTaskStatus.pending);
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+  });
+
+  testWidgets('history action respects explicit read scopes', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final work = _Work();
+    final controller = FarmTaskController(
+      subject: subject(overrides: {PermissionCodes.fieldView: {}}),
+      service: FarmTaskService(_Tasks(task())),
+    );
+    await controller.load();
+    await tester.pumpWidget(
+      app(
+        FarmTaskScreen(
+          controller: controller,
+          resources: ParcelWorkService(work),
+          parcels: const [],
+          taskWork: TaskWorkService(_Links(work)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('farm-task-details-task-1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('farm-task-view-work')), findsNothing);
+    expect(find.byKey(const Key('farm-task-record-work')), findsNothing);
+    expect(find.byKey(const Key('farm-task-view-work')), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+  });
+
   testWidgets(
     'task action opens prefilled work, cancel writes nothing, save keeps status',
     (tester) async {
@@ -198,6 +297,7 @@ void main() {
     await tester.tap(find.byKey(const Key('farm-task-details-task-1')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('farm-task-record-work')), findsNothing);
+    expect(find.byKey(const Key('farm-task-view-work')), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
   });

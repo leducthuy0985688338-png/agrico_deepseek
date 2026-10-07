@@ -79,7 +79,7 @@ class _FarmTaskScreenState extends State<FarmTaskScreen> {
     );
   }
 
-  bool _canRecordWork(FarmTask task) =>
+  bool _canViewWork(FarmTask task) =>
       widget.taskWork != null &&
       task.parcelId != null &&
       task.farmId == controller.subject.farmId &&
@@ -87,7 +87,6 @@ class _FarmTaskScreenState extends State<FarmTaskScreen> {
       [
         PermissionCodes.taskView,
         PermissionCodes.fieldView,
-        PermissionCodes.fieldEdit,
         PermissionCodes.catalogView,
       ].every(
         (permission) => const AuthorizationService().can(
@@ -98,6 +97,14 @@ class _FarmTaskScreenState extends State<FarmTaskScreen> {
             fieldId: task.parcelId,
           ),
         ),
+      );
+
+  bool _canRecordWork(FarmTask task) =>
+      _canViewWork(task) &&
+      const AuthorizationService().can(
+        subject: controller.subject,
+        permission: PermissionCodes.fieldEdit,
+        resource: ResourceContext(farmId: task.farmId, fieldId: task.parcelId),
       );
 
   Future<void> _details(BuildContext context, FarmTask task) async {
@@ -165,6 +172,12 @@ class _FarmTaskScreenState extends State<FarmTaskScreen> {
           ),
         ),
         actions: [
+          if (_canViewWork(task))
+            TextButton(
+              key: const Key('farm-task-view-work'),
+              onPressed: () => Navigator.pop(dialogContext, 'view-work'),
+              child: Text(l10n.text('task.viewWork')),
+            ),
           if (_canRecordWork(task))
             TextButton(
               key: const Key('farm-task-record-work'),
@@ -199,7 +212,8 @@ class _FarmTaskScreenState extends State<FarmTaskScreen> {
       ),
     );
     if (!context.mounted) return;
-    if (action == 'record-work' && _canRecordWork(task)) {
+    if ((action == 'record-work' && _canRecordWork(task)) ||
+        (action == 'view-work' && _canViewWork(task))) {
       await Navigator.of(context).push<void>(
         MaterialPageRoute(
           builder: (_) => ParcelWorkScreen(
@@ -208,7 +222,7 @@ class _FarmTaskScreenState extends State<FarmTaskScreen> {
             service: resources,
             initialTask: task,
             taskWork: widget.taskWork,
-            openEventOnLoad: true,
+            openEventOnLoad: action == 'record-work',
           ),
         ),
       );
