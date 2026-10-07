@@ -242,10 +242,9 @@ class _FarmTaskScreenState extends State<FarmTaskScreen> {
             task.description.toLowerCase().contains(query)),
         ).toList();
         final parcelIds = <String>{
-          if (parcelFilter != null) parcelFilter!,
+          ?parcelFilter,
           for (final p in parcels) p.id,
-          for (final task in controller.items)
-            if (task.parcelId != null) task.parcelId!,
+          for (final task in controller.items) ?task.parcelId,
         };
         String parcelLabel(String id) {
           final matches = parcels.where((p) => p.id == id);
