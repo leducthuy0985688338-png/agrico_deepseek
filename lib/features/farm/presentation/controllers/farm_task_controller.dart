@@ -33,6 +33,16 @@ class FarmTaskController extends ChangeNotifier {
     await load();
   }
 
+  Future<void> update(FarmTask task) async {
+    await service.update(subject, task);
+    await load();
+  }
+
+  Future<void> changeStatus(String taskId, FarmTaskStatus status) async {
+    await service.changeStatus(subject, taskId, status);
+    await load();
+  }
+
   Future<void> complete(String taskId) async {
     await service.complete(subject, taskId);
     await load();

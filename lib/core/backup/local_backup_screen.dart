@@ -7,6 +7,8 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../services/production_cost_database.dart';
 import '../localization/app_localizations.dart';
+import '../permissions/authorization.dart';
+import 'local_backup_access.dart';
 import 'local_database_snapshot.dart';
 import 'local_encrypted_backup.dart';
 import 'local_media_snapshot.dart';
@@ -14,8 +16,9 @@ import 'local_restore_activation.dart';
 import 'local_restore_preflight.dart';
 
 class LocalBackupScreen extends StatefulWidget {
-  const LocalBackupScreen({super.key, required this.database});
+  const LocalBackupScreen({super.key, required this.database, required this.access});
   final Database database;
+  final LocalBackupAccess access;
 
   @override
   State<LocalBackupScreen> createState() => _LocalBackupScreenState();
@@ -31,11 +34,15 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
   Uint8List? validatedBackup;
   bool restoreScheduled = false;
   String? restoreStatus;
+  String? restoreDiagnostic;
   bool legacyUnencrypted = false;
 
   @override
   void initState() {
     super.initState();
+    localRestoreDiagnostic().then((diagnostic) {
+      if (mounted) setState(() => restoreDiagnostic = diagnostic);
+    });
     localRestoreStatus().then((status) {
       if (mounted) setState(() => restoreStatus = status);
     });
@@ -44,20 +51,27 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
   Future<void> _export() async {
     setState(() { busy = true; error = null; validatedBackup = null; preflightPassed = false; legacyUnencrypted = false; });
     try {
+      widget.access.require(PermissionCodes.localBackupExport);
       final password = await _newPassword();
       if (password == null) return;
       final costs = await ProductionCostDatabase().database;
-      final bytes = await LocalMediaSnapshot.create(widget.database, costs);
+      final bytes = await widget.access.execute(
+        PermissionCodes.localBackupExport,
+        () => LocalMediaSnapshot.create(widget.database, costs),
+      );
       final encrypted = await LocalEncryptedBackup.encrypt(bytes, password);
       final now = DateTime.now().toUtc();
       final date = '${now.year}${now.month.toString().padLeft(2, '0')}'
           '${now.day.toString().padLeft(2, '0')}';
+      widget.access.require(PermissionCodes.localBackupExport);
       final destination = await FilePicker.platform.saveFile(
         dialogTitle: 'AGRICO', fileName: 'AGRICO-$date.agrico', bytes: encrypted,
       );
       if (destination != null && mounted) {
         setState(() { preview = LocalDatabaseSnapshot.inspect(bytes); preflightPassed = false; legacyUnencrypted = false; });
       }
+    } on LocalBackupPermissionException {
+      if (mounted) setState(() => error = 'error.permissionDenied');
     } catch (_) {
       if (mounted) setState(() => error = 'backup.exportFailed');
     } finally {
@@ -68,6 +82,7 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
   Future<void> _inspect() async {
     setState(() { busy = true; error = null; validatedBackup = null; preflightPassed = false; legacyUnencrypted = false; });
     try {
+      widget.access.requireOpen();
       final selected = await FilePicker.platform.pickFiles(
         type: FileType.custom, allowedExtensions: ['json', 'agrico'], withData: true,
       );
@@ -76,12 +91,15 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
       if (bytes == null) throw const FormatException('Cannot read backup.');
       final plain = await _readSelected(Uint8List.fromList(bytes));
       if (plain == null) return;
+      widget.access.requireOpen();
       LocalMediaSnapshot.validate(plain);
       final counts = LocalDatabaseSnapshot.inspect(plain);
       if (mounted) setState(() { preview = counts; preflightPassed = false; });
       if (legacyUnencrypted) await _showLegacyWarning();
     } on BackupPasswordException {
       if (mounted) setState(() => error = 'backup.passwordInvalid');
+    } on LocalBackupPermissionException {
+      if (mounted) setState(() => error = 'error.permissionDenied');
     } catch (_) {
       if (mounted) setState(() => error = 'backup.invalid');
     } finally {
@@ -92,6 +110,7 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
   Future<void> _preflight() async {
     setState(() { busy = true; error = null; errorDatabase = null; errorStep = null; preview = null; validatedBackup = null; preflightPassed = false; legacyUnencrypted = false; });
     try {
+      widget.access.require(PermissionCodes.cloudRestore);
       final selected = await FilePicker.platform.pickFiles(
         type: FileType.custom, allowedExtensions: ['json', 'agrico'], withData: true,
       );
@@ -112,6 +131,8 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
           errorStep = failure.step;
         });
       }
+    } on LocalBackupPermissionException {
+      if (mounted) setState(() => error = 'error.permissionDenied');
     } catch (_) {
       if (mounted) setState(() => error = 'backup.preflightFailed');
     } finally {
@@ -123,7 +144,9 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
     setState(() { busy = true; error = null; preview = null;
       validatedBackup = null; preflightPassed = false; legacyUnencrypted = false; });
     try {
-      final bytes = await previousLocalRestoreBackup();
+      final bytes = await widget.access.execute(
+        PermissionCodes.cloudRestore, previousLocalRestoreBackup,
+      );
       if (bytes == null) throw const FormatException('No previous backup.');
       await _validateRestoreBytes(bytes);
       if (mounted) setState(() => legacyUnencrypted = false);
@@ -135,6 +158,8 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
           errorStep = failure.step;
         });
       }
+    } on LocalBackupPermissionException {
+      if (mounted) setState(() => error = 'error.permissionDenied');
     } catch (_) {
       if (mounted) setState(() => error = 'backup.preflightFailed');
     } finally {
@@ -143,6 +168,7 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
   }
 
   Future<Uint8List?> _readSelected(Uint8List bytes) async {
+    widget.access.requireOpen();
     final encrypted = LocalEncryptedBackup.isEncrypted(bytes);
     if (mounted) setState(() => legacyUnencrypted = !encrypted);
     if (!encrypted) return bytes;
@@ -180,9 +206,11 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
   }
 
   Future<void> _validateRestoreBytes(Uint8List bytes) async {
+    widget.access.require(PermissionCodes.cloudRestore);
     LocalMediaSnapshot.validate(bytes);
     final costs = await ProductionCostDatabase().database;
     final temporary = await getTemporaryDirectory();
+    widget.access.require(PermissionCodes.cloudRestore);
     final counts = await LocalRestorePreflight.validate(
       bytes: bytes,
       primary: widget.database,
@@ -219,8 +247,12 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
     if (confirmed != true || !mounted) return;
     setState(() { busy = true; error = null; });
     try {
-      await scheduleLocalRestore(bytes);
+      await widget.access.execute(
+        PermissionCodes.cloudRestore, () => scheduleLocalRestore(bytes),
+      );
       if (mounted) setState(() => restoreScheduled = true);
+    } on LocalBackupPermissionException {
+      if (mounted) setState(() => error = 'error.permissionDenied');
     } catch (_) {
       if (mounted) setState(() => error = 'backup.applyFailed');
     } finally {
@@ -240,32 +272,34 @@ class _LocalBackupScreenState extends State<LocalBackupScreen> {
         if (legacyUnencrypted) Text(l10n.text('backup.legacyUnencrypted')),
         if (restoreStatus == 'applied') Text(l10n.text('backup.applied')),
         if (restoreStatus == 'failed') Text(l10n.text('backup.applyFailed')),
+        if (restoreDiagnostic != null)
+          SelectableText(restoreDiagnostic!, key: const Key('restore-diagnostic')),
         if (restoreScheduled) Text(l10n.text('backup.scheduled')),
         const SizedBox(height: 16),
         FilledButton.icon(
-          onPressed: busy ? null : _export,
+          onPressed: busy || !widget.access.can(PermissionCodes.localBackupExport) ? null : _export,
           icon: const Icon(Icons.save_alt),
           label: Text(l10n.text('backup.export')),
         ),
         OutlinedButton.icon(
-          onPressed: busy ? null : _inspect,
+          onPressed: busy || !widget.access.canOpen ? null : _inspect,
           icon: const Icon(Icons.fact_check_outlined),
           label: Text(l10n.text('backup.inspect')),
         ),
         OutlinedButton.icon(
-          onPressed: busy ? null : _preflight,
+          onPressed: busy || !widget.access.can(PermissionCodes.cloudRestore) ? null : _preflight,
           icon: const Icon(Icons.verified_outlined),
           label: Text(l10n.text('backup.preflight')),
         ),
         if (restoreStatus == 'applied')
           OutlinedButton.icon(
-            onPressed: busy ? null : _loadPrevious,
+            onPressed: busy || !widget.access.can(PermissionCodes.cloudRestore) ? null : _loadPrevious,
             icon: const Icon(Icons.history),
             label: Text(l10n.text('backup.previous')),
           ),
         if (preflightPassed && !restoreScheduled)
           FilledButton.icon(
-            onPressed: busy ? null : _scheduleRestore,
+            onPressed: busy || !widget.access.can(PermissionCodes.cloudRestore) ? null : _scheduleRestore,
             icon: const Icon(Icons.restore),
             label: Text(l10n.text('backup.apply')),
           ),

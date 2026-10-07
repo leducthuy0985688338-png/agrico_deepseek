@@ -50,7 +50,10 @@ class ScreenActions implements CatalogSyncActions {
     unpublished: manager && !blocked
         ? [CatalogPublicationReview.fromRow(unit())]
         : [],
-    labels: const {'entry/kg': 'KG · Kilogram'},
+    labels: const {
+      'entry/kg': 'KG · Kilogram',
+      'request/kg-request': 'KG · Kilogram',
+    },
   );
   @override
   Future<bool> synchronize() async {
@@ -208,6 +211,12 @@ void main() {
         try {
           await SqliteCompanyCatalog.createSchema(db);
           await db.insert(SqliteCompanyCatalog.entriesTable, unit());
+          await db.insert(SqliteCompanyCatalog.requestsTable, {
+            'id': 'kg-request', 'farm_id': 'farm', 'actor_uid': 'staff',
+            'kind': 'unit', 'code': 'KG', 'name': 'Kilogram',
+            'reason': 'Need a unit', 'created_at': '2026-10-05T00:00:00.000Z',
+            'status': 'pending',
+          });
           await db.insert(CatalogSyncJournal.device, {
             'farm_id': 'farm',
             'restore_blocked': 1,
@@ -263,8 +272,24 @@ void main() {
             .onPressed,
         isNull,
       );
-      await reveal(tester, find.byType(CheckboxListTile), delta: -150);
-      await tester.tap(find.byType(CheckboxListTile));
+      final entry = find.byKey(const Key('catalog-sync-retain-entry/kg'));
+      final request = find.byKey(
+        const Key('catalog-sync-retain-request/kg-request'),
+      );
+      await reveal(tester, entry, delta: -150);
+      expect(find.text('Danh mục\nentry/kg'), findsOneWidget);
+      await tester.tap(entry);
+      await tester.pumpAndSettle();
+      await reveal(tester, request);
+      expect(find.text('Đề nghị bổ sung\nrequest/kg-request'), findsOneWidget);
+      expect(tester.widget<CheckboxListTile>(request).value, isFalse);
+      expect(
+        tester.widget<OutlinedButton>(
+          find.byKey(const Key('catalog-sync-release-restore')),
+        ).onPressed,
+        isNull,
+      );
+      await tester.tap(request);
       await tester.pumpAndSettle();
       await reveal(
         tester,
@@ -279,7 +304,7 @@ void main() {
       await tester.tap(find.byKey(const Key('catalog-sync-confirm')));
       await tester.pumpAndSettle();
       expect(a.releases, 1);
-      expect(a.retained, {'entry/kg'});
+      expect(a.retained, {'entry/kg', 'request/kg-request'});
       expect(a.sends, 0);
     },
   );

@@ -31,9 +31,28 @@ class FarmTaskService {
     return repository.create(task);
   }
 
+  Future<void> update(AuthorizationSubject subject, FarmTask task) {
+    _authorize(subject, PermissionCodes.taskEdit, parcelId: task.parcelId);
+    if (task.farmId != subject.farmId) {
+      throw StateError('Task is outside the current farm.');
+    }
+    task.validate();
+    return repository.update(task);
+  }
+
   Future<List<FarmTask>> list(AuthorizationSubject subject) {
     _authorize(subject, PermissionCodes.taskView);
     return repository.listByFarm(subject.farmId);
+  }
+
+  Future<void> changeStatus(AuthorizationSubject subject, String taskId,
+      FarmTaskStatus status) {
+    _authorize(subject, PermissionCodes.taskEdit);
+    if (taskId.trim().isEmpty ||
+        (status != FarmTaskStatus.inProgress && status != FarmTaskStatus.delayed)) {
+      throw const FormatException('Invalid task status transition.');
+    }
+    return repository.changeStatus(farmId: subject.farmId, id: taskId, status: status);
   }
 
   Future<void> complete(AuthorizationSubject subject, String taskId) {

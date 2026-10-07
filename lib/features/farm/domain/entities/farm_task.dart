@@ -26,6 +26,15 @@ class FarmTask {
   final String? workerResourceId;
   final String? machineResourceId;
 
+  bool isOverdueOn(DateTime now) {
+    if (status == FarmTaskStatus.completed) return false;
+    final localDue = dueAt.toLocal();
+    final localNow = now.toLocal();
+    return DateTime(localDue.year, localDue.month, localDue.day).isBefore(
+      DateTime(localNow.year, localNow.month, localNow.day),
+    );
+  }
+
   void validate() {
     if (id.trim().isEmpty ||
         farmId.trim().isEmpty ||

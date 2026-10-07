@@ -88,6 +88,42 @@ class SqliteFarmTaskRepository implements FarmTaskRepository {
   }
 
   @override
+  Future<void> update(FarmTask task) async {
+    task.validate();
+    await database.transaction((tx) async {
+      final rows = await tx.query(table,
+        where: 'id = ? AND farm_id = ?', whereArgs: [task.id, task.farmId],
+        limit: 1);
+      if (rows.isEmpty) throw StateError('Task is missing in this farm.');
+      final previous = rows.single;
+      if (task.parcelId != null && task.parcelId != previous['parcel_id']) {
+        final parcel = await tx.query(SqliteLandParcelRepository.parcelTable,
+          columns: ['id'], where: 'id = ? AND farm_id = ? AND active = 1',
+          whereArgs: [task.parcelId, task.farmId], limit: 1);
+        if (parcel.isEmpty) throw StateError('Task parcel is unavailable.');
+      }
+      for (final (id, kind, column) in [
+        (task.workerResourceId, 'worker', 'worker_resource_id'),
+        (task.machineResourceId, 'machine', 'machine_resource_id'),
+      ]) {
+        if (id == null || id == previous[column]) continue;
+        final resource = await tx.query(SqliteParcelWorkRepository.resourcesTable,
+          columns: ['id'],
+          where: 'id = ? AND farm_id = ? AND kind = ? AND active = 1',
+          whereArgs: [id, task.farmId, kind], limit: 1);
+        if (resource.isEmpty) throw StateError('Task resource is unavailable.');
+      }
+      final changed = await tx.update(table, {
+        'title': task.title, 'description': task.description,
+        'due_at': task.dueAt.toIso8601String(), 'parcel_id': task.parcelId,
+        'worker_resource_id': task.workerResourceId,
+        'machine_resource_id': task.machineResourceId,
+      }, where: 'id = ? AND farm_id = ?', whereArgs: [task.id, task.farmId]);
+      if (changed != 1) throw StateError('Task is missing in this farm.');
+    });
+  }
+
+  @override
   Future<List<FarmTask>> listByFarm(String farmId) async {
     final rows = await database.query(
       table,
@@ -111,6 +147,20 @@ class SqliteFarmTaskRepository implements FarmTaskRepository {
         ),
       ),
     );
+  }
+
+  @override
+  Future<void> changeStatus({required String farmId, required String id,
+      required FarmTaskStatus status}) async {
+    if (status != FarmTaskStatus.inProgress && status != FarmTaskStatus.delayed) {
+      throw const FormatException('Use the separate completion operation.');
+    }
+    final changed = await database.update(table, {'status': status.name},
+      where: 'farm_id = ? AND id = ? AND status != ? AND status != ?',
+      whereArgs: [farmId, id, FarmTaskStatus.completed.name, status.name]);
+    if (changed != 1) {
+      throw StateError('Task is missing, completed or already in this status.');
+    }
   }
 
   @override

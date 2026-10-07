@@ -33,7 +33,7 @@ void main() {
     );
     expect(
       service.subject.permissionCodes,
-      isNot(contains(PermissionCodes.financeApprove)),
+      contains(PermissionCodes.financeApprove),
     );
     expect(service.offline, isFalse);
     expect(store.value!.verifiedAt, start);

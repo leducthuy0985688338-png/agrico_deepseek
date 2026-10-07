@@ -1,3 +1,5 @@
+import '../core/backup/local_backup_access.dart';
+import '../core/backup/local_backup_screen.dart';
 import '../core/auth/admin/company_account_admin_screen.dart';
 import '../core/auth/admin/company_account_admin_service.dart';
 import '../core/auth/admin/firebase_company_account_admin_repository.dart';
@@ -228,6 +230,24 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
             ),
           ),
         ),
+        onTasksRequested: const AuthorizationService().can(
+          subject: deps.subject,
+          permission: PermissionCodes.taskView,
+          resource: ResourceContext(farmId: deps.subject.farmId),
+        ) ? () => push(
+          FarmTaskScreen(
+            controller: deps.taskController,
+            initialParcelId: id,
+            parcels: deps.controller.items.map((item) => item.parcel).toList(),
+            resources: ParcelWorkService(
+              SqliteParcelWorkRepository(deps.database),
+              catalog: CompanyCatalogService(
+                repository: SqliteCompanyCatalog(deps.database),
+                subject: deps.subject,
+              ),
+            ),
+          ),
+        ) : null,
         onWorkRequested: () => push(
           ParcelWorkScreen(
             parcelId: id,
@@ -314,6 +334,18 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
                     CatalogSyncScreen(
                       actions: firebaseCatalogSyncWorkspace(
                         database: deps.database,
+                        currentSubject: () => mounted ? widget.subject : null,
+                      ),
+                    ),
+                  )
+                : null,
+            onOpenBackup: LocalBackupAccess(
+              currentSubject: () => mounted ? widget.subject : null,
+            ).canOpen
+                ? () => push(
+                    LocalBackupScreen(
+                      database: deps.database,
+                      access: LocalBackupAccess(
                         currentSubject: () => mounted ? widget.subject : null,
                       ),
                     ),

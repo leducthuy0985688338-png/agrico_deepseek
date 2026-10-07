@@ -17,6 +17,7 @@ class LocalRestoreActivation {
 
   final Directory directory;
   final DatabaseFactory factory;
+  String _step = 'pending.read';
 
   File get _pending =>
       File(p.join(directory.path, 'agrico-restore-pending.json'));
@@ -42,6 +43,7 @@ class LocalRestoreActivation {
   }
 
   Future<bool> applyPending() async {
+    _step = 'pending.read';
     if (!await _pending.exists()) return false;
     final pending =
         jsonDecode(await _pending.readAsString()) as Map<String, dynamic>;
@@ -59,8 +61,10 @@ class LocalRestoreActivation {
     Database? primary;
     Database? costs;
     try {
+      _step = 'database.open';
       primary = await factory.openDatabase(primaryPath);
       costs = await factory.openDatabase(costsPath);
+      _step = 'preflight';
       await LocalRestorePreflight.validate(
         bytes: Uint8List.fromList(bytes),
         primary: primary,
@@ -69,13 +73,16 @@ class LocalRestoreActivation {
         temporaryDirectory: directory.path,
       );
       if (!await previous.exists()) {
+        _step = 'previous.snapshot';
         final old = await LocalMediaSnapshot.create(primary, costs);
         await previous.writeAsBytes(old, flush: true);
       }
+      _step = 'database.close';
       await primary.close();
       primary = null;
       await costs.close();
       costs = null;
+      _step = 'media.materialize';
       final materialized = await LocalMediaSnapshot.materialize(
         Uint8List.fromList(bytes),
         directory,
@@ -94,8 +101,8 @@ class LocalRestoreActivation {
         // A retry on the next launch applies the same snapshot idempotently.
       }
       return true;
-    } catch (_) {
-      await _writeResult('failed');
+    } catch (failure) {
+      await _writeResult('failed', failure: failure);
       // Keep the old snapshot for recovery, but avoid retrying a bad import
       // automatically on every launch.
       if (await _pending.exists()) {
@@ -117,6 +124,7 @@ class LocalRestoreActivation {
     final db = await factory.openDatabase(mainPath);
     var committed = false;
     try {
+      _step = 'main.journal';
       await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
       if ((await db.rawQuery(
             'PRAGMA journal_mode=DELETE',
@@ -126,7 +134,9 @@ class LocalRestoreActivation {
       }
       await db.execute('PRAGMA synchronous=FULL');
       await db.execute('PRAGMA foreign_keys=OFF');
+      _step = 'costs.attach';
       await db.execute('ATTACH DATABASE ? AS restore_costs', [costsPath]);
+      _step = 'costs.journal';
       await db.rawQuery('PRAGMA restore_costs.wal_checkpoint(TRUNCATE)');
       if ((await db.rawQuery(
             'PRAGMA restore_costs.journal_mode=DELETE',
@@ -162,11 +172,29 @@ class LocalRestoreActivation {
           for (final table in tables.keys) {
             if (table == 'android_metadata') continue;
             _checkName(table);
+            _step = '${entry.key}.delete.$table';
+            if (entry.key == 'agrico.db' && table == 'land_parcels') {
+              final columns = await tx.rawQuery('PRAGMA main.table_info(land_parcels)');
+              if (columns.any((column) => column['name'] == 'parent_block_id')) {
+                await tx.execute(
+                  'DELETE FROM main.land_parcels WHERE parent_block_id IS NOT NULL',
+                );
+              }
+            }
             await tx.execute('DELETE FROM ${entry.value}."$table"');
           }
           for (final table in tables.entries) {
             if (table.key == 'android_metadata') continue;
-            for (final item in table.value as List) {
+            final rows = List<dynamic>.from(table.value as List);
+            if (entry.key == 'agrico.db' && table.key == 'land_parcels') {
+              // Typed parcel hierarchy has one level: landBlock -> fieldPlot.
+              rows.sort((a, b) {
+                final aChild = (a as Map)['parent_block_id'] != null ? 1 : 0;
+                final bChild = (b as Map)['parent_block_id'] != null ? 1 : 0;
+                return aChild.compareTo(bChild);
+              });
+            }
+            for (final item in rows) {
               final row = item as Map<String, dynamic>;
               final columns = row.keys.toList();
               for (final column in columns) {
@@ -174,6 +202,7 @@ class LocalRestoreActivation {
               }
               final names = columns.map((name) => '"$name"').join(', ');
               final placeholders = List.filled(columns.length, '?').join(', ');
+              _step = '${entry.key}.insert.${table.key}';
               await tx.rawInsert(
                 'INSERT INTO ${entry.value}."${table.key}" ($names) '
                 'VALUES ($placeholders)',
@@ -182,6 +211,7 @@ class LocalRestoreActivation {
             }
           }
         }
+        _step = 'catalog.quarantine';
         // Device send authority cannot be resurrected by a backup restore.
         final syncTables = await tx.rawQuery(
           "SELECT name FROM main.sqlite_master WHERE type='table' "
@@ -202,6 +232,7 @@ class LocalRestoreActivation {
             UNION SELECT 'local-farm',1''');
         }
         for (final alias in ['main', 'restore_costs']) {
+          _step = '$alias.integrity';
           if ((await tx.rawQuery(
             'PRAGMA $alias.foreign_key_check',
           )).isNotEmpty) {
@@ -245,8 +276,30 @@ class LocalRestoreActivation {
     return value;
   }
 
-  Future<void> _writeResult(String status) async {
-    await _result.writeAsString(jsonEncode({'status': status}), flush: true);
+  Future<void> _writeResult(String status, {Object? failure}) async {
+    await _result.writeAsString(jsonEncode({
+      'status': status,
+      if (failure != null) 'step': _step,
+      if (failure != null) 'diagnostic': _diagnostic(failure),
+    }), flush: true);
+  }
+
+  // Store categories only, never SQL arguments, business data or passwords.
+  static String _diagnostic(Object failure) {
+    if (failure is RestorePreflightException) {
+      return 'preflight:${failure.reason}:${failure.database}:${failure.step}';
+    }
+    final message = failure.toString().toLowerCase();
+    for (final category in [
+      'foreign key constraint', 'unique constraint', 'not null constraint',
+      'check constraint', 'no such table', 'no such column',
+      'database is locked', 'database is busy', 'readonly database',
+      'disk is full', 'rollback journal', 'cannot change',
+      'cannot delete', 'immutable', 'append-only',
+    ]) {
+      if (message.contains(category)) return '${failure.runtimeType}:$category';
+    }
+    return failure.runtimeType.toString();
   }
 
   Future<Uint8List?> previousBackup() async {
@@ -270,14 +323,14 @@ Future<void> applyPendingRestore() async {
   final activation = LocalRestoreActivation(directory, databaseFactory);
   try {
     await activation.applyPending();
-  } catch (_) {
+  } catch (failure) {
     final pending = File(p.join(directory.path, 'agrico-restore-pending.json'));
     if (await pending.exists()) {
       await pending.rename(
         '${pending.path}.${DateTime.now().microsecondsSinceEpoch}.failed',
       );
     }
-    await activation._writeResult('failed');
+    await activation._writeResult('failed', failure: failure);
   }
 }
 
@@ -297,4 +350,13 @@ Future<String?> localRestoreStatus() async {
 Future<Uint8List?> previousLocalRestoreBackup() async {
   final directory = await getApplicationDocumentsDirectory();
   return LocalRestoreActivation(directory, databaseFactory).previousBackup();
+}
+
+Future<String?> localRestoreDiagnostic() async {
+  final directory = await getApplicationDocumentsDirectory();
+  final file = File(p.join(directory.path, 'agrico-restore-result.json'));
+  if (!await file.exists()) return null;
+  final value = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+  if (value['status'] != 'failed' || value['step'] == null) return null;
+  return '${value['step']} | ${value['diagnostic']}';
 }

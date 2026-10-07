@@ -1,4 +1,6 @@
+import 'package:agrico_deepseek/features/farm/data/local/sqlite_land_parcel_repository.dart';
 import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -26,6 +28,62 @@ void main() {
     await costs.insert('expenses', {'id': 'backup'});
     return (directory: directory, primary: primary, costs: costs);
   }
+
+  test('restore orders real parcel parents and children and preserves triggers', () async {
+    final pair = await createPair();
+    final activation = LocalRestoreActivation(pair.directory, databaseFactoryFfi);
+    try {
+      await SqliteLandParcelRepository.createSchema(pair.primary);
+      Future<void> insert(String id, String kind, String? parent) =>
+          pair.primary.insert('land_parcels', {
+            'id': id, 'farm_id': 'local-farm', 'parcel_code': id,
+            'active': 1, 'boundary_version': 1, 'schema_version': 3,
+            'payload_json': '{}', 'kind': kind, 'parent_block_id': parent,
+          }).then((_) {});
+      await insert('z-block', 'landBlock', null);
+      await insert('a-child', 'fieldPlot', 'z-block');
+      await insert('standalone', 'fieldPlot', null);
+      final snapshot = await LocalDatabaseSnapshot.create(pair.primary,
+        costsDatabase: pair.costs);
+      // Force child-first backup order, independent of SQLite query order.
+      final databases = LocalDatabaseSnapshot.decodeDatabases(snapshot);
+      final tables = databases['agrico.db']!['tables'] as Map<String, dynamic>;
+      final rows = tables['land_parcels'] as List;
+      rows.sort((a, b) => (a['id'] as String).compareTo(b['id'] as String));
+      final body = jsonEncode({'databases': databases});
+      final bytes = Uint8List.fromList(utf8.encode(jsonEncode({
+        'format': LocalDatabaseSnapshot.format, 'version': 2,
+        'sha256': sha256.convert(utf8.encode(body)).toString(), 'payload': body,
+      })));
+      final triggersBefore = await pair.primary.rawQuery(
+        "SELECT name,sql FROM sqlite_master WHERE type='trigger' ORDER BY name",
+      );
+      await insert('extra-child', 'fieldPlot', 'z-block');
+      await pair.primary.close();
+      await pair.costs.close();
+      await activation.schedule(bytes);
+      expect(await activation.applyPending(), isTrue);
+      final db = await databaseFactoryFfi.openDatabase('${pair.directory.path}/agrico.db');
+      try {
+        expect((await db.query('land_parcels')).map((r) => r['id']),
+            unorderedEquals(['z-block', 'a-child', 'standalone']));
+        expect(await db.rawQuery(
+          "SELECT name,sql FROM sqlite_master WHERE type='trigger' ORDER BY name",
+        ), triggersBefore);
+        await expectLater(db.delete('land_parcels', where: 'id=?', whereArgs: ['z-block']),
+            throwsA(isA<Exception>()));
+        await expectLater(db.insert('land_parcels', {
+          'id': 'orphan', 'farm_id': 'local-farm', 'parcel_code': 'orphan',
+          'active': 1, 'boundary_version': 1, 'schema_version': 3,
+          'payload_json': '{}', 'kind': 'fieldPlot', 'parent_block_id': 'missing',
+        }), throwsA(isA<Exception>()));
+      } finally { await db.close(); }
+    } finally {
+      if (pair.primary.isOpen) await pair.primary.close();
+      if (pair.costs.isOpen) await pair.costs.close();
+      await pair.directory.delete(recursive: true);
+    }
+  });
 
   test('replaces both databases at startup and saves previous state', () async {
     final pair = await createPair();
@@ -101,6 +159,13 @@ void main() {
       await pair.costs.close();
       await activation.schedule(bytes);
       await expectLater(activation.applyPending(), throwsA(isA<Exception>()));
+      final result = jsonDecode(await File(
+        '${pair.directory.path}/agrico-restore-result.json',
+      ).readAsString()) as Map<String, dynamic>;
+      expect(result['status'], 'failed');
+      expect(result['step'], 'agrico_costs.db.insert.expenses');
+      expect(result['diagnostic'], isA<String>());
+      expect(result['diagnostic'].toString(), isNot(contains('INSERT INTO')));
       final primary = await databaseFactoryFfi.openDatabase(
         '${pair.directory.path}/agrico.db');
       final costs = await databaseFactoryFfi.openDatabase(

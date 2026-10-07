@@ -30,17 +30,7 @@ abstract final class CompanyRolePolicy {
     if (role != CompanyRole.auditor) PermissionCodes.catalogRequest,
     PermissionCodes.cloudSync,
     ...switch (role) {
-      CompanyRole.systemAdmin => const {
-        PermissionCodes.accountView,
-        PermissionCodes.accountManage,
-        PermissionCodes.roleManage,
-        PermissionCodes.catalogManage,
-        PermissionCodes.administrativeCatalogManage,
-        PermissionCodes.localBackupExport,
-        PermissionCodes.cloudRestore,
-        PermissionCodes.auditView,
-        PermissionCodes.dataExport,
-      },
+      CompanyRole.systemAdmin => PermissionCodes.values,
       CompanyRole.director => const {
         PermissionCodes.fieldView,
         PermissionCodes.cropView,
@@ -252,6 +242,9 @@ abstract final class CompanyRolePolicy {
   ) {
     if (assigned.isEmpty) {
       return const {};
+    }
+    if (role == CompanyRole.systemAdmin) {
+      return assigned;
     }
     if (permission == PermissionCodes.catalogView ||
         permission == PermissionCodes.cloudSync) {

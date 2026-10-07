@@ -153,4 +153,117 @@ void main() {
       FarmTaskStatus.completed,
     );
   });
+  test('editing persists metadata and links without changing identity or status', () async {
+    await repository.create(task(machineId: 'machine-1'));
+    await repository.complete(farmId: 'farm-1', id: 'task-1');
+    await database.update(SqliteParcelWorkRepository.resourcesTable,
+      {'active': 0}, where: 'id = ?', whereArgs: ['machine-1']);
+    final original = (await repository.listByFarm('farm-1')).single;
+    final changed = FarmTask(id: original.id, farmId: original.farmId,
+      title: 'Đã sửa', description: 'Ghi chú mới', status: FarmTaskStatus.pending,
+      dueAt: due.add(const Duration(days: 2)), createdAt: DateTime(2000),
+      machineResourceId: 'machine-1', workerResourceId: 'worker-1');
+    const updater = AuthorizationSubject(userId: 'user', membershipId: 'member',
+      farmId: 'farm-1', permissionCodes: {PermissionCodes.taskEdit},
+      dataScopes: {DataScope.allFarm});
+    await FarmTaskService(repository).update(updater, changed);
+    final saved = (await SqliteFarmTaskRepository(database).listByFarm('farm-1')).single;
+    expect(saved.title, 'Đã sửa');
+    expect(saved.description, 'Ghi chú mới');
+    expect(saved.dueAt, changed.dueAt);
+    expect(saved.createdAt, original.createdAt);
+    expect(saved.status, FarmTaskStatus.completed);
+    expect(saved.machineResourceId, 'machine-1');
+    expect(saved.workerResourceId, 'worker-1');
+    await repository.update(task());
+    final cleared = (await repository.listByFarm('farm-1')).single;
+    expect(cleared.machineResourceId, isNull);
+    expect(cleared.workerResourceId, isNull);
+    expect(cleared.status, FarmTaskStatus.completed);
+  });
+
+  test('editing rejects denied access, wrong farm and unavailable links atomically', () async {
+    await repository.create(task());
+    final service = FarmTaskService(repository);
+    expect(() => service.update(editor, task()), throwsStateError);
+    const denied = AuthorizationSubject(userId: 'user', membershipId: 'member',
+      farmId: 'farm-1', permissionCodes: {PermissionCodes.taskEdit},
+      permissionScopes: {PermissionCodes.taskEdit: <DataScope>{}}, dataScopes: {DataScope.allFarm});
+    expect(() => service.update(denied, task()), throwsStateError);
+    await expectLater(repository.update(task(farmId: 'farm-2')), throwsStateError);
+    await expectLater(repository.update(task(machineId: 'worker-1')), throwsStateError);
+    await expectLater(repository.update(task(workerId: 'other-worker')), throwsStateError);
+    await database.update(SqliteParcelWorkRepository.resourcesTable,
+      {'active': 0}, where: 'id = ?', whereArgs: ['machine-1']);
+    await expectLater(repository.update(task(machineId: 'machine-1')), throwsStateError);
+    final unchanged = (await repository.listByFarm('farm-1')).single;
+    expect(unchanged.title, 'Dọn thực bì');
+    expect(unchanged.machineResourceId, isNull);
+    expect(unchanged.workerResourceId, isNull);
+  });
+
+  test('status transitions persist and completed tasks cannot reopen', () async {
+    await repository.create(task(machineId: 'machine-1'));
+    final original = (await repository.listByFarm('farm-1')).single;
+    for (final status in [FarmTaskStatus.inProgress, FarmTaskStatus.delayed,
+        FarmTaskStatus.inProgress]) {
+      await repository.changeStatus(farmId: 'farm-1', id: 'task-1', status: status);
+      final saved = (await SqliteFarmTaskRepository(database).listByFarm('farm-1')).single;
+      expect(saved.status, status);
+      expect(saved.title, original.title);
+      expect(saved.createdAt, original.createdAt);
+      expect(saved.machineResourceId, original.machineResourceId);
+      await expectLater(repository.changeStatus(farmId: 'farm-1', id: 'task-1',
+        status: status), throwsStateError);
+    }
+    await repository.complete(farmId: 'farm-1', id: 'task-1');
+    await expectLater(repository.changeStatus(farmId: 'farm-1', id: 'task-1',
+      status: FarmTaskStatus.inProgress), throwsStateError);
+    expect((await repository.listByFarm('farm-1')).single.status, FarmTaskStatus.completed);
+  });
+
+  test('status changes enforce permission, farm and separate completion', () async {
+    await repository.create(task());
+    final service = FarmTaskService(repository);
+    expect(() => service.changeStatus(editor, 'task-1', FarmTaskStatus.inProgress),
+      throwsStateError);
+    const updater = AuthorizationSubject(userId: 'user', membershipId: 'member',
+      farmId: 'farm-1', permissionCodes: {PermissionCodes.taskEdit},
+      dataScopes: {DataScope.allFarm});
+    const denied = AuthorizationSubject(userId: 'user', membershipId: 'member',
+      farmId: 'farm-1', permissionCodes: {PermissionCodes.taskEdit},
+      permissionScopes: {PermissionCodes.taskEdit: <DataScope>{}},
+      dataScopes: {DataScope.allFarm});
+    expect(() => service.changeStatus(denied, 'task-1', FarmTaskStatus.inProgress),
+      throwsStateError);
+    expect(() => service.changeStatus(updater, 'task-1', FarmTaskStatus.completed),
+      throwsFormatException);
+    expect(() => service.changeStatus(updater, '', FarmTaskStatus.inProgress),
+      throwsFormatException);
+    await expectLater(repository.changeStatus(farmId: 'farm-2', id: 'task-1',
+      status: FarmTaskStatus.inProgress), throwsStateError);
+    await expectLater(repository.changeStatus(farmId: 'farm-1', id: 'missing',
+      status: FarmTaskStatus.inProgress), throwsStateError);
+    await expectLater(repository.changeStatus(farmId: 'farm-1', id: 'task-1',
+      status: FarmTaskStatus.completed), throwsFormatException);
+    await expectLater(repository.changeStatus(farmId: 'farm-1', id: 'task-1',
+      status: FarmTaskStatus.pending), throwsFormatException);
+    expect((await repository.listByFarm('farm-1')).single.status, FarmTaskStatus.pending);
+    await service.changeStatus(updater, 'task-1', FarmTaskStatus.inProgress);
+    expect((await repository.listByFarm('farm-1')).single.status, FarmTaskStatus.inProgress);
+  });
+
+  test('overdue uses local calendar days and excludes completed tasks', () {
+    final today = DateTime(2026, 10, 7, 23, 59);
+    FarmTask dated(DateTime dueAt, FarmTaskStatus status) => FarmTask(
+      id: 'dated', farmId: 'farm-1', title: 'Kiểm tra hạn', description: '',
+      status: status, dueAt: dueAt, createdAt: DateTime(2026, 10, 1));
+    for (final status in FarmTaskStatus.values) {
+      expect(dated(DateTime(2026, 10, 6, 23, 59), status).isOverdueOn(today),
+        status != FarmTaskStatus.completed);
+      expect(dated(DateTime(2026, 10, 7), status).isOverdueOn(today), isFalse);
+      expect(dated(DateTime(2026, 10, 8), status).isOverdueOn(today), isFalse);
+    }
+  });
+
 }

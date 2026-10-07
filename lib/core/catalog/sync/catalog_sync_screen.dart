@@ -121,6 +121,17 @@ class _CatalogSyncScreenState extends State<CatalogSyncScreen> {
     return key;
   }
 
+  String recordType(String key) => AppLocalizations.of(context).text(
+    key.startsWith('entry/') ? 'catalog.entries' : 'catalog.requests',
+  );
+
+  Widget restoreRecord(String key) => ListTile(
+    contentPadding: EdgeInsets.zero,
+    title: Text(label(key)),
+    subtitle: Text('${recordType(key)}\n$key'),
+    isThreeLine: true,
+  );
+
   Widget preview(String title, String? json) {
     final data = json == null
         ? null
@@ -229,12 +240,15 @@ class _CatalogSyncScreenState extends State<CatalogSyncScreen> {
       if (r != null) ...[
         Text('${t('matched')}: ${r.matched}'),
         heading('${t('divergent')}: ${r.divergent.length}'),
-        ...r.divergent.map((k) => Text(label(k))),
+        ...r.divergent.map(restoreRecord),
         heading('${t('remoteOnly')}: ${r.remoteOnly.length}'),
-        ...r.remoteOnly.map((k) => Text(label(k))),
+        ...r.remoteOnly.map(restoreRecord),
         heading(t('localOnly')),
         ...r.localOnly.map(
           (k) => CheckboxListTile(
+            key: Key('catalog-sync-retain-$k'),
+            subtitle: Text('${recordType(k)}\n$k'),
+            isThreeLine: true,
             contentPadding: EdgeInsets.zero,
             title: Text(label(k)),
             value: selected.contains(k),

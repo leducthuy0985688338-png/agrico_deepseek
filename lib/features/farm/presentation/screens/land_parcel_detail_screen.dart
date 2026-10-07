@@ -24,6 +24,7 @@ class LandParcelDetailScreen extends StatefulWidget {
     this.onOpenAttachment,
     this.landOnly = false,
     this.onWorkRequested,
+    this.onTasksRequested,
     this.onTimelineRequested,
   });
   final LandParcelController controller;
@@ -35,6 +36,7 @@ class LandParcelDetailScreen extends StatefulWidget {
   final Future<void> Function(ParcelAttachment)? onOpenAttachment;
   final bool landOnly;
   final VoidCallback? onWorkRequested;
+  final VoidCallback? onTasksRequested;
   final VoidCallback? onTimelineRequested;
 
   @override
@@ -154,6 +156,13 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (widget.onTasksRequested != null)
+            OutlinedButton.icon(
+              key: const Key('parcel-tasks'),
+              onPressed: widget.onTasksRequested,
+              icon: const Icon(Icons.task_alt),
+              label: Text(l10n.text('module.tasks')),
+            ),
           if (data.boundaryConsistency ==
               LandParcelBoundaryConsistency.needsReconciliation)
             Card(

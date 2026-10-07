@@ -60,13 +60,21 @@ void main() {
       });
     }
   }
-  test('admin catalog access does not grant business approval', () {
+  test('system admin has every registered permission in its farm', () {
     final p = profile([CompanyRole.systemAdmin]);
-    expect(allowed(p, PermissionCodes.catalogManage, farm), isTrue);
-    expect(allowed(p, PermissionCodes.financeApprove, farm), isFalse);
+    expect(CompanyRolePolicy.permissions(CompanyRole.systemAdmin),
+        unorderedEquals(PermissionCodes.values));
+    for (final permission in PermissionCodes.values) {
+      expect(allowed(p, permission, farm), isTrue, reason: permission);
+      expect(allowed(p, permission,
+          const ResourceContext(farmId: 'other')), isFalse, reason: permission);
+    }
+    expect(allowed(profile([CompanyRole.systemAdmin],
+        denied: {PermissionCodes.taskCreate}), PermissionCodes.taskCreate, farm),
+        isFalse);
   });
-  test('combining admin and operator does not broaden task access', () {
-    final p = profile([CompanyRole.systemAdmin, CompanyRole.machineOperator]);
+  test('operator alone keeps assigned task and machine access', () {
+    final p = profile([CompanyRole.machineOperator]);
     expect(
       allowed(
         p,
