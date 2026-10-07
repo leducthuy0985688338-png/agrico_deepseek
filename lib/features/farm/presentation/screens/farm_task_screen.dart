@@ -5,10 +5,12 @@ import 'package:flutter/material.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/permissions/authorization.dart';
 import '../../application/parcel_work_service.dart';
+import '../../application/task_work_service.dart';
 import '../../domain/entities/farm_task.dart';
 import '../../domain/entities/land_parcel.dart';
 import '../../domain/entities/parcel_work.dart';
 import '../controllers/farm_task_controller.dart';
+import 'parcel_work_screen.dart';
 
 class FarmTaskScreen extends StatefulWidget {
   const FarmTaskScreen({
@@ -17,12 +19,14 @@ class FarmTaskScreen extends StatefulWidget {
     required this.resources,
     required this.parcels,
     this.initialParcelId,
+    this.taskWork,
   });
 
   final FarmTaskController controller;
   final ParcelWorkService resources;
   final List<LandParcel> parcels;
   final String? initialParcelId;
+  final TaskWorkService? taskWork;
 
   @override
   State<FarmTaskScreen> createState() => _FarmTaskScreenState();
@@ -64,10 +68,37 @@ class _FarmTaskScreenState extends State<FarmTaskScreen> {
       );
 
   Future<void> _edit(BuildContext context, FarmTask task) async {
-    await showDialog<void>(context: context, builder: (_) => _CreateTaskDialog(
-      controller: controller, resources: resources, parcels: parcels, task: task,
-    ));
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _CreateTaskDialog(
+        controller: controller,
+        resources: resources,
+        parcels: parcels,
+        task: task,
+      ),
+    );
   }
+
+  bool _canRecordWork(FarmTask task) =>
+      widget.taskWork != null &&
+      task.parcelId != null &&
+      task.farmId == controller.subject.farmId &&
+      controller.subject.dataScopes.contains(DataScope.allFarm) &&
+      [
+        PermissionCodes.taskView,
+        PermissionCodes.fieldView,
+        PermissionCodes.fieldEdit,
+        PermissionCodes.catalogView,
+      ].every(
+        (permission) => const AuthorizationService().can(
+          subject: controller.subject,
+          permission: permission,
+          resource: ResourceContext(
+            farmId: task.farmId,
+            fieldId: task.parcelId,
+          ),
+        ),
+      );
 
   Future<void> _details(BuildContext context, FarmTask task) async {
     final l10n = AppLocalizations.of(context);
@@ -90,8 +121,10 @@ class _FarmTaskScreenState extends State<FarmTaskScreen> {
                 Text(l10n.text('task.${task.status.name}')),
                 if (task.isOverdueOn(DateTime.now()))
                   Text(l10n.text('task.overdue')),
-                Text('${l10n.text('task.due')}: '
-                    '${task.dueAt.year}-${task.dueAt.month}-${task.dueAt.day}'),
+                Text(
+                  '${l10n.text('task.due')}: '
+                  '${task.dueAt.year}-${task.dueAt.month}-${task.dueAt.day}',
+                ),
                 Text('${l10n.text('work.description')}: ${task.description}'),
                 Text('${l10n.text('task.parcel')}: $parcelLabel'),
                 FutureBuilder<List<WorkResource>>(
@@ -111,13 +144,18 @@ class _FarmTaskScreenState extends State<FarmTaskScreen> {
                       return '${r.code} · ${r.name}'
                           '${r.active ? '' : ' · ${l10n.text('catalog.inactive')}'}';
                     }
+
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('${l10n.text('work.machine')}: '
-                            '${resourceLabel(task.machineResourceId)}'),
-                        Text('${l10n.text('work.worker')}: '
-                            '${resourceLabel(task.workerResourceId)}'),
+                        Text(
+                          '${l10n.text('work.machine')}: '
+                          '${resourceLabel(task.machineResourceId)}',
+                        ),
+                        Text(
+                          '${l10n.text('work.worker')}: '
+                          '${resourceLabel(task.workerResourceId)}',
+                        ),
                       ],
                     );
                   },
@@ -127,8 +165,17 @@ class _FarmTaskScreenState extends State<FarmTaskScreen> {
           ),
         ),
         actions: [
+          if (_canRecordWork(task))
+            TextButton(
+              key: const Key('farm-task-record-work'),
+              onPressed: () => Navigator.pop(dialogContext, 'record-work'),
+              child: Text(l10n.text('task.recordWork')),
+            ),
           if (_canEdit(task) && task.status != FarmTaskStatus.completed)
-            for (final status in [FarmTaskStatus.inProgress, FarmTaskStatus.delayed])
+            for (final status in [
+              FarmTaskStatus.inProgress,
+              FarmTaskStatus.delayed,
+            ])
               if (status != task.status)
                 TextButton(
                   key: Key('farm-task-status-${status.name}'),
@@ -144,41 +191,66 @@ class _FarmTaskScreenState extends State<FarmTaskScreen> {
           TextButton(
             key: const Key('farm-task-close-details'),
             onPressed: () => Navigator.pop(dialogContext),
-            child: Text(MaterialLocalizations.of(dialogContext).closeButtonLabel),
+            child: Text(
+              MaterialLocalizations.of(dialogContext).closeButtonLabel,
+            ),
           ),
         ],
       ),
     );
     if (!context.mounted) return;
-    if (action == true) {
+    if (action == 'record-work' && _canRecordWork(task)) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => ParcelWorkScreen(
+            parcelId: task.parcelId!,
+            subject: controller.subject,
+            service: resources,
+            initialTask: task,
+            taskWork: widget.taskWork,
+            openEventOnLoad: true,
+          ),
+        ),
+      );
+    } else if (action == true) {
       await _edit(context, task);
     } else if (action is FarmTaskStatus) {
       await _changeStatus(context, task, action);
     }
   }
 
-  Future<void> _changeStatus(BuildContext context, FarmTask task,
-      FarmTaskStatus status) async {
+  Future<void> _changeStatus(
+    BuildContext context,
+    FarmTask task,
+    FarmTaskStatus status,
+  ) async {
     final l10n = AppLocalizations.of(context);
-    final confirmed = await showDialog<bool>(context: context,
+    final confirmed = await showDialog<bool>(
+      context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(l10n.text('task.${status.name}')),
         content: Text(task.title),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(l10n.text('common.cancel'))),
-          FilledButton(key: const Key('farm-task-confirm-status'),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(l10n.text('common.cancel')),
+          ),
+          FilledButton(
+            key: const Key('farm-task-confirm-status'),
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(l10n.text('common.save'))),
+            child: Text(l10n.text('common.save')),
+          ),
         ],
-      ));
+      ),
+    );
     if (confirmed != true || !context.mounted) return;
     try {
       await controller.changeStatus(task.id, status);
     } catch (_) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.text('task.saveFailed'))));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(l10n.text('task.saveFailed'))));
       }
     }
   }
@@ -234,13 +306,17 @@ class _FarmTaskScreenState extends State<FarmTaskScreen> {
       builder: (context, _) {
         final now = DateTime.now();
         final query = search.text.trim().toLowerCase();
-        final visible = controller.items.where((task) =>
-          (parcelFilter == null || task.parcelId == parcelFilter) &&
-          (statusFilter == null || task.status == statusFilter) &&
-          (!overdueOnly || task.isOverdueOn(now)) &&
-          (query.isEmpty || task.title.toLowerCase().contains(query) ||
-            task.description.toLowerCase().contains(query)),
-        ).toList();
+        final visible = controller.items
+            .where(
+              (task) =>
+                  (parcelFilter == null || task.parcelId == parcelFilter) &&
+                  (statusFilter == null || task.status == statusFilter) &&
+                  (!overdueOnly || task.isOverdueOn(now)) &&
+                  (query.isEmpty ||
+                      task.title.toLowerCase().contains(query) ||
+                      task.description.toLowerCase().contains(query)),
+            )
+            .toList();
         final parcelIds = <String>{
           ?parcelFilter,
           for (final p in parcels) p.id,
@@ -248,150 +324,181 @@ class _FarmTaskScreenState extends State<FarmTaskScreen> {
         };
         String parcelLabel(String id) {
           final matches = parcels.where((p) => p.id == id);
-          return matches.isEmpty ? id
+          return matches.isEmpty
+              ? id
               : '${matches.first.parcelCode} · ${matches.first.name}';
         }
+
         return Scaffold(
-        appBar: AppBar(
-          title: Text(l10n.text('module.tasks')),
-          actions: [
-            IconButton(
-              onPressed: controller.load,
-              tooltip: l10n.text('common.retry'),
-              icon: const Icon(Icons.refresh),
-            ),
-          ],
-        ),
-        floatingActionButton: canCreate
-            ? FloatingActionButton(
-                key: const Key('farm-task-add'),
-                onPressed: () => _add(context),
-                child: const Icon(Icons.add),
-              )
-            : null,
-        body: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  TextField(
-                    key: const Key('farm-task-search'),
-                    controller: search,
-                    onChanged: (_) => setState(() {}),
-                    decoration: InputDecoration(
-                      labelText: l10n.text('task.search'),
-                      prefixIcon: const Icon(Icons.search),
-                      suffixIcon: search.text.isEmpty ? null : IconButton(
-                        key: const Key('farm-task-clear-search'),
-                        tooltip: l10n.text('task.clearSearch'),
-                        icon: const Icon(Icons.clear),
-                        onPressed: () => setState(() => search.clear()),
+          appBar: AppBar(
+            title: Text(l10n.text('module.tasks')),
+            actions: [
+              IconButton(
+                onPressed: controller.load,
+                tooltip: l10n.text('common.retry'),
+                icon: const Icon(Icons.refresh),
+              ),
+            ],
+          ),
+          floatingActionButton: canCreate
+              ? FloatingActionButton(
+                  key: const Key('farm-task-add'),
+                  onPressed: () => _add(context),
+                  child: const Icon(Icons.add),
+                )
+              : null,
+          body: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    TextField(
+                      key: const Key('farm-task-search'),
+                      controller: search,
+                      onChanged: (_) => setState(() {}),
+                      decoration: InputDecoration(
+                        labelText: l10n.text('task.search'),
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: search.text.isEmpty
+                            ? null
+                            : IconButton(
+                                key: const Key('farm-task-clear-search'),
+                                tooltip: l10n.text('task.clearSearch'),
+                                icon: const Icon(Icons.clear),
+                                onPressed: () => setState(() => search.clear()),
+                              ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    key: const Key('farm-task-filter-parcel'),
-                    initialValue: parcelFilter,
-                    isExpanded: true,
-                    decoration: InputDecoration(
-                      labelText: l10n.text('task.parcel'),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      key: const Key('farm-task-filter-parcel'),
+                      initialValue: parcelFilter,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: l10n.text('task.parcel'),
+                      ),
+                      items: [
+                        DropdownMenuItem(
+                          value: null,
+                          child: Text(l10n.text('common.all')),
+                        ),
+                        for (final id in parcelIds)
+                          DropdownMenuItem(
+                            value: id,
+                            child: Text(
+                              parcelLabel(id),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                      onChanged: (value) =>
+                          setState(() => parcelFilter = value),
                     ),
-                    items: [
-                      DropdownMenuItem(value: null,
-                        child: Text(l10n.text('common.all'))),
-                      for (final id in parcelIds)
-                        DropdownMenuItem(value: id,
-                          child: Text(parcelLabel(id), overflow: TextOverflow.ellipsis)),
-                    ],
-                    onChanged: (value) => setState(() => parcelFilter = value),
-                  ),
-                  DropdownButtonFormField<FarmTaskStatus>(
-                    key: const Key('farm-task-filter-status'),
-                    isExpanded: true,
-                    decoration: InputDecoration(
-                      labelText: l10n.text('task.filterStatus'),
+                    DropdownButtonFormField<FarmTaskStatus>(
+                      key: const Key('farm-task-filter-status'),
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: l10n.text('task.filterStatus'),
+                      ),
+                      items: [
+                        DropdownMenuItem(
+                          value: null,
+                          child: Text(l10n.text('common.all')),
+                        ),
+                        for (final value in FarmTaskStatus.values)
+                          DropdownMenuItem(
+                            value: value,
+                            child: Text(l10n.text('task.${value.name}')),
+                          ),
+                      ],
+                      onChanged: (value) =>
+                          setState(() => statusFilter = value),
                     ),
-                    items: [
-                      DropdownMenuItem(value: null,
-                        child: Text(l10n.text('common.all'))),
-                      for (final value in FarmTaskStatus.values)
-                        DropdownMenuItem(value: value,
-                          child: Text(l10n.text('task.${value.name}'))),
-                    ],
-                    onChanged: (value) => setState(() => statusFilter = value),
-                  ),
-                  SwitchListTile(
-                    key: const Key('farm-task-filter-overdue'),
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(l10n.text('task.overdueOnly')),
-                    value: overdueOnly,
-                    onChanged: (value) => setState(() => overdueOnly = value),
-                  ),
-                ],
-              ),
-            ),
-            if (!controller.loading && !controller.hasError)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                child: Wrap(
-                  spacing: 12,
-                  runSpacing: 4,
-                  children: [
-                    Text('${l10n.text('task.total')}: ${visible.length}',
-                      key: const Key('farm-task-count-total')),
-                    for (final status in FarmTaskStatus.values)
-                      Text('${l10n.text('task.${status.name}')}: '
-                        '${visible.where((task) => task.status == status).length}',
-                        key: Key('farm-task-count-${status.name}')),
-                    Text('${l10n.text('task.overdue')}: '
-                      '${visible.where((task) => task.isOverdueOn(now)).length}',
-                      key: const Key('farm-task-count-overdue')),
+                    SwitchListTile(
+                      key: const Key('farm-task-filter-overdue'),
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(l10n.text('task.overdueOnly')),
+                      value: overdueOnly,
+                      onChanged: (value) => setState(() => overdueOnly = value),
+                    ),
                   ],
                 ),
               ),
-            Expanded(child: controller.loading
-            ? const Center(child: CircularProgressIndicator())
-            : controller.hasError
-            ? Center(child: Text(l10n.text('task.loadFailed')))
-            : visible.isEmpty
-            ? Center(child: Text(l10n.text('task.filterEmpty')))
-            : ListView.builder(
-                key: const Key('farm-task-list'),
-                itemCount: visible.length,
-                itemBuilder: (context, index) {
-                  final task = visible[index];
-                  return ListTile(
-                    key: Key('farm-task-details-${task.id}'),
-                    onTap: () => _details(context, task),
-                    title: Text(task.title),
-                    subtitle: Text(
-                      '${task.dueAt.year}-'
-                      '${task.dueAt.month.toString().padLeft(2, '0')}-'
-                      '${task.dueAt.day.toString().padLeft(2, '0')}'
-                      '${task.isOverdueOn(now) ? ' · ${l10n.text('task.overdue')}' : ''}',
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(l10n.text('task.${task.status.name}')),
-                        if (canComplete &&
-                            task.status != FarmTaskStatus.completed)
-                          IconButton(
-                            key: Key('farm-task-complete-${task.id}'),
-                            tooltip: l10n.text('task.completeAction'),
-                            icon: const Icon(Icons.check_circle_outline),
-                            onPressed: () => _complete(context, task.id),
-                          ),
-                      ],
-                    ),
-                  );
-                },
-              )),
-          ],
-        ),
-      );
+              if (!controller.loading && !controller.hasError)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 4,
+                  ),
+                  child: Wrap(
+                    spacing: 12,
+                    runSpacing: 4,
+                    children: [
+                      Text(
+                        '${l10n.text('task.total')}: ${visible.length}',
+                        key: const Key('farm-task-count-total'),
+                      ),
+                      for (final status in FarmTaskStatus.values)
+                        Text(
+                          '${l10n.text('task.${status.name}')}: '
+                          '${visible.where((task) => task.status == status).length}',
+                          key: Key('farm-task-count-${status.name}'),
+                        ),
+                      Text(
+                        '${l10n.text('task.overdue')}: '
+                        '${visible.where((task) => task.isOverdueOn(now)).length}',
+                        key: const Key('farm-task-count-overdue'),
+                      ),
+                    ],
+                  ),
+                ),
+              Expanded(
+                child: controller.loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : controller.hasError
+                    ? Center(child: Text(l10n.text('task.loadFailed')))
+                    : visible.isEmpty
+                    ? Center(child: Text(l10n.text('task.filterEmpty')))
+                    : ListView.builder(
+                        key: const Key('farm-task-list'),
+                        itemCount: visible.length,
+                        itemBuilder: (context, index) {
+                          final task = visible[index];
+                          return ListTile(
+                            key: Key('farm-task-details-${task.id}'),
+                            onTap: () => _details(context, task),
+                            title: Text(task.title),
+                            subtitle: Text(
+                              '${task.dueAt.year}-'
+                              '${task.dueAt.month.toString().padLeft(2, '0')}-'
+                              '${task.dueAt.day.toString().padLeft(2, '0')}'
+                              '${task.isOverdueOn(now) ? ' · ${l10n.text('task.overdue')}' : ''}',
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(l10n.text('task.${task.status.name}')),
+                                if (canComplete &&
+                                    task.status != FarmTaskStatus.completed)
+                                  IconButton(
+                                    key: Key('farm-task-complete-${task.id}'),
+                                    tooltip: l10n.text('task.completeAction'),
+                                    icon: const Icon(
+                                      Icons.check_circle_outline,
+                                    ),
+                                    onPressed: () =>
+                                        _complete(context, task.id),
+                                  ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        );
       },
     );
   }
@@ -430,9 +537,7 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
   @override
   void initState() {
     super.initState();
-    if (widget.parcels.any(
-      (p) => p.active && p.id == widget.initialParcelId,
-    )) {
+    if (widget.parcels.any((p) => p.active && p.id == widget.initialParcelId)) {
       parcelId = widget.initialParcelId;
     }
     final task = widget.task;
@@ -465,19 +570,20 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
     });
     try {
       final task = FarmTask(
-          id: widget.task?.id ??
-              'task-${DateTime.now().microsecondsSinceEpoch}-'
-              '${Random.secure().nextInt(1 << 32)}',
-          farmId: widget.controller.subject.farmId,
-          title: title.text.trim(),
-          description: description.text.trim(),
-          status: widget.task?.status ?? FarmTaskStatus.pending,
-          dueAt: dueAt,
-          createdAt: widget.task?.createdAt ?? DateTime.now(),
-          parcelId: parcelId,
-          workerResourceId: workerId,
-          machineResourceId: machineId,
-        );
+        id:
+            widget.task?.id ??
+            'task-${DateTime.now().microsecondsSinceEpoch}-'
+                '${Random.secure().nextInt(1 << 32)}',
+        farmId: widget.controller.subject.farmId,
+        title: title.text.trim(),
+        description: description.text.trim(),
+        status: widget.task?.status ?? FarmTaskStatus.pending,
+        dueAt: dueAt,
+        createdAt: widget.task?.createdAt ?? DateTime.now(),
+        parcelId: parcelId,
+        workerResourceId: workerId,
+        machineResourceId: machineId,
+      );
       if (widget.task == null) {
         await widget.controller.create(task);
       } else {
@@ -544,9 +650,12 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
                 ),
                 items: [
                   const DropdownMenuItem<String>(value: null, child: Text('—')),
-                  if (parcelId != null && !widget.parcels.any((p) => p.id == parcelId))
+                  if (parcelId != null &&
+                      !widget.parcels.any((p) => p.id == parcelId))
                     DropdownMenuItem(value: parcelId, child: Text(parcelId!)),
-                  for (final parcel in widget.parcels.where((p) => p.active || p.id == widget.task?.parcelId))
+                  for (final parcel in widget.parcels.where(
+                    (p) => p.active || p.id == widget.task?.parcelId,
+                  ))
                     DropdownMenuItem(
                       value: parcel.id,
                       child: Text('${parcel.parcelCode} · ${parcel.name}'),
@@ -565,13 +674,16 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
                   }
                   final machines = snapshot.data!
                       .where(
-                        (r) => r.kind == WorkResourceKind.machine &&
-                            (r.active || r.id == widget.task?.machineResourceId),
+                        (r) =>
+                            r.kind == WorkResourceKind.machine &&
+                            (r.active ||
+                                r.id == widget.task?.machineResourceId),
                       )
                       .toList();
                   final workers = snapshot.data!
                       .where(
-                        (r) => r.kind == WorkResourceKind.worker &&
+                        (r) =>
+                            r.kind == WorkResourceKind.worker &&
                             (r.active || r.id == widget.task?.workerResourceId),
                       )
                       .toList();
@@ -589,13 +701,19 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
                             value: null,
                             child: Text('—'),
                           ),
-                          if (machineId != null && !machines.any((r) => r.id == machineId))
-                            DropdownMenuItem(value: machineId, child: Text(machineId!)),
+                          if (machineId != null &&
+                              !machines.any((r) => r.id == machineId))
+                            DropdownMenuItem(
+                              value: machineId,
+                              child: Text(machineId!),
+                            ),
                           for (final r in machines)
                             DropdownMenuItem(
                               value: r.id,
-                              child: Text('${r.code} · ${r.name}'
-                                '${r.active ? '' : ' · ${l10n.text('catalog.inactive')}'}'),
+                              child: Text(
+                                '${r.code} · ${r.name}'
+                                '${r.active ? '' : ' · ${l10n.text('catalog.inactive')}'}',
+                              ),
                             ),
                         ],
                         onChanged: (value) => setState(() => machineId = value),
@@ -611,13 +729,19 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
                             value: null,
                             child: Text('—'),
                           ),
-                          if (workerId != null && !workers.any((r) => r.id == workerId))
-                            DropdownMenuItem(value: workerId, child: Text(workerId!)),
+                          if (workerId != null &&
+                              !workers.any((r) => r.id == workerId))
+                            DropdownMenuItem(
+                              value: workerId,
+                              child: Text(workerId!),
+                            ),
                           for (final r in workers)
                             DropdownMenuItem(
                               value: r.id,
-                              child: Text('${r.code} · ${r.name}'
-                                '${r.active ? '' : ' · ${l10n.text('catalog.inactive')}'}'),
+                              child: Text(
+                                '${r.code} · ${r.name}'
+                                '${r.active ? '' : ' · ${l10n.text('catalog.inactive')}'}',
+                              ),
                             ),
                         ],
                         onChanged: (value) => setState(() => workerId = value),

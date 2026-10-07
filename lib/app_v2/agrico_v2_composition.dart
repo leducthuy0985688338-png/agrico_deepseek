@@ -40,6 +40,8 @@ import '../features/farm/data/local/sqlite_land_parcel_repository.dart';
 import '../features/farm/data/local/sqlite_land_survey_repository.dart';
 import '../features/farm/data/local/sqlite_parcel_work_repository.dart';
 import '../features/farm/application/parcel_work_service.dart';
+import '../features/farm/application/task_work_service.dart';
+import '../features/farm/data/local/sqlite_task_work_repository.dart';
 import '../features/farm/application/farm_task_service.dart';
 import '../features/farm/data/local/sqlite_farm_task_repository.dart';
 
@@ -230,24 +232,32 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
             ),
           ),
         ),
-        onTasksRequested: const AuthorizationService().can(
-          subject: deps.subject,
-          permission: PermissionCodes.taskView,
-          resource: ResourceContext(farmId: deps.subject.farmId),
-        ) ? () => push(
-          FarmTaskScreen(
-            controller: deps.taskController,
-            initialParcelId: id,
-            parcels: deps.controller.items.map((item) => item.parcel).toList(),
-            resources: ParcelWorkService(
-              SqliteParcelWorkRepository(deps.database),
-              catalog: CompanyCatalogService(
-                repository: SqliteCompanyCatalog(deps.database),
-                subject: deps.subject,
-              ),
-            ),
-          ),
-        ) : null,
+        onTasksRequested:
+            const AuthorizationService().can(
+              subject: deps.subject,
+              permission: PermissionCodes.taskView,
+              resource: ResourceContext(farmId: deps.subject.farmId),
+            )
+            ? () => push(
+                FarmTaskScreen(
+                  controller: deps.taskController,
+                  taskWork: TaskWorkService(
+                    SqliteTaskWorkRepository(deps.database),
+                  ),
+                  initialParcelId: id,
+                  parcels: deps.controller.items
+                      .map((item) => item.parcel)
+                      .toList(),
+                  resources: ParcelWorkService(
+                    SqliteParcelWorkRepository(deps.database),
+                    catalog: CompanyCatalogService(
+                      repository: SqliteCompanyCatalog(deps.database),
+                      subject: deps.subject,
+                    ),
+                  ),
+                ),
+              )
+            : null,
         onWorkRequested: () => push(
           ParcelWorkScreen(
             parcelId: id,
@@ -291,6 +301,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         'tasks': () => push(
           FarmTaskScreen(
             controller: deps.taskController,
+            taskWork: TaskWorkService(SqliteTaskWorkRepository(deps.database)),
             parcels: deps.controller.items.map((item) => item.parcel).toList(),
             resources: ParcelWorkService(
               SqliteParcelWorkRepository(deps.database),
@@ -339,9 +350,10 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
                     ),
                   )
                 : null,
-            onOpenBackup: LocalBackupAccess(
-              currentSubject: () => mounted ? widget.subject : null,
-            ).canOpen
+            onOpenBackup:
+                LocalBackupAccess(
+                  currentSubject: () => mounted ? widget.subject : null,
+                ).canOpen
                 ? () => push(
                     LocalBackupScreen(
                       database: deps.database,

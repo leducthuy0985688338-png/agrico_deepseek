@@ -437,6 +437,10 @@ class AppLocalizations {
     'task.add': 'Thêm công việc',
     'task.title': 'Tiêu đề công việc',
     'task.parcel': 'Lô đất',
+    'task.recordWork': 'Ghi thực hiện từ tác vụ',
+    'task.source': 'Tác vụ',
+    'task.workPrefillHint':
+        'Chọn giai đoạn và kiểm tra nguồn lực thực tế. Chỉ máy/nhân công đang hoạt động được chọn sẵn. Lưu nhật ký không tự hoàn thành tác vụ.',
     'task.due': 'Hạn hoàn thành',
     'task.filterStatus': 'Trạng thái',
     'task.filterEmpty': 'Không có tác vụ phù hợp bộ lọc.',
@@ -943,6 +947,10 @@ class AppLocalizations {
     'task.add': 'ເພີ່ມວຽກ',
     'task.title': 'ຫົວຂໍ້ວຽກ',
     'task.parcel': 'ຕອນດິນ',
+    'task.recordWork': 'ບັນທຶກການປະຕິບັດຈາກໜ້າວຽກ',
+    'task.source': 'ໜ້າວຽກ',
+    'task.workPrefillHint':
+        'ເລືອກຂັ້ນຕອນ ແລະກວດສອບຊັບພະຍາກອນທີ່ໃຊ້ຈິງ. ເລືອກລ່ວງໜ້າສະເພາະເຄື່ອງຈັກ/ຄົນງານທີ່ໃຊ້ງານຢູ່. ການບັນທຶກບໍ່ໄດ້ເຮັດໃຫ້ໜ້າວຽກສຳເລັດອັດຕະໂນມັດ.',
     'task.due': 'ກຳນົດສຳເລັດ',
     'task.filterStatus': 'ສະຖານະ',
     'task.filterEmpty': 'ບໍ່ມີວຽກທີ່ກົງກັບຕົວກອງ.',
@@ -1451,6 +1459,10 @@ class AppLocalizations {
     'task.add': 'Add task',
     'task.title': 'Task title',
     'task.parcel': 'Land parcel',
+    'task.recordWork': 'Record work from task',
+    'task.source': 'Task',
+    'task.workPrefillHint':
+        'Choose the phase and check actual resources. Only active machines/workers are preselected. Saving work does not complete the task.',
     'task.due': 'Due date',
     'task.filterStatus': 'Status',
     'task.filterEmpty': 'No tasks match the filters.',

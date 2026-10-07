@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/permissions/authorization.dart';
 import '../../application/parcel_work_service.dart';
+import '../../application/task_work_service.dart';
+import '../../domain/entities/farm_task.dart';
 import '../../domain/entities/parcel_work.dart';
 
 class ParcelWorkScreen extends StatefulWidget {
@@ -11,11 +13,17 @@ class ParcelWorkScreen extends StatefulWidget {
     required this.parcelId,
     required this.subject,
     required this.service,
+    this.initialTask,
+    this.taskWork,
+    this.openEventOnLoad = false,
   });
 
   final String parcelId;
   final AuthorizationSubject subject;
   final ParcelWorkService service;
+  final FarmTask? initialTask;
+  final TaskWorkService? taskWork;
+  final bool openEventOnLoad;
 
   @override
   State<ParcelWorkScreen> createState() => _ParcelWorkScreenState();
@@ -24,10 +32,56 @@ class ParcelWorkScreen extends StatefulWidget {
 class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
   late Future<(List<WorkResource>, List<ParcelWorkEvent>)> data = load();
 
-  Future<(List<WorkResource>, List<ParcelWorkEvent>)> load() async => (
-    await widget.service.resources(widget.subject),
-    await widget.service.events(widget.subject, widget.parcelId),
-  );
+  Future<(List<WorkResource>, List<ParcelWorkEvent>)> load() async {
+    final task = widget.initialTask;
+    if (task != null &&
+        (widget.taskWork == null ||
+            task.farmId != widget.subject.farmId ||
+            task.parcelId != widget.parcelId)) {
+      throw StateError('Invalid task work context.');
+    }
+    return (
+      await widget.service.resources(widget.subject),
+      task == null
+          ? await widget.service.events(widget.subject, widget.parcelId)
+          : await widget.taskWork!.events(widget.subject, task.id),
+    );
+  }
+
+  bool get canRecord =>
+      widget.subject.dataScopes.contains(DataScope.allFarm) &&
+      (widget.initialTask == null ||
+          (widget.taskWork != null &&
+              widget.initialTask!.farmId == widget.subject.farmId &&
+              widget.initialTask!.parcelId == widget.parcelId)) &&
+      [
+        PermissionCodes.fieldEdit,
+        if (widget.initialTask != null) PermissionCodes.taskView,
+      ].every(
+        (permission) => const AuthorizationService().can(
+          subject: widget.subject,
+          permission: permission,
+          resource: ResourceContext(
+            farmId: widget.subject.farmId,
+            fieldId: widget.parcelId,
+          ),
+        ),
+      );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.openEventOnLoad) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        try {
+          final (resources, _) = await data;
+          if (mounted && canRecord) await addEvent(resources);
+        } catch (_) {
+          // The load error is displayed by FutureBuilder.
+        }
+      });
+    }
+  }
 
   void reload() {
     final refreshed = load();
@@ -111,10 +165,24 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
 
   Future<void> addEvent(List<WorkResource> resources) async {
     final l10n = AppLocalizations.of(context);
-    final description = TextEditingController();
+    if (!canRecord) return;
+    final task = widget.initialTask;
+    final description = TextEditingController(
+      text: task == null
+          ? ''
+          : (task.description.trim().isEmpty ? task.title : task.description),
+    );
     final area = TextEditingController();
     var phase = ParcelWorkPhase.clearing;
-    final selected = <String>{};
+    final selected = <String>{
+      for (final resource in resources)
+        if (resource.active &&
+            ((resource.kind == WorkResourceKind.machine &&
+                    resource.id == task?.machineResourceId) ||
+                (resource.kind == WorkResourceKind.worker &&
+                    resource.id == task?.workerResourceId)))
+          resource.id,
+    };
     final route = DialogRoute<bool>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -125,6 +193,13 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
             child: ListView(
               shrinkWrap: true,
               children: [
+                if (task != null) ...[
+                  Text(
+                    '${l10n.text('task.source')}: ${task.title}',
+                    key: const Key('work-source-task'),
+                  ),
+                  Text(l10n.text('task.workPrefillHint')),
+                ],
                 DropdownButton<ParcelWorkPhase>(
                   value: phase,
                   items: [
@@ -138,6 +213,7 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
                 ),
                 TextField(
                   controller: description,
+                  onChanged: (_) => update(() {}),
                   decoration: InputDecoration(
                     labelText: l10n.text('work.description'),
                   ),
@@ -169,12 +245,16 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
           ),
           actions: [
             TextButton(
+              key: const Key('work-cancel-event'),
               onPressed: () => Navigator.pop(dialogContext, false),
               child: Text(l10n.text('common.cancel')),
             ),
             FilledButton(
               key: const Key('work-save-event'),
-              onPressed: () => Navigator.pop(dialogContext, true),
+              onPressed:
+                  selected.isNotEmpty && description.text.trim().isNotEmpty
+                  ? () => Navigator.pop(dialogContext, true)
+                  : null,
               child: Text(l10n.text('common.save')),
             ),
           ],
@@ -186,40 +266,42 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
       rootNavigator: true,
     ).push(route);
     await route.completed;
-    if (submitted == true) {
+    if (submitted == true && mounted) {
       try {
         final parsedArea = area.text.trim().isEmpty
             ? null
             : double.parse(area.text.trim());
-        await widget.service.record(
-          widget.subject,
-          ParcelWorkEvent(
-            id: 'work-${DateTime.now().microsecondsSinceEpoch}',
-            farmId: widget.subject.farmId,
-            parcelId: widget.parcelId,
-            phase: phase,
-            description: description.text.trim(),
-            occurredAt: DateTime.now().toUtc(),
-            actorMembershipId: widget.subject.membershipId,
-            machineIds: resources
-                .where(
-                  (r) =>
-                      selected.contains(r.id) &&
-                      r.kind == WorkResourceKind.machine,
-                )
-                .map((r) => r.id)
-                .toList(),
-            workerIds: resources
-                .where(
-                  (r) =>
-                      selected.contains(r.id) &&
-                      r.kind == WorkResourceKind.worker,
-                )
-                .map((r) => r.id)
-                .toList(),
-            areaM2: parsedArea,
-          ),
+        final event = ParcelWorkEvent(
+          id: 'work-${DateTime.now().microsecondsSinceEpoch}',
+          farmId: widget.subject.farmId,
+          parcelId: widget.parcelId,
+          phase: phase,
+          description: description.text.trim(),
+          occurredAt: DateTime.now().toUtc(),
+          actorMembershipId: widget.subject.membershipId,
+          machineIds: resources
+              .where(
+                (r) =>
+                    selected.contains(r.id) &&
+                    r.kind == WorkResourceKind.machine,
+              )
+              .map((r) => r.id)
+              .toList(),
+          workerIds: resources
+              .where(
+                (r) =>
+                    selected.contains(r.id) &&
+                    r.kind == WorkResourceKind.worker,
+              )
+              .map((r) => r.id)
+              .toList(),
+          areaM2: parsedArea,
         );
+        if (task == null) {
+          await widget.service.record(widget.subject, event);
+        } else {
+          await widget.taskWork!.record(widget.subject, task.id, event);
+        }
         if (mounted) reload();
       } catch (_) {
         if (mounted) _error();
@@ -243,9 +325,7 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
       permission: PermissionCodes.catalogManage,
       resource: ResourceContext(farmId: widget.subject.farmId),
     );
-    final canEdit =
-        widget.subject.permissionCodes.contains(PermissionCodes.fieldEdit) &&
-        widget.subject.dataScopes.contains(DataScope.allFarm);
+    final canEdit = canRecord;
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.text('work.title')),
@@ -291,6 +371,10 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
                       label: Text(l10n.text('work.addEvent')),
                     ),
                   ],
+                ),
+              if (widget.initialTask != null)
+                Text(
+                  '${l10n.text('task.source')}: ${widget.initialTask!.title}',
                 ),
               if (events.isEmpty) Text(l10n.text('work.empty')),
               for (final event in events)
