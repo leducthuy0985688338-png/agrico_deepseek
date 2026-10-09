@@ -101,34 +101,43 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, update) => AlertDialog(
           title: Text(l10n.text('work.addResource')),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButton<WorkResourceKind>(
-                isExpanded: true,
-                value: kind,
-                items: [
-                  for (final value in WorkResourceKind.values)
-                    DropdownMenuItem(
-                      value: value,
-                      child: Text(
-                        l10n.text('work.${value.name}'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButton<WorkResourceKind>(
+                    isExpanded: true,
+                    value: kind,
+                    items: [
+                      for (final value in WorkResourceKind.values)
+                        DropdownMenuItem(
+                          value: value,
+                          child: Text(
+                            l10n.text('work.${value.name}'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                    onChanged: (value) => update(() => kind = value!),
+                  ),
+                  TextField(
+                    controller: code,
+                    decoration: InputDecoration(
+                      labelText: l10n.text('work.code'),
                     ),
+                  ),
+                  TextField(
+                    controller: name,
+                    decoration: InputDecoration(
+                      labelText: l10n.text('work.name'),
+                    ),
+                  ),
                 ],
-                onChanged: (value) => update(() => kind = value!),
               ),
-              TextField(
-                controller: code,
-                decoration: InputDecoration(labelText: l10n.text('work.code')),
-              ),
-              TextField(
-                controller: name,
-                decoration: InputDecoration(labelText: l10n.text('work.name')),
-              ),
-            ],
+            ),
           ),
           actions: [
             TextButton(

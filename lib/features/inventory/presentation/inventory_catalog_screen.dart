@@ -366,29 +366,34 @@ class _MovementDialogState extends State<_MovementDialog> {
       canPop: !saving,
       child: AlertDialog(
         title: Text(l10n.text('inventory.${widget.kind.name}')),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('${widget.item.code} · ${widget.item.name}'),
-            Text(
-              '${l10n.text('inventory.stock')}: ${widget.item.stock} ${widget.item.unit}',
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('${widget.item.code} · ${widget.item.name}'),
+                Text(
+                  '${l10n.text('inventory.stock')}: ${widget.item.stock} ${widget.item.unit}',
+                ),
+                TextField(
+                  key: const Key('inventory-movement-quantity'),
+                  controller: quantity,
+                  enabled: !saving,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText:
+                        '${l10n.text('inventory.quantity')} (${widget.item.unit})',
+                  ),
+                ),
+                if (errorKey != null)
+                  Text(
+                    l10n.text(errorKey!),
+                    key: const Key('inventory-movement-error'),
+                  ),
+              ],
             ),
-            TextField(
-              key: const Key('inventory-movement-quantity'),
-              controller: quantity,
-              enabled: !saving,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText:
-                    '${l10n.text('inventory.quantity')} (${widget.item.unit})',
-              ),
-            ),
-            if (errorKey != null)
-              Text(
-                l10n.text(errorKey!),
-                key: const Key('inventory-movement-error'),
-              ),
-          ],
+          ),
         ),
         actions: [
           TextButton(

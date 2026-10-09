@@ -44,20 +44,29 @@ class _WorkResourceCatalogScreenState extends State<WorkResourceCatalogScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(l10n.text('work.${widget.kind.name}')),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              key: const Key('catalog-code'),
-              controller: code,
-              decoration: InputDecoration(labelText: l10n.text('work.code')),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  key: const Key('catalog-code'),
+                  controller: code,
+                  decoration: InputDecoration(
+                    labelText: l10n.text('work.code'),
+                  ),
+                ),
+                TextField(
+                  key: const Key('catalog-name'),
+                  controller: name,
+                  decoration: InputDecoration(
+                    labelText: l10n.text('work.name'),
+                  ),
+                ),
+              ],
             ),
-            TextField(
-              key: const Key('catalog-name'),
-              controller: name,
-              decoration: InputDecoration(labelText: l10n.text('work.name')),
-            ),
-          ],
+          ),
         ),
         actions: [
           TextButton(
