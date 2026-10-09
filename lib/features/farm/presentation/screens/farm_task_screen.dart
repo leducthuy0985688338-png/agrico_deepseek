@@ -395,13 +395,18 @@ class _FarmTaskScreenState extends State<FarmTaskScreen> {
                       items: [
                         DropdownMenuItem(
                           value: null,
-                          child: Text(l10n.text('common.all')),
+                          child: Text(
+                            l10n.text('common.all'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                         for (final id in parcelIds)
                           DropdownMenuItem(
                             value: id,
                             child: Text(
                               parcelLabel(id),
+                              maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
@@ -418,12 +423,20 @@ class _FarmTaskScreenState extends State<FarmTaskScreen> {
                       items: [
                         DropdownMenuItem(
                           value: null,
-                          child: Text(l10n.text('common.all')),
+                          child: Text(
+                            l10n.text('common.all'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                         for (final value in FarmTaskStatus.values)
                           DropdownMenuItem(
                             value: value,
-                            child: Text(l10n.text('task.${value.name}')),
+                            child: Text(
+                              l10n.text('task.${value.name}'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                       ],
                       onChanged: (value) =>
@@ -658,21 +671,40 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
               ),
               DropdownButtonFormField<String>(
                 key: const Key('farm-task-parcel'),
+                isExpanded: true,
                 initialValue: parcelId,
                 decoration: InputDecoration(
                   labelText: l10n.text('task.parcel'),
                 ),
                 items: [
-                  const DropdownMenuItem<String>(value: null, child: Text('—')),
+                  const DropdownMenuItem<String>(
+                    value: null,
+                    child: Text(
+                      '—',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                   if (parcelId != null &&
                       !widget.parcels.any((p) => p.id == parcelId))
-                    DropdownMenuItem(value: parcelId, child: Text(parcelId!)),
+                    DropdownMenuItem(
+                      value: parcelId,
+                      child: Text(
+                        parcelId!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   for (final parcel in widget.parcels.where(
                     (p) => p.active || p.id == widget.task?.parcelId,
                   ))
                     DropdownMenuItem(
                       value: parcel.id,
-                      child: Text('${parcel.parcelCode} · ${parcel.name}'),
+                      child: Text(
+                        '${parcel.parcelCode} · ${parcel.name}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                 ],
                 onChanged: (value) => setState(() => parcelId = value),
@@ -706,6 +738,7 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
                     children: [
                       DropdownButtonFormField<String>(
                         key: const Key('farm-task-machine'),
+                        isExpanded: true,
                         initialValue: machineId,
                         decoration: InputDecoration(
                           labelText: l10n.text('work.machine'),
@@ -713,13 +746,21 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
                         items: [
                           const DropdownMenuItem<String>(
                             value: null,
-                            child: Text('—'),
+                            child: Text(
+                              '—',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                           if (machineId != null &&
                               !machines.any((r) => r.id == machineId))
                             DropdownMenuItem(
                               value: machineId,
-                              child: Text(machineId!),
+                              child: Text(
+                                machineId!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           for (final r in machines)
                             DropdownMenuItem(
@@ -727,6 +768,8 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
                               child: Text(
                                 '${r.code} · ${r.name}'
                                 '${r.active ? '' : ' · ${l10n.text('catalog.inactive')}'}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                         ],
@@ -734,6 +777,7 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
                       ),
                       DropdownButtonFormField<String>(
                         key: const Key('farm-task-worker'),
+                        isExpanded: true,
                         initialValue: workerId,
                         decoration: InputDecoration(
                           labelText: l10n.text('work.worker'),
@@ -741,13 +785,21 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
                         items: [
                           const DropdownMenuItem<String>(
                             value: null,
-                            child: Text('—'),
+                            child: Text(
+                              '—',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                           if (workerId != null &&
                               !workers.any((r) => r.id == workerId))
                             DropdownMenuItem(
                               value: workerId,
-                              child: Text(workerId!),
+                              child: Text(
+                                workerId!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           for (final r in workers)
                             DropdownMenuItem(
@@ -755,6 +807,8 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
                               child: Text(
                                 '${r.code} · ${r.name}'
                                 '${r.active ? '' : ' · ${l10n.text('catalog.inactive')}'}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                         ],

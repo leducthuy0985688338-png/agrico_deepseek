@@ -221,6 +221,7 @@ class _CropEditorDialogState extends State<CropEditorDialog> {
               ),
             ),
             DropdownButtonFormField<CropCondition>(
+              isExpanded: true,
               key: const Key('crop-condition'),
               initialValue: condition,
               decoration: InputDecoration(
@@ -230,7 +231,11 @@ class _CropEditorDialogState extends State<CropEditorDialog> {
                 for (final value in CropCondition.values)
                   DropdownMenuItem(
                     value: value,
-                    child: Text(l10n.text('crop.condition.${value.name}')),
+                    child: Text(
+                      l10n.text('crop.condition.${value.name}'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
               ],
               onChanged: (value) {
@@ -270,6 +275,7 @@ class _CropEditorDialogState extends State<CropEditorDialog> {
               ),
             ),
             DropdownButtonFormField<CropGrowthStage?>(
+              isExpanded: true,
               key: const Key('crop-growth-stage'),
               initialValue: growthStage,
               decoration: InputDecoration(
@@ -278,12 +284,20 @@ class _CropEditorDialogState extends State<CropEditorDialog> {
               items: [
                 DropdownMenuItem<CropGrowthStage?>(
                   value: null,
-                  child: Text(l10n.text('crop.growthStage.unknown')),
+                  child: Text(
+                    l10n.text('crop.growthStage.unknown'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
                 for (final stage in CropGrowthStage.values)
                   DropdownMenuItem<CropGrowthStage?>(
                     value: stage,
-                    child: Text(l10n.text('crop.growthStage.${stage.name}')),
+                    child: Text(
+                      l10n.text('crop.growthStage.${stage.name}'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
               ],
               onChanged: (value) => setState(() => growthStage = value),

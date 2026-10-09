@@ -214,6 +214,7 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
             _section(context, l10n.text('parcel.section.identity'), [
               if (parcel == null && widget.productionProjectCode != null)
                 DropdownButtonFormField<ParcelLayer>(
+                  isExpanded: true,
                   key: const Key('production-create-kind'),
                   initialValue: productionKind,
                   decoration: InputDecoration(
@@ -222,11 +223,19 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
                   items: [
                     DropdownMenuItem(
                       value: ParcelLayer.landBlock,
-                      child: Text(l10n.text('production.create.landBlock')),
+                      child: Text(
+                        l10n.text('production.create.landBlock'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                     DropdownMenuItem(
                       value: ParcelLayer.fieldPlot,
-                      child: Text(l10n.text('production.create.standalone')),
+                      child: Text(
+                        l10n.text('production.create.standalone'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ],
                   onChanged: saving
@@ -543,6 +552,7 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
   Widget _householdPicker(AppLocalizations l10n) => Padding(
     padding: const EdgeInsets.only(bottom: 10),
     child: DropdownButtonFormField<String>(
+      isExpanded: true,
       key: Key(
         'household-${selectedAdministrativeIds[AdministrativeLevel.village]}',
       ),
@@ -551,13 +561,19 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
       items: [
         DropdownMenuItem(
           value: '__new__',
-          child: Text(l10n.text('household.createNew')),
+          child: Text(
+            l10n.text('household.createNew'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
         for (final household in _matchingHouseholds)
           DropdownMenuItem(
             value: household.id,
             child: Text(
               '${household.householdCode} · ${household.headOfHouseholdName}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
       ],
@@ -586,6 +602,7 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: DropdownButtonFormField<String>(
+        isExpanded: true,
         key: Key(
           'admin-${level.name}-${switch (level) {
             AdministrativeLevel.province => selectedAdministrativeIds[AdministrativeLevel.country],
@@ -600,7 +617,11 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
           for (final unit in choices)
             DropdownMenuItem(
               value: unit.id,
-              child: Text('${unit.name} (${unit.code})'),
+              child: Text(
+                '${unit.name} (${unit.code})',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
         ],
         onChanged: (id) => setState(() {
@@ -686,6 +707,7 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
     ValueChanged<T> changed, {
     String? labelKey,
   }) => DropdownButtonFormField<T>(
+    isExpanded: true,
     initialValue: value,
     decoration: InputDecoration(
       labelText: AppLocalizations.of(
@@ -698,6 +720,8 @@ class _LandParcelFormScreenState extends State<LandParcelFormScreen> {
             value: item,
             child: Text(
               AppLocalizations.of(context).text('$prefix.${item.name}'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         )

@@ -15,6 +15,135 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  for (final language in ['vi', 'en', 'lo']) {
+    for (final width in [320.0, 360.0]) {
+      testWidgets(
+        'task form fits $language at $width with long names and keyboard',
+        (tester) async {
+          await tester.binding.setSurfaceSize(Size(width, 800));
+          addTearDown(() => tester.binding.setSurfaceSize(null));
+          addTearDown(tester.view.resetViewInsets);
+          final tasks = _Tasks();
+          final resources = _Resources();
+          final longName = List.filled(
+            8,
+            'Tên dài tiếng Việt ຊື່ຍາວ',
+          ).join(' ');
+          resources.saved.clear();
+          resources.saved.addAll([
+            WorkResource(
+              id: 'machine-1',
+              farmId: 'farm-1',
+              kind: WorkResourceKind.machine,
+              code: 'M001',
+              name: longName,
+            ),
+            WorkResource(
+              id: 'worker-1',
+              farmId: 'farm-1',
+              kind: WorkResourceKind.worker,
+              code: 'W001',
+              name: longName,
+            ),
+          ]);
+          final parcel = LandParcel.create(
+            id: 'parcel-1',
+            farmId: 'farm-1',
+            parcelCode: 'L001',
+            name: longName,
+            boundary: Wgs84Polygon.fromVertices(const [
+              Wgs84Vertex(latitude: 16, longitude: 106),
+              Wgs84Vertex(latitude: 16, longitude: 106.002),
+              Wgs84Vertex(latitude: 16.002, longitude: 106.002),
+              Wgs84Vertex(latitude: 16.002, longitude: 106),
+            ]),
+            boundarySource: BoundarySource.manual,
+            verificationStatus: BoundaryVerificationStatus.draft,
+            actorMembershipId: 'member',
+            occurredAt: DateTime.utc(2026, 10, 7),
+          );
+          const subject = AuthorizationSubject(
+            userId: 'user',
+            membershipId: 'member',
+            farmId: 'farm-1',
+            permissionCodes: {
+              PermissionCodes.taskView,
+              PermissionCodes.taskCreate,
+              PermissionCodes.fieldView,
+              PermissionCodes.catalogView,
+            },
+            dataScopes: {DataScope.allFarm},
+          );
+          final controller = FarmTaskController(
+            subject: subject,
+            service: FarmTaskService(tasks),
+          );
+          await controller.load();
+          await tester.pumpWidget(
+            MaterialApp(
+              locale: Locale(language),
+              supportedLocales: AppLocalizations.supportedLocales,
+              localizationsDelegates: const [
+                AppLocalizations.delegate,
+                GlobalMaterialLocalizations.delegate,
+                GlobalWidgetsLocalizations.delegate,
+                GlobalCupertinoLocalizations.delegate,
+              ],
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: const TextScaler.linear(1.3)),
+                child: child!,
+              ),
+              home: FarmTaskScreen(
+                controller: controller,
+                resources: ParcelWorkService(resources),
+                parcels: [parcel],
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(find.byKey(const Key('farm-task-add')));
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          Future<void> select(String key, String label) async {
+            final field = find.byKey(Key(key));
+            await tester.ensureVisible(field);
+            await tester.pumpAndSettle();
+            await tester.tap(field);
+            await tester.pumpAndSettle();
+            expect(tester.takeException(), isNull);
+            await tester.tap(find.text(label).last);
+            await tester.pumpAndSettle();
+            expect(tester.takeException(), isNull);
+          }
+
+          await select('farm-task-parcel', 'L001 · $longName');
+          await select('farm-task-machine', 'M001 · $longName');
+          await select('farm-task-worker', 'W001 · $longName');
+          final title = find.byKey(const Key('farm-task-title'));
+          await tester.ensureVisible(title);
+          await tester.enterText(title, 'Kiểm tra màn hình hẹp');
+          tester.view.viewInsets = const FakeViewPadding(bottom: 240);
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          tester.testTextInput.hide();
+          tester.view.resetViewInsets();
+          await tester.pumpAndSettle();
+          await tester.tap(find.byKey(const Key('farm-task-save')));
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          expect(tasks.saved, hasLength(1));
+          expect(tasks.saved.single.parcelId, 'parcel-1');
+          expect(tasks.saved.single.machineResourceId, 'machine-1');
+          expect(tasks.saved.single.workerResourceId, 'worker-1');
+          await tester.pumpWidget(const SizedBox.shrink());
+          controller.dispose();
+        },
+      );
+    }
+  }
+
   testWidgets('creates a task using the shared machine catalog', (
     tester,
   ) async {
@@ -140,10 +269,21 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('farm-task-edit')));
     await tester.pumpAndSettle();
-    expect(tester.widget<TextField>(find.byKey(const Key('farm-task-title')))
-        .controller!.text, 'Khai hoang A');
-    expect(tester.widget<DropdownButtonFormField<String>>(
-        find.byKey(const Key('farm-task-machine'))).initialValue, 'machine-1');
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('farm-task-title')))
+          .controller!
+          .text,
+      'Khai hoang A',
+    );
+    expect(
+      tester
+          .widget<DropdownButtonFormField<String>>(
+            find.byKey(const Key('farm-task-machine')),
+          )
+          .initialValue,
+      'machine-1',
+    );
     await tester.enterText(find.byKey(const Key('farm-task-title')), 'Hủy sửa');
     await tester.tap(find.text('Hủy'));
     await tester.pumpAndSettle();
@@ -152,7 +292,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('farm-task-edit')));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const Key('farm-task-title')), 'Khai hoang A đã sửa');
+    await tester.enterText(
+      find.byKey(const Key('farm-task-title')),
+      'Khai hoang A đã sửa',
+    );
     await tester.tap(find.byKey(const Key('farm-task-save')));
     await tester.pumpAndSettle();
     expect(tasks.saved.single.title, 'Khai hoang A đã sửa');
@@ -168,8 +311,11 @@ void main() {
     await tester.tap(find.text('Hủy'));
     await tester.pumpAndSettle();
     expect(tasks.saved.single.status, FarmTaskStatus.pending);
-    for (final status in [FarmTaskStatus.inProgress, FarmTaskStatus.delayed,
-        FarmTaskStatus.inProgress]) {
+    for (final status in [
+      FarmTaskStatus.inProgress,
+      FarmTaskStatus.delayed,
+      FarmTaskStatus.inProgress,
+    ]) {
       await tester.tap(find.text('Khai hoang A đã sửa'));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(Key('farm-task-status-${status.name}')));
@@ -177,8 +323,12 @@ void main() {
       await tester.tap(find.byKey(const Key('farm-task-confirm-status')));
       await tester.pumpAndSettle();
       expect(tasks.saved.single.status, status);
-      expect(tester.widget<Text>(find.byKey(
-        Key('farm-task-count-${status.name}'))).data, endsWith(': 1'));
+      expect(
+        tester
+            .widget<Text>(find.byKey(Key('farm-task-count-${status.name}')))
+            .data,
+        endsWith(': 1'),
+      );
       expect(tasks.saved.single.machineResourceId, 'machine-1');
       expect(tasks.saved.single.id, beforeEdit.id);
     }
@@ -207,11 +357,17 @@ void main() {
     await tester.tap(find.text('Hoàn thành').last);
     await tester.pumpAndSettle();
     expect(find.text('Khai hoang A đã sửa'), findsOneWidget);
-    tasks.saved.add(FarmTask(
-      id: 'unlinked-task', farmId: 'farm-1', title: 'Công việc chung',
-      description: '', status: FarmTaskStatus.completed,
-      dueAt: DateTime(2026, 10, 7), createdAt: DateTime(2026, 10, 6),
-    ));
+    tasks.saved.add(
+      FarmTask(
+        id: 'unlinked-task',
+        farmId: 'farm-1',
+        title: 'Công việc chung',
+        description: '',
+        status: FarmTaskStatus.completed,
+        dueAt: DateTime(2026, 10, 7),
+        createdAt: DateTime(2026, 10, 6),
+      ),
+    );
     await controller.load();
     await tester.pumpAndSettle();
     expect(find.text('Công việc chung'), findsOneWidget);
@@ -231,23 +387,25 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Công việc chung'), findsOneWidget);
 
-    await tester.pumpWidget(MaterialApp(
-      locale: const Locale('vi'),
-      supportedLocales: AppLocalizations.supportedLocales,
-      localizationsDelegates: const [
-        AppLocalizations.delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      home: FarmTaskScreen(
-        key: const Key('parcel-task-route'),
-        controller: controller,
-        resources: ParcelWorkService(resources),
-        parcels: [parcel],
-        initialParcelId: 'parcel-1',
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('vi'),
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: FarmTaskScreen(
+          key: const Key('parcel-task-route'),
+          controller: controller,
+          resources: ParcelWorkService(resources),
+          parcels: [parcel],
+          initialParcelId: 'parcel-1',
+        ),
       ),
-    ));
+    );
     await tester.pumpAndSettle();
     expect(find.text('Khai hoang A đã sửa'), findsOneWidget);
     expect(find.text('Công việc chung'), findsNothing);
@@ -256,15 +414,19 @@ void main() {
     await tester.tap(find.byKey(const Key('farm-task-add')));
     await tester.pumpAndSettle();
     final parcelField = find.byKey(const Key('farm-task-parcel'));
-    expect(tester.widget<DropdownButtonFormField<String>>(parcelField).initialValue,
-        'parcel-1');
+    expect(
+      tester.widget<DropdownButtonFormField<String>>(parcelField).initialValue,
+      'parcel-1',
+    );
     await tester.tap(find.text('Hủy'));
     await tester.pumpAndSettle();
     expect(tasks.saved, hasLength(2));
     await tester.tap(find.byKey(const Key('farm-task-add')));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const Key('farm-task-title')),
-        'Tác vụ từ thửa đất');
+    await tester.enterText(
+      find.byKey(const Key('farm-task-title')),
+      'Tác vụ từ thửa đất',
+    );
     await tester.enterText(find.byType(TextField).last, 'Chuẩn bị máy');
     await tester.tap(find.byKey(const Key('farm-task-save')));
     await tester.pumpAndSettle();
@@ -287,7 +449,10 @@ void main() {
     expect(find.text('Tác vụ từ thửa đất'), findsOneWidget);
     await controller.load();
     await tester.pumpAndSettle();
-    expect(tester.widget<TextField>(searchField).controller!.text, '  TÁC VỤ  ');
+    expect(
+      tester.widget<TextField>(searchField).controller!.text,
+      '  TÁC VỤ  ',
+    );
     await tester.enterText(searchField, 'không có kết quả');
     await tester.pumpAndSettle();
     expect(find.text('Không có tác vụ phù hợp bộ lọc.'), findsOneWidget);
@@ -306,12 +471,17 @@ void main() {
     await tester.pumpAndSettle();
     final dueTask = tasks.saved.last;
     tasks.saved[tasks.saved.length - 1] = FarmTask(
-      id: dueTask.id, farmId: dueTask.farmId, title: dueTask.title,
-      description: dueTask.description, status: dueTask.status,
+      id: dueTask.id,
+      farmId: dueTask.farmId,
+      title: dueTask.title,
+      description: dueTask.description,
+      status: dueTask.status,
       dueAt: DateTime.now().subtract(const Duration(days: 2)),
-      createdAt: dueTask.createdAt, parcelId: dueTask.parcelId,
+      createdAt: dueTask.createdAt,
+      parcelId: dueTask.parcelId,
       workerResourceId: dueTask.workerResourceId,
-      machineResourceId: dueTask.machineResourceId);
+      machineResourceId: dueTask.machineResourceId,
+    );
     await controller.load();
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('farm-task-filter-overdue')));
@@ -325,8 +495,14 @@ void main() {
     await tester.pumpAndSettle();
     await controller.load();
     await tester.pumpAndSettle();
-    expect(tester.widget<SwitchListTile>(find.byKey(
-      const Key('farm-task-filter-overdue'))).value, isTrue);
+    expect(
+      tester
+          .widget<SwitchListTile>(
+            find.byKey(const Key('farm-task-filter-overdue')),
+          )
+          .value,
+      isTrue,
+    );
     expect(find.text('Tổng công việc: 1'), findsOneWidget);
     expect(find.text('Quá hạn: 1'), findsOneWidget);
     expect(find.text('Hoàn thành: 0'), findsOneWidget);
@@ -341,22 +517,37 @@ void main() {
     expect(find.text('Tác vụ từ thửa đất'), findsOneWidget);
     expect(tasks.saved, hasLength(3));
     final viewer = FarmTaskController(
-      subject: const AuthorizationSubject(userId: 'viewer', membershipId: 'viewer',
-        farmId: 'farm-1', permissionCodes: {PermissionCodes.taskView, PermissionCodes.catalogView},
-        dataScopes: {DataScope.allFarm}), service: FarmTaskService(tasks));
+      subject: const AuthorizationSubject(
+        userId: 'viewer',
+        membershipId: 'viewer',
+        farmId: 'farm-1',
+        permissionCodes: {
+          PermissionCodes.taskView,
+          PermissionCodes.catalogView,
+        },
+        dataScopes: {DataScope.allFarm},
+      ),
+      service: FarmTaskService(tasks),
+    );
     await viewer.load();
-    await tester.pumpWidget(MaterialApp(
-      locale: const Locale('vi'),
-      supportedLocales: AppLocalizations.supportedLocales,
-      localizationsDelegates: const [
-        AppLocalizations.delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      home: FarmTaskScreen(
-      key: const Key('viewer-tasks'), controller: viewer,
-      resources: ParcelWorkService(resources), parcels: [parcel])));
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('vi'),
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: FarmTaskScreen(
+          key: const Key('viewer-tasks'),
+          controller: viewer,
+          resources: ParcelWorkService(resources),
+          parcels: [parcel],
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Tác vụ từ thửa đất'));
     await tester.pumpAndSettle();
@@ -374,17 +565,28 @@ class _Tasks implements FarmTaskRepository {
   final saved = <FarmTask>[];
 
   @override
-  Future<void> changeStatus({required String farmId, required String id,
-      required FarmTaskStatus status}) async {
+  Future<void> changeStatus({
+    required String farmId,
+    required String id,
+    required FarmTaskStatus status,
+  }) async {
     final index = saved.indexWhere((t) => t.id == id && t.farmId == farmId);
     if (index < 0 || saved[index].status == FarmTaskStatus.completed) {
       throw StateError('Task unavailable');
     }
     final task = saved[index];
-    saved[index] = FarmTask(id: task.id, farmId: task.farmId, title: task.title,
-      description: task.description, status: status, dueAt: task.dueAt,
-      createdAt: task.createdAt, parcelId: task.parcelId,
-      workerResourceId: task.workerResourceId, machineResourceId: task.machineResourceId);
+    saved[index] = FarmTask(
+      id: task.id,
+      farmId: task.farmId,
+      title: task.title,
+      description: task.description,
+      status: status,
+      dueAt: task.dueAt,
+      createdAt: task.createdAt,
+      parcelId: task.parcelId,
+      workerResourceId: task.workerResourceId,
+      machineResourceId: task.machineResourceId,
+    );
   }
 
   @override
@@ -412,7 +614,9 @@ class _Tasks implements FarmTaskRepository {
 
   @override
   Future<void> update(FarmTask task) async {
-    final index = saved.indexWhere((t) => t.id == task.id && t.farmId == task.farmId);
+    final index = saved.indexWhere(
+      (t) => t.id == task.id && t.farmId == task.farmId,
+    );
     if (index < 0) throw StateError('Missing task');
     saved[index] = task;
   }

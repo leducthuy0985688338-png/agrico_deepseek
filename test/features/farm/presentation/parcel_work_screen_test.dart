@@ -9,6 +9,137 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('phase filter switches, survives refresh and preserves records', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1000, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = _WorkRepository();
+    for (final phase in ParcelWorkPhase.values) {
+      repository.savedEvents.add(
+        ParcelWorkEvent(
+          id: phase.name,
+          farmId: 'farm-1',
+          parcelId: 'parcel-1',
+          phase: phase,
+          description: 'Thực hiện ${phase.name}',
+          occurredAt: DateTime(2026, 10, 7),
+          actorMembershipId: 'actor',
+          machineIds: const ['m1'],
+          workerIds: const [],
+        ),
+      );
+    }
+    const subject = AuthorizationSubject(
+      userId: 'user',
+      membershipId: 'actor',
+      farmId: 'farm-1',
+      permissionCodes: {PermissionCodes.fieldView, PermissionCodes.catalogView},
+      dataScopes: {DataScope.allFarm},
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('vi'),
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: ParcelWorkScreen(
+          parcelId: 'parcel-1',
+          subject: subject,
+          service: ParcelWorkService(repository),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('work-event-clearing')), findsOneWidget);
+    expect(find.byKey(const Key('work-event-cultivation')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('work-phase-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Khai hoang').last);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('work-event-clearing')), findsOneWidget);
+    expect(find.byKey(const Key('work-event-cultivation')), findsNothing);
+    await tester.tap(find.byIcon(Icons.refresh));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('work-event-cultivation')), findsNothing);
+    await tester.tap(find.byKey(const Key('work-phase-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Canh tác').last);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('work-event-clearing')), findsNothing);
+    expect(find.byKey(const Key('work-event-cultivation')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('work-event-cultivation')));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Nội dung công việc: Thực hiện cultivation'),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('work-close-event-details')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('work-phase-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tất cả').last);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('work-event-clearing')), findsOneWidget);
+    expect(find.byKey(const Key('work-event-cultivation')), findsOneWidget);
+    expect(repository.savedEvents, hasLength(2));
+  });
+
+  testWidgets('unmatched phase shows filter message without removing history', (
+    tester,
+  ) async {
+    final repository = _WorkRepository();
+    repository.savedEvents.add(
+      ParcelWorkEvent(
+        id: 'clearing',
+        farmId: 'farm-1',
+        parcelId: 'parcel-1',
+        phase: ParcelWorkPhase.clearing,
+        description: 'Dọn thực bì',
+        occurredAt: DateTime(2026, 10, 7),
+        actorMembershipId: 'actor',
+        machineIds: const ['m1'],
+        workerIds: const [],
+      ),
+    );
+    const subject = AuthorizationSubject(
+      userId: 'user',
+      membershipId: 'actor',
+      farmId: 'farm-1',
+      permissionCodes: {PermissionCodes.fieldView, PermissionCodes.catalogView},
+      dataScopes: {DataScope.allFarm},
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('vi'),
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: ParcelWorkScreen(
+          parcelId: 'parcel-1',
+          subject: subject,
+          service: ParcelWorkService(repository),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('work-phase-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Canh tác').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Không có lần thực hiện phù hợp bộ lọc.'), findsOneWidget);
+    expect(find.byKey(const Key('work-event-clearing')), findsNothing);
+    expect(repository.savedEvents, hasLength(1));
+  });
+
   testWidgets('read-only event details show resources, notes and no writes', (
     tester,
   ) async {

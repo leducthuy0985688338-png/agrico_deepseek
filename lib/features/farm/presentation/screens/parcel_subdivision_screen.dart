@@ -917,6 +917,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                           ),
                           if (!widget.productionPlots)
                             DropdownButtonFormField<ParcelLayer>(
+                              isExpanded: true,
                               key: Key('subdivision-layer-$i'),
                               initialValue: details[i].layer,
                               decoration: InputDecoration(
@@ -928,6 +929,8 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                                     value: layer,
                                     child: Text(
                                       l10n.text('parcel.layer.${layer.name}'),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                               ],
@@ -947,6 +950,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                           if (!widget.productionPlots &&
                               details[i].layer == ParcelLayer.fieldPlot)
                             DropdownButtonFormField<int?>(
+                              isExpanded: true,
                               key: Key('subdivision-parent-$i'),
                               initialValue: details[i].parentSketchIndex,
                               decoration: InputDecoration(
@@ -955,7 +959,11 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                               items: [
                                 DropdownMenuItem<int?>(
                                   value: null,
-                                  child: Text(parcel.name),
+                                  child: Text(
+                                    parcel.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
                                 for (var j = 0; j < i; j++)
                                   if (details[j].layer == ParcelLayer.landBlock)
@@ -965,6 +973,8 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                                         names[j].text.isEmpty
                                             ? _sketchLabel(l10n, j)
                                             : names[j].text,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
                               ],
@@ -1068,6 +1078,7 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                                 ),
                               ),
                             DropdownButtonFormField<CropGrowthStage?>(
+                              isExpanded: true,
                               initialValue: details[i].cropGrowthStage,
                               decoration: InputDecoration(
                                 labelText: l10n.text('crop.growthStage'),
@@ -1077,6 +1088,8 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                                   value: null,
                                   child: Text(
                                     l10n.text('crop.growthStage.unknown'),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                                 for (final stage in CropGrowthStage.values)
@@ -1086,6 +1099,8 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
                                       l10n.text(
                                         'crop.growthStage.${stage.name}',
                                       ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                               ],
@@ -1126,13 +1141,18 @@ class _ParcelSubdivisionScreenState extends State<ParcelSubdivisionScreen> {
     List<T> options,
     ValueChanged<T> onChanged,
   ) => DropdownButtonFormField<T>(
+    isExpanded: true,
     initialValue: value,
     decoration: InputDecoration(labelText: l10n.text(labelKey)),
     items: [
       for (final option in options)
         DropdownMenuItem<T>(
           value: option,
-          child: Text(l10n.text('$valuePrefix.${option.name}')),
+          child: Text(
+            l10n.text('$valuePrefix.${option.name}'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
     ],
     onChanged: (selected) {

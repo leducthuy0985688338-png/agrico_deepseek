@@ -253,6 +253,7 @@ class _FinanceDocumentDialogState extends State<_FinanceDocumentDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             DropdownButtonFormField<BusinessDocumentKind>(
+              isExpanded: true,
               initialValue: kind,
               items:
                   [BusinessDocumentKind.receipt, BusinessDocumentKind.payment]
@@ -265,6 +266,8 @@ class _FinanceDocumentDialogState extends State<_FinanceDocumentDialog> {
                                   ? 'finance.receipt'
                                   : 'finance.payment',
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       )
@@ -290,6 +293,7 @@ class _FinanceDocumentDialogState extends State<_FinanceDocumentDialog> {
               ),
             ),
             DropdownButtonFormField<String>(
+              isExpanded: true,
               initialValue: currency,
               decoration: InputDecoration(
                 labelText: l10n.text('finance.currency'),
@@ -297,11 +301,19 @@ class _FinanceDocumentDialogState extends State<_FinanceDocumentDialog> {
               items: [
                 DropdownMenuItem(
                   value: 'LAK',
-                  child: Text(l10n.text('finance.currency.lak')),
+                  child: Text(
+                    l10n.text('finance.currency.lak'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
                 DropdownMenuItem(
                   value: 'VND',
-                  child: Text(l10n.text('finance.currency.vnd')),
+                  child: Text(
+                    l10n.text('finance.currency.vnd'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
               onChanged: saving

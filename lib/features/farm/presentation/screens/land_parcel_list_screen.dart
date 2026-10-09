@@ -105,59 +105,111 @@ class _LandParcelListScreenState extends State<LandParcelListScreen> {
         Wrap(
           spacing: 8,
           children: [
-            DropdownButton<bool?>(
-              value: controller.activeFilter,
-              hint: Text(l10n.text('parcel.filter.active')),
-              items: [
-                DropdownMenuItem(
-                  value: null,
-                  child: Text(l10n.text('common.all')),
+            SizedBox(
+              width: double.infinity,
+              child: DropdownButton<bool?>(
+                isExpanded: true,
+                value: controller.activeFilter,
+                hint: Text(
+                  l10n.text('parcel.filter.active'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                DropdownMenuItem(
-                  value: true,
-                  child: Text(l10n.text('common.active')),
-                ),
-                DropdownMenuItem(
-                  value: false,
-                  child: Text(l10n.text('common.inactive')),
-                ),
-              ],
-              onChanged: controller.setActiveFilter,
-            ),
-            DropdownButton<BoundaryVerificationStatus?>(
-              value: controller.verificationFilter,
-              hint: Text(l10n.text('parcel.filter.verification')),
-              items: [
-                DropdownMenuItem(
-                  value: null,
-                  child: Text(l10n.text('common.all')),
-                ),
-                ...BoundaryVerificationStatus.values.map(
-                  (value) => DropdownMenuItem(
-                    value: value,
-                    child: Text(l10n.text('verification.${value.name}')),
+                items: [
+                  DropdownMenuItem(
+                    value: null,
+                    child: Text(
+                      l10n.text('common.all'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
-              ],
-              onChanged: controller.setVerificationFilter,
-            ),
-            DropdownButton<LandParcelBoundaryConsistency?>(
-              key: const Key('boundary-consistency-filter'),
-              value: controller.boundaryConsistencyFilter,
-              hint: Text(l10n.text('boundary.audit.filter')),
-              items: [
-                DropdownMenuItem(
-                  value: null,
-                  child: Text(l10n.text('common.all')),
-                ),
-                ...LandParcelBoundaryConsistency.values.map(
-                  (status) => DropdownMenuItem(
-                    value: status,
-                    child: Text(l10n.text('boundary.audit.${status.name}')),
+                  DropdownMenuItem(
+                    value: true,
+                    child: Text(
+                      l10n.text('common.active'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
+                  DropdownMenuItem(
+                    value: false,
+                    child: Text(
+                      l10n.text('common.inactive'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+                onChanged: controller.setActiveFilter,
+              ),
+            ),
+            SizedBox(
+              width: double.infinity,
+              child: DropdownButton<BoundaryVerificationStatus?>(
+                isExpanded: true,
+                value: controller.verificationFilter,
+                hint: Text(
+                  l10n.text('parcel.filter.verification'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ],
-              onChanged: controller.setBoundaryConsistencyFilter,
+                items: [
+                  DropdownMenuItem(
+                    value: null,
+                    child: Text(
+                      l10n.text('common.all'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  ...BoundaryVerificationStatus.values.map(
+                    (value) => DropdownMenuItem(
+                      value: value,
+                      child: Text(
+                        l10n.text('verification.${value.name}'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                ],
+                onChanged: controller.setVerificationFilter,
+              ),
+            ),
+            SizedBox(
+              width: double.infinity,
+              child: DropdownButton<LandParcelBoundaryConsistency?>(
+                isExpanded: true,
+                key: const Key('boundary-consistency-filter'),
+                value: controller.boundaryConsistencyFilter,
+                hint: Text(
+                  l10n.text('boundary.audit.filter'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                items: [
+                  DropdownMenuItem(
+                    value: null,
+                    child: Text(
+                      l10n.text('common.all'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  ...LandParcelBoundaryConsistency.values.map(
+                    (status) => DropdownMenuItem(
+                      value: status,
+                      child: Text(
+                        l10n.text('boundary.audit.${status.name}'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                ],
+                onChanged: controller.setBoundaryConsistencyFilter,
+              ),
             ),
           ],
         ),

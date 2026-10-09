@@ -107,6 +107,7 @@ class _CompanyCatalogScreenState extends State<CompanyCatalogScreen> {
                     Padding(
                       padding: const EdgeInsets.all(16),
                       child: DropdownButtonFormField<CatalogKind>(
+                        isExpanded: true,
                         key: const Key('company-catalog-kind'),
                         initialValue: kind,
                         decoration: InputDecoration(
@@ -116,7 +117,11 @@ class _CompanyCatalogScreenState extends State<CompanyCatalogScreen> {
                           for (final k in CatalogKind.values)
                             DropdownMenuItem(
                               value: k,
-                              child: Text(l.text('catalog.kind.${k.name}')),
+                              child: Text(
+                                l.text('catalog.kind.${k.name}'),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                         ],
                         onChanged: (v) {
@@ -496,7 +501,11 @@ class _ResolveRequestState extends State<_ResolveRequest> {
                 items: [
                   DropdownMenuItem(
                     value: '',
-                    child: Text(l.text('catalog.createFromRequest')),
+                    child: Text(
+                      l.text('catalog.createFromRequest'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                   for (final e in widget.entries.where(
                     (e) => e.kind == widget.request.kind && e.active,

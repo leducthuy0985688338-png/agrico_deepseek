@@ -31,6 +31,7 @@ class ParcelWorkScreen extends StatefulWidget {
 
 class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
   late Future<(List<WorkResource>, List<ParcelWorkEvent>)> data = load();
+  ParcelWorkPhase? phaseFilter;
 
   Future<(List<WorkResource>, List<ParcelWorkEvent>)> load() async {
     final task = widget.initialTask;
@@ -104,12 +105,17 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButton<WorkResourceKind>(
+                isExpanded: true,
                 value: kind,
                 items: [
                   for (final value in WorkResourceKind.values)
                     DropdownMenuItem(
                       value: value,
-                      child: Text(l10n.text('work.${value.name}')),
+                      child: Text(
+                        l10n.text('work.${value.name}'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                 ],
                 onChanged: (value) => update(() => kind = value!),
@@ -201,12 +207,17 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
                   Text(l10n.text('task.workPrefillHint')),
                 ],
                 DropdownButton<ParcelWorkPhase>(
+                  isExpanded: true,
                   value: phase,
                   items: [
                     for (final value in ParcelWorkPhase.values)
                       DropdownMenuItem(
                         value: value,
-                        child: Text(l10n.text('work.${value.name}')),
+                        child: Text(
+                          l10n.text('work.${value.name}'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                   ],
                   onChanged: (value) => update(() => phase = value!),
@@ -426,6 +437,11 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
           }
           final (resources, events) = snapshot.data!;
           final byId = {for (final r in resources) r.id: r};
+          final visibleEvents = events
+              .where(
+                (event) => phaseFilter == null || event.phase == phaseFilter,
+              )
+              .toList();
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -454,8 +470,48 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
                 Text(
                   '${l10n.text('task.source')}: ${widget.initialTask!.title}',
                 ),
-              if (events.isEmpty) Text(l10n.text('work.empty')),
-              for (final event in events)
+              InputDecorator(
+                decoration: InputDecoration(labelText: l10n.text('work.phase')),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<ParcelWorkPhase>(
+                    key: const Key('work-phase-filter'),
+                    value: phaseFilter,
+                    isExpanded: true,
+                    hint: Text(
+                      l10n.text('common.all'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    items: [
+                      DropdownMenuItem<ParcelWorkPhase>(
+                        value: null,
+                        child: Text(
+                          l10n.text('common.all'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      for (final phase in ParcelWorkPhase.values)
+                        DropdownMenuItem<ParcelWorkPhase>(
+                          value: phase,
+                          child: Text(
+                            l10n.text('work.${phase.name}'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                    onChanged: (value) => setState(() => phaseFilter = value),
+                  ),
+                ),
+              ),
+              if (visibleEvents.isEmpty)
+                Text(
+                  l10n.text(
+                    events.isEmpty ? 'work.empty' : 'work.noFilterResults',
+                  ),
+                ),
+              for (final event in visibleEvents)
                 Card(
                   child: ListTile(
                     key: Key('work-event-${event.id}'),
