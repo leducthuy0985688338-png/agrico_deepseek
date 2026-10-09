@@ -188,6 +188,7 @@ class _TaskAddScreenState extends State<TaskAddScreen> {
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
+              isExpanded: true,
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
                 hintText: 'Chọn nhân viên',
@@ -196,7 +197,11 @@ class _TaskAddScreenState extends State<TaskAddScreen> {
               items: _employeeProvider.employees.map((employee) {
                 return DropdownMenuItem(
                   value: employee.id,
-                  child: Text(employee.name),
+                  child: Text(
+                    employee.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 );
               }).toList(),
               onChanged: (value) {
@@ -214,6 +219,7 @@ class _TaskAddScreenState extends State<TaskAddScreen> {
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
+              isExpanded: true,
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
                 hintText: 'Chọn lô đất',
@@ -222,7 +228,11 @@ class _TaskAddScreenState extends State<TaskAddScreen> {
               items: _fieldProvider.fields.map((field) {
                 return DropdownMenuItem(
                   value: field.id,
-                  child: Text(field.name),
+                  child: Text(
+                    field.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 );
               }).toList(),
               onChanged: (value) {
@@ -240,6 +250,7 @@ class _TaskAddScreenState extends State<TaskAddScreen> {
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
+              isExpanded: true,
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
                 hintText: 'Chọn máy móc',
@@ -248,7 +259,11 @@ class _TaskAddScreenState extends State<TaskAddScreen> {
               items: _machineProvider.machines.map((machine) {
                 return DropdownMenuItem(
                   value: machine.id,
-                  child: Text(machine.name),
+                  child: Text(
+                    machine.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 );
               }).toList(),
               onChanged: (value) {
