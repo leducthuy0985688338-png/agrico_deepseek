@@ -1,3 +1,8 @@
+import 'v2_resource_module_routes.dart';
+import '../features/farm/presentation/screens/work_resource_catalog_screen.dart';
+import '../features/farm/domain/entities/parcel_work.dart';
+import '../features/inventory/application/inventory_service.dart';
+import '../features/inventory/presentation/inventory_catalog_screen.dart';
 import '../core/backup/local_backup_access.dart';
 import '../core/backup/local_backup_screen.dart';
 import '../core/auth/admin/company_account_admin_screen.dart';
@@ -392,6 +397,49 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
             ),
           ),
       };
+      final resourceService = ParcelWorkService(
+        SqliteParcelWorkRepository(deps.database),
+        catalog: CompanyCatalogService(
+          repository: SqliteCompanyCatalog(deps.database),
+          subject: deps.subject,
+        ),
+      );
+      legacy.addAll(
+        v2ResourceModuleRoutes(
+          subject: deps.subject,
+          currentSubject: () => mounted ? widget.subject : null,
+          openMachines: () => push(
+            WorkResourceCatalogScreen(
+              kind: WorkResourceKind.machine,
+              subject: deps.subject,
+              service: resourceService,
+            ),
+          ),
+          openWorkers: () => push(
+            WorkResourceCatalogScreen(
+              kind: WorkResourceKind.worker,
+              subject: deps.subject,
+              service: resourceService,
+            ),
+          ),
+          openInventory: () => push(
+            InventoryCatalogScreen(
+              subject: deps.subject,
+              service: InventoryService(
+                SqliteInventoryRepository(deps.database),
+              ),
+            ),
+          ),
+          openBackup: () => push(
+            LocalBackupScreen(
+              database: deps.database,
+              access: LocalBackupAccess(
+                currentSubject: () => mounted ? widget.subject : null,
+              ),
+            ),
+          ),
+        ),
+      );
       // Unsupported routes stay closed until domain-level scope guards exist.
       if (!const AuthorizationService().can(
         subject: deps.subject,

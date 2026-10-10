@@ -362,8 +362,11 @@ class ModulesV2 extends StatelessWidget {
         ),
         ...items.entries.map(
           (item) => ListTile(
+            key: Key('module-v2-${item.key}'),
             title: Text(
-              AppLocalizations.of(context).text('module.${item.key}'),
+              AppLocalizations.of(context).text(
+                item.key == 'employees' ? 'work.worker' : 'module.${item.key}',
+              ),
             ),
             trailing: const Icon(Icons.chevron_right),
             enabled: item.value != null,
