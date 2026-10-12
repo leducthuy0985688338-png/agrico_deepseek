@@ -75,6 +75,8 @@ import '../features/farm/presentation/screens/land_parcel_list_screen.dart';
 import '../features/farm/presentation/widgets/boundary_workflow_widgets.dart';
 import '../features/finance/data/local/sqlite_finance_document_repository.dart';
 import '../features/finance/application/finance_document_service.dart';
+import '../features/finance/application/production_cost_summary.dart';
+import '../features/finance/presentation/production_costs_screen.dart';
 import '../features/finance/presentation/finance_documents_screen.dart';
 
 import '../models/field_model.dart';
@@ -484,6 +486,14 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         legacy['finance'] = () {
           if (financeService.canView) {
             push(FinanceDocumentsScreen(service: financeService));
+          }
+        };
+      }
+      final costService = ProductionCostSummary(financeService);
+      if (costService.canView) {
+        legacy['costs'] = () {
+          if (costService.canView) {
+            push(ProductionCostsScreen(service: costService));
           }
         };
       }
