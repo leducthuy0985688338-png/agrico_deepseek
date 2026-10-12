@@ -1,3 +1,4 @@
+import 'package:agrico_deepseek/features/finance/application/production_cost_parcel_filter.dart';
 import 'package:agrico_deepseek/features/finance/application/production_cost_period.dart';
 import 'package:agrico_deepseek/features/finance/application/production_cost_report.dart';
 import 'package:agrico_deepseek/core/identity/domain/business_reference_code.dart';
@@ -63,6 +64,117 @@ void main() {
         currentSubject: () => live,
       ),
     );
+  });
+  test(
+    'parcel and general filters combine with dates and retain available choices',
+    () async {
+      store.items = [
+        document('one', 100, parcelId: 'one', date: DateTime(2026, 10, 12)),
+        document('old', 300, parcelId: 'one', date: DateTime(2026, 9, 30)),
+        document('two', 400, parcelId: 'two', date: DateTime(2026, 10, 12)),
+        document('general', 200, date: DateTime(2026, 10, 12)),
+      ];
+      final period = ProductionCostPeriod(
+        from: DateTime(2026, 10, 1),
+        to: DateTime(2026, 10, 12),
+      );
+      final report = await service.load(
+        period: period,
+        parcelFilter: const ProductionCostParcelFilter.parcel('one'),
+      );
+      expect(report.totals, {'LAK': 100});
+      expect(report.availableParcelIds, {'one', 'two'});
+      final general = await service.load(
+        period: period,
+        parcelFilter: const ProductionCostParcelFilter.general(),
+      );
+      expect(general.totals, {'LAK': 200});
+      expect(general.groups.single.parcelId, isNull);
+      final workbook = await ProductionCostReport(service).workbook(
+        period: period,
+        parcelFilter: const ProductionCostParcelFilter.parcel('one'),
+      );
+      expect(workbook['Totals'].rows[1][1]!.value.toString(), '100');
+      expect(workbook['Documents'].rows, hasLength(2));
+      expect(workbook['Parcel Filter'].rows[1][0]!.value.toString(), 'parcel');
+      expect(workbook['Parcel Filter'].rows[1][1]!.value.toString(), 'one');
+    },
+  );
+  test(
+    'unknown selection produces an empty report and invalid IDs are rejected',
+    () async {
+      store.items = [document('one', 100, parcelId: 'one')];
+      final report = await service.load(
+        parcelFilter: const ProductionCostParcelFilter.parcel('missing'),
+      );
+      expect(report.groups, isEmpty);
+      expect(report.availableParcelIds, {'one'});
+      await expectLater(
+        service.load(parcelFilter: const ProductionCostParcelFilter.parcel('')),
+        throwsFormatException,
+      );
+    },
+  );
+  testWidgets('parcel selection persists across dates, refresh and export', (
+    tester,
+  ) async {
+    store.items = [
+      document('one', 1000000, parcelId: 'one', date: DateTime(2026, 10, 12)),
+      document('general', 2000000, date: DateTime(2026, 10, 12)),
+      document('old', 3000000, parcelId: 'two', date: DateTime(2026, 9, 30)),
+    ];
+    String? exportedParcel;
+    String? exportedAmount;
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('vi'),
+        supportedLocales: const [Locale('vi')],
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: ProductionCostsScreen(
+          service: service,
+          pickPeriod: (_, _) async => DateTimeRange(
+            start: DateTime(2026, 10, 1),
+            end: DateTime(2026, 10, 12),
+          ),
+          saveReport: (workbook, _) async {
+            exportedParcel = workbook['Parcel Filter'].rows[1][1]!.value
+                .toString();
+            exportedAmount = workbook['Totals'].rows[1][1]!.value.toString();
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('costs-parcel')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Lô đất đã liên kết (one)').last);
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('Tổng chi: 1.000.000 LAK'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('costs-period')));
+    await tester.pump();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.refresh));
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('Tổng chi: 1.000.000 LAK'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('costs-export')));
+    await tester.pumpAndSettle();
+    expect(exportedParcel, 'one');
+    expect(exportedAmount, '1000000');
+    await tester.tap(find.byKey(const Key('costs-parcel')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Chi chung (chưa gắn lô đất)').last);
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('Tổng chi: 2.000.000 LAK'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
   test('calendar range includes the full first and last day', () async {
     store.items = [

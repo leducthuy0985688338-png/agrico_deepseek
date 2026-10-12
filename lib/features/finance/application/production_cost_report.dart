@@ -1,3 +1,4 @@
+import 'production_cost_parcel_filter.dart';
 import 'production_cost_period.dart';
 import 'package:excel/excel.dart';
 import 'production_cost_summary.dart';
@@ -14,9 +15,14 @@ class ProductionCostReport {
 
   Future<Excel> workbook({
     ProductionCostPeriod period = const ProductionCostPeriod(),
+    ProductionCostParcelFilter parcelFilter =
+        const ProductionCostParcelFilter.all(),
   }) async {
     _authorize();
-    final snapshot = await summary.load(period: period);
+    final snapshot = await summary.load(
+      period: period,
+      parcelFilter: parcelFilter,
+    );
     _authorize();
     final excel = Excel.createExcel();
     final scope = excel['Period'];
@@ -27,6 +33,24 @@ class ProductionCostReport {
       ),
       TextCellValue(
         period.to?.toIso8601String().substring(0, 10) ?? 'All dates',
+      ),
+    ]);
+    final filterSheet = excel['Parcel Filter'];
+    filterSheet.appendRow([
+      TextCellValue('Mode'),
+      TextCellValue('Parcel ID'),
+      TextCellValue('Parcel'),
+    ]);
+    filterSheet.appendRow([
+      TextCellValue(parcelFilter.mode.name),
+      TextCellValue(parcelFilter.parcelId ?? ''),
+      TextCellValue(
+        parcelFilter.mode == ProductionCostParcelMode.all
+            ? 'All parcels'
+            : parcelFilter.mode == ProductionCostParcelMode.general
+            ? 'General expenses'
+            : snapshot.parcelLabels[parcelFilter.parcelId] ??
+                  'Linked land parcel',
       ),
     ]);
     final totals = excel['Totals'];
@@ -83,8 +107,10 @@ class ProductionCostReport {
   Future<void> exportReport({
     required Future<void> Function(Excel) save,
     ProductionCostPeriod period = const ProductionCostPeriod(),
+    ProductionCostParcelFilter parcelFilter =
+        const ProductionCostParcelFilter.all(),
   }) async {
-    final report = await workbook(period: period);
+    final report = await workbook(period: period, parcelFilter: parcelFilter);
     _authorize();
     await save(report);
   }

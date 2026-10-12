@@ -1,3 +1,4 @@
+import '../application/production_cost_parcel_filter.dart';
 import '../application/production_cost_period.dart';
 import 'dart:math';
 import 'package:excel/excel.dart';
@@ -24,9 +25,16 @@ class ProductionCostsScreen extends StatefulWidget {
 }
 
 class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
+  String selectedParcel = 'all';
+  ProductionCostParcelFilter get parcelFilter => selectedParcel == 'all'
+      ? const ProductionCostParcelFilter.all()
+      : selectedParcel == 'general'
+      ? const ProductionCostParcelFilter.general()
+      : ProductionCostParcelFilter.parcel(selectedParcel.substring(7));
   ProductionCostPeriod period = const ProductionCostPeriod();
   late Future<ProductionCostSnapshot> data = widget.service.load(
     period: period,
+    parcelFilter: parcelFilter,
   );
 
   Future<void> selectPeriod() async {
@@ -46,7 +54,7 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
     }
     setState(() {
       period = ProductionCostPeriod(from: selected.start, to: selected.end);
-      data = widget.service.load(period: period);
+      data = widget.service.load(period: period, parcelFilter: parcelFilter);
     });
   }
 
@@ -60,6 +68,7 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
     try {
       await ProductionCostReport(widget.service).exportReport(
         period: period,
+        parcelFilter: parcelFilter,
         save: (workbook) => (widget.saveReport ?? saveExcelFile)(
           workbook,
           'BaoCaoChiPhiV2-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}.xlsx',
@@ -112,7 +121,10 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
             tooltip: l10n.text('common.retry'),
             onPressed: () {
               setState(() {
-                data = widget.service.load(period: period);
+                data = widget.service.load(
+                  period: period,
+                  parcelFilter: parcelFilter,
+                );
               });
             },
           ),
@@ -120,6 +132,73 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
       ),
       body: Column(
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+            child: FutureBuilder<ProductionCostSnapshot>(
+              future: data,
+              builder: (context, snapshot) {
+                if (!widget.service.canView) {
+                  return const SizedBox.shrink();
+                }
+                final ids = <String>{
+                  ...(snapshot.data?.availableParcelIds ?? <String>{}),
+                  ?parcelFilter.parcelId,
+                }.toList()..sort();
+                final labels =
+                    snapshot.data?.parcelLabels ?? <String, String>{};
+                return DropdownButtonFormField<String>(
+                  key: const Key('costs-parcel'),
+                  isExpanded: true,
+                  initialValue: selectedParcel,
+                  decoration: InputDecoration(
+                    labelText: l10n.text('task.parcel'),
+                  ),
+                  items: [
+                    DropdownMenuItem(
+                      value: 'all',
+                      child: Text(
+                        l10n.text('costs.allParcels'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    DropdownMenuItem(
+                      value: 'general',
+                      child: Text(
+                        l10n.text('costs.general'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    for (final id in ids)
+                      DropdownMenuItem(
+                        value: 'parcel:$id',
+                        child: Text(
+                          labels[id] ??
+                              '${l10n.text('finance.linkedParcel')} ($id)',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                  onChanged: exporting
+                      ? null
+                      : (value) {
+                          if (value == null) {
+                            return;
+                          }
+                          setState(() {
+                            selectedParcel = value;
+                            data = widget.service.load(
+                              period: period,
+                              parcelFilter: parcelFilter,
+                            );
+                          });
+                        },
+                );
+              },
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.all(12),
             child: Wrap(
@@ -144,7 +223,10 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
                         : () {
                             setState(() {
                               period = const ProductionCostPeriod();
-                              data = widget.service.load(period: period);
+                              data = widget.service.load(
+                                period: period,
+                                parcelFilter: parcelFilter,
+                              );
                             });
                           },
                     child: Text(l10n.text('costs.clearPeriod')),

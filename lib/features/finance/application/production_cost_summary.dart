@@ -1,3 +1,4 @@
+import 'production_cost_parcel_filter.dart';
 import 'production_cost_period.dart';
 import '../../../core/identity/domain/business_reference_code.dart';
 import '../domain/finance_document.dart';
@@ -21,11 +22,16 @@ class ProductionCostSnapshot {
     required List<ProductionCostGroup> groups,
     required Map<String, String> parcelLabels,
     this.period = const ProductionCostPeriod(),
+    this.parcelFilter = const ProductionCostParcelFilter.all(),
+    Set<String> availableParcelIds = const {},
   }) : groups = List.unmodifiable(groups),
-       parcelLabels = Map.unmodifiable(parcelLabels);
+       parcelLabels = Map.unmodifiable(parcelLabels),
+       availableParcelIds = Set.unmodifiable(availableParcelIds);
   final List<ProductionCostGroup> groups;
   final Map<String, String> parcelLabels;
   final ProductionCostPeriod period;
+  final ProductionCostParcelFilter parcelFilter;
+  final Set<String> availableParcelIds;
   Map<String, int> get totals {
     final result = <String, int>{};
     for (final group in groups) {
@@ -47,8 +53,11 @@ class ProductionCostSummary {
 
   Future<ProductionCostSnapshot> load({
     ProductionCostPeriod period = const ProductionCostPeriod(),
+    ProductionCostParcelFilter parcelFilter =
+        const ProductionCostParcelFilter.all(),
   }) async {
     period.validate();
+    parcelFilter.validate();
     if (!canView) {
       throw StateError('Production cost access denied.');
     }
@@ -60,7 +69,8 @@ class ProductionCostSummary {
     final buckets = <(String?, String), List<FinanceDocument>>{};
     for (final document in documents) {
       if (document.kind != BusinessDocumentKind.payment ||
-          !period.contains(document.occurredAt)) {
+          !period.contains(document.occurredAt) ||
+          !parcelFilter.contains(document.parcelId)) {
         continue;
       }
       buckets
@@ -74,6 +84,12 @@ class ProductionCostSummary {
       });
     return ProductionCostSnapshot(
       period: period,
+      parcelFilter: parcelFilter,
+      availableParcelIds: {
+        for (final parcel in parcels) parcel.id,
+        for (final document in documents)
+          if (document.kind == BusinessDocumentKind.payment) ?document.parcelId,
+      },
       groups: [
         for (final key in keys)
           ProductionCostGroup(
