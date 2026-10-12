@@ -1,26 +1,24 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:excel/excel.dart';
 
 import '../../../core/identity/domain/business_reference_code.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../services/report_file_saver.dart';
 import '../application/finance_document_summary.dart';
-import '../application/finance_v2_report.dart';
+import '../application/finance_document_service.dart';
 import '../domain/finance_document.dart';
+import 'finance_amount_formatter.dart';
 
 class FinanceDocumentsScreen extends StatefulWidget {
   const FinanceDocumentsScreen({
     super.key,
-    required this.repository,
-    required this.organizationId,
+    required this.service,
     this.saveReport,
   });
 
-  final FinanceDocumentStore repository;
-  final String organizationId;
+  final FinanceDocumentService service;
   final Future<void> Function(Excel workbook, String fileName)? saveReport;
 
   @override
@@ -33,18 +31,21 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
       _load();
 
   Future<(List<FinanceDocument>, List<FinanceCurrencyTotal>)> _load() async => (
-    await widget.repository.listByOrganization(widget.organizationId),
+    await widget.service.listByOrganization(widget.service.organizationId),
     await FinanceDocumentSummary(
-      widget.repository,
-    ).byOrganization(widget.organizationId),
+      widget.service,
+    ).byOrganization(widget.service.organizationId),
   );
 
   Future<void> _add() async {
+    if (!widget.service.canCreate) {
+      return;
+    }
     final saved = await showDialog<FinanceDocument>(
       context: context,
       builder: (_) => _FinanceDocumentDialog(
-        repository: widget.repository,
-        organizationId: widget.organizationId,
+        repository: widget.service,
+        organizationId: widget.service.organizationId,
       ),
     );
     if (!mounted || saved == null) return;
@@ -59,12 +60,11 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
   Future<void> _export() async {
     setState(() => exporting = true);
     try {
-      final workbook = await FinanceV2Report(
-        widget.repository,
-      ).workbook(widget.organizationId);
-      await (widget.saveReport ?? saveExcelFile)(
-        workbook,
-        'BaoCaoChungTuV2-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}.xlsx',
+      await widget.service.exportReport(
+        save: (workbook) => (widget.saveReport ?? saveExcelFile)(
+          workbook,
+          'BaoCaoChungTuV2-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}.xlsx',
+        ),
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -97,24 +97,26 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
       appBar: AppBar(
         title: Text(l10n.text('module.finance')),
         actions: [
-          IconButton(
-            key: const Key('finance-export-v2'),
-            tooltip: l10n.text('finance.exportV2'),
-            icon: const Icon(Icons.file_download),
-            onPressed: exporting ? null : _export,
-          ),
-          IconButton(
-            key: const Key('finance-add'),
-            tooltip: l10n.text('finance.add'),
-            icon: const Icon(Icons.add),
-            onPressed: _add,
-          ),
+          if (widget.service.canExport)
+            IconButton(
+              key: const Key('finance-export-v2'),
+              tooltip: l10n.text('finance.exportV2'),
+              icon: const Icon(Icons.file_download),
+              onPressed: exporting ? null : _export,
+            ),
+          if (widget.service.canCreate)
+            IconButton(
+              key: const Key('finance-add'),
+              tooltip: l10n.text('finance.add'),
+              icon: const Icon(Icons.add),
+              onPressed: _add,
+            ),
         ],
       ),
       body: FutureBuilder<(List<FinanceDocument>, List<FinanceCurrencyTotal>)>(
         future: data,
         builder: (context, snapshot) {
-          if (snapshot.hasError) {
+          if (!widget.service.canView || snapshot.hasError) {
             return Center(child: Text(l10n.text('finance.saveFailed')));
           }
           if (!snapshot.hasData) {
@@ -138,13 +140,13 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
                           '${l10n.text('finance.summary')} · ${total.currency}',
                         ),
                         Text(
-                          '${l10n.text('finance.receipt')}: ${total.receiptsMinor}',
+                          '${l10n.text('finance.receipt')}: ${FinanceAmountFormatter.group(total.receiptsMinor.toString())}',
                         ),
                         Text(
-                          '${l10n.text('finance.payment')}: ${total.paymentsMinor}',
+                          '${l10n.text('finance.payment')}: ${FinanceAmountFormatter.group(total.paymentsMinor.toString())}',
                         ),
                         Text(
-                          '${l10n.text('finance.balance')}: ${total.balanceMinor}',
+                          '${l10n.text('finance.balance')}: ${FinanceAmountFormatter.group(total.balanceMinor.toString())}',
                         ),
                       ],
                     ),
@@ -165,7 +167,9 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
                         '${document.occurredAt.month.toString().padLeft(2, '0')}-'
                         '${document.occurredAt.day.toString().padLeft(2, '0')}',
                       ),
-                      trailing: Text('${document.amountMinor} $unit'),
+                      trailing: Text(
+                        '${FinanceAmountFormatter.group(document.amountMinor.toString())} $unit',
+                      ),
                     );
                   },
                 ),
@@ -207,7 +211,9 @@ class _FinanceDocumentDialogState extends State<_FinanceDocumentDialog> {
   }
 
   Future<void> _save() async {
-    final parsedAmount = int.tryParse(amount.text);
+    final parsedAmount = int.tryParse(
+      FinanceAmountFormatter.digits(amount.text),
+    );
     if (category.text.trim().isEmpty ||
         parsedAmount == null ||
         parsedAmount <= 0) {
@@ -287,7 +293,7 @@ class _FinanceDocumentDialogState extends State<_FinanceDocumentDialog> {
               key: const Key('finance-amount'),
               controller: amount,
               keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              inputFormatters: [FinanceAmountFormatter()],
               decoration: InputDecoration(
                 labelText: l10n.text('finance.amount'),
               ),

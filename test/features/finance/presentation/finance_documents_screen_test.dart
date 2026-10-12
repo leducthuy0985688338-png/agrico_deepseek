@@ -1,3 +1,5 @@
+import 'package:agrico_deepseek/core/permissions/authorization.dart';
+import 'package:agrico_deepseek/features/finance/application/finance_document_service.dart';
 import 'package:agrico_deepseek/core/localization/app_localizations.dart';
 import 'package:agrico_deepseek/core/identity/domain/business_reference_code.dart';
 import 'package:agrico_deepseek/features/finance/domain/finance_document.dart';
@@ -6,7 +8,50 @@ import 'package:excel/excel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+FinanceDocumentService _service(
+  FinanceDocumentStore repository, {
+  Set<String> permissions = const {
+    PermissionCodes.financeView,
+    PermissionCodes.financeCreate,
+    PermissionCodes.reportFinance,
+  },
+}) {
+  final subject = AuthorizationSubject(
+    userId: 'user',
+    membershipId: 'member',
+    farmId: 'farm-a',
+    permissionCodes: permissions,
+    dataScopes: const {DataScope.allFarm},
+    validUntil: DateTime.now().add(const Duration(hours: 1)),
+  );
+  return FinanceDocumentService(
+    repository: repository,
+    subject: subject,
+    currentSubject: () => subject,
+  );
+}
+
 void main() {
+  testWidgets('view-only finance hides create and export actions', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('vi'),
+        localizationsDelegates: const [AppLocalizations.delegate],
+        home: FinanceDocumentsScreen(
+          service: _service(
+            _MemoryFinanceStore(),
+            permissions: const {PermissionCodes.financeView},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('finance-add')), findsNothing);
+    expect(find.byKey(const Key('finance-export-v2')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('saved payment shows its generated code after reopening', (
     tester,
   ) async {
@@ -18,8 +63,7 @@ void main() {
       locale: const Locale('vi'),
       localizationsDelegates: const [AppLocalizations.delegate],
       home: FinanceDocumentsScreen(
-        repository: repository,
-        organizationId: 'farm-a',
+        service: _service(repository),
         saveReport: (workbook, fileName) async {
           exported = workbook;
           exportedName = fileName;
@@ -59,7 +103,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const Key('finance-total-LAK')),
-        matching: find.textContaining('25000'),
+        matching: find.textContaining('25.000'),
       ),
       findsWidgets,
     );
