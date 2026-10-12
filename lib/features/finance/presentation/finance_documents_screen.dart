@@ -28,6 +28,14 @@ class FinanceDocumentsScreen extends StatefulWidget {
 
 class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
   bool exporting = false;
+  final search = TextEditingController();
+
+  @override
+  void dispose() {
+    search.dispose();
+    super.dispose();
+  }
+
   Map<String, String> parcelLabels = {};
   late Future<(List<FinanceDocument>, List<FinanceCurrencyTotal>)> data =
       _load();
@@ -212,72 +220,123 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
             ),
         ],
       ),
-      body: FutureBuilder<(List<FinanceDocument>, List<FinanceCurrencyTotal>)>(
-        future: data,
-        builder: (context, snapshot) {
-          if (!widget.service.canView || snapshot.hasError) {
-            return Center(child: Text(l10n.text('finance.saveFailed')));
-          }
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final (documents, totals) = snapshot.data!;
-          if (documents.isEmpty) {
-            return Center(child: Text(l10n.text('common.empty')));
-          }
-          return ListView(
-            children: [
-              for (final total in totals)
-                Card(
-                  key: Key('finance-total-${total.currency}'),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${l10n.text('finance.summary')} · ${total.currency}',
+      body: Column(
+        children: [
+          if (widget.service.canView)
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: TextField(
+                key: const Key('finance-search'),
+                controller: search,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  hintText: l10n.text('finance.search'),
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: search.text.isEmpty
+                      ? null
+                      : IconButton(
+                          key: const Key('finance-search-clear'),
+                          tooltip: l10n.text('finance.clearSearch'),
+                          icon: const Icon(Icons.clear),
+                          onPressed: () => setState(search.clear),
                         ),
-                        Text(
-                          '${l10n.text('finance.receipt')}: ${FinanceAmountFormatter.group(total.receiptsMinor.toString())}',
-                        ),
-                        Text(
-                          '${l10n.text('finance.payment')}: ${FinanceAmountFormatter.group(total.paymentsMinor.toString())}',
-                        ),
-                        Text(
-                          '${l10n.text('finance.balance')}: ${FinanceAmountFormatter.group(total.balanceMinor.toString())}',
-                        ),
-                      ],
-                    ),
-                  ),
                 ),
-              for (final document in documents)
-                Builder(
-                  builder: (context) {
-                    final unit = switch (document.currency) {
-                      'LAK' => l10n.text('finance.currency.lak.short'),
-                      'VND' => l10n.text('finance.currency.vnd.short'),
-                      _ => document.currency,
-                    };
-                    return ListTile(
-                      key: Key('finance-document-${document.id}'),
-                      onTap: () => _showDetails(document.id),
-                      title: Text('${document.code} · ${document.category}'),
-                      subtitle: Text(
-                        '${document.occurredAt.year}-'
-                        '${document.occurredAt.month.toString().padLeft(2, '0')}-'
-                        '${document.occurredAt.day.toString().padLeft(2, '0')}'
-                        '${document.parcelId == null ? '' : '\n${l10n.text('task.parcel')}: ${parcelLabels[document.parcelId] ?? l10n.text('finance.linkedParcel')}'}',
+              ),
+            ),
+          Expanded(
+            child: FutureBuilder<(List<FinanceDocument>, List<FinanceCurrencyTotal>)>(
+              future: data,
+              builder: (context, snapshot) {
+                if (!widget.service.canView || snapshot.hasError) {
+                  return Center(child: Text(l10n.text('finance.saveFailed')));
+                }
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final (documents, totals) = snapshot.data!;
+                final query = search.text.trim().toLowerCase();
+                final visible = documents
+                    .where(
+                      (document) =>
+                          query.isEmpty ||
+                          document.code.toLowerCase().contains(query) ||
+                          document.category.toLowerCase().contains(query) ||
+                          (document.description ?? '').toLowerCase().contains(
+                            query,
+                          ),
+                    )
+                    .toList();
+                if (documents.isEmpty) {
+                  return Center(child: Text(l10n.text('common.empty')));
+                }
+                return ListView(
+                  children: [
+                    if (query.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Text(l10n.text('finance.searchScope')),
                       ),
-                      trailing: Text(
-                        '${FinanceAmountFormatter.group(document.amountMinor.toString())} $unit',
+                    for (final total in totals)
+                      Card(
+                        key: Key('finance-total-${total.currency}'),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${l10n.text('finance.summary')} · ${total.currency}',
+                              ),
+                              Text(
+                                '${l10n.text('finance.receipt')}: ${FinanceAmountFormatter.group(total.receiptsMinor.toString())}',
+                              ),
+                              Text(
+                                '${l10n.text('finance.payment')}: ${FinanceAmountFormatter.group(total.paymentsMinor.toString())}',
+                              ),
+                              Text(
+                                '${l10n.text('finance.balance')}: ${FinanceAmountFormatter.group(total.balanceMinor.toString())}',
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                    );
-                  },
-                ),
-            ],
-          );
-        },
+                    if (visible.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(l10n.text('finance.noSearchResults')),
+                      ),
+                    for (final document in visible)
+                      Builder(
+                        builder: (context) {
+                          final unit = switch (document.currency) {
+                            'LAK' => l10n.text('finance.currency.lak.short'),
+                            'VND' => l10n.text('finance.currency.vnd.short'),
+                            _ => document.currency,
+                          };
+                          return ListTile(
+                            key: Key('finance-document-${document.id}'),
+                            onTap: () => _showDetails(document.id),
+                            title: Text(
+                              '${document.code} · ${document.category}',
+                            ),
+                            subtitle: Text(
+                              '${document.occurredAt.year}-'
+                              '${document.occurredAt.month.toString().padLeft(2, '0')}-'
+                              '${document.occurredAt.day.toString().padLeft(2, '0')}'
+                              '${document.parcelId == null ? '' : '\n${l10n.text('task.parcel')}: ${parcelLabels[document.parcelId] ?? l10n.text('finance.linkedParcel')}'}',
+                            ),
+                            trailing: Text(
+                              '${FinanceAmountFormatter.group(document.amountMinor.toString())} $unit',
+                            ),
+                          );
+                        },
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
