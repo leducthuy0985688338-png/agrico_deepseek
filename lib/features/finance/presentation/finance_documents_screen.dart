@@ -209,6 +209,93 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
     ).showSnackBar(SnackBar(content: Text(saved.code)));
   }
 
+  Future<void> _showFilteredTotals() async {
+    if (!widget.service.canView) {
+      return;
+    }
+    final filter = currentFilter;
+    FocusManager.instance.primaryFocus?.unfocus();
+    try {
+      final documents = await widget.service.listByOrganization(
+        widget.service.organizationId,
+      );
+      if (!mounted || !widget.service.canView) {
+        return;
+      }
+      final visible = documents.where(filter.matches).toList();
+      final totals = FinanceDocumentSummary.fromDocuments(
+        visible,
+        widget.service.organizationId,
+      );
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          final l10n = AppLocalizations.of(dialogContext);
+          return AlertDialog(
+            key: const Key('finance-filtered-totals-dialog'),
+            title: Text(l10n.text('finance.filteredTotals')),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
+                child: widget.service.canView
+                    ? Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${l10n.text('finance.documentCount')}: ${visible.length}',
+                            key: const Key('finance-filtered-count'),
+                          ),
+                          for (final total in totals)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 12),
+                              child: Column(
+                                key: Key(
+                                  'finance-filtered-total-${total.currency}',
+                                ),
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(total.currency),
+                                  Text(
+                                    '${l10n.text('finance.receipt')}: ${FinanceAmountFormatter.group(total.receiptsMinor.toString())}',
+                                  ),
+                                  Text(
+                                    '${l10n.text('finance.payment')}: ${FinanceAmountFormatter.group(total.paymentsMinor.toString())}',
+                                  ),
+                                  Text(
+                                    '${l10n.text('finance.balance')}: ${FinanceAmountFormatter.group(total.balanceMinor.toString())}',
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      )
+                    : Text(l10n.text('finance.loadDetailsFailed')),
+              ),
+            ),
+            actions: [
+              TextButton(
+                key: const Key('finance-filtered-totals-close'),
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: Text(l10n.text('finance.close')),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(context).text('finance.loadDetailsFailed'),
+            ),
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _export(bool filtered) async {
     if (exporting || !widget.service.canExport) {
       return;
@@ -254,6 +341,13 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
       appBar: AppBar(
         title: Text(l10n.text('module.finance')),
         actions: [
+          if (widget.service.canView)
+            IconButton(
+              key: const Key('finance-filtered-totals'),
+              tooltip: l10n.text('finance.filteredTotals'),
+              icon: const Icon(Icons.summarize_outlined),
+              onPressed: _showFilteredTotals,
+            ),
           if (widget.service.canExport)
             PopupMenuButton<bool>(
               key: const Key('finance-export-v2'),
