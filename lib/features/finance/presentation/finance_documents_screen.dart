@@ -34,6 +34,7 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
   final search = TextEditingController();
   BusinessDocumentKind? kindFilter;
   DateTimeRange? period;
+  String selectedParcel = 'all';
 
   static DateTime _day(DateTime value) =>
       DateTime.utc(value.year, value.month, value.day);
@@ -361,9 +362,21 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
                 }
                 final (documents, totals) = snapshot.data!;
                 final query = search.text.trim().toLowerCase();
+                final parcelIds = <String>{
+                  ...parcelLabels.keys,
+                  for (final document in documents) ?document.parcelId,
+                  if (selectedParcel.startsWith('parcel:'))
+                    selectedParcel.substring(7),
+                }.toList()..sort();
                 final visible = documents
                     .where(
                       (document) =>
+                          (selectedParcel == 'all' ||
+                              (selectedParcel == 'general' &&
+                                  document.parcelId == null) ||
+                              (selectedParcel.startsWith('parcel:') &&
+                                  document.parcelId ==
+                                      selectedParcel.substring(7))) &&
                           _inPeriod(document.occurredAt) &&
                           (kindFilter == null || document.kind == kindFilter) &&
                           (query.isEmpty ||
@@ -374,14 +387,56 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
                                   .contains(query)),
                     )
                     .toList();
-                if (documents.isEmpty) {
-                  return Center(child: Text(l10n.text('common.empty')));
-                }
                 return ListView(
                   children: [
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: DropdownButtonFormField<String>(
+                        key: const Key('finance-parcel-filter'),
+                        initialValue: selectedParcel,
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          labelText: l10n.text('task.parcel'),
+                        ),
+                        items: [
+                          DropdownMenuItem(
+                            value: 'all',
+                            child: Text(
+                              l10n.text('common.all'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          DropdownMenuItem(
+                            value: 'general',
+                            child: Text(
+                              l10n.text('finance.noParcel'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          for (final id in parcelIds)
+                            DropdownMenuItem(
+                              value: 'parcel:$id',
+                              child: Text(
+                                parcelLabels[id] ??
+                                    '${l10n.text('finance.linkedParcel')} ($id)',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
+                        onChanged: (value) {
+                          if (value != null && widget.service.canView) {
+                            setState(() => selectedParcel = value);
+                          }
+                        },
+                      ),
+                    ),
                     if (query.isNotEmpty ||
                         kindFilter != null ||
-                        period != null)
+                        period != null ||
+                        selectedParcel != 'all')
                       Padding(
                         padding: const EdgeInsets.all(12),
                         child: Text(l10n.text('finance.searchScope')),
@@ -413,7 +468,13 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
                     if (visible.isEmpty)
                       Padding(
                         padding: const EdgeInsets.all(16),
-                        child: Text(l10n.text('finance.noSearchResults')),
+                        child: Text(
+                          l10n.text(
+                            documents.isEmpty
+                                ? 'common.empty'
+                                : 'finance.noSearchResults',
+                          ),
+                        ),
                       ),
                     for (final document in visible)
                       Builder(

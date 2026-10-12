@@ -76,7 +76,19 @@ void main() {
       expect(end, findsOneWidget);
       expect(before, findsNothing);
       expect(after, findsNothing);
+      final listScrollable = find.descendant(
+        of: find.byType(ListView),
+        matching: find.byType(Scrollable),
+      );
+      await tester.scrollUntilVisible(receipt, 100, scrollable: listScrollable);
+      await tester.pumpAndSettle();
       expect(receipt, findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('finance-total-LAK')),
+        -100,
+        scrollable: listScrollable,
+      );
+      await tester.pumpAndSettle();
       expect(find.text('Chi: 4.000.000'), findsOneWidget);
       expect(find.text('Thu: 1.000.000'), findsOneWidget);
       expect(find.text('2026-10-10 – 2026-10-12'), findsOneWidget);
