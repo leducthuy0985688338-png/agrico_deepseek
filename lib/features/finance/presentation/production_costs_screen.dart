@@ -1,17 +1,66 @@
+import 'dart:math';
+import 'package:excel/excel.dart';
 import 'package:flutter/material.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../application/production_cost_summary.dart';
+import '../application/production_cost_report.dart';
+import '../../../services/report_file_saver.dart';
 import 'finance_amount_formatter.dart';
 
 class ProductionCostsScreen extends StatefulWidget {
-  const ProductionCostsScreen({super.key, required this.service});
+  const ProductionCostsScreen({
+    super.key,
+    required this.service,
+    this.saveReport,
+  });
   final ProductionCostSummary service;
+  final Future<void> Function(Excel workbook, String fileName)? saveReport;
   @override
   State<ProductionCostsScreen> createState() => _ProductionCostsScreenState();
 }
 
 class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
   late Future<ProductionCostSnapshot> data = widget.service.load();
+  bool exporting = false;
+
+  Future<void> export() async {
+    if (exporting || !widget.service.canView) {
+      return;
+    }
+    setState(() => exporting = true);
+    try {
+      await ProductionCostReport(widget.service).exportReport(
+        save: (workbook) => (widget.saveReport ?? saveExcelFile)(
+          workbook,
+          'BaoCaoChiPhiV2-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}.xlsx',
+        ),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(context).text('finance.exported'),
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(context).text('finance.exportFailed'),
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => exporting = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -21,6 +70,13 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
       appBar: AppBar(
         title: Text(l10n.text('module.costs')),
         actions: [
+          if (widget.service.canView)
+            IconButton(
+              key: const Key('costs-export'),
+              icon: const Icon(Icons.file_download),
+              tooltip: l10n.text('finance.exportV2'),
+              onPressed: exporting ? null : export,
+            ),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: l10n.text('common.retry'),
