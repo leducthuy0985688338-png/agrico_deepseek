@@ -9,6 +9,7 @@ import '../../../services/report_file_saver.dart';
 import '../application/finance_document_summary.dart';
 import '../application/finance_document_service.dart';
 import '../domain/finance_document.dart';
+import '../../farm/domain/entities/land_parcel.dart';
 import 'finance_amount_formatter.dart';
 
 class FinanceDocumentsScreen extends StatefulWidget {
@@ -27,18 +28,45 @@ class FinanceDocumentsScreen extends StatefulWidget {
 
 class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
   bool exporting = false;
+  Map<String, String> parcelLabels = {};
   late Future<(List<FinanceDocument>, List<FinanceCurrencyTotal>)> data =
       _load();
 
-  Future<(List<FinanceDocument>, List<FinanceCurrencyTotal>)> _load() async => (
-    await widget.service.listByOrganization(widget.service.organizationId),
-    await FinanceDocumentSummary(
+  Future<(List<FinanceDocument>, List<FinanceCurrencyTotal>)> _load() async {
+    final documents = await widget.service.listByOrganization(
+      widget.service.organizationId,
+    );
+    final totals = await FinanceDocumentSummary(
       widget.service,
-    ).byOrganization(widget.service.organizationId),
-  );
+    ).byOrganization(widget.service.organizationId);
+    final parcels = await widget.service.availableParcels();
+    parcelLabels = {
+      for (final parcel in parcels)
+        parcel.id: '${parcel.parcelCode} · ${parcel.name}',
+    };
+    return (documents, totals);
+  }
 
   Future<void> _add() async {
     if (!widget.service.canCreate) {
+      return;
+    }
+    List<LandParcel> parcels;
+    try {
+      parcels = await widget.service.availableParcels();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(context).text('finance.saveFailed'),
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    if (!mounted || !widget.service.canCreate) {
       return;
     }
     final saved = await showDialog<FinanceDocument>(
@@ -46,6 +74,7 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
       builder: (_) => _FinanceDocumentDialog(
         repository: widget.service,
         organizationId: widget.service.organizationId,
+        parcels: parcels,
       ),
     );
     if (!mounted || saved == null) return;
@@ -165,7 +194,8 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
                       subtitle: Text(
                         '${document.occurredAt.year}-'
                         '${document.occurredAt.month.toString().padLeft(2, '0')}-'
-                        '${document.occurredAt.day.toString().padLeft(2, '0')}',
+                        '${document.occurredAt.day.toString().padLeft(2, '0')}'
+                        '${document.parcelId == null ? '' : '\n${l10n.text('task.parcel')}: ${parcelLabels[document.parcelId] ?? l10n.text('finance.linkedParcel')}'}',
                       ),
                       trailing: Text(
                         '${FinanceAmountFormatter.group(document.amountMinor.toString())} $unit',
@@ -185,10 +215,12 @@ class _FinanceDocumentDialog extends StatefulWidget {
   const _FinanceDocumentDialog({
     required this.repository,
     required this.organizationId,
+    required this.parcels,
   });
 
   final FinanceDocumentStore repository;
   final String organizationId;
+  final List<LandParcel> parcels;
 
   @override
   State<_FinanceDocumentDialog> createState() => _FinanceDocumentDialogState();
@@ -199,6 +231,7 @@ class _FinanceDocumentDialogState extends State<_FinanceDocumentDialog> {
   final amount = TextEditingController();
   BusinessDocumentKind kind = BusinessDocumentKind.payment;
   String currency = 'LAK';
+  String? parcelId;
   DateTime date = DateTime.now();
   bool saving = false;
   String? error;
@@ -237,6 +270,7 @@ class _FinanceDocumentDialogState extends State<_FinanceDocumentDialog> {
         amountMinor: parsedAmount,
         currency: currency,
         category: category.text.trim(),
+        parcelId: parcelId,
       );
       if (mounted) Navigator.of(context).pop(saved);
     } catch (_) {
@@ -281,6 +315,34 @@ class _FinanceDocumentDialogState extends State<_FinanceDocumentDialog> {
               onChanged: saving
                   ? null
                   : (value) => setState(() => kind = value!),
+            ),
+            DropdownButtonFormField<String>(
+              key: const Key('finance-parcel'),
+              isExpanded: true,
+              initialValue: parcelId,
+              decoration: InputDecoration(labelText: l10n.text('task.parcel')),
+              items: [
+                DropdownMenuItem<String>(
+                  value: null,
+                  child: Text(
+                    l10n.text('finance.noParcel'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                for (final parcel in widget.parcels)
+                  DropdownMenuItem(
+                    value: parcel.id,
+                    child: Text(
+                      '${parcel.parcelCode} · ${parcel.name}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+              onChanged: saving
+                  ? null
+                  : (value) => setState(() => parcelId = value),
             ),
             TextField(
               key: const Key('finance-category'),

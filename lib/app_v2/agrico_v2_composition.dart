@@ -476,6 +476,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       }
       final financeService = FinanceDocumentService(
         repository: deps.finance,
+        parcels: deps.controller.parcels,
         subject: deps.subject,
         currentSubject: () => mounted ? widget.subject : null,
       );

@@ -3,6 +3,8 @@ import 'package:excel/excel.dart';
 import '../../../core/identity/domain/business_reference_code.dart';
 import '../../../core/permissions/authorization.dart';
 import '../domain/finance_document.dart';
+import '../../farm/domain/entities/land_parcel.dart';
+import '../../farm/domain/repositories/land_parcel_repository.dart';
 import 'finance_v2_report.dart';
 
 /// Finance documents currently support whole-farm access only.
@@ -11,9 +13,11 @@ class FinanceDocumentService implements FinanceDocumentStore {
     required FinanceDocumentStore repository,
     required this.subject,
     required this.currentSubject,
+    this.parcels,
   }) : _repository = repository;
 
   final FinanceDocumentStore _repository;
+  final LandParcelRepository? parcels;
   final AuthorizationSubject subject;
   final AuthorizationSubject? Function() currentSubject;
   String get organizationId => subject.farmId;
@@ -35,6 +39,20 @@ class FinanceDocumentService implements FinanceDocumentStore {
   bool get canView => _can(PermissionCodes.financeView);
   bool get canCreate => canView && _can(PermissionCodes.financeCreate);
   bool get canExport => canView && _can(PermissionCodes.reportFinance);
+  bool get canViewParcels =>
+      canView && parcels != null && _can(PermissionCodes.fieldView);
+
+  Future<List<LandParcel>> availableParcels() async {
+    if (!canViewParcels) {
+      return const [];
+    }
+    final result = await parcels!.listByFarm(organizationId);
+    _require(canViewParcels, organizationId);
+    if (result.any((parcel) => parcel.farmId != organizationId)) {
+      throw StateError('Parcel is outside the current farm.');
+    }
+    return result.where((parcel) => parcel.active).toList();
+  }
 
   void _require(bool allowed, String requestedOrganization) {
     if (!allowed || requestedOrganization != organizationId) {
@@ -70,6 +88,20 @@ class FinanceDocumentService implements FinanceDocumentStore {
     String? description,
   }) async {
     _require(canCreate, organizationId);
+    if (parcelId != null) {
+      _require(canViewParcels, organizationId);
+      final parcel = await parcels!.getById(
+        farmId: organizationId,
+        id: parcelId,
+      );
+      _require(canCreate && canViewParcels, organizationId);
+      if (parcel == null ||
+          !parcel.active ||
+          parcel.farmId != organizationId ||
+          parcel.id != parcelId) {
+        throw StateError('Invalid finance parcel link.');
+      }
+    }
     return _repository.create(
       id: id,
       organizationId: organizationId,
