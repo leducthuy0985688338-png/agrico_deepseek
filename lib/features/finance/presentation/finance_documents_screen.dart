@@ -47,6 +47,76 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
     return (documents, totals);
   }
 
+  Future<void> _showDetails(String id) async {
+    try {
+      final (document, parcelLabel) = await widget.service.details(id);
+      if (!mounted || !widget.service.canView) {
+        return;
+      }
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          final l10n = AppLocalizations.of(dialogContext);
+          final allowed = widget.service.canView;
+          return AlertDialog(
+            title: Text(l10n.text('finance.details')),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
+                child: allowed
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SelectableText(
+                            '${l10n.text('finance.code')}: ${document.code}',
+                          ),
+                          SelectableText(
+                            '${l10n.text('finance.kind')}: ${l10n.text(document.kind == BusinessDocumentKind.receipt ? 'finance.receipt' : 'finance.payment')}',
+                          ),
+                          SelectableText(
+                            '${l10n.text('finance.date')}: ${document.occurredAt.toIso8601String().substring(0, 10)}',
+                          ),
+                          SelectableText(
+                            '${l10n.text('finance.amount')}: ${FinanceAmountFormatter.group(document.amountMinor.toString())} ${document.currency}',
+                          ),
+                          SelectableText(
+                            '${l10n.text('finance.category')}: ${document.category}',
+                          ),
+                          SelectableText(
+                            '${l10n.text('task.parcel')}: ${document.parcelId == null ? l10n.text('finance.noParcel') : parcelLabel ?? l10n.text('finance.linkedParcel')}',
+                          ),
+                          SelectableText(
+                            '${l10n.text('work.notes')}: ${document.description?.trim().isNotEmpty == true ? document.description! : '—'}',
+                          ),
+                        ],
+                      )
+                    : Text(l10n.text('finance.loadDetailsFailed')),
+              ),
+            ),
+            actions: [
+              TextButton(
+                key: const Key('finance-details-close'),
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: Text(l10n.text('finance.close')),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(context).text('finance.loadDetailsFailed'),
+            ),
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _add() async {
     if (!widget.service.canCreate) {
       return;
@@ -190,6 +260,8 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
                       _ => document.currency,
                     };
                     return ListTile(
+                      key: Key('finance-document-${document.id}'),
+                      onTap: () => _showDetails(document.id),
                       title: Text('${document.code} · ${document.category}'),
                       subtitle: Text(
                         '${document.occurredAt.year}-'

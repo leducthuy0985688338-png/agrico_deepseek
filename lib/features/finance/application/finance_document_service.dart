@@ -75,6 +75,31 @@ class FinanceDocumentService implements FinanceDocumentStore {
     return documents;
   }
 
+  Future<(FinanceDocument, String?)> details(String id) async {
+    _require(canView, organizationId);
+    if (id.trim().isEmpty) {
+      throw const FormatException('Document ID is required.');
+    }
+    final documents = await listByOrganization(organizationId);
+    final matches = documents.where((document) => document.id == id).toList();
+    if (matches.length != 1) {
+      throw StateError('Unknown finance document.');
+    }
+    final document = matches.single;
+    String? label;
+    if (document.parcelId != null && canViewParcels) {
+      final parcels = await availableParcels();
+      final linked = parcels
+          .where((parcel) => parcel.id == document.parcelId)
+          .toList();
+      if (linked.isNotEmpty) {
+        label = '${linked.first.parcelCode} · ${linked.first.name}';
+      }
+    }
+    _require(canView, organizationId);
+    return (document, label);
+  }
+
   @override
   Future<FinanceDocument> create({
     required String id,
