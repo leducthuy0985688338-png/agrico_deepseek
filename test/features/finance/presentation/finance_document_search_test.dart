@@ -140,6 +140,15 @@ void main() {
     await tester.enterText(search, 'Trả công');
     await tester.pumpAndSettle();
     expect(one, findsNothing);
+    await tester.scrollUntilVisible(
+      two,
+      100,
+      scrollable: find.descendant(
+        of: find.byType(ListView),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    await tester.pumpAndSettle();
     expect(two, findsOneWidget);
     expect(tester.takeException(), isNull);
   });

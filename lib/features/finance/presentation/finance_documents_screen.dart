@@ -17,9 +17,12 @@ class FinanceDocumentsScreen extends StatefulWidget {
     super.key,
     required this.service,
     this.saveReport,
+    this.pickPeriod,
   });
 
   final FinanceDocumentService service;
+  final Future<DateTimeRange?> Function(BuildContext, DateTimeRange?)?
+  pickPeriod;
   final Future<void> Function(Excel workbook, String fileName)? saveReport;
 
   @override
@@ -30,6 +33,47 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
   bool exporting = false;
   final search = TextEditingController();
   BusinessDocumentKind? kindFilter;
+  DateTimeRange? period;
+
+  static DateTime _day(DateTime value) =>
+      DateTime.utc(value.year, value.month, value.day);
+  static String _dateLabel(DateTime value) =>
+      '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+
+  bool _inPeriod(DateTime value) {
+    final range = period;
+    if (range == null) {
+      return true;
+    }
+    final day = _day(value);
+    return !day.isBefore(_day(range.start)) && !day.isAfter(_day(range.end));
+  }
+
+  Future<void> _selectPeriod() async {
+    if (!widget.service.canView) {
+      return;
+    }
+    FocusManager.instance.primaryFocus?.unfocus();
+    final selected = widget.pickPeriod != null
+        ? await widget.pickPeriod!(context, period)
+        : await showDateRangePicker(
+            context: context,
+            firstDate: DateTime(1900),
+            lastDate: DateTime(2100, 12, 31),
+            initialDateRange: period,
+          );
+    if (!mounted) {
+      return;
+    }
+    if (!widget.service.canView) {
+      setState(() {});
+      return;
+    }
+    if (selected == null) {
+      return;
+    }
+    setState(() => period = selected);
+  }
 
   @override
   void dispose() {
@@ -276,6 +320,35 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
                 ],
               ),
             ),
+          if (widget.service.canView)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      key: const Key('finance-period'),
+                      onPressed: _selectPeriod,
+                      icon: const Icon(Icons.date_range),
+                      label: Text(
+                        period == null
+                            ? l10n.text('finance.allDates')
+                            : '${_dateLabel(period!.start)} – ${_dateLabel(period!.end)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                  if (period != null)
+                    IconButton(
+                      key: const Key('finance-clear-period'),
+                      tooltip: l10n.text('finance.clearPeriod'),
+                      icon: const Icon(Icons.clear),
+                      onPressed: () => setState(() => period = null),
+                    ),
+                ],
+              ),
+            ),
           Expanded(
             child: FutureBuilder<(List<FinanceDocument>, List<FinanceCurrencyTotal>)>(
               future: data,
@@ -291,6 +364,7 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
                 final visible = documents
                     .where(
                       (document) =>
+                          _inPeriod(document.occurredAt) &&
                           (kindFilter == null || document.kind == kindFilter) &&
                           (query.isEmpty ||
                               document.code.toLowerCase().contains(query) ||
@@ -305,7 +379,9 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
                 }
                 return ListView(
                   children: [
-                    if (query.isNotEmpty || kindFilter != null)
+                    if (query.isNotEmpty ||
+                        kindFilter != null ||
+                        period != null)
                       Padding(
                         padding: const EdgeInsets.all(12),
                         child: Text(l10n.text('finance.searchScope')),

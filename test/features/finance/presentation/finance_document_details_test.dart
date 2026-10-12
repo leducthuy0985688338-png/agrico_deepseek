@@ -96,6 +96,15 @@ void main() {
       store.items = [
         document(amount: 2000000, notes: List.filled(40, 'ຂໍ້ມູນ ').join()),
       ];
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('finance-document-one')),
+        100,
+        scrollable: find.descendant(
+          of: find.byType(ListView),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('finance-document-one')));
       await tester.pumpAndSettle();
       expect(find.text('Chi tiết chứng từ'), findsOneWidget);
