@@ -29,6 +29,7 @@ class FinanceDocumentsScreen extends StatefulWidget {
 class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
   bool exporting = false;
   final search = TextEditingController();
+  BusinessDocumentKind? kindFilter;
 
   @override
   void dispose() {
@@ -243,6 +244,38 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
                 ),
               ),
             ),
+          if (widget.service.canView)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  ChoiceChip(
+                    key: const Key('finance-kind-all'),
+                    label: Text(l10n.text('common.all')),
+                    selected: kindFilter == null,
+                    onSelected: (_) => setState(() => kindFilter = null),
+                  ),
+                  ChoiceChip(
+                    key: const Key('finance-kind-receipt'),
+                    label: Text(l10n.text('finance.receipt')),
+                    selected: kindFilter == BusinessDocumentKind.receipt,
+                    onSelected: (_) => setState(
+                      () => kindFilter = BusinessDocumentKind.receipt,
+                    ),
+                  ),
+                  ChoiceChip(
+                    key: const Key('finance-kind-payment'),
+                    label: Text(l10n.text('finance.payment')),
+                    selected: kindFilter == BusinessDocumentKind.payment,
+                    onSelected: (_) => setState(
+                      () => kindFilter = BusinessDocumentKind.payment,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Expanded(
             child: FutureBuilder<(List<FinanceDocument>, List<FinanceCurrencyTotal>)>(
               future: data,
@@ -258,12 +291,13 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
                 final visible = documents
                     .where(
                       (document) =>
-                          query.isEmpty ||
-                          document.code.toLowerCase().contains(query) ||
-                          document.category.toLowerCase().contains(query) ||
-                          (document.description ?? '').toLowerCase().contains(
-                            query,
-                          ),
+                          (kindFilter == null || document.kind == kindFilter) &&
+                          (query.isEmpty ||
+                              document.code.toLowerCase().contains(query) ||
+                              document.category.toLowerCase().contains(query) ||
+                              (document.description ?? '')
+                                  .toLowerCase()
+                                  .contains(query)),
                     )
                     .toList();
                 if (documents.isEmpty) {
@@ -271,7 +305,7 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
                 }
                 return ListView(
                   children: [
-                    if (query.isNotEmpty)
+                    if (query.isNotEmpty || kindFilter != null)
                       Padding(
                         padding: const EdgeInsets.all(12),
                         child: Text(l10n.text('finance.searchScope')),
