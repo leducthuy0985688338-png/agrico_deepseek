@@ -27,6 +27,16 @@ class FinanceDocumentSummary {
       throw const FormatException('Organization is required.');
     }
     final documents = await store.listByOrganization(organizationId);
+    return fromDocuments(documents, organizationId);
+  }
+
+  static List<FinanceCurrencyTotal> fromDocuments(
+    Iterable<FinanceDocument> documents,
+    String organizationId,
+  ) {
+    if (organizationId.trim().isEmpty) {
+      throw const FormatException('Organization is required.');
+    }
     final receipts = <String, int>{};
     final payments = <String, int>{};
     for (final document in documents) {

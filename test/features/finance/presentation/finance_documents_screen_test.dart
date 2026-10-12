@@ -110,10 +110,14 @@ void main() {
 
     await tester.tap(find.byKey(const Key('finance-export-v2')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('finance-export-all')));
+    await tester.pumpAndSettle();
     expect(exportedName, startsWith('BaoCaoChungTuV2-'));
     expect(exportedName, endsWith('.xlsx'));
     final firstExportName = exportedName;
     await tester.tap(find.byKey(const Key('finance-export-v2')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('finance-export-all')));
     await tester.pumpAndSettle();
     expect(exportedName, isNot(firstExportName));
     expect(exported!['Finance V2'].rows, hasLength(2));

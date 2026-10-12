@@ -1,3 +1,4 @@
+import '../application/finance_document_filter.dart';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -36,19 +37,16 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
   DateTimeRange? period;
   String selectedParcel = 'all';
 
-  static DateTime _day(DateTime value) =>
-      DateTime.utc(value.year, value.month, value.day);
   static String _dateLabel(DateTime value) =>
       '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
 
-  bool _inPeriod(DateTime value) {
-    final range = period;
-    if (range == null) {
-      return true;
-    }
-    final day = _day(value);
-    return !day.isBefore(_day(range.start)) && !day.isAfter(_day(range.end));
-  }
+  FinanceDocumentFilter get currentFilter => FinanceDocumentFilter(
+    query: search.text,
+    kind: kindFilter,
+    from: period?.start,
+    to: period?.end,
+    parcel: selectedParcel,
+  );
 
   Future<void> _selectPeriod() async {
     if (!widget.service.canView) {
@@ -90,9 +88,10 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
     final documents = await widget.service.listByOrganization(
       widget.service.organizationId,
     );
-    final totals = await FinanceDocumentSummary(
-      widget.service,
-    ).byOrganization(widget.service.organizationId);
+    final totals = FinanceDocumentSummary.fromDocuments(
+      documents,
+      widget.service.organizationId,
+    );
     final parcels = await widget.service.availableParcels();
     parcelLabels = {
       for (final parcel in parcels)
@@ -210,10 +209,15 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
     ).showSnackBar(SnackBar(content: Text(saved.code)));
   }
 
-  Future<void> _export() async {
+  Future<void> _export(bool filtered) async {
+    if (exporting || !widget.service.canExport) {
+      return;
+    }
+    final filter = filtered ? currentFilter : const FinanceDocumentFilter();
     setState(() => exporting = true);
     try {
       await widget.service.exportReport(
+        filter: filter,
         save: (workbook) => (widget.saveReport ?? saveExcelFile)(
           workbook,
           'BaoCaoChungTuV2-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}.xlsx',
@@ -251,11 +255,24 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
         title: Text(l10n.text('module.finance')),
         actions: [
           if (widget.service.canExport)
-            IconButton(
+            PopupMenuButton<bool>(
               key: const Key('finance-export-v2'),
               tooltip: l10n.text('finance.exportV2'),
               icon: const Icon(Icons.file_download),
-              onPressed: exporting ? null : _export,
+              enabled: !exporting,
+              onSelected: _export,
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: false,
+                  key: const Key('finance-export-all'),
+                  child: Text(l10n.text('finance.exportAll')),
+                ),
+                PopupMenuItem(
+                  value: true,
+                  key: const Key('finance-export-filtered'),
+                  child: Text(l10n.text('finance.exportFiltered')),
+                ),
+              ],
             ),
           if (widget.service.canCreate)
             IconButton(
@@ -368,25 +385,7 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
                   if (selectedParcel.startsWith('parcel:'))
                     selectedParcel.substring(7),
                 }.toList()..sort();
-                final visible = documents
-                    .where(
-                      (document) =>
-                          (selectedParcel == 'all' ||
-                              (selectedParcel == 'general' &&
-                                  document.parcelId == null) ||
-                              (selectedParcel.startsWith('parcel:') &&
-                                  document.parcelId ==
-                                      selectedParcel.substring(7))) &&
-                          _inPeriod(document.occurredAt) &&
-                          (kindFilter == null || document.kind == kindFilter) &&
-                          (query.isEmpty ||
-                              document.code.toLowerCase().contains(query) ||
-                              document.category.toLowerCase().contains(query) ||
-                              (document.description ?? '')
-                                  .toLowerCase()
-                                  .contains(query)),
-                    )
-                    .toList();
+                final visible = documents.where(currentFilter.matches).toList();
                 return ListView(
                   children: [
                     Padding(

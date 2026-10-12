@@ -1,3 +1,4 @@
+import 'finance_document_filter.dart';
 import 'package:excel/excel.dart';
 import 'package:agrico_deepseek/core/identity/domain/business_reference_code.dart';
 
@@ -11,15 +12,39 @@ class FinanceV2Report {
 
   final FinanceDocumentStore store;
 
-  Future<Excel> workbook(String organizationId) async {
+  Future<Excel> workbook(
+    String organizationId, {
+    FinanceDocumentFilter filter = const FinanceDocumentFilter(),
+  }) async {
+    filter.validate();
     if (organizationId.trim().isEmpty) {
       throw const FormatException('Organization is required.');
     }
-    final documents = await store.listByOrganization(organizationId);
-    final totals = await FinanceDocumentSummary(
-      store,
-    ).byOrganization(organizationId);
+    final allDocuments = await store.listByOrganization(organizationId);
+    // Validate all scoped rows before filtering so invalid rows cannot be hidden.
+    FinanceDocumentSummary.fromDocuments(allDocuments, organizationId);
+    final documents = allDocuments.where(filter.matches).toList();
+    final totals = FinanceDocumentSummary.fromDocuments(
+      documents,
+      organizationId,
+    );
     final excel = Excel.createExcel();
+    final scope = excel['Filter V2'];
+    scope.appendRow([TextCellValue('Field'), TextCellValue('Value')]);
+    for (final entry in <String, String>{
+      'Query': filter.query.trim(),
+      'Kind': filter.kind?.prefix ?? 'All',
+      'From': filter.from?.toIso8601String().substring(0, 10) ?? 'All dates',
+      'To': filter.to?.toIso8601String().substring(0, 10) ?? 'All dates',
+      'Parcel mode': filter.parcel.startsWith('parcel:')
+          ? 'Parcel'
+          : filter.parcel,
+      'Parcel ID': filter.parcel.startsWith('parcel:')
+          ? filter.parcel.substring(7)
+          : '',
+    }.entries) {
+      scope.appendRow([TextCellValue(entry.key), TextCellValue(entry.value)]);
+    }
     final sheet = excel['Finance V2'];
     sheet.appendRow([
       TextCellValue('Code'),

@@ -1,3 +1,4 @@
+import 'finance_document_filter.dart';
 import 'package:excel/excel.dart';
 
 import '../../../core/identity/domain/business_reference_code.dart';
@@ -142,9 +143,12 @@ class FinanceDocumentService implements FinanceDocumentStore {
 
   Future<void> exportReport({
     required Future<void> Function(Excel) save,
+    FinanceDocumentFilter filter = const FinanceDocumentFilter(),
   }) async {
     _require(canExport, organizationId);
-    final workbook = await FinanceV2Report(this).workbook(organizationId);
+    final workbook = await FinanceV2Report(
+      this,
+    ).workbook(organizationId, filter: filter);
     // A revoked report grant must not reach the file writer after async reads.
     _require(canExport, organizationId);
     await save(workbook);
