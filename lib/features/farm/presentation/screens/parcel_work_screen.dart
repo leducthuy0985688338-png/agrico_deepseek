@@ -16,6 +16,8 @@ class ParcelWorkScreen extends StatefulWidget {
     this.initialTask,
     this.taskWork,
     this.openEventOnLoad = false,
+    this.readOnly = false,
+    this.canView,
   });
 
   final String parcelId;
@@ -24,6 +26,8 @@ class ParcelWorkScreen extends StatefulWidget {
   final FarmTask? initialTask;
   final TaskWorkService? taskWork;
   final bool openEventOnLoad;
+  final bool readOnly;
+  final bool Function()? canView;
 
   @override
   State<ParcelWorkScreen> createState() => _ParcelWorkScreenState();
@@ -34,6 +38,9 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
   ParcelWorkPhase? phaseFilter;
 
   Future<(List<WorkResource>, List<ParcelWorkEvent>)> load() async {
+    if (!(widget.canView?.call() ?? true)) {
+      throw StateError('History access denied.');
+    }
     final task = widget.initialTask;
     if (task != null &&
         (widget.taskWork == null ||
@@ -50,6 +57,7 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
   }
 
   bool get canRecord =>
+      !widget.readOnly &&
       widget.subject.dataScopes.contains(DataScope.allFarm) &&
       (widget.initialTask == null ||
           (widget.taskWork != null &&
@@ -341,7 +349,8 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
     ParcelWorkEvent event,
     Map<String, WorkResource> byId,
   ) async {
-    if (event.farmId != widget.subject.farmId ||
+    if (!(widget.canView?.call() ?? true) ||
+        event.farmId != widget.subject.farmId ||
         event.parcelId != widget.parcelId ||
         !widget.subject.dataScopes.contains(DataScope.allFarm) ||
         ![
@@ -418,11 +427,13 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final canCatalog = const AuthorizationService().can(
-      subject: widget.subject,
-      permission: PermissionCodes.catalogManage,
-      resource: ResourceContext(farmId: widget.subject.farmId),
-    );
+    final canCatalog =
+        !widget.readOnly &&
+        const AuthorizationService().can(
+          subject: widget.subject,
+          permission: PermissionCodes.catalogManage,
+          resource: ResourceContext(farmId: widget.subject.farmId),
+        );
     final canEdit = canRecord;
     return Scaffold(
       appBar: AppBar(
@@ -438,7 +449,7 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
       body: FutureBuilder<(List<WorkResource>, List<ParcelWorkEvent>)>(
         future: data,
         builder: (context, snapshot) {
-          if (snapshot.hasError) {
+          if (!(widget.canView?.call() ?? true) || snapshot.hasError) {
             return Center(child: Text(l10n.text('work.loadFailed')));
           }
           if (!snapshot.hasData) {

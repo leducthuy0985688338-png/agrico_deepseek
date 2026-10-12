@@ -45,6 +45,8 @@ import '../features/farm/data/local/sqlite_land_parcel_repository.dart';
 import '../features/farm/data/local/sqlite_land_survey_repository.dart';
 import '../features/farm/data/local/sqlite_parcel_work_repository.dart';
 import '../features/farm/application/parcel_work_service.dart';
+import '../features/farm/application/production_history_service.dart';
+import '../features/farm/presentation/screens/production_history_screen.dart';
 import '../features/farm/application/task_work_service.dart';
 import '../features/farm/data/local/sqlite_task_work_repository.dart';
 import '../features/farm/application/farm_task_service.dart';
@@ -442,6 +444,36 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
           ),
         ),
       );
+      final historyService = ProductionHistoryService(
+        work: SqliteParcelWorkRepository(deps.database),
+        parcels: deps.controller.parcels,
+        subject: deps.subject,
+        currentSubject: () => mounted ? widget.subject : null,
+      );
+      if (historyService.canView) {
+        legacy['productionLogs'] = () {
+          if (historyService.canView) {
+            push(
+              ProductionHistoryScreen(
+                service: historyService,
+                openParcel: (parcel) {
+                  if (historyService.canView) {
+                    push(
+                      ParcelWorkScreen(
+                        parcelId: parcel.id,
+                        subject: deps.subject,
+                        service: historyService,
+                        readOnly: true,
+                        canView: () => historyService.canView,
+                      ),
+                    );
+                  }
+                },
+              ),
+            );
+          }
+        };
+      }
       final financeService = FinanceDocumentService(
         repository: deps.finance,
         subject: deps.subject,
