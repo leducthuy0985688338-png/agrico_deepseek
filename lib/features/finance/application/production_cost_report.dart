@@ -1,3 +1,4 @@
+import 'production_cost_period.dart';
 import 'package:excel/excel.dart';
 import 'production_cost_summary.dart';
 
@@ -11,11 +12,23 @@ class ProductionCostReport {
     }
   }
 
-  Future<Excel> workbook() async {
+  Future<Excel> workbook({
+    ProductionCostPeriod period = const ProductionCostPeriod(),
+  }) async {
     _authorize();
-    final snapshot = await summary.load();
+    final snapshot = await summary.load(period: period);
     _authorize();
     final excel = Excel.createExcel();
+    final scope = excel['Period'];
+    scope.appendRow([TextCellValue('From date'), TextCellValue('To date')]);
+    scope.appendRow([
+      TextCellValue(
+        period.from?.toIso8601String().substring(0, 10) ?? 'All dates',
+      ),
+      TextCellValue(
+        period.to?.toIso8601String().substring(0, 10) ?? 'All dates',
+      ),
+    ]);
     final totals = excel['Totals'];
     totals.appendRow([TextCellValue('Currency'), TextCellValue('Payments')]);
     for (final total in snapshot.totals.entries) {
@@ -69,8 +82,9 @@ class ProductionCostReport {
 
   Future<void> exportReport({
     required Future<void> Function(Excel) save,
+    ProductionCostPeriod period = const ProductionCostPeriod(),
   }) async {
-    final report = await workbook();
+    final report = await workbook(period: period);
     _authorize();
     await save(report);
   }

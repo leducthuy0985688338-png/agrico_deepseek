@@ -1,3 +1,4 @@
+import 'production_cost_period.dart';
 import '../../../core/identity/domain/business_reference_code.dart';
 import '../domain/finance_document.dart';
 import 'finance_document_service.dart';
@@ -19,10 +20,12 @@ class ProductionCostSnapshot {
   ProductionCostSnapshot({
     required List<ProductionCostGroup> groups,
     required Map<String, String> parcelLabels,
+    this.period = const ProductionCostPeriod(),
   }) : groups = List.unmodifiable(groups),
        parcelLabels = Map.unmodifiable(parcelLabels);
   final List<ProductionCostGroup> groups;
   final Map<String, String> parcelLabels;
+  final ProductionCostPeriod period;
   Map<String, int> get totals {
     final result = <String, int>{};
     for (final group in groups) {
@@ -42,7 +45,10 @@ class ProductionCostSummary {
   final FinanceDocumentService finance;
   bool get canView => finance.canExport;
 
-  Future<ProductionCostSnapshot> load() async {
+  Future<ProductionCostSnapshot> load({
+    ProductionCostPeriod period = const ProductionCostPeriod(),
+  }) async {
+    period.validate();
     if (!canView) {
       throw StateError('Production cost access denied.');
     }
@@ -53,7 +59,8 @@ class ProductionCostSummary {
     }
     final buckets = <(String?, String), List<FinanceDocument>>{};
     for (final document in documents) {
-      if (document.kind != BusinessDocumentKind.payment) {
+      if (document.kind != BusinessDocumentKind.payment ||
+          !period.contains(document.occurredAt)) {
         continue;
       }
       buckets
@@ -66,6 +73,7 @@ class ProductionCostSummary {
         return parcelOrder == 0 ? a.$2.compareTo(b.$2) : parcelOrder;
       });
     return ProductionCostSnapshot(
+      period: period,
       groups: [
         for (final key in keys)
           ProductionCostGroup(

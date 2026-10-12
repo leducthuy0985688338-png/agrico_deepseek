@@ -1,3 +1,4 @@
+import 'package:agrico_deepseek/features/finance/application/production_cost_period.dart';
 import 'package:agrico_deepseek/features/finance/application/production_cost_report.dart';
 import 'package:agrico_deepseek/core/identity/domain/business_reference_code.dart';
 import 'package:agrico_deepseek/core/localization/app_localizations.dart';
@@ -33,12 +34,13 @@ FinanceDocument document(
   String currency = 'LAK',
   BusinessDocumentKind kind = BusinessDocumentKind.payment,
   String farm = 'farm',
+  DateTime? date,
 }) => FinanceDocument(
   id: id,
   organizationId: farm,
   code: 'CHI-$id',
   kind: kind,
-  occurredAt: DateTime(2026),
+  occurredAt: date ?? DateTime(2026),
   amountMinor: amount,
   currency: currency,
   category: 'Test $id',
@@ -61,6 +63,116 @@ void main() {
         currentSubject: () => live,
       ),
     );
+  });
+  test('calendar range includes the full first and last day', () async {
+    store.items = [
+      document('before', 1, date: DateTime(2026, 9, 30, 23, 59)),
+      document('start', 100, date: DateTime(2026, 10, 1)),
+      document('end', 200, date: DateTime.utc(2026, 10, 12, 23, 59, 59)),
+      document('after', 2, date: DateTime(2026, 10, 13)),
+      document(
+        'receipt',
+        999,
+        date: DateTime(2026, 10, 5),
+        kind: BusinessDocumentKind.receipt,
+      ),
+    ];
+    final period = ProductionCostPeriod(
+      from: DateTime(2026, 10, 1),
+      to: DateTime(2026, 10, 12),
+    );
+    final report = await service.load(period: period);
+    expect(report.totals, {'LAK': 300});
+    expect(report.groups.single.documents.map((d) => d.id), ['start', 'end']);
+    final workbook = await ProductionCostReport(
+      service,
+    ).workbook(period: period);
+    expect(workbook['Totals'].rows[1][1]!.value.toString(), '300');
+    expect(workbook['Documents'].rows, hasLength(3));
+    expect(workbook['Period'].rows[1][0]!.value.toString(), '2026-10-01');
+    expect(workbook['Period'].rows[1][1]!.value.toString(), '2026-10-12');
+  });
+  test('one day and open-ended periods use document calendar dates', () async {
+    store.items = [
+      document('first', 100, date: DateTime(2026, 10, 1)),
+      document('last', 200, date: DateTime(2026, 10, 12, 23, 59)),
+    ];
+    expect(
+      (await service.load(
+        period: ProductionCostPeriod(
+          from: DateTime(2026, 10, 12),
+          to: DateTime(2026, 10, 12),
+        ),
+      )).totals,
+      {'LAK': 200},
+    );
+    expect(
+      (await service.load(
+        period: ProductionCostPeriod(to: DateTime(2026, 10, 1)),
+      )).totals,
+      {'LAK': 100},
+    );
+  });
+  test('reversed period is rejected before reading storage', () async {
+    await expectLater(
+      service.load(
+        period: ProductionCostPeriod(
+          from: DateTime(2026, 10, 13),
+          to: DateTime(2026, 10, 1),
+        ),
+      ),
+      throwsFormatException,
+    );
+    expect(store.reads, 0);
+  });
+  testWidgets('selected period persists on refresh, exports, and clears', (
+    tester,
+  ) async {
+    store.items = [
+      document('before', 1000000, date: DateTime(2026, 9, 30)),
+      document('inside', 2000000, date: DateTime(2026, 10, 12)),
+    ];
+    String? exportedTotal;
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('vi'),
+        supportedLocales: const [Locale('vi')],
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: ProductionCostsScreen(
+          service: service,
+          pickPeriod: (_, _) async => DateTimeRange(
+            start: DateTime(2026, 10, 1),
+            end: DateTime(2026, 10, 12),
+          ),
+          saveReport: (workbook, _) async {
+            exportedTotal = workbook['Totals'].rows[1][1]!.value.toString();
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('costs-period')));
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('Tổng chi: 2.000.000 LAK'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.refresh));
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('Tổng chi: 2.000.000 LAK'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('costs-export')));
+    await tester.pumpAndSettle();
+    expect(exportedTotal, '2000000');
+    await tester.tap(find.byKey(const Key('costs-clear-period')));
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('Tổng chi: 3.000.000 LAK'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
   test(
     'Excel report has consistent totals, parcel groups and payment details',
