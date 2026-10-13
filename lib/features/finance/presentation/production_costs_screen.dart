@@ -8,6 +8,7 @@ import '../application/production_cost_summary.dart';
 import '../application/production_cost_report.dart';
 import '../../../services/report_file_saver.dart';
 import 'finance_amount_formatter.dart';
+import 'finance_document_details_dialog.dart';
 
 class ProductionCostsScreen extends StatefulWidget {
   const ProductionCostsScreen({
@@ -285,6 +286,13 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
                           children: [
                             for (final document in group.documents)
                               ListTile(
+                                key: Key('costs-document-${document.id}'),
+                                onTap: () => showFinanceDocumentDetails(
+                                  context: context,
+                                  service: widget.service.finance,
+                                  id: document.id,
+                                  canView: () => widget.service.canView,
+                                ),
                                 title: Text(
                                   '${document.code} · ${document.category}',
                                 ),
