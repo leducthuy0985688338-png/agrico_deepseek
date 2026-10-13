@@ -265,6 +265,40 @@ void main() {
     expect(find.byKey(const Key('boundary-audit-unlinked')), findsNothing);
   });
 
+  testWidgets('parcel finance action invokes its provided route', (
+    tester,
+  ) async {
+    var opened = 0;
+    await tester.pumpWidget(
+      app(
+        LandParcelDetailScreen(
+          controller: controller(),
+          parcelId: 'parcel-1',
+          onFinanceRequested: () {
+            opened++;
+          },
+        ),
+        locale: 'vi',
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Chứng từ tài chính'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('parcel-finance')));
+    expect(opened, 1);
+  });
+
+  testWidgets('parcel finance action is absent without a route', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      app(
+        LandParcelDetailScreen(controller: controller(), parcelId: 'parcel-1'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('parcel-finance')), findsNothing);
+  });
+
   testWidgets('create action is hidden without permission', (tester) async {
     final value = controller(permissions: const {PermissionCodes.fieldView});
     await tester.pumpWidget(app(LandParcelListScreen(controller: value)));

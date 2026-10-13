@@ -211,11 +211,32 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       final deps = snapshot.data!;
       void push(Widget page) =>
           Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+      final financeService = FinanceDocumentService(
+        repository: deps.finance,
+        parcels: deps.controller.parcels,
+        subject: deps.subject,
+        currentSubject: () => mounted ? widget.subject : null,
+      );
       late final VoidCallback openParcels;
       Widget detail(String id) => LandParcelDetailScreen(
         landOnly: true,
         controller: deps.controller,
         parcelId: id,
+        onFinanceRequested: financeService.canViewParcels
+            ? () {
+                final parcel = deps.controller.detail?.parcel;
+                if (financeService.canViewParcels &&
+                    parcel?.id == id &&
+                    parcel?.farmId == financeService.organizationId) {
+                  push(
+                    FinanceDocumentsScreen(
+                      service: financeService,
+                      initialParcelId: id,
+                    ),
+                  );
+                }
+              }
+            : null,
         onTimelineRequested: () => push(
           ParcelLandTimelineScreen(
             parcelId: id,
@@ -476,12 +497,6 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
           }
         };
       }
-      final financeService = FinanceDocumentService(
-        repository: deps.finance,
-        parcels: deps.controller.parcels,
-        subject: deps.subject,
-        currentSubject: () => mounted ? widget.subject : null,
-      );
       if (financeService.canView) {
         legacy['finance'] = () {
           if (financeService.canView) {

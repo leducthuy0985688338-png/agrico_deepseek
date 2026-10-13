@@ -19,9 +19,11 @@ class FinanceDocumentsScreen extends StatefulWidget {
     required this.service,
     this.saveReport,
     this.pickPeriod,
+    this.initialParcelId,
   });
 
   final FinanceDocumentService service;
+  final String? initialParcelId;
   final Future<DateTimeRange?> Function(BuildContext, DateTimeRange?)?
   pickPeriod;
   final Future<void> Function(Excel workbook, String fileName)? saveReport;
@@ -36,7 +38,9 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
   final search = TextEditingController();
   BusinessDocumentKind? kindFilter;
   DateTimeRange? period;
-  String selectedParcel = 'all';
+  late String selectedParcel = widget.initialParcelId == null
+      ? 'all'
+      : 'parcel:${widget.initialParcelId}';
   String selectedCurrency = 'all';
 
   static String _dateLabel(DateTime value) =>
