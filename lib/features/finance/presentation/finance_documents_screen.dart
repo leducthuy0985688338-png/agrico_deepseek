@@ -37,6 +37,7 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
   BusinessDocumentKind? kindFilter;
   DateTimeRange? period;
   String selectedParcel = 'all';
+  String selectedCurrency = 'all';
 
   static String _dateLabel(DateTime value) =>
       '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
@@ -47,6 +48,7 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
     from: period?.start,
     to: period?.end,
     parcel: selectedParcel,
+    currency: selectedCurrency == 'all' ? null : selectedCurrency.substring(9),
   );
 
   Future<void> _selectPeriod() async {
@@ -214,7 +216,8 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
       search.text.isNotEmpty ||
       kindFilter != null ||
       period != null ||
-      selectedParcel != 'all';
+      selectedParcel != 'all' ||
+      selectedCurrency != 'all';
 
   void _clearFilters() {
     if (!widget.service.canView) {
@@ -227,6 +230,7 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
       kindFilter = null;
       period = null;
       selectedParcel = 'all';
+      selectedCurrency = 'all';
     });
   }
 
@@ -540,6 +544,13 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
                     if (selectedParcel.startsWith('parcel:'))
                       selectedParcel.substring(7),
                   }.toList()..sort();
+                  final currencies = <String>{
+                    'LAK',
+                    'VND',
+                    for (final document in documents) document.currency,
+                    if (selectedCurrency != 'all')
+                      selectedCurrency.substring(9),
+                  }.toList()..sort();
                   final visible = documents
                       .where(currentFilter.matches)
                       .toList();
@@ -548,52 +559,99 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
                     children: [
                       Padding(
                         padding: const EdgeInsets.all(12),
-                        child: DropdownButtonFormField<String>(
-                          key: const Key('finance-parcel-filter'),
-                          initialValue: selectedParcel,
-                          isExpanded: true,
-                          decoration: InputDecoration(
-                            labelText: l10n.text('task.parcel'),
-                          ),
-                          items: [
-                            DropdownMenuItem(
-                              value: 'all',
-                              child: Text(
-                                l10n.text('common.all'),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            DropdownMenuItem(
-                              value: 'general',
-                              child: Text(
-                                l10n.text('finance.noParcel'),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            for (final id in parcelIds)
-                              DropdownMenuItem(
-                                value: 'parcel:$id',
-                                child: Text(
-                                  parcelLabels[id] ??
-                                      '${l10n.text('finance.linkedParcel')} ($id)',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              flex: 2,
+                              child: DropdownButtonFormField<String>(
+                                key: const Key('finance-parcel-filter'),
+                                initialValue: selectedParcel,
+                                isExpanded: true,
+                                decoration: InputDecoration(
+                                  labelText: l10n.text('task.parcel'),
                                 ),
+                                items: [
+                                  DropdownMenuItem(
+                                    value: 'all',
+                                    child: Text(
+                                      l10n.text('common.all'),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'general',
+                                    child: Text(
+                                      l10n.text('finance.noParcel'),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  for (final id in parcelIds)
+                                    DropdownMenuItem(
+                                      value: 'parcel:$id',
+                                      child: Text(
+                                        parcelLabels[id] ??
+                                            '${l10n.text('finance.linkedParcel')} ($id)',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                ],
+                                onChanged: (value) {
+                                  if (value != null && widget.service.canView) {
+                                    setState(() => selectedParcel = value);
+                                  }
+                                },
                               ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: DropdownButtonFormField<String>(
+                                key: const Key('finance-currency-filter'),
+                                initialValue: selectedCurrency,
+                                isExpanded: true,
+                                decoration: InputDecoration(
+                                  label: Text(
+                                    l10n.text('finance.currency'),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                items: [
+                                  DropdownMenuItem(
+                                    value: 'all',
+                                    child: Text(
+                                      l10n.text('common.all'),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  for (final currency in currencies)
+                                    DropdownMenuItem(
+                                      value: 'currency:$currency',
+                                      child: Text(
+                                        currency,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                ],
+                                onChanged: (value) {
+                                  if (value != null && widget.service.canView) {
+                                    setState(() => selectedCurrency = value);
+                                  }
+                                },
+                              ),
+                            ),
                           ],
-                          onChanged: (value) {
-                            if (value != null && widget.service.canView) {
-                              setState(() => selectedParcel = value);
-                            }
-                          },
                         ),
                       ),
                       if (query.isNotEmpty ||
                           kindFilter != null ||
                           period != null ||
-                          selectedParcel != 'all')
+                          selectedParcel != 'all' ||
+                          selectedCurrency != 'all')
                         Padding(
                           padding: const EdgeInsets.all(12),
                           child: Text(l10n.text('finance.searchScope')),

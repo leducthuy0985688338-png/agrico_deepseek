@@ -9,15 +9,20 @@ class FinanceDocumentFilter {
     this.from,
     this.to,
     this.parcel = 'all',
+    this.currency,
   });
   final String query;
   final BusinessDocumentKind? kind;
   final DateTime? from;
   final DateTime? to;
   final String parcel;
+  final String? currency;
   static DateTime _day(DateTime date) =>
       DateTime.utc(date.year, date.month, date.day);
   void validate() {
+    if (currency != null && currency!.trim().isEmpty) {
+      throw const FormatException('Currency filter is required.');
+    }
     if (kind != null &&
         kind != BusinessDocumentKind.receipt &&
         kind != BusinessDocumentKind.payment) {
@@ -37,7 +42,8 @@ class FinanceDocumentFilter {
   bool matches(FinanceDocument document) {
     final day = _day(document.occurredAt);
     final text = query.trim().toLowerCase();
-    return (parcel == 'all' ||
+    return (currency == null || document.currency == currency) &&
+        (parcel == 'all' ||
             (parcel == 'general' && document.parcelId == null) ||
             (parcel.startsWith('parcel:') &&
                 document.parcelId == parcel.substring(7))) &&

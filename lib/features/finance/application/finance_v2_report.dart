@@ -32,6 +32,7 @@ class FinanceV2Report {
     final scope = excel['Filter V2'];
     scope.appendRow([TextCellValue('Field'), TextCellValue('Value')]);
     for (final entry in <String, String>{
+      'Currency': filter.currency ?? 'All',
       'Query': filter.query.trim(),
       'Kind': filter.kind?.prefix ?? 'All',
       'From': filter.from?.toIso8601String().substring(0, 10) ?? 'All dates',
