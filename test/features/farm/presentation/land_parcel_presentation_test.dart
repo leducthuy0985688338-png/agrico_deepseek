@@ -287,6 +287,36 @@ void main() {
     expect(opened, 1);
   });
 
+  testWidgets('parcel costs action invokes its provided route', (tester) async {
+    var opened = 0;
+    await tester.pumpWidget(
+      app(
+        LandParcelDetailScreen(
+          controller: controller(),
+          parcelId: 'parcel-1',
+          onCostsRequested: () {
+            opened++;
+          },
+        ),
+        locale: 'vi',
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Chi phí sản xuất'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('parcel-costs')));
+    expect(opened, 1);
+  });
+
+  testWidgets('parcel costs action is absent without a route', (tester) async {
+    await tester.pumpWidget(
+      app(
+        LandParcelDetailScreen(controller: controller(), parcelId: 'parcel-1'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('parcel-costs')), findsNothing);
+  });
+
   testWidgets('parcel finance action is absent without a route', (
     tester,
   ) async {

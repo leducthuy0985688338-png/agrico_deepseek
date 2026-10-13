@@ -176,6 +176,132 @@ void main() {
     expect(find.text('Tổng chi: 2.000.000 LAK'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+  testWidgets(
+    'initial parcel persists across dates refresh export and can be changed',
+    (tester) async {
+      store.items = [
+        document('one', 1000000, parcelId: 'one', date: DateTime(2026, 10, 12)),
+        document('general', 2000000, date: DateTime(2026, 10, 12)),
+        document('old', 3000000, parcelId: 'two', date: DateTime(2026, 9, 30)),
+      ];
+      String? exportedParcel;
+      String? exportedAmount;
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('vi'),
+          supportedLocales: const [Locale('vi')],
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: ProductionCostsScreen(
+            service: service,
+            initialParcelId: 'one',
+            pickPeriod: (_, _) async => DateTimeRange(
+              start: DateTime(2026, 10, 1),
+              end: DateTime(2026, 10, 12),
+            ),
+            saveReport: (workbook, _) async {
+              exportedParcel = workbook['Parcel Filter'].rows[1][1]!.value
+                  .toString();
+              exportedAmount = workbook['Totals'].rows[1][1]!.value.toString();
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<DropdownButtonFormField<String>>(
+              find.byKey(const Key('costs-parcel')),
+            )
+            .initialValue,
+        'parcel:one',
+      );
+      expect(find.text('Tổng chi: 1.000.000 LAK'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('costs-period')));
+      await tester.pump();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.refresh));
+      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(find.text('Tổng chi: 1.000.000 LAK'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('costs-export')));
+      await tester.pumpAndSettle();
+      expect(exportedParcel, 'one');
+      expect(exportedAmount, '1000000');
+      await tester.tap(find.byKey(const Key('costs-parcel')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Chi chung (chưa gắn lô đất)').last);
+      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(find.text('Tổng chi: 2.000.000 LAK'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets('initial parcel without payments shows empty report', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('vi'),
+        supportedLocales: const [Locale('vi')],
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: ProductionCostsScreen(service: service, initialParcelId: 'empty'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<DropdownButtonFormField<String>>(
+            find.byKey(const Key('costs-parcel')),
+          )
+          .initialValue,
+      'parcel:empty',
+    );
+    expect(
+      find.text(
+        AppLocalizations.of(
+          tester.element(find.byType(ProductionCostsScreen)),
+        ).text('costs.empty'),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('initial parcel does not bypass revoked reporting permission', (
+    tester,
+  ) async {
+    live = actor(report: false);
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('vi'),
+        supportedLocales: const [Locale('vi')],
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: ProductionCostsScreen(service: service, initialParcelId: 'one'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('costs-parcel')), findsNothing);
+    expect(find.byKey(const Key('costs-export')), findsNothing);
+    expect(store.reads, 0);
+    expect(tester.takeException(), isNull);
+  });
+
   test('calendar range includes the full first and last day', () async {
     store.items = [
       document('before', 1, date: DateTime(2026, 9, 30, 23, 59)),

@@ -217,11 +217,28 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         subject: deps.subject,
         currentSubject: () => mounted ? widget.subject : null,
       );
+      final costService = ProductionCostSummary(financeService);
       late final VoidCallback openParcels;
       Widget detail(String id) => LandParcelDetailScreen(
         landOnly: true,
         controller: deps.controller,
         parcelId: id,
+        onCostsRequested: costService.canView && financeService.canViewParcels
+            ? () {
+                final parcel = deps.controller.detail?.parcel;
+                if (costService.canView &&
+                    financeService.canViewParcels &&
+                    parcel?.id == id &&
+                    parcel?.farmId == financeService.organizationId) {
+                  push(
+                    ProductionCostsScreen(
+                      service: costService,
+                      initialParcelId: id,
+                    ),
+                  );
+                }
+              }
+            : null,
         onFinanceRequested: financeService.canViewParcels
             ? () {
                 final parcel = deps.controller.detail?.parcel;
@@ -504,7 +521,6 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
           }
         };
       }
-      final costService = ProductionCostSummary(financeService);
       if (costService.canView) {
         legacy['costs'] = () {
           if (costService.canView) {

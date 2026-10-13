@@ -15,8 +15,10 @@ class ProductionCostsScreen extends StatefulWidget {
     required this.service,
     this.saveReport,
     this.pickPeriod,
+    this.initialParcelId,
   });
   final ProductionCostSummary service;
+  final String? initialParcelId;
   final Future<DateTimeRange?> Function(BuildContext, DateTimeRange?)?
   pickPeriod;
   final Future<void> Function(Excel workbook, String fileName)? saveReport;
@@ -25,7 +27,9 @@ class ProductionCostsScreen extends StatefulWidget {
 }
 
 class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
-  String selectedParcel = 'all';
+  late String selectedParcel = widget.initialParcelId == null
+      ? 'all'
+      : 'parcel:${widget.initialParcelId}';
   ProductionCostParcelFilter get parcelFilter => selectedParcel == 'all'
       ? const ProductionCostParcelFilter.all()
       : selectedParcel == 'general'

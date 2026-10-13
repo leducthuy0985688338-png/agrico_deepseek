@@ -27,6 +27,7 @@ class LandParcelDetailScreen extends StatefulWidget {
     this.onTasksRequested,
     this.onTimelineRequested,
     this.onFinanceRequested,
+    this.onCostsRequested,
   });
   final LandParcelController controller;
   final String parcelId;
@@ -40,6 +41,7 @@ class LandParcelDetailScreen extends StatefulWidget {
   final VoidCallback? onTasksRequested;
   final VoidCallback? onTimelineRequested;
   final VoidCallback? onFinanceRequested;
+  final VoidCallback? onCostsRequested;
 
   @override
   State<LandParcelDetailScreen> createState() => _LandParcelDetailScreenState();
@@ -158,6 +160,13 @@ class _LandParcelDetailScreenState extends State<LandParcelDetailScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (widget.onCostsRequested != null)
+            OutlinedButton.icon(
+              key: const Key('parcel-costs'),
+              onPressed: widget.onCostsRequested,
+              icon: const Icon(Icons.summarize_outlined),
+              label: Text(l10n.text('module.costs')),
+            ),
           if (widget.onFinanceRequested != null)
             OutlinedButton.icon(
               key: const Key('parcel-finance'),
