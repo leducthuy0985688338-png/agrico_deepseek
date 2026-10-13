@@ -210,6 +210,26 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
     ).showSnackBar(SnackBar(content: Text(saved.code)));
   }
 
+  bool get hasFilters =>
+      search.text.isNotEmpty ||
+      kindFilter != null ||
+      period != null ||
+      selectedParcel != 'all';
+
+  void _clearFilters() {
+    if (!widget.service.canView) {
+      setState(() {});
+      return;
+    }
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() {
+      search.clear();
+      kindFilter = null;
+      period = null;
+      selectedParcel = 'all';
+    });
+  }
+
   Future<void> _refresh() async {
     if (!mounted || refreshing) {
       return;
@@ -364,6 +384,13 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
       appBar: AppBar(
         title: Text(l10n.text('module.finance')),
         actions: [
+          if (widget.service.canView && hasFilters)
+            IconButton(
+              key: const Key('finance-clear-filters'),
+              tooltip: l10n.text('finance.clearFilters'),
+              icon: const Icon(Icons.filter_alt_off),
+              onPressed: _clearFilters,
+            ),
           if (widget.service.canView)
             IconButton(
               key: const Key('finance-filtered-totals'),
