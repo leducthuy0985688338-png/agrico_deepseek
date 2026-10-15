@@ -105,6 +105,8 @@ void main() {
     expect(find.text('Tổng chi: 2.000.000 VND'), findsOneWidget);
     await tester.tap(find.byKey(const Key('costs-export')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('costs-export-filtered')));
+    await tester.pumpAndSettle();
     expect(exported!['Documents'].rows, hasLength(4));
     expect(
       (exported!['Currency Filter'].rows[1][0]!.value as TextCellValue).value

@@ -1,12 +1,14 @@
-import '../application/production_cost_parcel_filter.dart';
-import '../application/production_cost_period.dart';
 import 'dart:math';
+
 import 'package:excel/excel.dart';
 import 'package:flutter/material.dart';
+
 import '../../../core/localization/app_localizations.dart';
-import '../application/production_cost_summary.dart';
-import '../application/production_cost_report.dart';
 import '../../../services/report_file_saver.dart';
+import '../application/production_cost_parcel_filter.dart';
+import '../application/production_cost_period.dart';
+import '../application/production_cost_report.dart';
+import '../application/production_cost_summary.dart';
 import 'finance_amount_formatter.dart';
 import 'finance_document_details_dialog.dart';
 
@@ -28,32 +30,16 @@ class ProductionCostsScreen extends StatefulWidget {
 }
 
 class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
+  final search = TextEditingController();
   late String selectedParcel = widget.initialParcelId == null
       ? 'all'
       : 'parcel:${widget.initialParcelId}';
-  final search = TextEditingController();
-
-  @override
-  void dispose() {
-    search.dispose();
-    super.dispose();
-  }
-
-  void searchChanged() {
-    if (!widget.service.canView || exporting) {
-      return;
-    }
-    setState(() {
-      data = widget.service.load(
-        period: period,
-        parcelFilter: parcelFilter,
-        currency: currencyFilter,
-        query: search.text,
-      );
-    });
-  }
-
   String selectedCurrency = 'all';
+  ProductionCostPeriod period = const ProductionCostPeriod();
+  bool exporting = false;
+  bool refreshing = false;
+  int filterRevision = 0;
+
   String? get currencyFilter =>
       selectedCurrency == 'all' ? null : selectedCurrency.substring(9);
   ProductionCostParcelFilter get parcelFilter => selectedParcel == 'all'
@@ -61,40 +47,60 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
       : selectedParcel == 'general'
       ? const ProductionCostParcelFilter.general()
       : ProductionCostParcelFilter.parcel(selectedParcel.substring(7));
-  ProductionCostPeriod period = const ProductionCostPeriod();
-  late Future<ProductionCostSnapshot> data = widget.service.load(
+  bool get hasFilters =>
+      search.text.isNotEmpty ||
+      selectedParcel != 'all' ||
+      selectedCurrency != 'all' ||
+      !period.isAllDates;
+  bool allowChange() {
+    if (!mounted || exporting) {
+      return false;
+    }
+    if (!widget.service.canView) {
+      setState(() {});
+      return false;
+    }
+    return true;
+  }
+
+  late Future<ProductionCostSnapshot> data = load();
+
+  Future<ProductionCostSnapshot> load() => widget.service.load(
     period: period,
     parcelFilter: parcelFilter,
     currency: currencyFilter,
     query: search.text,
   );
 
-  bool get hasFilters =>
-      search.text.isNotEmpty ||
-      selectedParcel != 'all' ||
-      selectedCurrency != 'all' ||
-      !period.isAllDates;
+  @override
+  void dispose() {
+    search.dispose();
+    super.dispose();
+  }
+
+  void changeFilters(VoidCallback change) {
+    if (!allowChange()) {
+      return;
+    }
+    setState(() {
+      change();
+      filterRevision++;
+      data = load();
+    });
+  }
 
   void clearFilters() {
-    if (!widget.service.canView || exporting || !hasFilters) {
+    if (!allowChange() || !hasFilters) {
       return;
     }
     FocusManager.instance.primaryFocus?.unfocus();
-    setState(() {
+    changeFilters(() {
       search.clear();
       selectedParcel = 'all';
       selectedCurrency = 'all';
       period = const ProductionCostPeriod();
-      data = widget.service.load(
-        period: period,
-        parcelFilter: parcelFilter,
-        currency: currencyFilter,
-        query: search.text,
-      );
     });
   }
-
-  bool refreshing = false;
 
   Future<void> refresh() async {
     if (!mounted || refreshing || exporting) {
@@ -104,12 +110,7 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
       setState(() {});
       return;
     }
-    final refreshed = widget.service.load(
-      period: period,
-      parcelFilter: parcelFilter,
-      currency: currencyFilter,
-      query: search.text,
-    );
+    final refreshed = load();
     setState(() {
       refreshing = true;
       data = refreshed;
@@ -117,7 +118,7 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
     try {
       await refreshed;
     } catch (_) {
-      // The scrollable error state allows another refresh.
+      /* The scrollable error state permits retry. */
     } finally {
       if (mounted) {
         setState(() {
@@ -128,7 +129,12 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
   }
 
   Future<void> selectPeriod() async {
-    final initial = period.from == null || period.to == null
+    if (!allowChange()) {
+      return;
+    }
+    FocusManager.instance.primaryFocus?.unfocus();
+    final revision = filterRevision;
+    final initial = period.isAllDates
         ? null
         : DateTimeRange(start: period.from!, end: period.to!);
     final selected = widget.pickPeriod != null
@@ -139,69 +145,286 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
             lastDate: DateTime(2100, 12, 31),
             initialDateRange: initial,
           );
-    if (!mounted || selected == null) {
+    if (!mounted) {
       return;
     }
-    setState(() {
+    if (!widget.service.canView) {
+      setState(() {});
+      return;
+    }
+    if (!allowChange() || selected == null || revision != filterRevision) {
+      return;
+    }
+    changeFilters(() {
       period = ProductionCostPeriod(from: selected.start, to: selected.end);
-      data = widget.service.load(
-        period: period,
-        parcelFilter: parcelFilter,
-        currency: currencyFilter,
-        query: search.text,
-      );
     });
   }
 
-  bool exporting = false;
-
-  Future<void> export() async {
-    if (exporting || !widget.service.canView) {
+  Future<void> export(bool filtered) async {
+    if (!allowChange()) {
       return;
     }
-    setState(() => exporting = true);
+    FocusManager.instance.primaryFocus?.unfocus();
+    final exportPeriod = filtered ? period : const ProductionCostPeriod();
+    final exportParcel = filtered
+        ? parcelFilter
+        : const ProductionCostParcelFilter.all();
+    final exportCurrency = filtered ? currencyFilter : null;
+    final exportQuery = filtered ? search.text : '';
+    setState(() {
+      exporting = true;
+    });
     try {
       await ProductionCostReport(widget.service).exportReport(
-        period: period,
-        parcelFilter: parcelFilter,
-        currency: currencyFilter,
-        query: search.text,
-        save: (workbook) => (widget.saveReport ?? saveExcelFile)(
-          workbook,
+        period: exportPeriod,
+        parcelFilter: exportParcel,
+        currency: exportCurrency,
+        query: exportQuery,
+        save: (book) => (widget.saveReport ?? saveExcelFile)(
+          book,
           'BaoCaoChiPhiV2-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}.xlsx',
         ),
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              AppLocalizations.of(context).text('finance.exported'),
-            ),
-          ),
-        );
+        message('finance.exported');
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              AppLocalizations.of(context).text('finance.exportFailed'),
-            ),
-          ),
-        );
+        message('finance.exportFailed');
       }
     } finally {
       if (mounted) {
-        setState(() => exporting = false);
+        setState(() {
+          exporting = false;
+        });
       }
     }
   }
 
+  void message(String key) => ScaffoldMessenger.of(
+    context,
+  ).showSnackBar(SnackBar(content: Text(context.l10n.text(key))));
+  String money(int amount, String currency) =>
+      '${FinanceAmountFormatter.group(amount.toString())} $currency';
+  String date(DateTime value) => value.toIso8601String().substring(0, 10);
+  Widget option(String text) =>
+      Text(text, maxLines: 1, overflow: TextOverflow.ellipsis);
+
+  List<Widget> filters(ProductionCostSnapshot? report) {
+    final l10n = context.l10n;
+    final ids = <String>{
+      ...(report?.availableParcelIds ?? <String>{}),
+      ?parcelFilter.parcelId,
+    }.toList()..sort();
+    final currencies = <String>{
+      'LAK',
+      'VND',
+      ...(report?.availableCurrencies ?? <String>{}),
+      ?currencyFilter,
+    }.toList()..sort();
+    return [
+      TextField(
+        key: const Key('costs-search'),
+        controller: search,
+        enabled: !exporting,
+        decoration: InputDecoration(
+          hintText: l10n.text('finance.search'),
+          prefixIcon: const Icon(Icons.search),
+          suffixIcon: search.text.isEmpty
+              ? null
+              : IconButton(
+                  key: const Key('costs-clear-search'),
+                  icon: const Icon(Icons.clear),
+                  tooltip: l10n.text('finance.clearSearch'),
+                  onPressed: exporting
+                      ? null
+                      : () => changeFilters(search.clear),
+                ),
+        ),
+        onChanged: (_) => changeFilters(() {}),
+      ),
+      const SizedBox(height: 12),
+      LayoutBuilder(
+        builder: (context, constraints) {
+          final parcel = DropdownButtonFormField<String>(
+            key: const Key('costs-parcel'),
+            initialValue: selectedParcel,
+            isExpanded: true,
+            decoration: InputDecoration(
+              label: option(l10n.text('task.parcel')),
+            ),
+            items: [
+              DropdownMenuItem(
+                value: 'all',
+                child: option(l10n.text('costs.allParcels')),
+              ),
+              DropdownMenuItem(
+                value: 'general',
+                child: option(l10n.text('costs.general')),
+              ),
+              for (final id in ids)
+                DropdownMenuItem(
+                  value: 'parcel:$id',
+                  child: option(
+                    report?.parcelLabels[id] ??
+                        '${l10n.text('finance.linkedParcel')} ($id)',
+                  ),
+                ),
+            ],
+            onChanged: exporting
+                ? null
+                : (value) {
+                    if (value != null) {
+                      changeFilters(() {
+                        selectedParcel = value;
+                      });
+                    }
+                  },
+          );
+          final currency = DropdownButtonFormField<String>(
+            key: const Key('costs-currency'),
+            initialValue: selectedCurrency,
+            isExpanded: true,
+            decoration: InputDecoration(
+              label: option(l10n.text('finance.currency')),
+            ),
+            items: [
+              DropdownMenuItem(
+                value: 'all',
+                child: option(l10n.text('common.all')),
+              ),
+              for (final code in currencies)
+                DropdownMenuItem(value: 'currency:$code', child: option(code)),
+            ],
+            onChanged: exporting
+                ? null
+                : (value) {
+                    if (value != null) {
+                      changeFilters(() {
+                        selectedCurrency = value;
+                      });
+                    }
+                  },
+          );
+          // Stack selectors when text scaling would leave their labels too narrow.
+          if (constraints.maxWidth < 360 &&
+              MediaQuery.textScalerOf(context).scale(14) > 18) {
+            return Column(
+              children: [parcel, const SizedBox(height: 12), currency],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(flex: 2, child: parcel),
+              const SizedBox(width: 8),
+              Expanded(child: currency),
+            ],
+          );
+        },
+      ),
+      const SizedBox(height: 12),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          OutlinedButton.icon(
+            key: const Key('costs-period'),
+            icon: const Icon(Icons.date_range),
+            onPressed: exporting ? null : selectPeriod,
+            label: Text(
+              period.isAllDates
+                  ? l10n.text('costs.allDates')
+                  : '${date(period.from!)} – ${date(period.to!)}',
+            ),
+          ),
+          if (!period.isAllDates)
+            TextButton(
+              key: const Key('costs-clear-period'),
+              onPressed: exporting
+                  ? null
+                  : () => changeFilters(() {
+                      period = const ProductionCostPeriod();
+                    }),
+              child: Text(l10n.text('costs.clearPeriod')),
+            ),
+        ],
+      ),
+      const SizedBox(height: 12),
+    ];
+  }
+
+  List<Widget> results(ProductionCostSnapshot report) {
+    final l10n = context.l10n;
+    return [
+      Text(l10n.text('costs.basis')),
+      Text(
+        '${l10n.text('finance.documentCount')}: ${report.documentCount}',
+        key: const Key('costs-document-count'),
+      ),
+      if (hasFilters)
+        Text(
+          l10n.text('costs.filteredScope'),
+          key: const Key('costs-filtered-scope'),
+        ),
+      if (report.groups.isEmpty)
+        Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            l10n.text(hasFilters ? 'finance.noSearchResults' : 'costs.empty'),
+          ),
+        ),
+      for (final total in report.totals.entries)
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text(
+              '${l10n.text('costs.total')}: ${money(total.value, total.key)}',
+              key: Key('costs-total-${total.key}'),
+            ),
+          ),
+        ),
+      for (final group in report.groups)
+        Card(
+          child: ExpansionTile(
+            key: Key(
+              'costs-group-${group.parcelId ?? 'general'}-${group.currency}',
+            ),
+            title: Text(
+              group.parcelId == null
+                  ? l10n.text('costs.general')
+                  : report.parcelLabels[group.parcelId] ??
+                        '${l10n.text('finance.linkedParcel')} (${group.parcelId})',
+            ),
+            subtitle: Text(
+              '${money(group.amountMinor, group.currency)} · ${l10n.text('costs.documents')}: ${group.documents.length}',
+            ),
+            children: [
+              for (final document in group.documents)
+                ListTile(
+                  key: Key('costs-document-${document.id}'),
+                  onTap: () {
+                    FocusManager.instance.primaryFocus?.unfocus();
+                    showFinanceDocumentDetails(
+                      context: context,
+                      service: widget.service.finance,
+                      id: document.id,
+                      canView: () => widget.service.canView,
+                    );
+                  },
+                  title: Text('${document.code} · ${document.category}'),
+                  subtitle: Text(
+                    '${date(document.occurredAt)}\n${money(document.amountMinor, document.currency)}',
+                  ),
+                ),
+            ],
+          ),
+        ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    String money(int amount, String currency) =>
-        '${FinanceAmountFormatter.group(amount.toString())} $currency';
+    final l10n = context.l10n;
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.text('module.costs')),
@@ -214,11 +437,24 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
               onPressed: exporting ? null : clearFilters,
             ),
           if (widget.service.canView)
-            IconButton(
+            PopupMenuButton<bool>(
               key: const Key('costs-export'),
               icon: const Icon(Icons.file_download),
               tooltip: l10n.text('finance.exportV2'),
-              onPressed: exporting ? null : export,
+              enabled: !exporting,
+              onSelected: export,
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: true,
+                  key: const Key('costs-export-filtered'),
+                  child: Text(l10n.text('finance.exportFiltered')),
+                ),
+                PopupMenuItem(
+                  value: false,
+                  key: const Key('costs-export-all'),
+                  child: Text(l10n.text('finance.exportAll')),
+                ),
+              ],
             ),
           IconButton(
             key: const Key('costs-refresh-button'),
@@ -228,301 +464,36 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          if (widget.service.canView)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-              child: TextField(
-                key: const Key('costs-search'),
-                controller: search,
-                enabled: !exporting,
-                decoration: InputDecoration(
-                  hintText: l10n.text('finance.search'),
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: search.text.isEmpty
-                      ? null
-                      : IconButton(
-                          key: const Key('costs-clear-search'),
-                          tooltip: l10n.text('finance.clearSearch'),
-                          icon: const Icon(Icons.clear),
-                          onPressed: exporting
-                              ? null
-                              : () {
-                                  if (!widget.service.canView) {
-                                    return;
-                                  }
-                                  search.clear();
-                                  searchChanged();
-                                },
-                        ),
-                ),
-                onChanged: (_) => searchChanged(),
-              ),
-            ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-            child: FutureBuilder<ProductionCostSnapshot>(
-              future: data,
-              builder: (context, snapshot) {
-                if (!widget.service.canView) {
-                  return const SizedBox.shrink();
-                }
-                final ids = <String>{
-                  ...(snapshot.data?.availableParcelIds ?? <String>{}),
-                  ?parcelFilter.parcelId,
-                }.toList()..sort();
-                final labels =
-                    snapshot.data?.parcelLabels ?? <String, String>{};
-                final currencies = <String>{
-                  'LAK',
-                  'VND',
-                  ...(snapshot.data?.availableCurrencies ?? <String>{}),
-                  ?currencyFilter,
-                }.toList()..sort();
-                return Row(
-                  children: [
-                    Expanded(
-                      flex: 2,
-                      child: DropdownButtonFormField<String>(
-                        key: const Key('costs-parcel'),
-                        isExpanded: true,
-                        initialValue: selectedParcel,
-                        decoration: InputDecoration(
-                          labelText: l10n.text('task.parcel'),
-                        ),
-                        items: [
-                          DropdownMenuItem(
-                            value: 'all',
-                            child: Text(
-                              l10n.text('costs.allParcels'),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          DropdownMenuItem(
-                            value: 'general',
-                            child: Text(
-                              l10n.text('costs.general'),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          for (final id in ids)
-                            DropdownMenuItem(
-                              value: 'parcel:$id',
-                              child: Text(
-                                labels[id] ??
-                                    '${l10n.text('finance.linkedParcel')} ($id)',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                        ],
-                        onChanged: exporting
-                            ? null
-                            : (value) {
-                                if (value == null) {
-                                  return;
-                                }
-                                setState(() {
-                                  selectedParcel = value;
-                                  data = widget.service.load(
-                                    period: period,
-                                    parcelFilter: parcelFilter,
-                                    currency: currencyFilter,
-                                    query: search.text,
-                                  );
-                                });
-                              },
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        key: const Key('costs-currency'),
-                        initialValue: selectedCurrency,
-                        isExpanded: true,
-                        decoration: InputDecoration(
-                          label: Text(
-                            l10n.text('finance.currency'),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        items: [
-                          DropdownMenuItem(
-                            value: 'all',
-                            child: Text(
-                              l10n.text('common.all'),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          for (final currency in currencies)
-                            DropdownMenuItem(
-                              value: 'currency:$currency',
-                              child: Text(
-                                currency,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                        ],
-                        onChanged: exporting
-                            ? null
-                            : (value) {
-                                if (value == null || !widget.service.canView) {
-                                  return;
-                                }
-                                setState(() {
-                                  selectedCurrency = value;
-                                  data = widget.service.load(
-                                    period: period,
-                                    parcelFilter: parcelFilter,
-                                    currency: currencyFilter,
-                                    query: search.text,
-                                  );
-                                });
-                              },
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
+      body: RefreshIndicator(
+        key: const Key('costs-refresh'),
+        onRefresh: refresh,
+        child: FutureBuilder<ProductionCostSnapshot>(
+          future: data,
+          builder: (context, snapshot) {
+            final allowed = widget.service.canView;
+            final waiting = snapshot.connectionState != ConnectionState.done;
+            return ListView(
+              key: const Key('costs-scroll'),
+              padding: const EdgeInsets.all(12),
+              physics: const AlwaysScrollableScrollPhysics(),
               children: [
-                OutlinedButton.icon(
-                  key: const Key('costs-period'),
-                  icon: const Icon(Icons.date_range),
-                  onPressed: exporting ? null : selectPeriod,
-                  label: Text(
-                    period.isAllDates
-                        ? l10n.text('costs.allDates')
-                        : '${period.from!.toIso8601String().substring(0, 10)} – ${period.to!.toIso8601String().substring(0, 10)}',
-                  ),
-                ),
-                if (!period.isAllDates)
-                  TextButton(
-                    key: const Key('costs-clear-period'),
-                    onPressed: exporting
-                        ? null
-                        : () {
-                            setState(() {
-                              period = const ProductionCostPeriod();
-                              data = widget.service.load(
-                                period: period,
-                                parcelFilter: parcelFilter,
-                                currency: currencyFilter,
-                                query: search.text,
-                              );
-                            });
-                          },
-                    child: Text(l10n.text('costs.clearPeriod')),
-                  ),
+                if (allowed) ...filters(snapshot.data),
+                if (!allowed || snapshot.hasError)
+                  Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(l10n.text('costs.loadFailed')),
+                  )
+                else if (waiting)
+                  const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (snapshot.hasData)
+                  ...results(snapshot.data!),
               ],
-            ),
-          ),
-          Expanded(
-            child: RefreshIndicator(
-              key: const Key('costs-refresh'),
-              onRefresh: refresh,
-              child: FutureBuilder<ProductionCostSnapshot>(
-                future: data,
-                builder: (context, snapshot) {
-                  if (!widget.service.canView || snapshot.hasError) {
-                    return ListView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Center(
-                            child: Text(l10n.text('costs.loadFailed')),
-                          ),
-                        ),
-                      ],
-                    );
-                  }
-                  if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  final report = snapshot.data!;
-                  if (report.groups.isEmpty) {
-                    return ListView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Center(child: Text(l10n.text('costs.empty'))),
-                        ),
-                      ],
-                    );
-                  }
-                  return ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(12),
-                    children: [
-                      Text(l10n.text('costs.basis')),
-                      for (final total in report.totals.entries)
-                        Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Text(
-                              '${l10n.text('costs.total')}: ${money(total.value, total.key)}',
-                              key: Key('costs-total-${total.key}'),
-                            ),
-                          ),
-                        ),
-                      for (final group in report.groups)
-                        Card(
-                          child: ExpansionTile(
-                            key: Key(
-                              'costs-group-${group.parcelId ?? 'general'}-${group.currency}',
-                            ),
-                            title: Text(
-                              group.parcelId == null
-                                  ? l10n.text('costs.general')
-                                  : report.parcelLabels[group.parcelId] ??
-                                        l10n.text('finance.linkedParcel'),
-                            ),
-                            subtitle: Text(
-                              '${money(group.amountMinor, group.currency)} · '
-                              '${l10n.text('costs.documents')}: ${group.documents.length}',
-                            ),
-                            children: [
-                              for (final document in group.documents)
-                                ListTile(
-                                  key: Key('costs-document-${document.id}'),
-                                  onTap: () => showFinanceDocumentDetails(
-                                    context: context,
-                                    service: widget.service.finance,
-                                    id: document.id,
-                                    canView: () => widget.service.canView,
-                                  ),
-                                  title: Text(
-                                    '${document.code} · ${document.category}',
-                                  ),
-                                  subtitle: Text(
-                                    '${document.occurredAt.toIso8601String().substring(0, 10)}\n'
-                                    '${money(document.amountMinor, document.currency)}',
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                    ],
-                  );
-                },
-              ),
-            ),
-          ),
-        ],
+            );
+          },
+        ),
       ),
     );
   }

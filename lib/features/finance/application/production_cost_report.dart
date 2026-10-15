@@ -29,6 +29,15 @@ class ProductionCostReport {
     );
     _authorize();
     final excel = Excel.createExcel();
+    final overview = excel['Overview'];
+    overview.appendRow([
+      TextCellValue('Payment documents'),
+      IntCellValue(snapshot.documentCount),
+    ]);
+    overview.appendRow([
+      TextCellValue('Parcel/currency groups'),
+      IntCellValue(snapshot.groups.length),
+    ]);
     final searchSheet = excel['Search Filter'];
     searchSheet.appendRow([TextCellValue('Query')]);
     searchSheet.appendRow([TextCellValue(query.trim())]);

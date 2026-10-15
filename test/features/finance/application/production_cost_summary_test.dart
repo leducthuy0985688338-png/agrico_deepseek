@@ -166,6 +166,8 @@ void main() {
     expect(find.text('Tổng chi: 1.000.000 LAK'), findsOneWidget);
     await tester.tap(find.byKey(const Key('costs-export')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('costs-export-filtered')));
+    await tester.pumpAndSettle();
     expect(exportedParcel, 'one');
     expect(exportedAmount, '1000000');
     await tester.tap(find.byKey(const Key('costs-parcel')));
@@ -231,6 +233,8 @@ void main() {
       expect(find.text('Tổng chi: 1.000.000 LAK'), findsOneWidget);
       await tester.tap(find.byKey(const Key('costs-export')));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('costs-export-filtered')));
+      await tester.pumpAndSettle();
       expect(exportedParcel, 'one');
       expect(exportedAmount, '1000000');
       await tester.tap(find.byKey(const Key('costs-parcel')));
@@ -271,7 +275,7 @@ void main() {
       find.text(
         AppLocalizations.of(
           tester.element(find.byType(ProductionCostsScreen)),
-        ).text('costs.empty'),
+        ).text('finance.noSearchResults'),
       ),
       findsOneWidget,
     );
@@ -405,6 +409,8 @@ void main() {
     expect(find.text('Tổng chi: 2.000.000 LAK'), findsOneWidget);
     await tester.tap(find.byKey(const Key('costs-export')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('costs-export-filtered')));
+    await tester.pumpAndSettle();
     expect(exportedTotal, '2000000');
     await tester.tap(find.byKey(const Key('costs-clear-period')));
     await tester.pump();
@@ -486,6 +492,8 @@ void main() {
     await tester.pumpAndSettle();
     for (var i = 0; i < 2; i++) {
       await tester.tap(find.byKey(const Key('costs-export')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('costs-export-filtered')));
       await tester.pumpAndSettle();
     }
     expect(names, hasLength(2));

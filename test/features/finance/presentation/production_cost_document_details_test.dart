@@ -47,15 +47,27 @@ void main() {
       fixture.app(ProductionCostsScreen(service: service)),
     );
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('costs-group-general-LAK')),
+      100,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('costs-scroll')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     await tester.tap(find.byKey(const Key('costs-group-general-LAK')));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
       find.byKey(const Key('costs-document-one')),
       100,
-      scrollable: find.descendant(
-        of: find.byType(ListView),
-        matching: find.byType(Scrollable),
-      ),
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('costs-scroll')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
     );
     await tester.pumpAndSettle();
   }
@@ -86,6 +98,16 @@ void main() {
       await tester.tap(find.byKey(const Key('finance-details-close')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('costs-group-general-LAK')), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('costs-parcel')),
+        -100,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const Key('costs-scroll')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
       expect(
         tester
             .widget<DropdownButtonFormField<String>>(

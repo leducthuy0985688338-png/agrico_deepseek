@@ -40,6 +40,9 @@ class ProductionCostSnapshot {
   final Set<String> availableCurrencies;
   final String? currency;
   final String query;
+  int get documentCount =>
+      groups.fold(0, (count, group) => count + group.documents.length);
+
   Map<String, int> get totals {
     final result = <String, int>{};
     for (final group in groups) {
@@ -78,6 +81,25 @@ class ProductionCostSummary {
       throw StateError('Production cost access denied.');
     }
     final documents = await finance.listByOrganization(finance.organizationId);
+    if (!canView) {
+      throw StateError('Production cost access denied.');
+    }
+    final identities = <String>{};
+    for (final document in documents) {
+      if (!identities.add(document.id)) {
+        throw StateError('Duplicate finance document identity.');
+      }
+      if (document.kind == BusinessDocumentKind.payment &&
+          (document.id.trim().isEmpty ||
+              document.code.trim().isEmpty ||
+              document.amountMinor <= 0 ||
+              document.currency.trim().isEmpty ||
+              document.category.trim().isEmpty ||
+              (document.parcelId != null &&
+                  document.parcelId!.trim().isEmpty))) {
+        throw StateError('Invalid saved payment document.');
+      }
+    }
     final parcels = await finance.availableParcels();
     if (!canView) {
       throw StateError('Production cost access denied.');
