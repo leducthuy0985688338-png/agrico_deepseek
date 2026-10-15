@@ -46,6 +46,28 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
     currency: currencyFilter,
   );
 
+  bool get hasFilters =>
+      selectedParcel != 'all' ||
+      selectedCurrency != 'all' ||
+      !period.isAllDates;
+
+  void clearFilters() {
+    if (!widget.service.canView || exporting || !hasFilters) {
+      return;
+    }
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() {
+      selectedParcel = 'all';
+      selectedCurrency = 'all';
+      period = const ProductionCostPeriod();
+      data = widget.service.load(
+        period: period,
+        parcelFilter: parcelFilter,
+        currency: currencyFilter,
+      );
+    });
+  }
+
   Future<void> selectPeriod() async {
     final initial = period.from == null || period.to == null
         ? null
@@ -123,6 +145,13 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
       appBar: AppBar(
         title: Text(l10n.text('module.costs')),
         actions: [
+          if (widget.service.canView && hasFilters)
+            IconButton(
+              key: const Key('costs-clear-filters'),
+              icon: const Icon(Icons.filter_alt_off_outlined),
+              tooltip: l10n.text('finance.clearFilters'),
+              onPressed: exporting ? null : clearFilters,
+            ),
           if (widget.service.canView)
             IconButton(
               key: const Key('costs-export'),
