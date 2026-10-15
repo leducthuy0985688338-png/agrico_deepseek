@@ -15,6 +15,7 @@ class ProductionCostReport {
 
   Future<Excel> workbook({
     String? currency,
+    String query = '',
     ProductionCostPeriod period = const ProductionCostPeriod(),
     ProductionCostParcelFilter parcelFilter =
         const ProductionCostParcelFilter.all(),
@@ -24,9 +25,13 @@ class ProductionCostReport {
       period: period,
       parcelFilter: parcelFilter,
       currency: currency,
+      query: query,
     );
     _authorize();
     final excel = Excel.createExcel();
+    final searchSheet = excel['Search Filter'];
+    searchSheet.appendRow([TextCellValue('Query')]);
+    searchSheet.appendRow([TextCellValue(query.trim())]);
     final currencySheet = excel['Currency Filter'];
     currencySheet.appendRow([TextCellValue('Currency')]);
     currencySheet.appendRow([TextCellValue(currency ?? 'All')]);
@@ -112,6 +117,7 @@ class ProductionCostReport {
   Future<void> exportReport({
     required Future<void> Function(Excel) save,
     String? currency,
+    String query = '',
     ProductionCostPeriod period = const ProductionCostPeriod(),
     ProductionCostParcelFilter parcelFilter =
         const ProductionCostParcelFilter.all(),
@@ -120,6 +126,7 @@ class ProductionCostReport {
       period: period,
       parcelFilter: parcelFilter,
       currency: currency,
+      query: query,
     );
     _authorize();
     await save(report);

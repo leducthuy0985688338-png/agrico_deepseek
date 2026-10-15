@@ -31,6 +31,28 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
   late String selectedParcel = widget.initialParcelId == null
       ? 'all'
       : 'parcel:${widget.initialParcelId}';
+  final search = TextEditingController();
+
+  @override
+  void dispose() {
+    search.dispose();
+    super.dispose();
+  }
+
+  void searchChanged() {
+    if (!widget.service.canView || exporting) {
+      return;
+    }
+    setState(() {
+      data = widget.service.load(
+        period: period,
+        parcelFilter: parcelFilter,
+        currency: currencyFilter,
+        query: search.text,
+      );
+    });
+  }
+
   String selectedCurrency = 'all';
   String? get currencyFilter =>
       selectedCurrency == 'all' ? null : selectedCurrency.substring(9);
@@ -44,9 +66,11 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
     period: period,
     parcelFilter: parcelFilter,
     currency: currencyFilter,
+    query: search.text,
   );
 
   bool get hasFilters =>
+      search.text.isNotEmpty ||
       selectedParcel != 'all' ||
       selectedCurrency != 'all' ||
       !period.isAllDates;
@@ -57,6 +81,7 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
     }
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
+      search.clear();
       selectedParcel = 'all';
       selectedCurrency = 'all';
       period = const ProductionCostPeriod();
@@ -64,6 +89,7 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
         period: period,
         parcelFilter: parcelFilter,
         currency: currencyFilter,
+        query: search.text,
       );
     });
   }
@@ -82,6 +108,7 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
       period: period,
       parcelFilter: parcelFilter,
       currency: currencyFilter,
+      query: search.text,
     );
     setState(() {
       refreshing = true;
@@ -121,6 +148,7 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
         period: period,
         parcelFilter: parcelFilter,
         currency: currencyFilter,
+        query: search.text,
       );
     });
   }
@@ -137,6 +165,7 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
         period: period,
         parcelFilter: parcelFilter,
         currency: currencyFilter,
+        query: search.text,
         save: (workbook) => (widget.saveReport ?? saveExcelFile)(
           workbook,
           'BaoCaoChiPhiV2-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}.xlsx',
@@ -201,6 +230,36 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
       ),
       body: Column(
         children: [
+          if (widget.service.canView)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+              child: TextField(
+                key: const Key('costs-search'),
+                controller: search,
+                enabled: !exporting,
+                decoration: InputDecoration(
+                  hintText: l10n.text('finance.search'),
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: search.text.isEmpty
+                      ? null
+                      : IconButton(
+                          key: const Key('costs-clear-search'),
+                          tooltip: l10n.text('finance.clearSearch'),
+                          icon: const Icon(Icons.clear),
+                          onPressed: exporting
+                              ? null
+                              : () {
+                                  if (!widget.service.canView) {
+                                    return;
+                                  }
+                                  search.clear();
+                                  searchChanged();
+                                },
+                        ),
+                ),
+                onChanged: (_) => searchChanged(),
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
             child: FutureBuilder<ProductionCostSnapshot>(
@@ -272,6 +331,7 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
                                     period: period,
                                     parcelFilter: parcelFilter,
                                     currency: currencyFilter,
+                                    query: search.text,
                                   );
                                 });
                               },
@@ -321,6 +381,7 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
                                     period: period,
                                     parcelFilter: parcelFilter,
                                     currency: currencyFilter,
+                                    query: search.text,
                                   );
                                 });
                               },
@@ -359,6 +420,7 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
                                 period: period,
                                 parcelFilter: parcelFilter,
                                 currency: currencyFilter,
+                                query: search.text,
                               );
                             });
                           },

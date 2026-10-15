@@ -27,6 +27,7 @@ class ProductionCostSnapshot {
     Set<String> availableParcelIds = const {},
     Set<String> availableCurrencies = const {},
     this.currency,
+    this.query = '',
   }) : groups = List.unmodifiable(groups),
        parcelLabels = Map.unmodifiable(parcelLabels),
        availableParcelIds = Set.unmodifiable(availableParcelIds),
@@ -38,6 +39,7 @@ class ProductionCostSnapshot {
   final Set<String> availableParcelIds;
   final Set<String> availableCurrencies;
   final String? currency;
+  final String query;
   Map<String, int> get totals {
     final result = <String, int>{};
     for (final group in groups) {
@@ -59,11 +61,17 @@ class ProductionCostSummary {
 
   Future<ProductionCostSnapshot> load({
     String? currency,
+    String query = '',
     ProductionCostPeriod period = const ProductionCostPeriod(),
     ProductionCostParcelFilter parcelFilter =
         const ProductionCostParcelFilter.all(),
   }) async {
-    FinanceDocumentFilter(currency: currency).validate();
+    final filter = FinanceDocumentFilter(
+      currency: currency,
+      query: query,
+      kind: BusinessDocumentKind.payment,
+    );
+    filter.validate();
     period.validate();
     parcelFilter.validate();
     if (!canView) {
@@ -76,8 +84,7 @@ class ProductionCostSummary {
     }
     final buckets = <(String?, String), List<FinanceDocument>>{};
     for (final document in documents) {
-      if ((currency != null && document.currency != currency) ||
-          document.kind != BusinessDocumentKind.payment ||
+      if (!filter.matches(document) ||
           !period.contains(document.occurredAt) ||
           !parcelFilter.contains(document.parcelId)) {
         continue;
@@ -93,6 +100,7 @@ class ProductionCostSummary {
       });
     return ProductionCostSnapshot(
       currency: currency,
+      query: query,
       availableCurrencies: {
         for (final document in documents)
           if (document.kind == BusinessDocumentKind.payment) document.currency,
