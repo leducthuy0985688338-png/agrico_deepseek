@@ -31,6 +31,9 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
   late String selectedParcel = widget.initialParcelId == null
       ? 'all'
       : 'parcel:${widget.initialParcelId}';
+  String selectedCurrency = 'all';
+  String? get currencyFilter =>
+      selectedCurrency == 'all' ? null : selectedCurrency.substring(9);
   ProductionCostParcelFilter get parcelFilter => selectedParcel == 'all'
       ? const ProductionCostParcelFilter.all()
       : selectedParcel == 'general'
@@ -40,6 +43,7 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
   late Future<ProductionCostSnapshot> data = widget.service.load(
     period: period,
     parcelFilter: parcelFilter,
+    currency: currencyFilter,
   );
 
   Future<void> selectPeriod() async {
@@ -59,7 +63,11 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
     }
     setState(() {
       period = ProductionCostPeriod(from: selected.start, to: selected.end);
-      data = widget.service.load(period: period, parcelFilter: parcelFilter);
+      data = widget.service.load(
+        period: period,
+        parcelFilter: parcelFilter,
+        currency: currencyFilter,
+      );
     });
   }
 
@@ -74,6 +82,7 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
       await ProductionCostReport(widget.service).exportReport(
         period: period,
         parcelFilter: parcelFilter,
+        currency: currencyFilter,
         save: (workbook) => (widget.saveReport ?? saveExcelFile)(
           workbook,
           'BaoCaoChiPhiV2-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}.xlsx',
@@ -129,6 +138,7 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
                 data = widget.service.load(
                   period: period,
                   parcelFilter: parcelFilter,
+                  currency: currencyFilter,
                 );
               });
             },
@@ -151,55 +161,118 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
                 }.toList()..sort();
                 final labels =
                     snapshot.data?.parcelLabels ?? <String, String>{};
-                return DropdownButtonFormField<String>(
-                  key: const Key('costs-parcel'),
-                  isExpanded: true,
-                  initialValue: selectedParcel,
-                  decoration: InputDecoration(
-                    labelText: l10n.text('task.parcel'),
-                  ),
-                  items: [
-                    DropdownMenuItem(
-                      value: 'all',
-                      child: Text(
-                        l10n.text('costs.allParcels'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    DropdownMenuItem(
-                      value: 'general',
-                      child: Text(
-                        l10n.text('costs.general'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    for (final id in ids)
-                      DropdownMenuItem(
-                        value: 'parcel:$id',
-                        child: Text(
-                          labels[id] ??
-                              '${l10n.text('finance.linkedParcel')} ($id)',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                final currencies = <String>{
+                  'LAK',
+                  'VND',
+                  ...(snapshot.data?.availableCurrencies ?? <String>{}),
+                  ?currencyFilter,
+                }.toList()..sort();
+                return Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: DropdownButtonFormField<String>(
+                        key: const Key('costs-parcel'),
+                        isExpanded: true,
+                        initialValue: selectedParcel,
+                        decoration: InputDecoration(
+                          labelText: l10n.text('task.parcel'),
                         ),
+                        items: [
+                          DropdownMenuItem(
+                            value: 'all',
+                            child: Text(
+                              l10n.text('costs.allParcels'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          DropdownMenuItem(
+                            value: 'general',
+                            child: Text(
+                              l10n.text('costs.general'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          for (final id in ids)
+                            DropdownMenuItem(
+                              value: 'parcel:$id',
+                              child: Text(
+                                labels[id] ??
+                                    '${l10n.text('finance.linkedParcel')} ($id)',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
+                        onChanged: exporting
+                            ? null
+                            : (value) {
+                                if (value == null) {
+                                  return;
+                                }
+                                setState(() {
+                                  selectedParcel = value;
+                                  data = widget.service.load(
+                                    period: period,
+                                    parcelFilter: parcelFilter,
+                                    currency: currencyFilter,
+                                  );
+                                });
+                              },
                       ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        key: const Key('costs-currency'),
+                        initialValue: selectedCurrency,
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          label: Text(
+                            l10n.text('finance.currency'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        items: [
+                          DropdownMenuItem(
+                            value: 'all',
+                            child: Text(
+                              l10n.text('common.all'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          for (final currency in currencies)
+                            DropdownMenuItem(
+                              value: 'currency:$currency',
+                              child: Text(
+                                currency,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
+                        onChanged: exporting
+                            ? null
+                            : (value) {
+                                if (value == null || !widget.service.canView) {
+                                  return;
+                                }
+                                setState(() {
+                                  selectedCurrency = value;
+                                  data = widget.service.load(
+                                    period: period,
+                                    parcelFilter: parcelFilter,
+                                    currency: currencyFilter,
+                                  );
+                                });
+                              },
+                      ),
+                    ),
                   ],
-                  onChanged: exporting
-                      ? null
-                      : (value) {
-                          if (value == null) {
-                            return;
-                          }
-                          setState(() {
-                            selectedParcel = value;
-                            data = widget.service.load(
-                              period: period,
-                              parcelFilter: parcelFilter,
-                            );
-                          });
-                        },
                 );
               },
             ),
@@ -231,6 +304,7 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
                               data = widget.service.load(
                                 period: period,
                                 parcelFilter: parcelFilter,
+                                currency: currencyFilter,
                               );
                             });
                           },

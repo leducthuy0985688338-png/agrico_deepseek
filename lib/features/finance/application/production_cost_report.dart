@@ -14,6 +14,7 @@ class ProductionCostReport {
   }
 
   Future<Excel> workbook({
+    String? currency,
     ProductionCostPeriod period = const ProductionCostPeriod(),
     ProductionCostParcelFilter parcelFilter =
         const ProductionCostParcelFilter.all(),
@@ -22,9 +23,13 @@ class ProductionCostReport {
     final snapshot = await summary.load(
       period: period,
       parcelFilter: parcelFilter,
+      currency: currency,
     );
     _authorize();
     final excel = Excel.createExcel();
+    final currencySheet = excel['Currency Filter'];
+    currencySheet.appendRow([TextCellValue('Currency')]);
+    currencySheet.appendRow([TextCellValue(currency ?? 'All')]);
     final scope = excel['Period'];
     scope.appendRow([TextCellValue('From date'), TextCellValue('To date')]);
     scope.appendRow([
@@ -106,11 +111,16 @@ class ProductionCostReport {
 
   Future<void> exportReport({
     required Future<void> Function(Excel) save,
+    String? currency,
     ProductionCostPeriod period = const ProductionCostPeriod(),
     ProductionCostParcelFilter parcelFilter =
         const ProductionCostParcelFilter.all(),
   }) async {
-    final report = await workbook(period: period, parcelFilter: parcelFilter);
+    final report = await workbook(
+      period: period,
+      parcelFilter: parcelFilter,
+      currency: currency,
+    );
     _authorize();
     await save(report);
   }

@@ -1,3 +1,4 @@
+import 'finance_document_filter.dart';
 import 'production_cost_parcel_filter.dart';
 import 'production_cost_period.dart';
 import '../../../core/identity/domain/business_reference_code.dart';
@@ -24,14 +25,19 @@ class ProductionCostSnapshot {
     this.period = const ProductionCostPeriod(),
     this.parcelFilter = const ProductionCostParcelFilter.all(),
     Set<String> availableParcelIds = const {},
+    Set<String> availableCurrencies = const {},
+    this.currency,
   }) : groups = List.unmodifiable(groups),
        parcelLabels = Map.unmodifiable(parcelLabels),
-       availableParcelIds = Set.unmodifiable(availableParcelIds);
+       availableParcelIds = Set.unmodifiable(availableParcelIds),
+       availableCurrencies = Set.unmodifiable(availableCurrencies);
   final List<ProductionCostGroup> groups;
   final Map<String, String> parcelLabels;
   final ProductionCostPeriod period;
   final ProductionCostParcelFilter parcelFilter;
   final Set<String> availableParcelIds;
+  final Set<String> availableCurrencies;
+  final String? currency;
   Map<String, int> get totals {
     final result = <String, int>{};
     for (final group in groups) {
@@ -52,10 +58,12 @@ class ProductionCostSummary {
   bool get canView => finance.canExport;
 
   Future<ProductionCostSnapshot> load({
+    String? currency,
     ProductionCostPeriod period = const ProductionCostPeriod(),
     ProductionCostParcelFilter parcelFilter =
         const ProductionCostParcelFilter.all(),
   }) async {
+    FinanceDocumentFilter(currency: currency).validate();
     period.validate();
     parcelFilter.validate();
     if (!canView) {
@@ -68,7 +76,8 @@ class ProductionCostSummary {
     }
     final buckets = <(String?, String), List<FinanceDocument>>{};
     for (final document in documents) {
-      if (document.kind != BusinessDocumentKind.payment ||
+      if ((currency != null && document.currency != currency) ||
+          document.kind != BusinessDocumentKind.payment ||
           !period.contains(document.occurredAt) ||
           !parcelFilter.contains(document.parcelId)) {
         continue;
@@ -83,6 +92,11 @@ class ProductionCostSummary {
         return parcelOrder == 0 ? a.$2.compareTo(b.$2) : parcelOrder;
       });
     return ProductionCostSnapshot(
+      currency: currency,
+      availableCurrencies: {
+        for (final document in documents)
+          if (document.kind == BusinessDocumentKind.payment) document.currency,
+      },
       period: period,
       parcelFilter: parcelFilter,
       availableParcelIds: {
