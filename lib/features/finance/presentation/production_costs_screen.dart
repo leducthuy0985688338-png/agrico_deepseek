@@ -68,6 +68,38 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
     });
   }
 
+  bool refreshing = false;
+
+  Future<void> refresh() async {
+    if (!mounted || refreshing || exporting) {
+      return;
+    }
+    if (!widget.service.canView) {
+      setState(() {});
+      return;
+    }
+    final refreshed = widget.service.load(
+      period: period,
+      parcelFilter: parcelFilter,
+      currency: currencyFilter,
+    );
+    setState(() {
+      refreshing = true;
+      data = refreshed;
+    });
+    try {
+      await refreshed;
+    } catch (_) {
+      // The scrollable error state allows another refresh.
+    } finally {
+      if (mounted) {
+        setState(() {
+          refreshing = false;
+        });
+      }
+    }
+  }
+
   Future<void> selectPeriod() async {
     final initial = period.from == null || period.to == null
         ? null
@@ -160,17 +192,10 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
               onPressed: exporting ? null : export,
             ),
           IconButton(
+            key: const Key('costs-refresh-button'),
             icon: const Icon(Icons.refresh),
             tooltip: l10n.text('common.retry'),
-            onPressed: () {
-              setState(() {
-                data = widget.service.load(
-                  period: period,
-                  parcelFilter: parcelFilter,
-                  currency: currencyFilter,
-                );
-              });
-            },
+            onPressed: refreshing || exporting ? null : refresh,
           ),
         ],
       ),
@@ -343,73 +368,96 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
             ),
           ),
           Expanded(
-            child: FutureBuilder<ProductionCostSnapshot>(
-              future: data,
-              builder: (context, snapshot) {
-                if (!widget.service.canView || snapshot.hasError) {
-                  return Center(child: Text(l10n.text('costs.loadFailed')));
-                }
-                if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                final report = snapshot.data!;
-                if (report.groups.isEmpty) {
-                  return Center(child: Text(l10n.text('costs.empty')));
-                }
-                return ListView(
-                  padding: const EdgeInsets.all(12),
-                  children: [
-                    Text(l10n.text('costs.basis')),
-                    for (final total in report.totals.entries)
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Text(
-                            '${l10n.text('costs.total')}: ${money(total.value, total.key)}',
-                            key: Key('costs-total-${total.key}'),
+            child: RefreshIndicator(
+              key: const Key('costs-refresh'),
+              onRefresh: refresh,
+              child: FutureBuilder<ProductionCostSnapshot>(
+                future: data,
+                builder: (context, snapshot) {
+                  if (!widget.service.canView || snapshot.hasError) {
+                    return ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Center(
+                            child: Text(l10n.text('costs.loadFailed')),
                           ),
                         ),
-                      ),
-                    for (final group in report.groups)
-                      Card(
-                        child: ExpansionTile(
-                          key: Key(
-                            'costs-group-${group.parcelId ?? 'general'}-${group.currency}',
-                          ),
-                          title: Text(
-                            group.parcelId == null
-                                ? l10n.text('costs.general')
-                                : report.parcelLabels[group.parcelId] ??
-                                      l10n.text('finance.linkedParcel'),
-                          ),
-                          subtitle: Text(
-                            '${money(group.amountMinor, group.currency)} · '
-                            '${l10n.text('costs.documents')}: ${group.documents.length}',
-                          ),
-                          children: [
-                            for (final document in group.documents)
-                              ListTile(
-                                key: Key('costs-document-${document.id}'),
-                                onTap: () => showFinanceDocumentDetails(
-                                  context: context,
-                                  service: widget.service.finance,
-                                  id: document.id,
-                                  canView: () => widget.service.canView,
-                                ),
-                                title: Text(
-                                  '${document.code} · ${document.category}',
-                                ),
-                                subtitle: Text(
-                                  '${document.occurredAt.toIso8601String().substring(0, 10)}\n'
-                                  '${money(document.amountMinor, document.currency)}',
-                                ),
-                              ),
-                          ],
+                      ],
+                    );
+                  }
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final report = snapshot.data!;
+                  if (report.groups.isEmpty) {
+                    return ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Center(child: Text(l10n.text('costs.empty'))),
                         ),
-                      ),
-                  ],
-                );
-              },
+                      ],
+                    );
+                  }
+                  return ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(12),
+                    children: [
+                      Text(l10n.text('costs.basis')),
+                      for (final total in report.totals.entries)
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Text(
+                              '${l10n.text('costs.total')}: ${money(total.value, total.key)}',
+                              key: Key('costs-total-${total.key}'),
+                            ),
+                          ),
+                        ),
+                      for (final group in report.groups)
+                        Card(
+                          child: ExpansionTile(
+                            key: Key(
+                              'costs-group-${group.parcelId ?? 'general'}-${group.currency}',
+                            ),
+                            title: Text(
+                              group.parcelId == null
+                                  ? l10n.text('costs.general')
+                                  : report.parcelLabels[group.parcelId] ??
+                                        l10n.text('finance.linkedParcel'),
+                            ),
+                            subtitle: Text(
+                              '${money(group.amountMinor, group.currency)} · '
+                              '${l10n.text('costs.documents')}: ${group.documents.length}',
+                            ),
+                            children: [
+                              for (final document in group.documents)
+                                ListTile(
+                                  key: Key('costs-document-${document.id}'),
+                                  onTap: () => showFinanceDocumentDetails(
+                                    context: context,
+                                    service: widget.service.finance,
+                                    id: document.id,
+                                    canView: () => widget.service.canView,
+                                  ),
+                                  title: Text(
+                                    '${document.code} · ${document.category}',
+                                  ),
+                                  subtitle: Text(
+                                    '${document.occurredAt.toIso8601String().substring(0, 10)}\n'
+                                    '${money(document.amountMinor, document.currency)}',
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
             ),
           ),
         ],
