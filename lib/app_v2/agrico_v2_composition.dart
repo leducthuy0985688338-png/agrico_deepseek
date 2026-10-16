@@ -469,6 +469,10 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
           openInventory: () => push(
             InventoryCatalogScreen(
               subject: deps.subject,
+              catalog: CompanyCatalogService(
+                repository: SqliteCompanyCatalog(deps.database),
+                subject: deps.subject,
+              ),
               service: InventoryService(
                 SqliteInventoryRepository(deps.database),
               ),

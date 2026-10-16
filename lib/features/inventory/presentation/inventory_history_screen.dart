@@ -1,4 +1,8 @@
+import 'dart:math';
+import 'package:excel/excel.dart';
 import 'package:flutter/material.dart';
+import '../../../services/report_file_saver.dart';
+import '../application/inventory_report.dart';
 
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/permissions/authorization.dart';
@@ -10,9 +14,11 @@ class InventoryHistoryScreen extends StatefulWidget {
     super.key,
     required this.subject,
     required this.service,
+    this.saveReport,
   });
   final AuthorizationSubject subject;
   final InventoryService service;
+  final Future<void> Function(Excel, String)? saveReport;
 
   @override
   State<InventoryHistoryScreen> createState() => _InventoryHistoryScreenState();
@@ -20,6 +26,49 @@ class InventoryHistoryScreen extends StatefulWidget {
 
 class _InventoryHistoryScreenState extends State<InventoryHistoryScreen> {
   late Future<(List<InventoryItem>, List<InventoryMovement>)> data;
+  final search = TextEditingController();
+  String itemFilter = 'all';
+  String kindFilter = 'all';
+  DateTimeRange? period;
+  bool exporting = false;
+
+  @override
+  void dispose() {
+    search.dispose();
+    super.dispose();
+  }
+
+  Future<void> export(InventoryReport report) async {
+    if (exporting) return;
+    setState(() => exporting = true);
+    try {
+      final workbook = report.workbook(
+        query: search.text,
+        itemId: itemFilter == 'all' ? null : itemFilter,
+        kind: kindFilter == 'all'
+            ? null
+            : InventoryMovementKind.values.byName(kindFilter),
+        from: period?.start,
+        to: period?.end,
+      );
+      await (widget.saveReport ?? saveExcelFile)(
+        workbook,
+        'AGRICO-Inventory-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}.xlsx',
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(context).text('inventory.exportFailed'),
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => exporting = false);
+    }
+  }
 
   Future<(List<InventoryItem>, List<InventoryMovement>)> load() async {
     final items = await widget.service.list(widget.subject);
@@ -69,39 +118,151 @@ class _InventoryHistoryScreenState extends State<InventoryHistoryScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           final (items, movements) = snapshot.data!;
-          if (movements.isEmpty) {
-            return Center(child: Text(l10n.text('common.empty')));
-          }
+          final report = InventoryReport(items: items, movements: movements);
+          final filtered = report.filter(
+            query: search.text,
+            itemId: itemFilter == 'all' ? null : itemFilter,
+            kind: kindFilter == 'all'
+                ? null
+                : InventoryMovementKind.values.byName(kindFilter),
+            from: period?.start,
+            to: period?.end,
+          );
           final byId = {for (final item in items) item.id: item};
-          return ListView.builder(
-            itemCount: movements.length,
-            itemBuilder: (context, index) {
-              final movement = movements[index];
-              final item = byId[movement.itemId];
-              final date = movement.occurredAt.toUtc().add(
-                const Duration(hours: 7),
-              );
-              String two(int value) => value.toString().padLeft(2, '0');
-              final stamp =
-                  '${two(date.day)}/${two(date.month)}/${date.year} '
-                  '${two(date.hour)}:${two(date.minute)} (UTC+7)';
-              final receipt = movement.kind == InventoryMovementKind.receipt;
-              return ListTile(
-                key: Key('inventory-history-${movement.id}'),
-                leading: Icon(
-                  receipt ? Icons.arrow_downward : Icons.arrow_upward,
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: TextField(
+                  key: const Key('inventory-history-search'),
+                  controller: search,
+                  decoration: InputDecoration(
+                    labelText: l10n.text('common.search'),
+                    suffixIcon: IconButton(
+                      onPressed: () {
+                        search.clear();
+                        setState(() {});
+                      },
+                      icon: const Icon(Icons.clear),
+                    ),
+                  ),
+                  onChanged: (_) => setState(() {}),
                 ),
-                title: Text(
-                  movement.code ?? l10n.text('inventory.noDocumentCode'),
+              ),
+              Wrap(
+                spacing: 8,
+                children: [
+                  DropdownButton<String>(
+                    key: const Key('inventory-history-item'),
+                    value: itemFilter,
+                    items: [
+                      DropdownMenuItem(
+                        value: 'all',
+                        child: Text(l10n.text('inventory.allItems')),
+                      ),
+                      ...items.map(
+                        (i) =>
+                            DropdownMenuItem(value: i.id, child: Text(i.code)),
+                      ),
+                    ],
+                    onChanged: (v) => setState(() => itemFilter = v ?? 'all'),
+                  ),
+                  DropdownButton<String>(
+                    key: const Key('inventory-history-kind'),
+                    value: kindFilter,
+                    items: [
+                      DropdownMenuItem(
+                        value: 'all',
+                        child: Text(l10n.text('inventory.allTypes')),
+                      ),
+                      DropdownMenuItem(
+                        value: 'receipt',
+                        child: Text(l10n.text('inventory.receipt')),
+                      ),
+                      DropdownMenuItem(
+                        value: 'issue',
+                        child: Text(l10n.text('inventory.issue')),
+                      ),
+                    ],
+                    onChanged: (v) => setState(() => kindFilter = v ?? 'all'),
+                  ),
+                  TextButton(
+                    key: const Key('inventory-history-period'),
+                    onPressed: () async {
+                      final result = await showDateRangePicker(
+                        context: context,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                        initialDateRange: period,
+                      );
+                      if (result != null && mounted) {
+                        setState(() => period = result);
+                      }
+                    },
+                    child: Text(
+                      period == null
+                          ? l10n.text('inventory.dateRange')
+                          : '${period!.start.toIso8601String().substring(0, 10)} – ${period!.end.toIso8601String().substring(0, 10)}',
+                    ),
+                  ),
+                  TextButton(
+                    key: const Key('inventory-history-clear'),
+                    onPressed: () => setState(() {
+                      search.clear();
+                      itemFilter = 'all';
+                      kindFilter = 'all';
+                      period = null;
+                    }),
+                    child: Text(l10n.text('inventory.clearFilters')),
+                  ),
+                  TextButton(
+                    key: const Key('inventory-history-export'),
+                    onPressed: exporting ? null : () => export(report),
+                    child: Text(
+                      exporting ? l10n.text('inventory.exporting') : 'Excel',
+                    ),
+                  ),
+                ],
+              ),
+              Text('${filtered.length} / ${movements.length}'),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Text(l10n.text('inventory.stockReportNote')),
+              ),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: filtered.length,
+                  itemBuilder: (context, index) {
+                    final movement = filtered[index];
+                    final item = byId[movement.itemId];
+                    final date = movement.occurredAt.toUtc().add(
+                      const Duration(hours: 7),
+                    );
+                    String two(int value) => value.toString().padLeft(2, '0');
+                    final stamp =
+                        '${two(date.day)}/${two(date.month)}/${date.year} '
+                        '${two(date.hour)}:${two(date.minute)} (UTC+7)';
+                    final receipt =
+                        movement.kind == InventoryMovementKind.receipt;
+                    return ListTile(
+                      key: Key('inventory-history-${movement.id}'),
+                      leading: Icon(
+                        receipt ? Icons.arrow_downward : Icons.arrow_upward,
+                      ),
+                      title: Text(
+                        movement.code ?? l10n.text('inventory.noDocumentCode'),
+                      ),
+                      subtitle: Text(
+                        '${item == null ? movement.itemId : '${item.code} · ${item.name}'}\n'
+                        '${l10n.text('inventory.${movement.kind.name}')}: '
+                        '${movement.quantity} ${item?.unit ?? ''}\n$stamp',
+                      ),
+                      isThreeLine: true,
+                    );
+                  },
                 ),
-                subtitle: Text(
-                  '${item == null ? movement.itemId : '${item.code} · ${item.name}'}\n'
-                  '${l10n.text('inventory.${movement.kind.name}')}: '
-                  '${movement.quantity} ${item?.unit ?? ''}\n$stamp',
-                ),
-                isThreeLine: true,
-              );
-            },
+              ),
+            ],
           );
         },
       ),

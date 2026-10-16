@@ -86,7 +86,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('PB001 · Phân bón'), findsOneWidget);
     final tile = tester.widget<ListTile>(find.byType(ListTile));
-    expect((tile.subtitle! as Text).data, contains('3 kg'));
+    expect(
+      find.descendant(
+        of: find.byWidget(tile.subtitle!),
+        matching: find.textContaining('3 kg'),
+      ),
+      findsOneWidget,
+    );
     await tester.binding.setSurfaceSize(null);
   });
 }

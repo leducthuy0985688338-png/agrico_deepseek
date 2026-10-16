@@ -407,6 +407,15 @@ class AppLocalizations {
     'inventory.supplier': 'Nhà cung cấp',
     'inventory.stock': 'Tồn kho',
     'inventory.history': 'Lịch sử nhập/xuất',
+    'inventory.allItems': 'Tất cả vật tư',
+    'inventory.allTypes': 'Tất cả loại phiếu',
+    'inventory.dateRange': 'Khoảng ngày',
+    'inventory.clearFilters': 'Xóa bộ lọc',
+    'inventory.exporting': 'Đang xuất…',
+    'inventory.exportFailed': 'Không thể xuất Excel. Hãy thử lại.',
+    'inventory.stockReportNote':
+        'Excel: danh sách phiếu theo bộ lọc; nhập–xuất–tồn theo khoảng ngày và vật tư, không theo từ khóa hoặc loại phiếu.',
+
     'inventory.noDocumentCode': 'Chưa có mã phiếu',
     'inventory.receipt': 'Nhập kho',
     'inventory.issue': 'Xuất kho',
@@ -954,6 +963,15 @@ class AppLocalizations {
     'inventory.supplier': 'ຜູ້ສະໜອງ',
     'inventory.stock': 'ຄົງເຫຼືອ',
     'inventory.history': 'ປະຫວັດຮັບເຂົ້າ/ເບີກອອກ',
+    'inventory.allItems': 'ວັດສະດຸທັງໝົດ',
+    'inventory.allTypes': 'ປະເພດທັງໝົດ',
+    'inventory.dateRange': 'ຊ່ວງວັນທີ',
+    'inventory.clearFilters': 'ລ້າງຕົວກອງ',
+    'inventory.exporting': 'ກຳລັງສົ່ງອອກ…',
+    'inventory.exportFailed': 'ສົ່ງອອກ Excel ບໍ່ໄດ້. ລອງໃໝ່.',
+    'inventory.stockReportNote':
+        'Excel: ລາຍການຕາມຕົວກອງ; ຍອດຮັບ–ເບີກ–ຄົງເຫຼືອຕາມວັນທີ ແລະ ວັດສະດຸ, ບໍ່ຕາມຄຳຄົ້ນ ຫຼື ປະເພດ.',
+
     'inventory.noDocumentCode': 'ຍັງບໍ່ມີລະຫັດໃບ',
     'inventory.receipt': 'ຮັບເຂົ້າສາງ',
     'inventory.issue': 'ເບີກອອກສາງ',
@@ -1502,6 +1520,15 @@ class AppLocalizations {
     'inventory.supplier': 'Supplier',
     'inventory.stock': 'Stock',
     'inventory.history': 'Stock movement history',
+    'inventory.allItems': 'All items',
+    'inventory.allTypes': 'All types',
+    'inventory.dateRange': 'Date range',
+    'inventory.clearFilters': 'Clear filters',
+    'inventory.exporting': 'Exporting…',
+    'inventory.exportFailed': 'Excel export failed. Please retry.',
+    'inventory.stockReportNote':
+        'Excel: movements follow all filters; stock totals follow date and item only, not search or movement type.',
+
     'inventory.noDocumentCode': 'No document code',
     'inventory.receipt': 'Receive stock',
     'inventory.issue': 'Issue stock',

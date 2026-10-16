@@ -1,4 +1,5 @@
 import 'package:agrico_deepseek/features/inventory/data/local/sqlite_inventory_repository.dart';
+import 'package:agrico_deepseek/core/identity/data/sqlite_monthly_document_sequence.dart';
 import 'package:agrico_deepseek/features/inventory/domain/entities/inventory_item.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -97,10 +98,10 @@ void main() {
         ),
       );
       expect((await repository.movementsByFarm('farm-1')).map((e) => e.code), [
-        'NK-202609-001',
-        'NK-202610-001',
-        'NK-202610-002',
-        'XK-202610-001',
+        'NHAP-202609-001',
+        'NHAP-202610-001',
+        'NHAP-202610-002',
+        'XUAT-202610-001',
       ]);
       await repository.register(
         const InventoryItem(
@@ -125,7 +126,7 @@ void main() {
       );
       expect(
         (await repository.movementsByFarm('farm-2')).single.code,
-        'NK-202610-001',
+        'NHAP-202610-001',
       );
     },
   );
@@ -144,20 +145,20 @@ void main() {
         movement('second', InventoryMovementKind.receipt, 1),
       );
       expect((await repository.movementsByFarm('farm-1')).map((e) => e.code), [
-        'NK-202609-001',
-        'NK-202609-002',
+        'NHAP-202609-001',
+        'NHAP-202609-002',
       ]);
       await database.update(
-        SqliteInventoryRepository.movementsTable,
-        {'code': 'NK-202609-999'},
-        where: 'id = ?',
-        whereArgs: ['second'],
+        SqliteMonthlyDocumentSequence.table,
+        {'last_sequence': 999},
+        where: 'organization_id=? AND kind=? AND year_month=?',
+        whereArgs: ['farm-1', 'NHAP', '202609'],
       );
       await expectLater(
         repository.record(
           movement('overflow', InventoryMovementKind.receipt, 1),
         ),
-        throwsStateError,
+        throwsA(isA<FormatException>()),
       );
       expect((await repository.listByFarm('farm-1')).single.stock, 2);
       expect(await repository.movementsByFarm('farm-1'), hasLength(2));
@@ -165,39 +166,22 @@ void main() {
   );
 
   test(
-    'schema upgrade preserves movements without codes and can run twice',
+    'clean schema initialization is idempotent and numbering persists',
     () async {
+      await SqliteInventoryRepository.createSchema(database);
       await repository.record(
-        movement('old', InventoryMovementKind.receipt, 2),
+        movement('first', InventoryMovementKind.receipt, 2),
       );
-      await database.execute('DROP INDEX idx_inventory_movements_v2_code');
-      await database.execute(
-        'ALTER TABLE inventory_movements_v2 RENAME TO old_movements',
-      );
-      await database.execute('''CREATE TABLE inventory_movements_v2 (
-      id TEXT PRIMARY KEY, farm_id TEXT NOT NULL,
-      item_id TEXT NOT NULL REFERENCES inventory_items_v2(id) ON DELETE RESTRICT,
-      kind TEXT NOT NULL CHECK(kind IN ('receipt', 'issue')),
-      quantity INTEGER NOT NULL CHECK(quantity > 0), occurred_at TEXT NOT NULL
-    )''');
-      await database.execute(
-        '''INSERT INTO inventory_movements_v2
-      SELECT id, farm_id, item_id, kind, quantity, occurred_at FROM old_movements''',
-      );
-      await database.execute('DROP TABLE old_movements');
       await SqliteInventoryRepository.createSchema(database);
       await SqliteInventoryRepository.createSchema(database);
-      expect((await repository.movementsByFarm('farm-1')).single.code, isNull);
-      expect((await repository.listByFarm('farm-1')).single.stock, 2);
       await repository.record(
-        movement('new', InventoryMovementKind.receipt, 1),
+        movement('second', InventoryMovementKind.receipt, 1),
       );
-      expect(
-        (await repository.movementsByFarm(
-          'farm-1',
-        )).singleWhere((event) => event.id == 'new').code,
-        'NK-202609-001',
-      );
+      expect((await repository.movementsByFarm('farm-1')).map((e) => e.code), [
+        'NHAP-202609-001',
+        'NHAP-202609-002',
+      ]);
+      expect((await repository.listByFarm('farm-1')).single.stock, 3);
     },
   );
 }

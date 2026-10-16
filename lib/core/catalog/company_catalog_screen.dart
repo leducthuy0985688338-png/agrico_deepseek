@@ -7,14 +7,19 @@ String _id() =>
     'catalog-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}';
 
 class CompanyCatalogScreen extends StatefulWidget {
-  const CompanyCatalogScreen({super.key, required this.service});
+  const CompanyCatalogScreen({
+    super.key,
+    required this.service,
+    this.initialKind = CatalogKind.unit,
+  });
+  final CatalogKind initialKind;
   final CompanyCatalogService service;
   @override
   State<CompanyCatalogScreen> createState() => _CompanyCatalogScreenState();
 }
 
 class _CompanyCatalogScreenState extends State<CompanyCatalogScreen> {
-  CatalogKind kind = CatalogKind.unit;
+  late CatalogKind kind = widget.initialKind;
   late Future<(List<CatalogEntry>, List<CatalogRequest>)> data = load();
   Future<(List<CatalogEntry>, List<CatalogRequest>)> load() async => (
     await widget.service.entries(),
@@ -275,7 +280,7 @@ class _CatalogEditorState extends State<_CatalogEditor> {
             id: widget.entry?.id ?? _id(),
             farmId: widget.service.subject.farmId,
             kind: widget.kind,
-            code: code.text.trim().toUpperCase(),
+            code: widget.entry == null ? '' : widget.entry!.code,
             name: name.text.trim(),
             unitId: unitId,
             active: active,
@@ -314,15 +319,18 @@ class _CatalogEditorState extends State<_CatalogEditor> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(l.text('catalog.kind.${widget.kind.name}')),
-                TextField(
-                  key: const Key('company-catalog-code'),
-                  controller: code,
-                  enabled: !saving && widget.entry == null,
-                  maxLength: 40,
-                  decoration: InputDecoration(
-                    labelText: l.text('catalog.code'),
+                if (widget.entry != null || widget.request)
+                  TextField(
+                    key: const Key('company-catalog-code'),
+                    controller: code,
+                    enabled: !saving && widget.entry == null,
+                    maxLength: 40,
+                    decoration: InputDecoration(
+                      labelText: l.text('catalog.code'),
+                    ),
                   ),
-                ),
+                if (widget.entry == null && !widget.request)
+                  Text("${l.text('catalog.code')}: auto"),
                 TextField(
                   key: const Key('company-catalog-name'),
                   controller: name,

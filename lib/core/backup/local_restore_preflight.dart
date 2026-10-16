@@ -100,6 +100,7 @@ class LocalRestorePreflight {
               'company_catalog_requests_v1',
               'company_catalog_audit_v1',
               'company_catalog_bootstrap_v1',
+              'company_catalog_sequences_v1',
               'company_catalog_sync_outbox_v1',
               'company_catalog_sync_shadow_v1',
               'company_catalog_sync_device_v1',

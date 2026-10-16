@@ -22,7 +22,39 @@ class _Repo implements CompanyCatalogRepository {
     required void Function() authorize,
   }) async {
     authorize();
-    values.add(entry);
+    final next =
+        values
+            .where(
+              (value) =>
+                  value.farmId == entry.farmId && value.kind == entry.kind,
+            )
+            .length +
+        1;
+    final prefix = switch (entry.kind) {
+      CatalogKind.unit => 'DVT',
+      CatalogKind.crop => 'CT',
+      CatalogKind.machine => 'MAY',
+      CatalogKind.worker => 'NS',
+      CatalogKind.material => 'VT',
+      CatalogKind.taskType => 'CV',
+      CatalogKind.supplier => 'NCC',
+      CatalogKind.incomeCategory => 'DMTHU',
+      CatalogKind.expenseCategory => 'DMCHI',
+    };
+    values.add(
+      entry.code.isEmpty
+          ? CatalogEntry(
+              id: entry.id,
+              farmId: entry.farmId,
+              kind: entry.kind,
+              code: '$prefix-${next.toString().padLeft(6, '0')}',
+              name: entry.name,
+              unitId: entry.unitId,
+              active: entry.active,
+              revision: entry.revision,
+            )
+          : entry,
+    );
   }
 
   @override
@@ -91,7 +123,6 @@ void main() {
     await tester.tap(find.byKey(const Key('company-catalog-save')));
     await tester.pumpAndSettle();
     expect(repo.values, isEmpty);
-    await tester.enterText(find.byKey(const Key('company-catalog-code')), 'kg');
     await tester.enterText(find.byKey(const Key('company-catalog-name')), 'kg');
     await tester.enterText(
       find.byKey(const Key('company-catalog-reason')),
@@ -99,9 +130,9 @@ void main() {
     );
     await tester.tap(find.byKey(const Key('company-catalog-save')));
     await tester.pumpAndSettle();
-    expect(repo.values.single.code, 'KG');
+    expect(repo.values.single.code, 'DVT-000001');
     expect(repo.values.single.kind, CatalogKind.unit);
-    expect(find.text('KG · kg'), findsOneWidget);
+    expect(find.text('DVT-000001 · kg'), findsOneWidget);
   });
   testWidgets(
     'staff cannot edit entries; suggestion remains pending without master write',
@@ -250,7 +281,6 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('company-catalog-add')));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const Key('company-catalog-code')), 'KG');
     await tester.enterText(find.byKey(const Key('company-catalog-name')), 'kg');
     await tester.enterText(
       find.byKey(const Key('company-catalog-reason')),

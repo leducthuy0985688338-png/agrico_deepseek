@@ -1,5 +1,8 @@
 import 'package:sqflite/sqflite.dart';
 
+import '../../../../core/identity/data/sqlite_monthly_document_sequence.dart';
+import '../../../../core/identity/domain/business_reference_code.dart';
+
 import '../../domain/entities/inventory_item.dart';
 import '../../domain/repositories/inventory_repository.dart';
 import '../../../../core/catalog/sqlite_company_catalog.dart';
@@ -13,6 +16,7 @@ class SqliteInventoryRepository implements InventoryRepository {
   static const movementsTable = 'inventory_movements_v2';
 
   static Future<void> createSchema(DatabaseExecutor db) async {
+    await SqliteMonthlyDocumentSequence.createSchema(db);
     await db.execute('''CREATE TABLE IF NOT EXISTS $itemsTable (
       id TEXT PRIMARY KEY,
       farm_id TEXT NOT NULL,
@@ -144,29 +148,26 @@ class SqliteInventoryRepository implements InventoryRepository {
       }
       // Laos business month (UTC+7), independent of the device timezone.
       final date = movement.occurredAt.toUtc().add(const Duration(hours: 7));
-      final kind = movement.kind == InventoryMovementKind.receipt ? 'NK' : 'XK';
-      final prefix =
-          '$kind-${date.year.toString().padLeft(4, '0')}'
-          '${date.month.toString().padLeft(2, '0')}-';
-      final rows = await tx.rawQuery(
-        'SELECT MAX(CAST(SUBSTR(code, ?) AS INTEGER)) AS last_number '
-        'FROM $movementsTable WHERE farm_id = ? AND code LIKE ?',
-        [prefix.length + 1, movement.farmId, '$prefix%'],
+      final kind = movement.kind == InventoryMovementKind.receipt
+          ? BusinessDocumentKind.stockIn
+          : BusinessDocumentKind.stockOut;
+      await SqliteMonthlyDocumentSequence().saveWithCode(
+        transaction: tx,
+        // Farm is the existing inventory authorization boundary. In v2,
+        // organization identity must be mapped explicitly before broadening scope.
+        organizationId: movement.farmId,
+        kind: kind,
+        documentDate: date,
+        save: (code) => tx.insert(movementsTable, {
+          'id': movement.id,
+          'code': code,
+          'farm_id': movement.farmId,
+          'item_id': movement.itemId,
+          'kind': movement.kind.name,
+          'quantity': movement.quantity,
+          'occurred_at': movement.occurredAt.toIso8601String(),
+        }, conflictAlgorithm: ConflictAlgorithm.abort),
       );
-      final number = ((rows.single['last_number'] as num?)?.toInt() ?? 0) + 1;
-      if (number > 999) {
-        throw StateError('Monthly inventory document number limit reached.');
-      }
-      final code = '$prefix${number.toString().padLeft(3, '0')}';
-      await tx.insert(movementsTable, {
-        'id': movement.id,
-        'code': code,
-        'farm_id': movement.farmId,
-        'item_id': movement.itemId,
-        'kind': movement.kind.name,
-        'quantity': movement.quantity,
-        'occurred_at': movement.occurredAt.toIso8601String(),
-      }, conflictAlgorithm: ConflictAlgorithm.abort);
     });
   }
 

@@ -35,6 +35,11 @@ class SqliteCompanyCatalog implements CompanyCatalogRepository {
         'CREATE TABLE IF NOT EXISTS company_catalog_bootstrap_v1 (farm_id TEXT PRIMARY KEY)',
       );
       await tx.execute(
+        '''CREATE TABLE IF NOT EXISTS company_catalog_sequences_v1 (
+        farm_id TEXT NOT NULL, kind TEXT NOT NULL, last_number INTEGER NOT NULL,
+        PRIMARY KEY(farm_id, kind))''',
+      );
+      await tx.execute(
         'CREATE INDEX IF NOT EXISTS idx_catalog_requests_actor ON $requestsTable(farm_id,actor_uid,status)',
       );
     });
@@ -125,12 +130,23 @@ class SqliteCompanyCatalog implements CompanyCatalogRepository {
     required DateTime occurredAt,
     required void Function() authorize,
   }) async {
-    entry.validate();
+    if (expectedRevision != null || entry.code.isNotEmpty) entry.validate();
     try {
       await database.transaction((tx) async {
+        final actual = expectedRevision == null && entry.code.isEmpty
+            ? CatalogEntry(
+                id: entry.id,
+                farmId: entry.farmId,
+                kind: entry.kind,
+                code: await _nextCode(tx, entry.farmId, entry.kind),
+                name: entry.name,
+                unitId: entry.unitId,
+                active: entry.active,
+              )
+            : entry;
         await _saveInTransaction(
           tx,
-          entry,
+          actual,
           expectedRevision: expectedRevision,
           actorUid: actorUid,
           reason: reason,
@@ -144,6 +160,60 @@ class SqliteCompanyCatalog implements CompanyCatalogRepository {
       }
       rethrow;
     }
+  }
+
+  // Allocated inside the same SQLite write transaction as the entry and audit.
+  // Existing codes are considered so upgrades never reuse historical numbers.
+  static Future<String> _nextCode(
+    DatabaseExecutor tx,
+    String farmId,
+    CatalogKind kind,
+  ) async {
+    const prefixes = <CatalogKind, String>{
+      CatalogKind.unit: 'DVT',
+      CatalogKind.crop: 'CT',
+      CatalogKind.machine: 'MAY',
+      CatalogKind.worker: 'NS',
+      CatalogKind.material: 'VT',
+      CatalogKind.taskType: 'CV',
+      CatalogKind.supplier: 'NCC',
+      CatalogKind.incomeCategory: 'DMTHU',
+      CatalogKind.expenseCategory: 'DMCHI',
+    };
+    final prefix = prefixes[kind]!;
+    final rows = await tx.query(
+      entriesTable,
+      columns: ['code'],
+      where: 'farm_id=? AND kind=? AND code LIKE ?',
+      whereArgs: [farmId, kind.name, '$prefix-%'],
+    );
+    var maxNumber = 0;
+    final pattern = RegExp('^${RegExp.escape(prefix)}-([0-9]+)\$');
+    for (final row in rows) {
+      final match = pattern.firstMatch(row['code'] as String);
+      if (match != null) {
+        final number = int.tryParse(match.group(1)!);
+        if (number != null && number > maxNumber) maxNumber = number;
+      }
+    }
+    final existing = await tx.query(
+      'company_catalog_sequences_v1',
+      columns: ['last_number'],
+      where: 'farm_id=? AND kind=?',
+      whereArgs: [farmId, kind.name],
+      limit: 1,
+    );
+    if (existing.isNotEmpty) {
+      final last = existing.single['last_number'] as int;
+      if (last > maxNumber) maxNumber = last;
+    }
+    final next = maxNumber + 1;
+    await tx.insert('company_catalog_sequences_v1', {
+      'farm_id': farmId,
+      'kind': kind.name,
+      'last_number': next,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    return '$prefix-${next.toString().padLeft(6, '0')}';
   }
 
   Future<void> _saveInTransaction(

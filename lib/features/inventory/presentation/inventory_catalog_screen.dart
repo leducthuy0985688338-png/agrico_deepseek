@@ -3,6 +3,8 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import '../../../core/localization/app_localizations.dart';
+import '../../../core/catalog/company_catalog.dart';
+import '../../../core/catalog/company_catalog_screen.dart';
 import '../../../core/permissions/authorization.dart';
 import '../application/inventory_service.dart';
 import '../domain/entities/inventory_item.dart';
@@ -13,8 +15,10 @@ class InventoryCatalogScreen extends StatefulWidget {
     super.key,
     required this.subject,
     required this.service,
+    this.catalog,
   });
 
+  final CompanyCatalogService? catalog;
   final AuthorizationSubject subject;
   final InventoryService service;
 
@@ -40,8 +44,11 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
   Future<void> add() async {
     final saved = await showDialog<bool>(
       context: context,
-      builder: (_) =>
-          _AddItemDialog(subject: widget.subject, service: widget.service),
+      builder: (_) => _AddItemDialog(
+        subject: widget.subject,
+        service: widget.service,
+        catalog: widget.catalog,
+      ),
     );
     if (saved == true && mounted) {
       reload();
@@ -119,7 +126,11 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.data!.isEmpty) {
-            return Center(child: Text(l10n.text('common.empty')));
+            return Center(
+              child: Text(
+                '${l10n.text('common.empty')}\n${l10n.text('inventory.add')}',
+              ),
+            );
           }
           return ListView.builder(
             key: const Key('inventory-list'),
@@ -142,9 +153,31 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
                         ],
                       )
                     : null,
-                subtitle: Text(
-                  '${l10n.text('inventory.stock')}: '
-                  '${item.stock} ${item.unit}',
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${l10n.text('inventory.stock')}: ${item.stock} ${item.unit}',
+                    ),
+                    if (canManage)
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          TextButton(
+                            key: Key('inventory-direct-receipt-${item.id}'),
+                            onPressed: () =>
+                                record(item, InventoryMovementKind.receipt),
+                            child: Text(l10n.text('inventory.receipt')),
+                          ),
+                          TextButton(
+                            key: Key('inventory-direct-issue-${item.id}'),
+                            onPressed: () =>
+                                record(item, InventoryMovementKind.issue),
+                            child: Text(l10n.text('inventory.issue')),
+                          ),
+                        ],
+                      ),
+                  ],
                 ),
               );
             },
@@ -156,7 +189,13 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
 }
 
 class _AddItemDialog extends StatefulWidget {
-  const _AddItemDialog({required this.subject, required this.service});
+  const _AddItemDialog({
+    required this.subject,
+    required this.service,
+    this.catalog,
+  });
+
+  final CompanyCatalogService? catalog;
 
   final AuthorizationSubject subject;
   final InventoryService service;
@@ -173,6 +212,31 @@ class _AddItemDialogState extends State<_AddItemDialog> {
   final supplier = TextEditingController();
   bool saving = false;
   bool failed = false;
+  String? errorDetail;
+  CatalogEntry? selectedMaterial;
+  late Future<List<CatalogEntry>>? catalogEntries = widget.catalog?.entries();
+
+  Future<void> manageCatalog() async {
+    final catalog = widget.catalog;
+    if (catalog == null || !catalog.canManage) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => CompanyCatalogScreen(
+          service: catalog,
+          initialKind: CatalogKind.material,
+        ),
+      ),
+    );
+    if (mounted) {
+      setState(() {
+        catalogEntries = catalog.entries();
+        selectedMaterial = null;
+        code.clear();
+        name.clear();
+        unit.clear();
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -188,33 +252,50 @@ class _AddItemDialogState extends State<_AddItemDialog> {
     if (saving) {
       return;
     }
+    if (widget.catalog != null && selectedMaterial == null) {
+      setState(() {
+        failed = true;
+        errorDetail = 'Select a material from the shared catalog.';
+      });
+      return;
+    }
+    final parsedPrice = double.tryParse(price.text.trim().replaceAll(',', '.'));
+    if (parsedPrice == null || !parsedPrice.isFinite || parsedPrice < 0) {
+      setState(() {
+        failed = true;
+        errorDetail = 'Invalid unit price.';
+      });
+      return;
+    }
     setState(() {
       saving = true;
       failed = false;
+      errorDetail = null;
     });
     try {
       await widget.service.register(
         widget.subject,
         InventoryItem(
           id:
-              'inventory-${DateTime.now().microsecondsSinceEpoch}-'
-              '${Random.secure().nextInt(1 << 32)}',
+              selectedMaterial?.id ??
+              'inventory-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}',
           farmId: widget.subject.farmId,
           code: code.text.trim(),
           name: name.text.trim(),
           unit: unit.text.trim(),
-          unitPrice: double.parse(price.text.trim()),
+          unitPrice: parsedPrice,
           supplier: supplier.text.trim(),
         ),
       );
       if (mounted) {
         Navigator.pop(context, true);
       }
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
         setState(() {
           saving = false;
           failed = true;
+          errorDetail = error is CatalogFailure ? error.code : error.toString();
         });
       }
     }
@@ -231,8 +312,82 @@ class _AddItemDialogState extends State<_AddItemDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (widget.catalog?.canManage == true)
+                TextButton.icon(
+                  key: const Key('inventory-manage-shared-catalog'),
+                  onPressed: saving ? null : manageCatalog,
+                  icon: const Icon(Icons.add),
+                  label: Text(l10n.text('catalog.title')),
+                ),
+              if (catalogEntries != null)
+                FutureBuilder<List<CatalogEntry>>(
+                  future: catalogEntries,
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return Text(l10n.text('catalog.loadFailed'));
+                    }
+                    if (!snapshot.hasData) {
+                      return const LinearProgressIndicator();
+                    }
+                    final entries = snapshot.data!;
+                    final materials = entries
+                        .where(
+                          (e) => e.kind == CatalogKind.material && e.active,
+                        )
+                        .toList();
+                    if (materials.isEmpty) {
+                      return Text(l10n.text('catalog.empty'));
+                    }
+                    return DropdownButtonFormField<String>(
+                      key: const Key('inventory-material-picker'),
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: l10n.text('inventory.name'),
+                      ),
+                      initialValue: selectedMaterial?.id,
+                      items: [
+                        for (final material in materials)
+                          DropdownMenuItem(
+                            value: material.id,
+                            child: Text(
+                              '${material.code} · ${material.name}',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                      onChanged: saving
+                          ? null
+                          : (id) {
+                              final material = materials.firstWhere(
+                                (e) => e.id == id,
+                              );
+                              final units = entries.where(
+                                (e) =>
+                                    e.kind == CatalogKind.unit &&
+                                    e.active &&
+                                    e.id == material.unitId,
+                              );
+                              if (units.isEmpty) {
+                                setState(() {
+                                  failed = true;
+                                  errorDetail = 'catalog.unitRequired';
+                                });
+                                return;
+                              }
+                              setState(() {
+                                selectedMaterial = material;
+                                code.text = material.code;
+                                name.text = material.name;
+                                unit.text = units.first.name;
+                                failed = false;
+                              });
+                            },
+                    );
+                  },
+                ),
               TextField(
                 key: const Key('inventory-code'),
+                readOnly: widget.catalog != null,
                 controller: code,
                 decoration: InputDecoration(
                   labelText: l10n.text('inventory.code'),
@@ -240,6 +395,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
               ),
               TextField(
                 key: const Key('inventory-name'),
+                readOnly: widget.catalog != null,
                 controller: name,
                 decoration: InputDecoration(
                   labelText: l10n.text('inventory.name'),
@@ -247,6 +403,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
               ),
               TextField(
                 key: const Key('inventory-unit'),
+                readOnly: widget.catalog != null,
                 controller: unit,
                 decoration: InputDecoration(
                   labelText: l10n.text('inventory.unit'),
@@ -269,7 +426,11 @@ class _AddItemDialogState extends State<_AddItemDialog> {
                   labelText: l10n.text('inventory.supplier'),
                 ),
               ),
-              if (failed) Text(l10n.text('inventory.saveFailed')),
+              if (failed)
+                Text(
+                  '${l10n.text('inventory.saveFailed')} ${errorDetail ?? ''}',
+                  key: const Key('inventory-save-error'),
+                ),
             ],
           ),
         ),

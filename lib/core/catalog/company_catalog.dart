@@ -144,7 +144,18 @@ class CompanyCatalogService {
     if (entry.farmId != subject.farmId) {
       throw const CatalogFailure('catalog.denied');
     }
-    entry.validate();
+    if (expectedRevision != null || entry.code.isNotEmpty) {
+      entry.validate();
+    } else if (entry.id.trim().isEmpty ||
+        entry.name.trim().isEmpty ||
+        entry.name != entry.name.trim() ||
+        entry.name.length > 100 ||
+        (entry.kind == CatalogKind.unit && entry.unitId != null) ||
+        ((entry.kind == CatalogKind.crop ||
+                entry.kind == CatalogKind.material) &&
+            entry.unitId == null)) {
+      throw const CatalogFailure('catalog.invalid');
+    }
     return repository.save(
       entry,
       expectedRevision: expectedRevision,
