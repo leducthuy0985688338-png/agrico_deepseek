@@ -14,6 +14,7 @@ class SqliteInventoryRepository implements InventoryRepository {
   final Database database;
   static const itemsTable = 'inventory_items_v2';
   static const movementsTable = 'inventory_movements_v2';
+  static const costOutboxTable = 'inventory_cost_outbox_v2';
 
   static Future<void> createSchema(DatabaseExecutor db) async {
     await SqliteMonthlyDocumentSequence.createSchema(db);
@@ -37,6 +38,23 @@ class SqliteInventoryRepository implements InventoryRepository {
       occurred_at TEXT NOT NULL,
       code TEXT
     )''');
+    await db.execute('''CREATE TABLE IF NOT EXISTS $costOutboxTable (
+      movement_id TEXT PRIMARY KEY REFERENCES $movementsTable(id) ON DELETE RESTRICT,
+      farm_id TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      field_id TEXT NOT NULL,
+      season_id TEXT NOT NULL,
+      item_name TEXT NOT NULL,
+      unit TEXT NOT NULL,
+      quantity INTEGER NOT NULL CHECK(quantity > 0),
+      unit_price REAL NOT NULL CHECK(unit_price >= 0),
+      occurred_at TEXT NOT NULL,
+      delivered INTEGER NOT NULL DEFAULT 0 CHECK(delivered IN (0, 1))
+    )''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_inventory_cost_outbox_pending '
+      'ON $costOutboxTable(farm_id, delivered, occurred_at)',
+    );
     final columns = await db.rawQuery('PRAGMA table_info($movementsTable)');
     if (!columns.any((column) => column['name'] == 'code')) {
       await db.execute('ALTER TABLE $movementsTable ADD COLUMN code TEXT');
@@ -144,8 +162,29 @@ class SqliteInventoryRepository implements InventoryRepository {
     );
   }
 
+  /// An issue intended for production. Stock and its immutable cost intent
+  /// are committed in the same database transaction. Delivery to the separate
+  /// cost database is intentionally performed by a later reconciler.
+  Future<void> recordProductionIssue(
+    InventoryMovement movement, {
+    required String fieldId,
+    required String seasonId,
+  }) async {
+    if (movement.kind != InventoryMovementKind.issue ||
+        fieldId.trim().isEmpty || seasonId.trim().isEmpty) {
+      throw const FormatException('Production issue requires a field and season.');
+    }
+    await _record(movement, fieldId: fieldId, seasonId: seasonId);
+  }
+
   @override
-  Future<void> record(InventoryMovement movement) async {
+  Future<void> record(InventoryMovement movement) => _record(movement);
+
+  Future<void> _record(
+    InventoryMovement movement, {
+    String? fieldId,
+    String? seasonId,
+  }) async {
     movement.validate();
     if (movement.code != null) {
       throw const FormatException('Movement codes are assigned by SQLite.');
@@ -164,6 +203,15 @@ class SqliteInventoryRepository implements InventoryRepository {
           'Item is missing or stock is insufficient in this farm.',
         );
       }
+      final costItem = fieldId == null
+          ? null
+          : (await tx.query(
+              itemsTable,
+              columns: ['name', 'unit', 'unit_price'],
+              where: 'id=? AND farm_id=?',
+              whereArgs: [movement.itemId, movement.farmId],
+              limit: 1,
+            )).single;
       // Laos business month (UTC+7), independent of the device timezone.
       final date = movement.occurredAt.toUtc().add(const Duration(hours: 7));
       final kind = movement.kind == InventoryMovementKind.receipt
@@ -186,7 +234,44 @@ class SqliteInventoryRepository implements InventoryRepository {
           'occurred_at': movement.occurredAt.toIso8601String(),
         }, conflictAlgorithm: ConflictAlgorithm.abort),
       );
+      if (costItem != null) {
+        await tx.insert(costOutboxTable, {
+          'movement_id': movement.id,
+          'farm_id': movement.farmId,
+          'item_id': movement.itemId,
+          'field_id': fieldId,
+          'season_id': seasonId,
+          'item_name': costItem['name'],
+          'unit': costItem['unit'],
+          'quantity': movement.quantity,
+          'unit_price': costItem['unit_price'],
+          'occurred_at': movement.occurredAt.toIso8601String(),
+          'delivered': 0,
+        }, conflictAlgorithm: ConflictAlgorithm.abort);
+      }
     });
+  }
+
+  /// Read-only pending intents; the consumer must acknowledge only after
+  /// the cost record is durably persisted.
+  Future<List<Map<String, Object?>>> pendingProductionCosts(String farmId) async {
+    final rows = await database.query(
+      costOutboxTable,
+      where: 'farm_id=? AND delivered=0',
+      whereArgs: [farmId],
+      orderBy: 'occurred_at, movement_id',
+    );
+    return List.unmodifiable(rows);
+  }
+
+  Future<void> acknowledgeProductionCost(String farmId, String movementId) async {
+    final changed = await database.update(
+      costOutboxTable,
+      {'delivered': 1},
+      where: 'farm_id=? AND movement_id=?',
+      whereArgs: [farmId, movementId],
+    );
+    if (changed != 1) throw StateError('Unknown production cost intent.');
   }
 
   @override
