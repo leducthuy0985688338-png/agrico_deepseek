@@ -1,7 +1,6 @@
 import 'package:excel/excel.dart';
 
 import '../models/finance_model.dart';
-import '../providers/warehouse_provider.dart';
 import '../providers/machine_provider.dart';
 import '../providers/employee_provider.dart';
 import '../providers/finance_provider.dart';
@@ -10,73 +9,6 @@ import '../providers/fuel_provider.dart';
 import 'report_file_saver.dart';
 
 class ReportService {
-  // ============================================================
-  // BÁO CÁO KHO
-  // ============================================================
-
-  static Future<void> exportWarehouseReport(WarehouseProvider provider) async {
-    try {
-      final excel = Excel.createExcel();
-
-      final sheet = excel['BÁO CÁO TỒN KHO'];
-
-      _addTitle(sheet, 'BÁO CÁO TỒN KHO');
-
-      _addEmptyRow(sheet);
-
-      _addHeader(sheet, [
-        'Mã hàng',
-        'Tên hàng hóa',
-        'Đơn vị tính',
-        'Đơn giá nhập',
-        'Nhà cung cấp',
-        'Tồn kho',
-        'Giá trị tồn',
-      ]);
-
-      for (final item in provider.items) {
-        final stock = _toDouble(item.stock);
-
-        final importPrice = _toDouble(item.importPrice);
-
-        sheet.appendRow([
-          TextCellValue(item.id),
-          TextCellValue(item.name),
-          TextCellValue(item.unit),
-          DoubleCellValue(importPrice),
-          TextCellValue(item.supplier),
-          DoubleCellValue(stock),
-          DoubleCellValue(stock * importPrice),
-        ]);
-      }
-
-      _addEmptyRow(sheet);
-
-      final totalValue = provider.items.fold<double>(
-        0,
-        (sum, item) =>
-            sum + _toDouble(item.stock) * _toDouble(item.importPrice),
-      );
-
-      sheet.appendRow([
-        TextCellValue('Tổng số mặt hàng:'),
-        IntCellValue(provider.items.length),
-      ]);
-
-      sheet.appendRow([
-        TextCellValue('Tổng giá trị tồn kho:'),
-        DoubleCellValue(totalValue),
-      ]);
-
-      _applyFormatting(sheet);
-
-      await saveExcelFile(excel, 'BaoCaoTonKho.xlsx');
-    } catch (e) {
-      print('Lỗi xuất báo cáo kho: $e');
-      rethrow;
-    }
-  }
-
   // ============================================================
   // BÁO CÁO MÁY MÓC
   // ============================================================
@@ -555,7 +487,6 @@ class ReportService {
   // ============================================================
 
   static Future<void> exportFullSystemReport(
-    WarehouseProvider warehouseProvider,
     MachineProvider machineProvider,
     EmployeeProvider employeeProvider,
     FinanceProvider financeProvider,
@@ -581,26 +512,12 @@ class ReportService {
 
       _addEmptyRow(sheet1);
 
-      // KHO
-
-      sheet1.appendRow([TextCellValue('1. THỐNG KÊ KHO')]);
-
+      // Kho V2 is authoritative. This legacy export does not load its ledger.
+      sheet1.appendRow([TextCellValue('1. KHO AGRICO V2')]);
       sheet1.appendRow([
-        TextCellValue('Số loại hàng:'),
-        IntCellValue(warehouseProvider.items.length),
+        TextCellValue('Tồn kho:'),
+        TextCellValue('Xem báo cáo tại Kho V2; không có số liệu kho trong tệp này.'),
       ]);
-
-      double totalStockValue = 0;
-
-      for (final item in warehouseProvider.items) {
-        totalStockValue += _toDouble(item.stock) * _toDouble(item.importPrice);
-      }
-
-      sheet1.appendRow([
-        TextCellValue('Tổng giá trị tồn kho:'),
-        DoubleCellValue(totalStockValue),
-      ]);
-
       _addEmptyRow(sheet1);
 
       // MÁY MÓC
@@ -690,44 +607,6 @@ class ReportService {
       ]);
 
       _applyFormatting(sheet1);
-
-      // ----------------------------------------------------------
-      // SHEET 2: CHI TIẾT KHO
-      // ----------------------------------------------------------
-
-      final sheet2 = excel['CHI TIẾT KHO'];
-
-      _addTitle(sheet2, 'DANH SÁCH VẬT TƯ TRONG KHO');
-
-      _addEmptyRow(sheet2);
-
-      _addHeader(sheet2, [
-        'Mã hàng',
-        'Tên hàng',
-        'Đơn vị',
-        'Đơn giá',
-        'Nhà cung cấp',
-        'Tồn kho',
-        'Giá trị',
-      ]);
-
-      for (final item in warehouseProvider.items) {
-        final stock = _toDouble(item.stock);
-
-        final importPrice = _toDouble(item.importPrice);
-
-        sheet2.appendRow([
-          TextCellValue(item.id),
-          TextCellValue(item.name),
-          TextCellValue(item.unit),
-          DoubleCellValue(importPrice),
-          TextCellValue(item.supplier),
-          DoubleCellValue(stock),
-          DoubleCellValue(stock * importPrice),
-        ]);
-      }
-
-      _applyFormatting(sheet2);
 
       // ----------------------------------------------------------
       // SHEET 3: CHI TIẾT MÁY MÓC
