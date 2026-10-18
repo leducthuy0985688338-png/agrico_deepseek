@@ -72,7 +72,8 @@ class _FieldPolygonEditScreenState extends State<FieldPolygonEditScreen> {
       Navigator.pop(context, _provider.getFieldById(updated.id) ?? updated);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.fromLTRB(16, 16, 16, 100), content:
         Text('Không thể lưu ranh giới và lịch sử đo đạc. Vui lòng thử lại.')));
     } finally {
       if (mounted) setState(() => _saving = false);

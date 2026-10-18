@@ -117,13 +117,19 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
       gpsAccuracy: accuracy,
       measuredAt: DateTime.now().toUtc(),
     );
-    if (widget.persistResult) {
-      _fieldProvider.addField(field);
+    try {
+      if (widget.persistResult) {
+        await _fieldProvider.createMeasuredFieldLocally(field);
+      }
+      if (!mounted) return;
+      Navigator.pop(context, field);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Không thể lưu thửa và lịch sử đo đạc. Vui lòng thử lại.')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
-    if (!mounted) return;
-    setState(() => _saving = false);
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã lưu thửa GPS vào AGRICO.')));
-    Navigator.pop(context, field);
   }
 
   Set<Polyline> get _polylines => {if (_points.length >= 2) Polyline(polylineId: const PolylineId('field-boundary'), points: _points, width: 5)};
@@ -154,7 +160,7 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
           if (_lastPosition != null) Text('${_lastPosition!.accuracy.toStringAsFixed(1)} m'),
         ]))),),
         Positioned(left: 16, right: 16, bottom: 20, child: SafeArea(child: Row(children: [
-          Expanded(child: FilledButton.icon(onPressed: _recording ? _stopMeasurement : _startMeasurement, icon: Icon(_recording ? Icons.stop : Icons.gps_fixed), label: Text(_recording ? 'DỪNG ĐO' : 'BẮT ĐẦU ĐO GPS'), style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(54)))),
+          Expanded(child: FilledButton.icon(onPressed: _saving ? null : (_recording ? _stopMeasurement : _startMeasurement), icon: Icon(_recording ? Icons.stop : Icons.gps_fixed), label: Text(_recording ? 'DỪNG ĐO' : 'BẮT ĐẦU ĐO GPS'), style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(54)))),
           if (!_recording && _points.length >= 3) ...[const SizedBox(width: 10), SizedBox(height: 54, child: FilledButton(onPressed: _saving ? null : _saveField, child: const Icon(Icons.save)))],
         ]))),
       ]),

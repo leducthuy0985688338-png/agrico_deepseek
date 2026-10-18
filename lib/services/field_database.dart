@@ -173,12 +173,12 @@ class FieldDatabase {
   }
 
   /// Boundary and its measurement are one local commit; Cloud is separate.
-  Future<FieldMeasurementHistory> saveBoundaryAndMeasurement(FieldModel field) async {
-    return saveBoundaryIn(await database, field);
+  Future<FieldMeasurementHistory> saveBoundaryAndMeasurement(FieldModel field, {bool requireExisting = true}) async {
+    return saveBoundaryIn(await database, field, requireExisting: requireExisting);
   }
 
   /// Uses the supplied connection so isolated tests never open the app database.
-  Future<FieldMeasurementHistory> saveBoundaryIn(Database db, FieldModel field) async {
+  Future<FieldMeasurementHistory> saveBoundaryIn(Database db, FieldModel field, {bool requireExisting = true}) async {
     if (field.polygon.length < 3 || field.measuredAt == null ||
         field.measurementMethod == 'unknown' || !field.area.isFinite || field.area <= 0) {
       throw ArgumentError('A measured boundary requires three points, positive area and a measurement date');
@@ -204,9 +204,14 @@ class FieldDatabase {
     return db.transaction((transaction) async {
       final existing = await transaction.query(_table, columns: ['id'],
           where: 'id = ?', whereArgs: [field.id]);
-      if (existing.isEmpty) throw StateError('Cannot edit a missing field');
-      await transaction.update(_table, _toRow(field),
-          where: 'id = ?', whereArgs: [field.id]);
+      if (requireExisting && existing.isEmpty) throw StateError('Cannot edit a missing field');
+      if (!requireExisting && existing.isNotEmpty) throw StateError('Cannot recreate an existing field');
+      if (existing.isEmpty) {
+        await transaction.insert(_table, _toRow(field));
+      } else {
+        await transaction.update(_table, _toRow(field),
+            where: 'id = ?', whereArgs: [field.id]);
+      }
       await transaction.insert(_historyTable, _historyToRow(measurement),
           conflictAlgorithm: ConflictAlgorithm.ignore);
       final row = (await transaction.query(_historyTable,
@@ -231,9 +236,14 @@ class FieldDatabase {
 
   Future<void> delete(String id) async {
     final db = await database;
-    await db.delete(_table, where: 'id = ?', whereArgs: [id]);
-    await db.delete(_historyTable, where: 'field_id = ?', whereArgs: [id]);
+    await deleteIn(db, id);
   }
+
+  Future<void> deleteIn(Database db, String id) => db.transaction((transaction) async {
+    await transaction.delete(_historyTable, where: 'field_id = ?', whereArgs: [id]);
+    await transaction.delete(_table, where: 'id = ?', whereArgs: [id]);
+  });
+
 
   Future<FieldMeasurementHistory> addMeasurementHistory(
     FieldModel field,

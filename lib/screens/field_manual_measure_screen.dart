@@ -30,6 +30,7 @@ class _FieldManualMeasureScreenState extends State<FieldManualMeasureScreen> {
   double get _distance => _points.length < 2 ? 0 : Geolocator.distanceBetween(_points[0].latitude, _points[0].longitude, _points[1].latitude, _points[1].longitude);
 
   void _addPoint(LatLng point) {
+    if (_saving) return;
     if (_mode == _MeasureMode.distance && _points.length >= 2) {
       setState(() { _points..clear()..add(point); });
       return;
@@ -47,7 +48,7 @@ class _FieldManualMeasureScreenState extends State<FieldManualMeasureScreen> {
         position: _points[i],
         infoWindow: InfoWindow(title: _mode == _MeasureMode.distance ? (i == 0 ? 'Điểm A' : 'Điểm B') : 'Điểm ${i + 1}'),
         draggable: true,
-        onDragEnd: (position) => setState(() => _points[i] = position),
+        onDragEnd: (position) { if (!_saving) setState(() => _points[i] = position); },
       ),
   };
 
@@ -97,11 +98,17 @@ class _FieldManualMeasureScreenState extends State<FieldManualMeasureScreen> {
       measurementMethod: 'manual',
       measuredAt: DateTime.now().toUtc(),
     );
-    _fieldProvider.addField(field);
-    if (!mounted) return;
-    setState(() => _saving = false);
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã lưu thửa thủ công vào AGRICO.')));
-    Navigator.pop(context, field);
+    try {
+      await _fieldProvider.createMeasuredFieldLocally(field);
+      if (!mounted) return;
+      Navigator.pop(context, field);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Không thể lưu thửa và lịch sử đo đạc. Vui lòng thử lại.')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Future<void> _saveDistance() async {
@@ -159,7 +166,7 @@ class _FieldManualMeasureScreenState extends State<FieldManualMeasureScreen> {
               ButtonSegment(value: _MeasureMode.distance, icon: Icon(Icons.straighten), label: Text('Khoảng cách')),
             ],
             selected: {_mode},
-            onSelectionChanged: (value) => setState(() { _mode = value.first; _points.clear(); }),
+            onSelectionChanged: _saving ? null : (value) => setState(() { _mode = value.first; _points.clear(); }),
           ),
         ))),
         Positioned(left: 12, right: 12, bottom: 18, child: SafeArea(child: Card(child: Padding(

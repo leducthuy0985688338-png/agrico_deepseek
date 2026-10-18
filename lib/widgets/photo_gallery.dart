@@ -7,12 +7,14 @@ import 'package:path_provider/path_provider.dart';
 
 class PhotoGallery extends StatefulWidget {
   final List<String> photoPaths;
-  final Function(String) onAddPhoto; // callback khi thêm ảnh mới
+  final Future<void> Function(String) onAddPhoto;
+  final Future<void> Function(String)? onRemovePhoto;
 
   const PhotoGallery({
     super.key,
     required this.photoPaths,
     required this.onAddPhoto,
+    this.onRemovePhoto,
   });
 
   @override
@@ -21,9 +23,13 @@ class PhotoGallery extends StatefulWidget {
 
 class _PhotoGalleryState extends State<PhotoGallery> {
   final ImagePicker _picker = ImagePicker();
+  bool _busy = false;
 
   // Hàm chụp ảnh hoặc chọn từ thư viện
   Future<void> _pickImage(ImageSource source) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
     final XFile? image = await _picker.pickImage(
       source: source,
       maxWidth: 1024,
@@ -41,7 +47,27 @@ class _PhotoGalleryState extends State<PhotoGallery> {
       final file = File(p.join(folder.path,
           '${sha256.convert(bytes)}$safeExtension'));
       if (!await file.exists()) await file.writeAsBytes(bytes, flush: true);
-      widget.onAddPhoto(file.path);
+      if (!mounted) return;
+      await widget.onAddPhoto(file.path);
+    }
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Không thể lưu ảnh hiện trường. Vui lòng thử lại.')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _removePhoto(String path) async {
+    if (_busy || widget.onRemovePhoto == null) return;
+    setState(() => _busy = true);
+    try {
+      await widget.onRemovePhoto!(path);
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Không thể cập nhật danh sách ảnh. Vui lòng thử lại.')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -86,7 +112,7 @@ class _PhotoGalleryState extends State<PhotoGallery> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             IconButton(
-              onPressed: _showPickerDialog,
+              onPressed: _busy ? null : _showPickerDialog,
               icon: const Icon(Icons.add_a_photo, color: Colors.green),
             ),
           ],
@@ -118,23 +144,15 @@ class _PhotoGalleryState extends State<PhotoGallery> {
                           width: 130,
                           height: 130,
                           fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => const SizedBox(width: 130, height: 130,
+                            child: Icon(Icons.broken_image_outlined)),
                         ),
                       ),
-                      // Nút xóa ảnh
-                      Positioned(
+                      if (widget.onRemovePhoto != null) Positioned(
                         top: 4,
                         right: 4,
                         child: GestureDetector(
-                          onTap: () {
-                            // Xóa ảnh khỏi danh sách
-                            final updated = List<String>.from(widget.photoPaths)
-                              ..removeAt(index);
-                            // Gọi callback để cập nhật (phần này sẽ xử lý ở màn hình cha)
-                            // Tạm thời gửi ảnh mới để cập nhật danh sách (cần cải tiến)
-                            // Ở đây ta sẽ dùng cách đơn giản: gọi lại onAddPhoto nhưng với giá trị null để báo xóa
-                            // Tuy nhiên để đơn giản, ta sẽ để widget cha quản lý danh sách.
-                            // Ta sẽ dùng StatefulWidget và truyền callback xóa.
-                          },
+                          onTap: _busy ? null : () => _removePhoto(path),
                           child: Container(
                             decoration: const BoxDecoration(
                               color: Colors.red,

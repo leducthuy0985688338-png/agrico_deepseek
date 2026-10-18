@@ -125,8 +125,15 @@ class _FieldDetailScreenState extends State<FieldDetailScreen> {
     if (mounted) setState(() {});
   }
 
-  void _addPhoto(String path) {
-    _fieldProvider.addPhotoToField(_field.id, path);
+  Future<void> _addPhoto(String path) async {
+    await _fieldProvider.saveFieldPhotosLocally(_field.id,
+      {..._field.photoPaths, path}.toList());
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _removePhoto(String path) async {
+    await _fieldProvider.saveFieldPhotosLocally(_field.id,
+      _field.photoPaths.where((item) => item != path).toList());
     if (mounted) setState(() {});
   }
 
@@ -263,7 +270,7 @@ class _FieldDetailScreenState extends State<FieldDetailScreen> {
                   ...tasks.take(3).map((task) => Card(child: ListTile(dense: true, leading: Icon(task.status == TaskStatus.COMPLETED ? Icons.check_circle : Icons.pending_actions), title: Text(task.title), subtitle: Text('${task.assignedToName} • Hạn ${task.dueDate.day}/${task.dueDate.month}')))),
                 ],
                 const SizedBox(height: 12),
-                PhotoGallery(photoPaths: _field.photoPaths, onAddPhoto: _addPhoto),
+                PhotoGallery(photoPaths: _field.photoPaths, onAddPhoto: _addPhoto, onRemovePhoto: _removePhoto),
                 const SizedBox(height: 20),
                 SizedBox(width: double.infinity, child: ElevatedButton.icon(onPressed: _assignMachine, icon: const Icon(Icons.agriculture), label: const Text('Gán máy'))),
               ]),
