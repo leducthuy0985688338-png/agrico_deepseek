@@ -1,4 +1,3 @@
-import '../providers/warehouse_provider.dart';
 import '../providers/machine_provider.dart';
 import '../providers/employee_provider.dart';
 import '../providers/finance_provider.dart';
@@ -7,7 +6,6 @@ import '../providers/fuel_provider.dart';
 class AIService {
   static String processQuestion(
     String question,
-    WarehouseProvider warehouseProvider,
     MachineProvider machineProvider,
     EmployeeProvider employeeProvider,
     FinanceProvider financeProvider,
@@ -19,7 +17,7 @@ class AIService {
     if (lowerQuestion.contains('tồn kho') ||
         lowerQuestion.contains('kho còn') ||
         lowerQuestion.contains('hàng tồn')) {
-      return _handleWarehouseQuery(question, warehouseProvider);
+      return _handleWarehouseQuery();
     }
 
     // ====== CÂU HỎI VỀ MÁY MÓC ======
@@ -58,7 +56,6 @@ class AIService {
         lowerQuestion.contains('báo cáo') ||
         lowerQuestion.contains('thống kê')) {
       return _handleSummaryQuery(
-        warehouseProvider,
         machineProvider,
         employeeProvider,
         financeProvider,
@@ -91,10 +88,7 @@ class AIService {
   }
 
   // ====== XỬ LÝ CÂU HỎI VỀ KHO ======
-  static String _handleWarehouseQuery(
-    String question,
-    WarehouseProvider provider,
-  ) {
+  static String _handleWarehouseQuery() {
     // This legacy AI entry point has no access to the authoritative V2 ledger.
     // Never present an empty in-memory warehouse as the real inventory balance.
     return 'Dữ liệu tồn kho chỉ được quản lý trong Kho AGRICO V2. '
@@ -257,7 +251,6 @@ class AIService {
 
   // ====== XỬ LÝ CÂU HỎI TỔNG HỢP ======
   static String _handleSummaryQuery(
-    WarehouseProvider warehouseProvider,
     MachineProvider machineProvider,
     EmployeeProvider employeeProvider,
     FinanceProvider financeProvider,
