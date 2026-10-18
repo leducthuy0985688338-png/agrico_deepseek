@@ -28,6 +28,14 @@ void main() {
     final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
     try {
       await SqliteInventoryRepository.createSchema(db);
+      await db.execute('CREATE TABLE fields (id TEXT PRIMARY KEY)');
+      await db.execute('CREATE TABLE production_seasons (id TEXT PRIMARY KEY, field_id TEXT NOT NULL)');
+      await db.insert('fields', {'id': 'field'});
+      await db.insert('production_seasons', {
+        'id': 'season',
+        'field_id': 'field',
+      });
+
       final inventory = SqliteInventoryRepository(db);
       await inventory.register(const InventoryItem(
         id: 'material', farmId: 'farm', code: 'VT001',
