@@ -131,6 +131,30 @@ void main() {
     expect((await admin.requests()).single.status, 'approved');
   });
 
+  test('failed approval does not consume an automatic catalog code', () async {
+    await save(entry('existing', CatalogKind.unit, '', 'Existing'));
+    await worker.request(
+      id: 'duplicate-request',
+      kind: CatalogKind.unit,
+      code: 'DUP',
+      name: 'Existing',
+      reason: 'Requested duplicate',
+    );
+    await expectLater(
+      admin.resolve(
+        'duplicate-request',
+        createEntry: entry('duplicate', CatalogKind.unit, '', 'Existing'),
+        reason: 'Attempt',
+      ),
+      throwsA(isA<CatalogFailure>()),
+    );
+    expect((await admin.requests()).single.status, 'pending');
+    await save(entry('next', CatalogKind.unit, '', 'Next unit'));
+    final entries = await admin.entries();
+    expect(entries.firstWhere((e) => e.id == 'next').code, 'DVT-000002');
+    expect(entries, hasLength(2));
+  });
+
   test('duplicate creation rolls back and leaves request pending', () async {
     await save(entry('existing', CatalogKind.unit, 'DIRECT', 'Existing'));
     await worker.request(
