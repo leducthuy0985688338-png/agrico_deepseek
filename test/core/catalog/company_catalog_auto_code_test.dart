@@ -1,6 +1,7 @@
 import 'package:agrico_deepseek/core/catalog/company_catalog.dart';
 import 'package:agrico_deepseek/core/catalog/sqlite_company_catalog.dart';
 import 'package:agrico_deepseek/features/inventory/data/local/sqlite_inventory_repository.dart';
+import 'package:agrico_deepseek/features/inventory/domain/entities/inventory_item.dart';
 import 'package:agrico_deepseek/features/farm/data/local/sqlite_parcel_work_repository.dart';
 import 'package:agrico_deepseek/core/permissions/authorization.dart';
 import 'package:agrico_deepseek/features/farm/application/parcel_work_service.dart';
@@ -75,6 +76,40 @@ void main() {
       expect(entries.firstWhere((e) => e.id == 'material-1').code, 'VT-000001');
     },
   );
+
+  test('unit rename updates material projection without changing stock or movements', () async {
+    await create(item('unit-1', CatalogKind.unit, 'Kilogram'));
+    await create(item('material-1', CatalogKind.material, 'Fertilizer', unit: 'unit-1'));
+    final inventory = SqliteInventoryRepository(db);
+    await inventory.register(
+      const InventoryItem(
+        id: 'material-1', farmId: 'farm', code: 'VT-000001',
+        name: 'Fertilizer', unit: 'Kilogram', unitPrice: 25,
+        supplier: 'Supplier',
+      ),
+    );
+    await inventory.record(
+      InventoryMovement(
+        id: 'receipt-1', farmId: 'farm', itemId: 'material-1',
+        kind: InventoryMovementKind.receipt, quantity: 8,
+        occurredAt: DateTime.utc(2026, 10, 18),
+      ),
+    );
+    final unit = (await admin.entries()).firstWhere((e) => e.id == 'unit-1');
+    await admin.save(
+      item('unit-1', CatalogKind.unit, 'Kilogram renamed', code: unit.code),
+      expectedRevision: unit.revision,
+      reason: 'Rename unit',
+    );
+    final rows = await inventory.listByFarm('farm');
+    expect(rows, hasLength(1));
+    expect(rows.single.unit, 'Kilogram renamed');
+    expect(rows.single.stock, 8);
+    expect(rows.single.unitPrice, 25);
+    expect(rows.single.supplier, 'Supplier');
+    expect(await inventory.movementsByFarm('farm'), hasLength(1));
+    expect((await admin.entries()).firstWhere((e) => e.id == 'material-1').unitId, 'unit-1');
+  });
 
   test('service create rejects caller-supplied code and allocates system code', () async {
     expect(
