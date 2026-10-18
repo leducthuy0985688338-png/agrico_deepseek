@@ -1,6 +1,7 @@
 import 'package:agrico_deepseek/core/catalog/company_catalog.dart';
 import 'package:agrico_deepseek/core/catalog/sqlite_company_catalog.dart';
 import 'package:agrico_deepseek/features/inventory/data/local/sqlite_inventory_repository.dart';
+import 'package:agrico_deepseek/features/farm/data/local/sqlite_parcel_work_repository.dart';
 import 'package:agrico_deepseek/core/permissions/authorization.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -38,6 +39,7 @@ void main() {
     await db.execute('PRAGMA foreign_keys=ON');
     await SqliteCompanyCatalog.createSchema(db);
     await SqliteInventoryRepository.createSchema(db);
+    await SqliteParcelWorkRepository.createSchema(db);
     repo = SqliteCompanyCatalog(db);
     admin = CompanyCatalogService(
       repository: repo,
