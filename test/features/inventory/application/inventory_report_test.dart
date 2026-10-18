@@ -1,6 +1,7 @@
 import 'package:agrico_deepseek/features/inventory/application/inventory_report.dart';
 import 'package:agrico_deepseek/features/inventory/domain/entities/inventory_item.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:excel/excel.dart';
 
 void main() {
   const item = InventoryItem(
@@ -58,17 +59,17 @@ void main() {
       to: DateTime.utc(2026, 10, 1),
     );
     final row = october['Stock'].rows[1];
-    expect(row[3]?.value.toString(), '0');
-    expect(row[4]?.value.toString(), '10');
-    expect(row[5]?.value.toString(), '3');
-    expect(row[6]?.value.toString(), '7');
+    expect((row[3]?.value as IntCellValue).value, 0);
+    expect((row[4]?.value as IntCellValue).value, 10);
+    expect((row[5]?.value as IntCellValue).value, 3);
+    expect((row[6]?.value as IntCellValue).value, 7);
 
     final november = report.workbook(from: DateTime.utc(2026, 11, 1));
     final next = november['Stock'].rows[1];
-    expect(next[3]?.value.toString(), '7');
-    expect(next[4]?.value.toString(), '0');
-    expect(next[5]?.value.toString(), '0');
-    expect(next[6]?.value.toString(), '7');
+    expect((next[3]?.value as IntCellValue).value, 7);
+    expect((next[4]?.value as IntCellValue).value, 0);
+    expect((next[5]?.value as IntCellValue).value, 0);
+    expect((next[6]?.value as IntCellValue).value, 7);
   });
 
   test('Excel contains overview, filtered movements and date-based stock', () {
