@@ -154,6 +154,19 @@ void main() {
     expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(2));
   });
 
+  test('failed dependent material creation preserves material sequence', () async {
+    await create(item('unit-1', CatalogKind.unit, 'Kilogram'));
+    await expectLater(
+      create(item('bad-material', CatalogKind.material, 'Invalid fertilizer', unit: 'missing-unit')),
+      throwsA(isA<CatalogFailure>()),
+    );
+    expect((await admin.entries()).where((e) => e.kind == CatalogKind.material), isEmpty);
+    await create(item('material-1', CatalogKind.material, 'Fertilizer', unit: 'unit-1'));
+    final entries = await admin.entries();
+    expect(entries.firstWhere((e) => e.id == 'material-1').code, 'VT-000001');
+    expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(2));
+  });
+
   test('historical import rejects empty code without allocating a number', () async {
     expect(
       () => repo.importHistoricalEntry(
