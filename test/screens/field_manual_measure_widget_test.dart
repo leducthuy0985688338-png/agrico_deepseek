@@ -24,8 +24,9 @@ void main() {
         await tester.enterText(find.byType(TextField).first, 'Thửa lạc');
         await tester.enterText(find.byType(TextField).last, 'Lạc');
       } else {
-        expect(find.text('Thửa lạc'), findsOneWidget);
-        expect(find.text('Lạc'), findsOneWidget);
+        final fields = tester.widgetList<TextField>(find.byType(TextField)).toList();
+        expect(fields[0].controller!.text, 'Thửa lạc');
+        expect(fields[1].controller!.text, 'Lạc');
       }
       await tester.tap(find.byKey(const Key('manual-confirm-save')));
       await tester.pumpAndSettle();
