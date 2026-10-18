@@ -135,6 +135,10 @@ class CompanyCatalogService {
     return repository.entries(subject.farmId);
   }
 
+  /// Updates an existing catalog entry or preserves a historical import code.
+  ///
+  /// New user-facing records must go through [create], which rejects
+  /// caller-supplied codes. Retained for existing callers and migrations.
   Future<void> save(
     CatalogEntry entry, {
     required int? expectedRevision,
