@@ -95,17 +95,44 @@ void main() {
       createEntry: entry(
         'direct-unit',
         CatalogKind.unit,
-        'DIRECT',
+        '',
         'Direct unit',
       ),
       reason: 'Approved',
     );
     expect((await admin.entries()).single.id, 'direct-unit');
+    expect((await admin.entries()).single.code, 'DVT-000001');
     final request = (await admin.requests()).single;
     expect(request.status, 'approved');
     expect(request.entryId, 'direct-unit');
     expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(3));
   });
+  test('approval rejects caller-supplied code without changing request', () async {
+    await worker.request(
+      id: 'manual-approval',
+      kind: CatalogKind.unit,
+      code: 'SUGGESTED',
+      name: 'Proposed unit',
+      reason: 'Needed',
+    );
+    expect(
+      () => admin.resolve(
+        'manual-approval',
+        createEntry: entry('manual-unit', CatalogKind.unit, 'CUSTOM', 'Proposed unit'),
+        reason: 'Attempt',
+      ),
+      throwsA(isA<CatalogFailure>()),
+    );
+    expect(await admin.entries(), isEmpty);
+    expect((await admin.requests()).single.status, 'pending');
+    await admin.resolve(
+      'manual-approval',
+      createEntry: entry('approved-unit', CatalogKind.unit, '', 'Proposed unit'),
+      reason: 'Approved',
+    );
+    expect((await admin.entries()).single.code, 'DVT-000001');
+  });
+
   test('approved suggestion allocates the next system code atomically', () async {
     await save(entry('existing', CatalogKind.unit, '', 'Existing'));
     await worker.request(
