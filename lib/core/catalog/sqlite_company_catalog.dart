@@ -456,9 +456,22 @@ class SqliteCompanyCatalog implements CompanyCatalogRepository {
           if (old['actor_uid'] == actorUid) {
             throw const CatalogFailure('catalog.selfApproval');
           }
+          // Approvals create a new catalog identity inside this transaction.
+          // Allocate a code here, just as direct catalog creation does.
+          final approvedEntry = createEntry.code.isEmpty
+              ? CatalogEntry(
+                  id: createEntry.id,
+                  farmId: createEntry.farmId,
+                  kind: createEntry.kind,
+                  code: await _nextCode(tx, createEntry.farmId, createEntry.kind),
+                  name: createEntry.name,
+                  unitId: createEntry.unitId,
+                  active: createEntry.active,
+                )
+              : createEntry;
           await _saveInTransaction(
             tx,
-            createEntry,
+            approvedEntry,
             expectedRevision: null,
             actorUid: actorUid,
             reason: reason,
