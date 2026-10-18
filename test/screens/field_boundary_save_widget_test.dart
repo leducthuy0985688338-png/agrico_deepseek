@@ -23,7 +23,7 @@ Future<void> openEditor(WidgetTester tester, FieldProvider provider,
     builder: (context) => TextButton(onPressed: () async {
       result(await Navigator.of(context).push<FieldModel>(MaterialPageRoute(
         builder: (_) => FieldPolygonEditScreen(field: sample(),
-          providerOverride: provider, mapBuilder: mapBuilder ?? (_, _) => const SizedBox()),
+          providerOverride: provider, mapBuilder: mapBuilder ?? (_, _) => const SizedBox.expand()),
       )));
     }, child: const Text('Open')),
   ))));
@@ -41,12 +41,12 @@ void main() {
     addTearDown(provider.dispose);
     FieldModel? result;
     await openEditor(tester, provider, (value) => result = value,
-      mapBuilder: (value, _) { markers = value; return const SizedBox(); });
+      mapBuilder: (value, _) { markers = value; return const SizedBox.expand(); });
     await tester.tap(find.text('LƯU RANH GIỚI MỚI')); await tester.pump();
     expect(calls, 1); expect(result, isNull);
     expect(find.byType(FieldPolygonEditScreen), findsOneWidget);
     expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed, isNull);
-    expect(tester.widget<IconButton>(find.byTooltip('Lưu thay đổi')).onPressed, isNull);
+    expect(tester.widgetList<IconButton>(find.byType(IconButton)).singleWhere((button) => button.tooltip == 'Lưu thay đổi').onPressed, isNull);
     markers.first.onDragEnd!(const LatLng(17, 106));
     await tester.tap(find.text('LƯU RANH GIỚI MỚI'), warnIfMissed: false); await tester.pump();
     expect(calls, 1);
