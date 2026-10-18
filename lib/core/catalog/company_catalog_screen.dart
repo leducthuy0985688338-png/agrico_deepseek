@@ -447,7 +447,6 @@ class _ResolveRequestState extends State<_ResolveRequest> {
   bool saving = false;
   @override
   void dispose() {
-    code.dispose();
     name.dispose();
     reason.dispose();
     super.dispose();
