@@ -31,6 +31,31 @@ void main() {
 
     final materialAppContext = tester.element(find.byType(MaterialApp));
     expect(
+      Provider.of<FieldProvider?>(materialAppContext, listen: false),
+      isNull,
+    );
+    expect(
+      Provider.of<CloudSyncProvider?>(materialAppContext, listen: false),
+      isNull,
+    );
+    expect(
+      Provider.of<DashboardProvider?>(materialAppContext, listen: false),
+      isNull,
+    );
+
+    // Khôi phục kích thước màn hình mặc định.
+    await tester.binding.setSurfaceSize(null);
+  });
+
+  testWidgets('settings tab opens the real cloud sync screen', (
+    WidgetTester tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 1000));
+    await tester.pumpWidget(const MyApp.legacy());
+    await tester.pumpAndSettle();
+
+    final materialAppContext = tester.element(find.byType(MaterialApp));
+    expect(
       Provider.of<CloudSyncProvider>(materialAppContext, listen: false),
       isA<CloudSyncProvider>(),
     );
@@ -59,17 +84,6 @@ void main() {
       isA<ProductionCostProvider>(),
     );
 
-    // Khôi phục kích thước màn hình mặc định.
-    await tester.binding.setSurfaceSize(null);
-  });
-
-  testWidgets('settings tab opens the real cloud sync screen', (
-    WidgetTester tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 1000));
-    await tester.pumpWidget(const MyApp(homeOverride: DashboardScreen()));
-    await tester.pumpAndSettle();
-
     expect(find.byType(SettingsPage), findsNothing);
     await tester.tap(find.text('Cài đặt'));
     await tester.pumpAndSettle();
@@ -82,6 +96,21 @@ void main() {
       ),
       findsOneWidget,
     );
+
+    // A pushed route must share the explicit compatibility scope.
+    Navigator.of(tester.element(find.byType(SettingsPage))).push<void>(
+      MaterialPageRoute<void>(
+        builder: (context) => Scaffold(
+          body: Text(
+            identical(context.read<FieldProvider>(), FieldProvider.instance)
+                ? 'legacy route scope retained'
+                : 'unexpected provider',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('legacy route scope retained'), findsOneWidget);
 
     await tester.binding.setSurfaceSize(null);
   });

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import 'core/localization/app_locale_controller.dart';
 import 'app/legacy_provider_scope.dart';
+import 'app/legacy_dashboard.dart';
 import 'core/localization/app_localizations.dart';
 import 'core/backup/local_restore_activation.dart';
 import 'theme/app_theme.dart';
@@ -23,7 +24,13 @@ Future<void> main() async {
 
 // ====== APP CHÍNH ======
 class MyApp extends StatelessWidget {
-  const MyApp({super.key, this.homeOverride});
+  const MyApp({super.key, this.homeOverride}) : _legacyCompatibility = false;
+
+  /// Explicit compatibility entry; providers also cover pushed legacy routes.
+  const MyApp.legacy({super.key, this.homeOverride = const DashboardScreen()})
+      : _legacyCompatibility = true;
+
+  final bool _legacyCompatibility;
 
   final Widget? homeOverride;
 
@@ -32,7 +39,7 @@ class MyApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AppLocaleController()),
-        ...buildLegacyProviders(),
+        if (_legacyCompatibility) ...buildLegacyProviders(),
       ],
       child: Builder(
         builder: (context) => MaterialApp(
