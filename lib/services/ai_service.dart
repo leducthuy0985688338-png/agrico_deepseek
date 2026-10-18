@@ -95,35 +95,10 @@ class AIService {
     String question,
     WarehouseProvider provider,
   ) {
-    final lowerQuestion = question.toLowerCase();
-
-    // Tìm kiếm theo tên hàng
-    for (var item in provider.items) {
-      if (lowerQuestion.contains(item.name.toLowerCase()) ||
-          lowerQuestion.contains(item.id.toLowerCase())) {
-        return '📦 ${item.name} (${item.id}):\n'
-            'Tồn kho: ${item.stock} ${item.unit}\n'
-            'Đơn giá: ${item.importPrice.toStringAsFixed(0)} VND/${item.unit}\n'
-            'Nhà cung cấp: ${item.supplier}';
-      }
-    }
-
-    // Tổng quan kho
-    int totalItems = provider.items.length;
-    int totalStock = provider.items.fold(0, (sum, item) => sum + item.stock);
-    double totalValue = provider.items.fold(
-      0.0,
-      (sum, item) => sum + item.stock * item.importPrice,
-    );
-
-    return '📊 TỔNG QUAN KHO:\n'
-            'Số loại hàng: $totalItems\n'
-            'Tổng số lượng: $totalStock\n'
-            'Tổng giá trị: ${totalValue.toStringAsFixed(0)} VND\n\n'
-            '📋 DANH SÁCH CHI TIẾT:\n' +
-        provider.items
-            .map((item) => '• ${item.name}: ${item.stock} ${item.unit}')
-            .join('\n');
+    // This legacy AI entry point has no access to the authoritative V2 ledger.
+    // Never present an empty in-memory warehouse as the real inventory balance.
+    return 'Dữ liệu tồn kho chỉ được quản lý trong Kho AGRICO V2. '
+        'Vui lòng mở Kho V2 để xem số lượng và lịch sử nhập xuất chính xác.';
   }
 
   // ====== XỬ LÝ CÂU HỎI VỀ MÁY MÓC ======
@@ -291,8 +266,7 @@ class AIService {
     return '📊 BÁO CÁO TỔNG HỢP TRANG TRẠI\n'
         '═══════════════════════════════\n\n'
         '📦 KHO:\n'
-        '• Số loại hàng: ${warehouseProvider.items.length}\n'
-        '• Tổng giá trị: ${warehouseProvider.items.fold(0.0, (sum, item) => sum + item.stock * item.importPrice).toStringAsFixed(0)} VND\n\n'
+        '• Xem số dư và lịch sử nhập xuất tại Kho AGRICO V2.\n\n'
         '🚜 MÁY MÓC:\n'
         '• Tổng số máy: ${machineProvider.machines.length}\n'
         '• Đang hoạt động: ${machineProvider.machines.where((m) => m.status == "Tốt").length}\n'
