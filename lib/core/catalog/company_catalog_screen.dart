@@ -253,7 +253,6 @@ class _CatalogEditorState extends State<_CatalogEditor> {
   String? error;
   @override
   void dispose() {
-    code.dispose();
     name.dispose();
     reason.dispose();
     super.dispose();
@@ -427,12 +426,11 @@ class _ResolveRequest extends StatefulWidget {
 class _ResolveRequestState extends State<_ResolveRequest> {
   String? entryId, error;
   final reason = TextEditingController();
-  late final TextEditingController code, name;
+  late final TextEditingController name;
   String? unitId;
   @override
   void initState() {
     super.initState();
-    code = TextEditingController(text: widget.request.code);
     name = TextEditingController(text: widget.request.name);
     reason.text = widget.request.reason;
     for (final e in widget.entries) {
@@ -470,7 +468,7 @@ class _ResolveRequestState extends State<_ResolveRequest> {
                 id: 'catalog-${DateTime.now().microsecondsSinceEpoch}',
                 farmId: widget.service.subject.farmId,
                 kind: widget.request.kind,
-                code: code.text.trim().toUpperCase(),
+                code: '',
                 name: name.text.trim(),
                 unitId: widget.request.kind == CatalogKind.unit ? null : unitId,
               )
@@ -535,14 +533,8 @@ class _ResolveRequestState extends State<_ResolveRequest> {
                     : (v) => setState(() => entryId = v == '' ? null : v),
               ),
               if (entryId == null) ...[
-                TextField(
-                  key: const Key('catalog-approval-code'),
-                  controller: code,
-                  enabled: !saving,
-                  maxLength: 40,
-                  decoration: InputDecoration(
-                    labelText: l.text('catalog.code'),
-                  ),
+                Text(
+                  'Mã danh mục mới sẽ được hệ thống cấp tự động khi phê duyệt.',
                 ),
                 TextField(
                   key: const Key('catalog-approval-name'),
