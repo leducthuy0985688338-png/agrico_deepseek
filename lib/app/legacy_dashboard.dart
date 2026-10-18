@@ -464,7 +464,7 @@ class HomePage extends StatelessWidget {
                       Expanded(
                         child: _buildQuickStat(
                           'Tồn kho',
-                          provider.totalInventoryStock.toStringAsFixed(0),
+                          'Xem Kho V2',
                           Icons.inventory,
                           Colors.blue,
                         ),
