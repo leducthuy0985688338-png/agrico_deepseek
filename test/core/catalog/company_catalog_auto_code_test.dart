@@ -312,6 +312,113 @@ void main() {
     },
   );
 
+  test('all nine catalog kinds use independent standard prefixes', () async {
+    await create(item('unit', CatalogKind.unit, 'Kilogram'));
+    final kinds = <CatalogKind, String>{
+      CatalogKind.crop: 'CT',
+      CatalogKind.machine: 'MAY',
+      CatalogKind.worker: 'NS',
+      CatalogKind.material: 'VT',
+      CatalogKind.taskType: 'CV',
+      CatalogKind.supplier: 'NCC',
+      CatalogKind.incomeCategory: 'DMTHU',
+      CatalogKind.expenseCategory: 'DMCHI',
+    };
+    for (final kind in kinds.keys) {
+      await create(item(
+        'first-${kind.name}',
+        kind,
+        'First ${kind.name}',
+        unit: kind == CatalogKind.crop || kind == CatalogKind.material ? 'unit' : null,
+      ));
+      await create(item(
+        'second-${kind.name}',
+        kind,
+        'Second ${kind.name}',
+        unit: kind == CatalogKind.crop || kind == CatalogKind.material ? 'unit' : null,
+      ));
+    }
+    final entries = await admin.entries();
+    expect(entries.firstWhere((e) => e.id == 'unit').code, 'DVT-000001');
+    for (final kind in kinds.keys) {
+      final prefix = kinds[kind]!;
+      expect(entries.firstWhere((e) => e.id == 'first-${kind.name}').code, '
+    final staff = CompanyCatalogService(
+      repository: repo,
+      subject: AuthorizationSubject(
+        userId: 'staff',
+        membershipId: 'staff',
+        farmId: 'farm',
+        permissionCodes: {PermissionCodes.catalogView},
+        dataScopes: {DataScope.allFarm},
+        validUntil: DateTime.utc(2026, 10, 20),
+      ),
+      clock: () => now,
+    );
+    await expectLater(
+      () => staff.save(
+        item('unit-1', CatalogKind.unit, 'Kilogram'),
+        expectedRevision: null,
+        reason: 'Attempt',
+      ),
+      throwsA(isA<CatalogFailure>()),
+    );
+    expect(await repo.entries('farm'), isEmpty);
+  });
+}
+ + 'prefix-000001');
+      expect(entries.firstWhere((e) => e.id == 'second-${kind.name}').code, '
+    final staff = CompanyCatalogService(
+      repository: repo,
+      subject: AuthorizationSubject(
+        userId: 'staff',
+        membershipId: 'staff',
+        farmId: 'farm',
+        permissionCodes: {PermissionCodes.catalogView},
+        dataScopes: {DataScope.allFarm},
+        validUntil: DateTime.utc(2026, 10, 20),
+      ),
+      clock: () => now,
+    );
+    await expectLater(
+      () => staff.save(
+        item('unit-1', CatalogKind.unit, 'Kilogram'),
+        expectedRevision: null,
+        reason: 'Attempt',
+      ),
+      throwsA(isA<CatalogFailure>()),
+    );
+    expect(await repo.entries('farm'), isEmpty);
+  });
+}
+ + 'prefix-000002');
+    }
+    expect(entries, hasLength(17));
+    expect(entries.map((e) => e.code).toSet(), hasLength(17));
+    expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(17));
+  });
+
+  test('failed create validation cannot consume a code or write audit', () async {
+    await expectLater(
+      () => admin.create(
+        item('invalid', CatalogKind.unit, '  Untrimmed  '),
+        reason: 'Attempt invalid creation',
+      ),
+      throwsA(isA<CatalogFailure>()),
+    );
+    await expectLater(
+      () => admin.create(
+        item('invalid-material', CatalogKind.material, 'No unit'),
+        reason: 'Attempt invalid material',
+      ),
+      throwsA(isA<CatalogFailure>()),
+    );
+    expect(await admin.entries(), isEmpty);
+    expect(await db.query(SqliteCompanyCatalog.auditTable), isEmpty);
+    await create(item('valid', CatalogKind.unit, 'Valid unit'));
+    expect((await admin.entries()).single.code, 'DVT-000001');
+  });
+
   test('unauthorized service cannot allocate a code', () async {
     final staff = CompanyCatalogService(
       repository: repo,
