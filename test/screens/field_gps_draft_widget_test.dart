@@ -28,7 +28,7 @@ class FakeGps extends GpsFieldService {
 Widget fakeMap() => const SizedBox.expand();
 
 Future<void> openMeasurement(WidgetTester tester, Widget screen,
-    void Function(FieldModel?) result) async {
+    void Function(FieldModel?) result, {bool fourthPoint = false}) async {
   await tester.pumpWidget(MaterialApp(home: Scaffold(body: Builder(
     builder: (context) => TextButton(
       onPressed: () async => result(await Navigator.of(context).push<FieldModel>(
@@ -45,8 +45,9 @@ Future<void> openMeasurement(WidgetTester tester, Widget screen,
   addTearDown(gps.positions.close);
   gps.positions.add(point(16.001, 105));
   gps.positions.add(point(16.001, 105.001));
+  if (fourthPoint) gps.positions.add(point(16, 105.001));
   await tester.pump();
-  expect(find.textContaining('3 điểm'), findsOneWidget);
+  expect(find.textContaining(fourthPoint ? '4 điểm' : '3 điểm'), findsOneWidget);
   final stop = tester.widget<FilledButton>(
     find.widgetWithText(FilledButton, 'DỪNG ĐO'),
   ).onPressed! as Future<void> Function();
@@ -196,6 +197,86 @@ void main() {
     expect(provider.fields, isEmpty);
     expect(find.textContaining('Không thể lưu thửa'), findsOneWidget);
     expect(find.byType(FieldGpsMeasureScreen), findsOneWidget);
+  });
+
+
+  for (final existing in [false, true]) {
+    testWidgets('GPS retry retains measurement identity and form values (existing: $existing)', (tester) async {
+      const original = FieldModel(id: 'retry-target', name: 'Existing name',
+        crop: 'Rice', status: 'Active', area: 100);
+      final attempts = <FieldModel>[];
+      Future<void> save(FieldModel field) async {
+        attempts.add(field);
+        if (attempts.length == 1) throw StateError('disk full');
+      }
+      FieldModel? result;
+      final gps = FakeGps();
+      final screen = existing
+          ? FieldGpsMeasureScreen.forField(field: original,
+              gpsOverride: gps, mapBuilder: fakeMap, saveOverride: save)
+          : FieldGpsMeasureScreen(gpsOverride: gps,
+              mapBuilder: fakeMap, saveOverride: save);
+      await openMeasurement(tester, screen, (value) => result = value);
+      await tester.tap(find.byWidgetPredicate((widget) =>
+          widget is IconButton && widget.tooltip == 'Lưu thửa'));
+      await tester.pumpAndSettle();
+      if (!existing) {
+        await tester.enterText(find.byType(TextField).at(0), 'Bản đo đang chờ');
+        await tester.enterText(find.byType(TextField).at(1), 'Lạc');
+      }
+      await tester.tap(find.byKey(const Key('gps-confirm-save')));
+      await tester.pumpAndSettle();
+      expect(result, isNull);
+      expect(attempts, hasLength(1));
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byWidgetPredicate((widget) =>
+          widget is IconButton && widget.tooltip == 'Lưu thửa'));
+      await tester.pumpAndSettle();
+      if (!existing) {
+        expect(tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text,
+          'Bản đo đang chờ');
+        expect(tester.widget<TextField>(find.byType(TextField).at(1)).controller!.text,
+          'Lạc');
+      }
+      await tester.tap(find.byKey(const Key('gps-confirm-save')));
+      await tester.pumpAndSettle();
+      expect(attempts, hasLength(2));
+      expect(attempts.last.id, attempts.first.id);
+      expect(attempts.last.measuredAt, attempts.first.measuredAt);
+      expect(attempts.last.polygon, attempts.first.polygon);
+      expect(attempts.last.name, attempts.first.name);
+      expect(attempts.last.crop, attempts.first.crop);
+      expect(result?.id, attempts.first.id);
+    });
+  }
+
+
+  testWidgets('editing GPS points discards the failed pending snapshot', (tester) async {
+    final attempts = <FieldModel>[];
+    FieldModel? result;
+    await openMeasurement(tester, FieldGpsMeasureScreen(
+      gpsOverride: FakeGps(), mapBuilder: fakeMap,
+      saveOverride: (field) async {
+        attempts.add(field);
+        if (attempts.length == 1) throw StateError('disk full');
+      },
+    ), (value) => result = value, fourthPoint: true);
+    await confirmMeasurement(tester);
+    await tester.pumpAndSettle();
+    expect(result, isNull);
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byWidgetPredicate((widget) =>
+        widget is IconButton && widget.tooltip == 'Xóa điểm cuối'));
+    await tester.pumpAndSettle();
+    await confirmMeasurement(tester);
+    await tester.pumpAndSettle();
+    expect(attempts, hasLength(2));
+    expect(attempts.first.polygon, hasLength(4));
+    expect(attempts.last.polygon, hasLength(3));
+    expect(attempts.last.measuredAt, isNot(attempts.first.measuredAt));
+    expect(result?.polygon, attempts.last.polygon);
   });
 
 }

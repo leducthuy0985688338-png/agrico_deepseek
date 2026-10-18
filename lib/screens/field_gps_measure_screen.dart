@@ -51,6 +51,7 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
   Position? _lastPosition;
   bool _recording = false;
   bool _saving = false;
+  FieldModel? _pendingSave;
 
   double get _area => _gps.calculateAreaSquareMeters(_points);
   double get _perimeter => _gps.calculatePerimeterMeters(_points);
@@ -65,7 +66,7 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
     }
     final current = await _gps.getCurrentPosition();
     if (current == null || !mounted) return;
-    setState(() { _recording = true; _points.clear(); _lastPosition = current; });
+    setState(() { _recording = true; _pendingSave = null; _points.clear(); _lastPosition = current; });
     _addPosition(current);
     await _subscription?.cancel();
     _subscription = _gps.positionStream().listen(_addPosition);
@@ -80,12 +81,12 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
       final distance = Geolocator.distanceBetween(last.latitude, last.longitude, point.latitude, point.longitude);
       if (distance < 2) { setState(() {}); return; }
     }
-    setState(() => _points.add(point));
+    setState(() { _pendingSave = null; _points.add(point); });
     _mapController?.animateCamera(CameraUpdate.newLatLng(point));
   }
 
   Future<void> _stopMeasurement() async { await _subscription?.cancel(); _subscription = null; if (mounted) setState(() => _recording = false); }
-  void _undoLastPoint() { if (_points.isNotEmpty && !_saving) setState(() => _points.removeLast()); }
+  void _undoLastPoint() { if (_points.isNotEmpty && !_saving) setState(() { _pendingSave = null; _points.removeLast(); }); }
 
   Future<void> _saveField() async {
     if (_saving) return;
@@ -107,8 +108,8 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
       return;
     }
     final target = widget.existingField;
-    final nameController = TextEditingController(text: target?.name ?? 'Lô GPS ${DateTime.now().millisecondsSinceEpoch % 10000}');
-    final cropController = TextEditingController(text: target?.crop);
+    final nameController = TextEditingController(text: _pendingSave?.name ?? target?.name ?? 'Lô GPS ${DateTime.now().millisecondsSinceEpoch % 10000}');
+    final cropController = TextEditingController(text: _pendingSave?.crop ?? target?.crop);
     final result = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -134,7 +135,7 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
     if (result != true || !mounted) return;
     setState(() => _saving = true);
     final field = FieldModel(
-      id: target?.id ?? 'GPS-${DateTime.now().millisecondsSinceEpoch}',
+      id: target?.id ?? _pendingSave?.id ?? 'GPS-${DateTime.now().millisecondsSinceEpoch}',
       name: name.isEmpty ? 'Lô chưa đặt tên' : name,
       area: _area,
       crop: crop.isEmpty ? 'Chưa xác định' : crop,
@@ -144,8 +145,9 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
       perimeter: _perimeter,
       measurementMethod: 'gps',
       gpsAccuracy: accuracy,
-      measuredAt: DateTime.now().toUtc(),
+      measuredAt: _pendingSave?.measuredAt ?? DateTime.now().toUtc(),
     );
+    _pendingSave = field;
     try {
       if (widget.persistResult) {
         final save = widget.saveOverride ?? (target == null
