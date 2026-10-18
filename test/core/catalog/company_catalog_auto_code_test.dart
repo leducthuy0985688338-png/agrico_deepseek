@@ -242,6 +242,26 @@ void main() {
     expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(2));
   });
 
+  test('lower historical code never rewinds an active sequence', () async {
+    await create(item('first', CatalogKind.unit, 'First unit'));
+    await create(item('second', CatalogKind.unit, 'Second unit'));
+    await repo.importHistoricalEntry(
+      item('historical-low', CatalogKind.unit, 'Legacy low unit', code: 'DVT-000000'),
+      actorUid: 'migration',
+      reason: 'Import earlier historical unit',
+      occurredAt: now,
+      authorize: () {},
+    );
+    await create(item('third', CatalogKind.unit, 'Third unit'));
+    final entries = await admin.entries();
+    expect(entries.firstWhere((e) => e.id == 'first').code, 'DVT-000001');
+    expect(entries.firstWhere((e) => e.id == 'second').code, 'DVT-000002');
+    expect(entries.firstWhere((e) => e.id == 'historical-low').code, 'DVT-000000');
+    expect(entries.firstWhere((e) => e.id == 'third').code, 'DVT-000003');
+    expect(entries, hasLength(4));
+    expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(4));
+  });
+
   test('higher historical code advances an already started sequence', () async {
     await create(item('first', CatalogKind.unit, 'First unit'));
     await repo.importHistoricalEntry(
