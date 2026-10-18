@@ -104,6 +104,50 @@ void main() {
     expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(2));
   });
 
+  test('historical import rejects empty code without allocating a number', () async {
+    await expectLater(
+      repo.importHistoricalEntry(
+        item('missing-code', CatalogKind.unit, 'Uncoded legacy unit'),
+        actorUid: 'migration',
+        reason: 'Import persisted catalog identity',
+        occurredAt: now,
+        authorize: () {},
+      ),
+      throwsA(isA<CatalogFailure>()),
+    );
+    expect(await admin.entries(), isEmpty);
+    await create(item('first', CatalogKind.unit, 'First new unit'));
+    expect((await admin.entries()).single.code, 'DVT-000001');
+    expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(1));
+  });
+
+  test('historical import rejects duplicate code without changing catalog', () async {
+    await repo.importHistoricalEntry(
+      item('old', CatalogKind.unit, 'Legacy unit', code: 'DVT-000007'),
+      actorUid: 'migration',
+      reason: 'Import persisted catalog identity',
+      occurredAt: now,
+      authorize: () {},
+    );
+    await expectLater(
+      repo.importHistoricalEntry(
+        item('collision', CatalogKind.unit, 'Another legacy unit', code: 'DVT-000007'),
+        actorUid: 'migration',
+        reason: 'Import persisted catalog identity',
+        occurredAt: now,
+        authorize: () {},
+      ),
+      throwsA(isA<CatalogFailure>()),
+    );
+    expect(await admin.entries(), hasLength(1));
+    await create(item('new', CatalogKind.unit, 'New unit'));
+    expect(
+      (await admin.entries()).firstWhere((e) => e.id == 'new').code,
+      'DVT-000008',
+    );
+    expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(2));
+  });
+
   test('historical import preserves code and advances automatic sequence', () async {
     await repo.importHistoricalEntry(
       item('historical', CatalogKind.unit, 'Legacy unit', code: 'DVT-000099'),
