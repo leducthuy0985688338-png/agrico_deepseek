@@ -249,12 +249,15 @@ class SqliteCompanyCatalog implements CompanyCatalogRepository {
       );
       if (units.isEmpty) throw const CatalogFailure('catalog.unitRequired');
     }
+    // Inactivation of a referenced unit is forbidden. Renaming is safe:
+    // projectEntry updates all dependent warehouse unit labels in this same
+    // transaction, preserving stock and movement history.
     if (entry.kind == CatalogKind.unit &&
-        (!entry.active || (old != null && old['name'] != entry.name)) &&
+        !entry.active &&
         (await tx.query(
           entriesTable,
           columns: ['id'],
-          where: !entry.active ? 'unit_id=? AND active=1' : 'unit_id=?',
+          where: 'unit_id=? AND active=1',
           whereArgs: [entry.id],
           limit: 1,
         )).isNotEmpty) {
