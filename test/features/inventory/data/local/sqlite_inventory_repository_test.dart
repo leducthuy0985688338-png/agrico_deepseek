@@ -52,6 +52,16 @@ void main() {
 
   test('production issue atomically creates immutable cost intent', () async {
     await repository.record(movement('receipt', InventoryMovementKind.receipt, 10));
+    await expectLater(
+      repository.recordProductionIssue(
+        movement('invalid-destination', InventoryMovementKind.issue, 2),
+        fieldId: 'field-1',
+        seasonId: 'unknown-season',
+      ),
+      throwsA(isA<StateError>()),
+    );
+    expect((await repository.listByFarm('farm-1')).single.stock, 10);
+    expect(await repository.pendingProductionCosts('farm-1'), isEmpty);
     await repository.recordProductionIssue(
       movement('production-issue', InventoryMovementKind.issue, 4),
       fieldId: 'field-1',
