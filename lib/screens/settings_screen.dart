@@ -233,7 +233,6 @@ class SettingsPage extends StatelessWidget {
                         if (!context.mounted) return;
 
                         final success = await provider.syncAllData(
-                          warehouseItems: const [],
                           machines: machineProvider.machines,
                           employees: employeeProvider.employees,
                           tasks: taskProvider.tasks,
@@ -533,9 +532,6 @@ class SettingsPage extends StatelessWidget {
       summary.restoredGroup(data.employees.length + data.machines.length);
     }
 
-    // Legacy cloud warehouse snapshots are intentionally not restored.
-    // Inventory V2 is authoritative and must retain its movement ledger.
-    summary.preservedGroup();
 
     final validLogs = data.productionLogs.where((log) {
       final season = seasonsById[log.seasonId];
