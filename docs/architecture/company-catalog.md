@@ -60,3 +60,19 @@ All existing AGRICO app business records are currently test data, but deleting t
 **Verification gate:** Integration tests cover all nine prefixes, code uniqueness, rollback, legacy-code high/low watermarks, edit immutability, request approval and the shared work-resource projection. GitHub Actions full regression is required on the final commit. Passing CI does not by itself establish on-device acceptance or prove that all legacy entry points are unreachable.
 
 **Acceptance status:** The shared-catalog core is implemented and covered by automated tests; the production routing/legacy entry-point closure and on-device walkthrough remain explicit acceptance checks. Preserve test data until application-wide signoff and a verified final reset.
+
+
+## Warehouse V2 and production-cost boundary — 2026-10-18
+
+**Verified implementation boundary:** `InventoryCatalogScreen._MovementDialog` submits an `InventoryMovement` containing only farm, item, kind, quantity and timestamp. `InventoryService.record` authorizes the movement; `SqliteInventoryRepository.record` atomically updates stock, assigns a monthly NHAP/XUAT number and inserts the warehouse movement in its SQLite transaction. The warehouse record has no field/season allocation, unit-price snapshot, or production-cost link.
+
+**Separate cost writer:** `MaterialProductionCostSyncService.syncExport` requires a field and resolves a season; it upserts a production cost using source `material` and sourceId `transactionId`. This is a separate cost-database operation, not part of the inventory repository transaction. Do not claim that a V2 stock issue automatically posts production costs or that the two databases commit atomically.
+
+**Required integration before production-cost acceptance:**
+1. Define explicit destinations (field and season) and a stable movement ID for production issues. Distinguish ordinary warehouse issues/transfers from production consumption.
+2. Capture the historical unit price and unit of measure at issue time, rather than reading mutable current item metadata for later cost calculations.
+3. Design a durable outbox/reconciliation boundary between inventory and production-cost databases. Commit stock movement and outbox intent together, then idempotently post cost with the same source ID; retry safely after interruption.
+4. Test insufficient-stock and duplicate-ID rollback (no cost intent), repeated delivery (one cost), delayed retry, changes in catalog price/unit, and partial failure between databases. Include farm/field/season authorization and restore/replay behavior.
+5. Until these gates pass, keep V2 warehouse movements as inventory-only transactions and mark automatic material-cost posting as **not yet integrated**. Do not introduce a best-effort second write from the UI.
+
+**Inventory reporting:** Warehouse date filters and stock opening/closing balances use Laos calendar days (UTC+7), including midnight boundaries; the workbook remains read-only. This report is a stock ledger view, not a production-cost valuation report.
