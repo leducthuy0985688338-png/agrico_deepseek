@@ -355,14 +355,16 @@ void main() {
     () async {
       await save(entry('u', CatalogKind.unit, 'KG', 'kg'));
       await save(entry('c', CatalogKind.crop, 'PEANUT', 'Lạc', unit: 'u'));
-      await expectLater(
-        () => save(entry('u', CatalogKind.unit, 'KG', 'kilogram'), revision: 1),
-        throwsA(isA<CatalogFailure>()),
+      // Renaming a referenced unit is allowed; deactivating it is not.
+      await save(entry('u', CatalogKind.unit, 'KG', 'kilogram'), revision: 1);
+      expect(
+        (await repo.entries('farm')).firstWhere((e) => e.id == 'u').name,
+        'kilogram',
       );
       await expectLater(
         () => save(
-          entry('u', CatalogKind.unit, 'KG', 'kg', active: false),
-          revision: 1,
+          entry('u', CatalogKind.unit, 'KG', 'kilogram', active: false),
+          revision: 2,
         ),
         throwsA(isA<CatalogFailure>()),
       );
