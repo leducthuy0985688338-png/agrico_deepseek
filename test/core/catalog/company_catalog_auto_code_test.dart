@@ -89,6 +89,40 @@ void main() {
     expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(1));
   });
 
+  test('editing preserves generated code and rejects stale revision', () async {
+    await create(item('unit-1', CatalogKind.unit, 'Kilogram'));
+    final original = (await admin.entries()).single;
+    expect(original.code, 'DVT-000001');
+    await admin.save(
+      item('unit-1', CatalogKind.unit, 'Kilogram updated', code: original.code),
+      expectedRevision: original.revision,
+      reason: 'Rename unit',
+    );
+    final updated = (await admin.entries()).single;
+    expect(updated.code, original.code);
+    expect(updated.name, 'Kilogram updated');
+    expect(updated.revision, original.revision + 1);
+    await expectLater(
+      admin.save(
+        item('unit-1', CatalogKind.unit, 'Stale edit', code: original.code),
+        expectedRevision: original.revision,
+        reason: 'Stale update',
+      ),
+      throwsA(isA<CatalogFailure>()),
+    );
+    await expectLater(
+      admin.save(
+        item('unit-1', CatalogKind.unit, 'Changed code', code: 'CUSTOM'),
+        expectedRevision: updated.revision,
+        reason: 'Attempt code change',
+      ),
+      throwsA(isA<CatalogFailure>()),
+    );
+    expect((await admin.entries()).single.code, 'DVT-000001');
+    expect((await admin.entries()).single.name, 'Kilogram updated');
+    expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(2));
+  });
+
   test('concurrent new entries receive distinct sequential codes', () async {
     await Future.wait([
       create(item('unit-1', CatalogKind.unit, 'Kilogram')),
