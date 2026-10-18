@@ -184,6 +184,32 @@ void main() {
       );
     },
   );
+  testWidgets('approval of new catalog entry never offers manual code input', (
+    tester,
+  ) async {
+    repo.suggestions.add(
+      CatalogRequest(
+        id: 'request-1',
+        farmId: 'farm',
+        actorUid: 'worker',
+        kind: CatalogKind.unit,
+        code: 'SUGGESTED',
+        name: 'New unit',
+        reason: 'Required',
+        createdAt: DateTime.utc(2026, 10, 18),
+      ),
+    );
+    await tester.pumpWidget(app(CompanyCatalogScreen(service: service(true))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(Tab).at(1));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('catalog-request-request-1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('catalog-approval-code')), findsNothing);
+    expect(find.byKey(const Key('catalog-approval-name')), findsOneWidget);
+    expect(find.textContaining('Mã danh mục mới sẽ được hệ thống cấp tự động'), findsOneWidget);
+  });
+
   testWidgets('long adopted unit fits a phone dialog', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
