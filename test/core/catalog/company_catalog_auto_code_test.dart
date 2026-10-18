@@ -154,6 +154,22 @@ void main() {
     expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(2));
   });
 
+  test('failed unit creation does not advance unit or material sequences', () async {
+    await create(item('unit-1', CatalogKind.unit, 'Kilogram'));
+    await expectLater(
+      create(item('duplicate-unit', CatalogKind.unit, 'Kilogram')),
+      throwsA(isA<CatalogFailure>()),
+    );
+    await create(item('material-1', CatalogKind.material, 'Fertilizer', unit: 'unit-1'));
+    await create(item('unit-2', CatalogKind.unit, 'Litre'));
+    final entries = await admin.entries();
+    expect(entries.firstWhere((e) => e.id == 'unit-1').code, 'DVT-000001');
+    expect(entries.firstWhere((e) => e.id == 'unit-2').code, 'DVT-000002');
+    expect(entries.firstWhere((e) => e.id == 'material-1').code, 'VT-000001');
+    expect(entries, hasLength(3));
+    expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(3));
+  });
+
   test('failed dependent material creation preserves material sequence', () async {
     await create(item('unit-1', CatalogKind.unit, 'Kilogram'));
     await expectLater(
