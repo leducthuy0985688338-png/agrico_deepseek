@@ -14,14 +14,13 @@ Position point(double latitude, double longitude) => Position(
 );
 
 class FakeGps extends GpsFieldService {
+  final positions = StreamController<Position>(sync: true);
   @override
   Future<bool> ensureLocationReady() async => true;
   @override
   Future<Position?> getCurrentPosition() async => point(16, 105);
   @override
-  Stream<Position> positionStream() => Stream.fromIterable([
-    point(16.001, 105), point(16.001, 105.001),
-  ]);
+  Stream<Position> positionStream() => positions.stream;
 }
 
 Widget fakeMap() => const SizedBox.expand();
@@ -40,11 +39,18 @@ Future<void> openMeasurement(WidgetTester tester, Widget screen,
   await tester.pumpAndSettle();
   await tester.tap(find.text('BẮT ĐẦU ĐO GPS'));
   await tester.pumpAndSettle();
+  final gps = (screen as FieldGpsMeasureScreen).gpsOverride! as FakeGps;
+  addTearDown(gps.positions.close);
+  gps.positions.add(point(16.001, 105));
+  gps.positions.add(point(16.001, 105.001));
+  await tester.pump();
+  expect(find.textContaining('3 điểm'), findsOneWidget);
   await tester.tap(find.text('DỪNG ĐO'));
   await tester.pumpAndSettle();
 }
 
 Future<void> confirmMeasurement(WidgetTester tester) async {
+  expect(tester.widget<IconButton>(find.byTooltip('Lưu thửa')).onPressed, isNotNull);
   await tester.tap(find.byTooltip('Lưu thửa'));
   await tester.pumpAndSettle();
   await tester.tap(find.text('Lưu thửa').last);
@@ -73,7 +79,8 @@ void main() {
     await openMeasurement(tester, FieldGpsMeasureScreen.draft(
       gpsOverride: FakeGps(), mapBuilder: fakeMap,
     ), (value) => result = value);
-    await tester.tap(find.byTooltip('Lưu thửa'));
+    expect(tester.widget<IconButton>(find.byTooltip('Lưu thửa')).onPressed, isNotNull);
+  await tester.tap(find.byTooltip('Lưu thửa'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Hủy'));
     await tester.pumpAndSettle();
