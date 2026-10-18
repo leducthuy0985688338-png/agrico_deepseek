@@ -3,6 +3,8 @@ import 'package:agrico_deepseek/core/catalog/sqlite_company_catalog.dart';
 import 'package:agrico_deepseek/features/inventory/data/local/sqlite_inventory_repository.dart';
 import 'package:agrico_deepseek/features/farm/data/local/sqlite_parcel_work_repository.dart';
 import 'package:agrico_deepseek/core/permissions/authorization.dart';
+import 'package:agrico_deepseek/features/farm/application/parcel_work_service.dart';
+import 'package:agrico_deepseek/features/farm/domain/entities/parcel_work.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -313,6 +315,37 @@ void main() {
       expect(await repo.entries('other-farm'), isEmpty);
     },
   );
+
+  test('work resource registration uses generated shared catalog identities', () async {
+    final work = ParcelWorkService(SqliteParcelWorkRepository(db), catalog: admin);
+    await work.register(
+      admin.subject,
+      const WorkResource(
+        id: 'machine-one',
+        farmId: 'farm',
+        kind: WorkResourceKind.machine,
+        code: 'MANUAL',
+        name: 'Tractor',
+      ),
+    );
+    await work.register(
+      admin.subject,
+      const WorkResource(
+        id: 'worker-one',
+        farmId: 'farm',
+        kind: WorkResourceKind.worker,
+        code: 'MANUAL',
+        name: 'Operator',
+      ),
+    );
+    final entries = await admin.entries();
+    expect(entries.firstWhere((e) => e.id == 'machine-one').code, 'MAY-000001');
+    expect(entries.firstWhere((e) => e.id == 'worker-one').code, 'NS-000001');
+    final resources = await work.resources(admin.subject);
+    expect(resources.firstWhere((e) => e.id == 'machine-one').code, 'MAY-000001');
+    expect(resources.firstWhere((e) => e.id == 'worker-one').code, 'NS-000001');
+    expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(2));
+  });
 
   test('all nine catalog kinds use independent standard prefixes', () async {
     await create(item('unit', CatalogKind.unit, 'Kilogram'));
