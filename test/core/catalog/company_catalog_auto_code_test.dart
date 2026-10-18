@@ -73,6 +73,23 @@ void main() {
     },
   );
 
+  test('service create rejects caller-supplied code and allocates system code', () async {
+    expect(
+      () => admin.create(
+        item('manual', CatalogKind.unit, 'Manual unit', code: 'CUSTOM'),
+        reason: 'New unit',
+      ),
+      throwsA(isA<CatalogFailure>()),
+    );
+    expect(await admin.entries(), isEmpty);
+    await admin.create(
+      item('generated', CatalogKind.unit, 'Generated unit'),
+      reason: 'New unit',
+    );
+    expect((await admin.entries()).single.code, 'DVT-000001');
+    expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(1));
+  });
+
   test('concurrent new entries receive distinct sequential codes', () async {
     await Future.wait([
       create(item('unit-1', CatalogKind.unit, 'Kilogram')),
