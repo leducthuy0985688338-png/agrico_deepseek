@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/field_model.dart';
+import '../models/field_measurement_history.dart';
 import '../services/cloud_service.dart';
 import '../services/field_storage_service.dart';
 
@@ -13,7 +14,9 @@ class FieldProvider extends ChangeNotifier {
       _testDelete = null,
       _testReplace = null,
       _testCloudSave = null,
-      _testCloudDelete = null {
+      _testCloudDelete = null,
+      _testBoundarySave = null,
+      _testCloudMeasurement = null {
     _fields = [];
     _loadPersistedFields();
   }
@@ -26,12 +29,16 @@ class FieldProvider extends ChangeNotifier {
     Future<void> Function(List<FieldModel>)? replaceFields,
     Future<void> Function(FieldModel)? cloudSaveField,
     Future<void> Function(String)? cloudDelete,
+    Future<FieldMeasurementHistory> Function(FieldModel)? saveBoundary,
+    Future<void> Function(FieldMeasurementHistory)? cloudMeasurement,
   }) : _testLoad = loadFields,
        _testSave = saveField,
        _testDelete = deleteField,
        _testReplace = replaceFields,
        _testCloudSave = cloudSaveField,
-       _testCloudDelete = cloudDelete {
+       _testCloudDelete = cloudDelete,
+       _testBoundarySave = saveBoundary,
+       _testCloudMeasurement = cloudMeasurement {
     _fields = [];
     _loadPersistedFields();
   }
@@ -43,6 +50,8 @@ class FieldProvider extends ChangeNotifier {
   final Future<void> Function(List<FieldModel>)? _testReplace;
   final Future<void> Function(FieldModel)? _testCloudSave;
   final Future<void> Function(String)? _testCloudDelete;
+  final Future<FieldMeasurementHistory> Function(FieldModel)? _testBoundarySave;
+  final Future<void> Function(FieldMeasurementHistory)? _testCloudMeasurement;
   Future<void> _cloudTail = Future<void>.value();
   final Map<String, FieldModel> _cloudCandidates = {};
   // Only a successfully persisted restore invalidates older queued deletions.
@@ -153,6 +162,14 @@ class FieldProvider extends ChangeNotifier {
   /// Saves a field to local storage and completes only after SQLite confirms it.
   /// Cloud is scheduled after local success and never delays this Future.
   Future<void> saveFieldLocally(FieldModel field) async {
+    await _saveFieldLocally(
+      field, () => _testSave?.call(field) ?? _storage.saveField(field),
+    );
+  }
+
+  Future<void> _saveFieldLocally(
+    FieldModel field, Future<void> Function() persist,
+  ) async {
     _localMutationVersion++;
     final mutationVersion = _localMutationVersion;
     final index = _fields.indexWhere((existing) => existing.id == field.id);
@@ -167,9 +184,7 @@ class FieldProvider extends ChangeNotifier {
     }
     notifyListeners();
     try {
-      await _enqueueWrite(
-        () => _testSave?.call(field) ?? _storage.saveField(field),
-      );
+      await _enqueueWrite(persist);
     } catch (_) {
       // Never overwrite a newer mutation (including a queued deletion).
       final currentIndex = _fields.indexWhere((item) => item.id == field.id);
@@ -194,6 +209,40 @@ class FieldProvider extends ChangeNotifier {
     }
     _cloudCandidates[field.id] = field;
     _scheduleCloudSync(field.id);
+  }
+
+  /// Persists boundary and measurement atomically, preserving current metadata.
+  Future<void> saveBoundaryLocally(FieldModel boundary) async {
+    final current = getFieldById(boundary.id);
+    if (current == null) throw StateError('Cannot edit a missing field');
+    final field = current.copyWith(
+      polygon: List.unmodifiable(boundary.polygon), area: boundary.area,
+      perimeter: boundary.perimeter, measurementMethod: boundary.measurementMethod,
+      gpsAccuracy: boundary.gpsAccuracy, measuredAt: boundary.measuredAt,
+    );
+    final restoreToken = _cloudRestoreTokens[field.id];
+    late FieldMeasurementHistory measurement;
+    await _saveFieldLocally(field, () async {
+      if (_testBoundarySave != null) {
+        measurement = await _testBoundarySave(field);
+      } else if (_testLoad != null) {
+        throw StateError('An isolated boundary test requires saveBoundary');
+      } else {
+        measurement = await _storage.saveBoundaryLocally(field);
+      }
+    });
+    _enqueueCloud(() async {
+      bool isCurrent() => getFieldById(field.id) != null &&
+          identical(_cloudRestoreTokens[field.id], restoreToken);
+      if (!isCurrent()) return;
+      if (_testCloudMeasurement != null) {
+        await _testCloudMeasurement(measurement);
+      } else if (_testLoad == null) {
+        await CloudService.initialize();
+        if (!isCurrent()) return;
+        await CloudService.saveFieldMeasurement(measurement);
+      }
+    });
   }
 
   Future<void> deleteField(String id) async {
