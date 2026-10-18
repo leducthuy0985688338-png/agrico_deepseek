@@ -242,6 +242,24 @@ void main() {
     expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(2));
   });
 
+  test('higher historical code advances an already started sequence', () async {
+    await create(item('first', CatalogKind.unit, 'First unit'));
+    await repo.importHistoricalEntry(
+      item('historical-high', CatalogKind.unit, 'Legacy high unit', code: 'DVT-000250'),
+      actorUid: 'migration',
+      reason: 'Import later historical unit',
+      occurredAt: now,
+      authorize: () {},
+    );
+    await create(item('after-high', CatalogKind.unit, 'Next unit'));
+    final entries = await admin.entries();
+    expect(entries.firstWhere((e) => e.id == 'first').code, 'DVT-000001');
+    expect(entries.firstWhere((e) => e.id == 'historical-high').code, 'DVT-000250');
+    expect(entries.firstWhere((e) => e.id == 'after-high').code, 'DVT-000251');
+    expect(entries, hasLength(3));
+    expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(3));
+  });
+
   test(
     'existing manual codes are respected when allocating next code',
     () async {
