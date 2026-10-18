@@ -174,6 +174,25 @@ class SqliteInventoryRepository implements InventoryRepository {
         fieldId.trim().isEmpty || seasonId.trim().isEmpty) {
       throw const FormatException('Production issue requires a field and season.');
     }
+    // Legacy production costs reference fields and production_seasons.
+    // Until their identities are mapped to V2 land_parcels, never accept
+    // arbitrary strings as a production cost destination.
+    final tables = await database.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type='table' "
+      "AND name IN ('fields', 'production_seasons')",
+    );
+    if (tables.length != 2) {
+      throw StateError('Production field/season catalog is unavailable.');
+    }
+    final destination = await database.rawQuery(
+      'SELECT s.id FROM production_seasons s '
+      'JOIN fields f ON f.id = s.field_id '
+      'WHERE f.id = ? AND s.id = ? LIMIT 1',
+      [fieldId, seasonId],
+    );
+    if (destination.isEmpty) {
+      throw StateError('Production season does not belong to the selected field.');
+    }
     await _record(movement, fieldId: fieldId, seasonId: seasonId);
   }
 
