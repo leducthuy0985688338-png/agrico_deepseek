@@ -224,6 +224,14 @@ class CompanyCatalogService {
     required String reason,
   }) {
     require(PermissionCodes.catalogManage);
+    if (createEntry != null) {
+      if (entryId != null || createEntry.code.isNotEmpty) {
+        throw const CatalogFailure('catalog.invalid');
+      }
+      if (createEntry.farmId != subject.farmId) {
+        throw const CatalogFailure('catalog.denied');
+      }
+    }
     return repository.resolve(
       farmId: subject.farmId,
       requestId: requestId,
