@@ -21,7 +21,6 @@ class _FieldManualMeasureScreenState extends State<FieldManualMeasureScreen> {
   final _fieldProvider = FieldProvider();
   final _storage = FieldStorageService();
   final List<LatLng> _points = [];
-  GoogleMapController? _mapController;
   _MeasureMode _mode = _MeasureMode.field;
   bool _saving = false;
 
@@ -155,7 +154,6 @@ class _FieldManualMeasureScreenState extends State<FieldManualMeasureScreen> {
           initialCameraPosition: const CameraPosition(target: LatLng(16.55, 104.75), zoom: 14),
           mapType: MapType.satellite, myLocationEnabled: true, myLocationButtonEnabled: true, compassEnabled: true,
           markers: _markers, polylines: _lines, polygons: _polygon,
-          onMapCreated: (controller) => _mapController = controller,
           onTap: _addPoint,
         ),
         Positioned(left: 12, right: 12, top: 12, child: Card(child: Padding(

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../providers/machine_provider.dart';
 import '../providers/field_provider.dart';
 import '../models/machine_model.dart';
-import '../models/field_model.dart';
 
 class MachineAssignmentScreen extends StatefulWidget {
   const MachineAssignmentScreen({super.key});

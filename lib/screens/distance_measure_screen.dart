@@ -16,7 +16,6 @@ class _DistanceMeasureScreenState extends State<DistanceMeasureScreen> {
   final _storage = FieldStorageService();
   final List<LatLng> _points = [];
   final List<double> _segments = [];
-  GoogleMapController? _mapController;
   bool _saving = false;
 
   double get _total => _segments.fold(0, (sum, value) => sum + value);
@@ -117,7 +116,6 @@ class _DistanceMeasureScreenState extends State<DistanceMeasureScreen> {
                 ),
             },
             onTap: _addPoint,
-            onMapCreated: (controller) => _mapController = controller,
           ),
           Positioned(
             left: 12,
