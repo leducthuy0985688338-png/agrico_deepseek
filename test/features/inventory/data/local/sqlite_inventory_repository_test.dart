@@ -42,6 +42,38 @@ void main() {
     occurredAt: DateTime.utc(2026, 9, 29),
   );
 
+  test('production issue atomically creates immutable cost intent', () async {
+    await repository.record(movement('receipt', InventoryMovementKind.receipt, 10));
+    await repository.recordProductionIssue(
+      movement('production-issue', InventoryMovementKind.issue, 4),
+      fieldId: 'field-1',
+      seasonId: 'season-1',
+    );
+    final intents = await repository.pendingProductionCosts('farm-1');
+    expect(intents, hasLength(1));
+    expect(intents.single['movement_id'], 'production-issue');
+    expect(intents.single['quantity'], 4);
+    expect(intents.single['unit_price'], 20000);
+    expect(intents.single['field_id'], 'field-1');
+    expect((await repository.listByFarm('farm-1')).single.stock, 6);
+
+    await expectLater(
+      repository.recordProductionIssue(
+        movement('failed-issue', InventoryMovementKind.issue, 7),
+        fieldId: 'field-1',
+        seasonId: 'season-1',
+      ),
+      throwsA(isA<StateError>()),
+    );
+    expect(await repository.pendingProductionCosts('farm-1'), hasLength(1));
+    expect((await repository.listByFarm('farm-1')).single.stock, 6);
+
+    await repository.acknowledgeProductionCost('farm-1', 'production-issue');
+    expect(await repository.pendingProductionCosts('farm-1'), isEmpty);
+    expect(await database.query(SqliteInventoryRepository.costOutboxTable),
+        hasLength(1));
+  });
+
   test('registering an existing projected item updates metadata without resetting stock', () async {
     await repository.record(movement('in-before-register', InventoryMovementKind.receipt, 7));
     await repository.register(
