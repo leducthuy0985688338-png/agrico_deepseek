@@ -89,16 +89,34 @@ class SqliteInventoryRepository implements InventoryRepository {
           throw const CatalogFailure('catalog.invalidSelection');
         }
       }
-      await tx.insert(itemsTable, {
-        'id': item.id,
-        'farm_id': item.farmId,
-        'code': item.code,
-        'name': item.name,
-        'unit': item.unit,
-        'unit_price': item.unitPrice,
-        'supplier': item.supplier,
-        'stock': item.stock,
-      }, conflictAlgorithm: ConflictAlgorithm.abort);
+      // The shared catalog projects a zero-stock inventory row when a material
+      // is created. Registration configures that same row, never inserts a
+      // second identity or resets stock and movement history.
+      final projected = await tx.query(
+        itemsTable,
+        where: 'id=? AND farm_id=? AND code=? AND name=? AND unit=?',
+        whereArgs: [item.id, item.farmId, item.code, item.name, item.unit],
+        limit: 1,
+      );
+      if (projected.isNotEmpty) {
+        await tx.update(
+          itemsTable,
+          {'unit_price': item.unitPrice, 'supplier': item.supplier},
+          where: 'id=? AND farm_id=?',
+          whereArgs: [item.id, item.farmId],
+        );
+      } else {
+        await tx.insert(itemsTable, {
+          'id': item.id,
+          'farm_id': item.farmId,
+          'code': item.code,
+          'name': item.name,
+          'unit': item.unit,
+          'unit_price': item.unitPrice,
+          'supplier': item.supplier,
+          'stock': item.stock,
+        }, conflictAlgorithm: ConflictAlgorithm.abort);
+      }
     });
   }
 
