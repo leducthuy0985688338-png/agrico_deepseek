@@ -1,6 +1,7 @@
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 import '../providers/dashboard_provider.dart';
+import '../providers/warehouse_provider.dart';
 import '../providers/field_provider.dart';
 import '../providers/cloud_sync_provider.dart';
 import '../providers/machine_provider.dart';
@@ -17,6 +18,9 @@ import '../providers/production_cost_provider.dart';
 List<SingleChildWidget> buildLegacyProviders() => [
         ChangeNotifierProvider(create: (_) => CloudSyncProvider()),
         ChangeNotifierProvider.value(value: FieldProvider()),
+        // SettingsPage still references the legacy cloud warehouse restore.
+        // Keep its provider scoped until that restore path is retired.
+        ChangeNotifierProvider(create: (_) => WarehouseProvider()),
         ChangeNotifierProvider(create: (_) => MachineProvider()),
         ChangeNotifierProvider(create: (_) => EmployeeProvider()),
         ChangeNotifierProvider(create: (_) => TaskProvider()),
