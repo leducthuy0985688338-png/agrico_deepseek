@@ -62,6 +62,8 @@ class MaterialProductionCostSyncService {
     );
 
     await _costDatabase.upsert(record);
-    return record;
+    // Another delivery can win the unique source constraint while this one
+    // waits for SQLite. Always return the persisted winner.
+    return await _costDatabase.getBySource('material', transactionId) ?? record;
   }
 }
