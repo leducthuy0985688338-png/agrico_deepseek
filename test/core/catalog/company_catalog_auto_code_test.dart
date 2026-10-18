@@ -105,8 +105,8 @@ void main() {
   });
 
   test('historical import rejects empty code without allocating a number', () async {
-    await expectLater(
-      repo.importHistoricalEntry(
+    expect(
+      () => repo.importHistoricalEntry(
         item('missing-code', CatalogKind.unit, 'Uncoded legacy unit'),
         actorUid: 'migration',
         reason: 'Import persisted catalog identity',
