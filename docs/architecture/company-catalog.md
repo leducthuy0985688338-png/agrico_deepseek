@@ -2,7 +2,7 @@
 
 ## Scope
 
-The authenticated Settings route provides units, crops, machines, workers, materials, task types, suppliers, income categories and expense categories. This is a local SQLite checkpoint. Cross-device transport, server authorization for catalog mutations and conflict reconciliation are deferred. Firebase Rules remain unchanged. The UI states this limitation.
+The authenticated Settings route provides units, crops, machines, workers, materials, task types, suppliers, income categories and expense categories. The authoritative catalog and its business projections are stored in local SQLite. Catalog synchronization has separate transport, verification and conflict-handling components; do not infer that other V2 business modules are cloud-synchronized.
 
 ## Rights
 
@@ -16,7 +16,7 @@ The authenticated Settings route provides units, crops, machines, workers, mater
 
 `company_catalog_entries_v1`, `company_catalog_requests_v1`, `company_catalog_audit_v1` and `company_catalog_bootstrap_v1` form one optional backup group. Partial groups are rejected. Restoring a pre-A04 backup clears live catalog tables, allowing the restored business snapshots to be adopted subsequently.
 
-Codes use uppercase ASCII letters/digits/underscore/hyphen, at most 40 characters. The UI normalizes new codes to uppercase. Code and farm/kind identity are immutable after creation. Farm/kind/code and normalized farm/kind/name are unique. Revision comparison prevents overwriting a newer snapshot.
+New user-facing catalog entries receive automatically allocated codes in the same SQLite transaction as creation. Prefixes are DVT (unit), CT (crop), MAY (machine), NS (worker), VT (material), CV (task type), NCC (supplier), DMTHU (income category), and DMCHI (expense category). Sequences are farm- and kind-scoped; rollback does not consume a code, and retained historical codes are considered when choosing the next number. Caller-provided codes are rejected by the dedicated service.create path. Historical imports use the separate repository.importHistoricalEntry path; the older service.save API is still present for compatibility and must not be treated as a new-record entry point. Stored codes use uppercase ASCII letters/digits/underscore/hyphen, at most 40 characters. Code and farm/kind identity are immutable after creation. Farm/kind/code and normalized farm/kind/name are unique. Revision comparison prevents overwriting a newer snapshot.
 
 Crop and material masters require an active unit in the same farm. A referenced unit cannot be renamed; a unit used by active masters cannot be deactivated. Material units cannot be changed after creation: no automatic conversion of historical quantities or stocks is attempted. Master creation/update, resource projections and append-only repository audit writes share one transaction. Audit records have no update/delete repository API.
 
@@ -28,8 +28,12 @@ Crop records still retain historical type/unit name snapshots. Authenticated cro
 
 ## Suggestions
 
-Suggestions are pending requests, not master records. A manager creates/selects an active matching-kind master and resolves the request with a reason; rejection requires a reason. Approval of one's own suggestion is prohibited. Resolving an already resolved request is rejected. Entry save and request resolution are separate explicit actions, each with audit records; resolution never silently creates a master.
+Suggestions are pending requests, not master records. A manager creates/selects an active matching-kind master and resolves the request with a reason; rejection requires a reason. Approval of one's own suggestion is prohibited. Resolving an already resolved request is rejected. Entry save and request resolution are separate explicit actions, each with audit records. Approval may create a new master with an automatically allocated code inside the same transaction, or link to an existing active master. Self-approval is prohibited.
 
 ## Verification
 
 New tests cover real SQLite uniqueness, stale revisions, transaction rollback on expired access, unit constraints, stable projections, one-time adoption, crop selection validation, request ownership and resolution, and backup/restore. Flutter widget tests cover admin creation, employee suggestions, dropdown selection and expired sessions. Run scoped analysis/tests and the complete Flutter suite on the project's supported Windows toolchain before device verification.
+
+## Test-data reset boundary (not yet executed)
+
+All existing AGRICO app business records are currently test data, but deleting them is a separate, explicitly scoped operation, not a side effect of catalog changes or migrations. Before a reset, identify the actual local database(s), relevant farm(s), dependent business tables and audit/sequence implications; export a restorable snapshot and verify it; then delete in dependency order inside a transaction and reinitialize only the approved test-data scope. Do not delete local backup archives, application source, schema migrations, identity/permission configuration, or unrelated module data. Do not reset catalog codes independently while dependent inventory, crop or work-resource records remain. GitHub changes do not directly delete the user's Windows/device SQLite data.
