@@ -526,6 +526,31 @@ class SqliteCompanyCatalog implements CompanyCatalogRepository {
     }
   }
 
+  /// Imports a pre-existing catalog identity with its original code.
+  ///
+  /// This is deliberately separate from the normal user-facing creation flow:
+  /// migration/restore callers must explicitly choose historical-code import.
+  /// Identity, uniqueness and audit rules remain enforced by [save].
+  Future<void> importHistoricalEntry(
+    CatalogEntry entry, {
+    required String actorUid,
+    required String reason,
+    required DateTime occurredAt,
+    required void Function() authorize,
+  }) {
+    if (entry.code.isEmpty) {
+      throw const CatalogFailure('catalog.invalid');
+    }
+    return save(
+      entry,
+      expectedRevision: null,
+      actorUid: actorUid,
+      reason: reason,
+      occurredAt: occurredAt,
+      authorize: authorize,
+    );
+  }
+
   /// One-time adoption of already persisted values; never create entries from new form input.
   Future<void> adoptExisting(String farmId) async {
     await database.transaction((tx) async {
