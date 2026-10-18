@@ -108,31 +108,19 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
       return;
     }
     final target = widget.existingField;
-    final nameController = TextEditingController(text: _pendingSave?.name ?? target?.name ?? 'Lô GPS ${DateTime.now().millisecondsSinceEpoch % 10000}');
-    final cropController = TextEditingController(text: _pendingSave?.crop ?? target?.crop);
-    final result = await showDialog<bool>(
+    final result = await showDialog<({String name, String crop})>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text(target == null ? 'Lưu thửa GPS' : 'Cập nhật ranh giới GPS'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          if (target == null) ...[
-          TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Tên lô')),
-          const SizedBox(height: 12),
-          TextField(controller: cropController, decoration: const InputDecoration(labelText: 'Cây trồng')),
-          ] else Text(target.name),
-          const SizedBox(height: 12),
-          Align(alignment: Alignment.centerLeft, child: Text('${_area.toStringAsFixed(1)} m² • ${(_area / 10000).toStringAsFixed(4)} ha\nChu vi ${_perimeter.toStringAsFixed(1)} m\nĐộ chính xác cuối: ${(accuracy ?? 0).toStringAsFixed(1)} m')),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Hủy')),
-          FilledButton(key: const Key('gps-confirm-save'), onPressed: () => Navigator.pop(context, true), child: Text(target == null ? 'Lưu thửa' : 'Lưu ranh giới')),
-        ],
+      builder: (_) => _GpsMeasurementDialog(
+        existingField: target,
+        initialName: _pendingSave?.name ?? target?.name ??
+            'Lô GPS ${DateTime.now().millisecondsSinceEpoch % 10000}',
+        initialCrop: _pendingSave?.crop ?? target?.crop ?? '',
+        area: _area, perimeter: _perimeter, accuracy: accuracy,
       ),
     );
-    final name = nameController.text.trim();
-    final crop = cropController.text.trim();
-    nameController.dispose(); cropController.dispose();
-    if (result != true || !mounted) return;
+    if (result == null || !mounted) return;
+    final name = result.name;
+    final crop = result.crop;
     setState(() => _saving = true);
     final field = FieldModel(
       id: target?.id ?? _pendingSave?.id ?? 'GPS-${DateTime.now().millisecondsSinceEpoch}',
@@ -200,4 +188,63 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
       ]),
     );
   }
+}
+
+
+class _GpsMeasurementDialog extends StatefulWidget {
+  const _GpsMeasurementDialog({required this.existingField,
+    required this.initialName, required this.initialCrop,
+    required this.area, required this.perimeter, required this.accuracy});
+
+  final FieldModel? existingField;
+  final String initialName;
+  final String initialCrop;
+  final double area;
+  final double perimeter;
+  final double? accuracy;
+
+  @override
+  State<_GpsMeasurementDialog> createState() => _GpsMeasurementDialogState();
+}
+
+class _GpsMeasurementDialogState extends State<_GpsMeasurementDialog> {
+  late final _name = TextEditingController(text: widget.initialName);
+  late final _crop = TextEditingController(text: widget.initialCrop);
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _crop.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.existingField == null
+        ? 'Lưu thửa GPS' : 'Cập nhật ranh giới GPS'),
+    content: SingleChildScrollView(child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (widget.existingField == null) ...[
+          TextField(controller: _name,
+            decoration: const InputDecoration(labelText: 'Tên lô')),
+          const SizedBox(height: 12),
+          TextField(controller: _crop,
+            decoration: const InputDecoration(labelText: 'Cây trồng')),
+        ] else Text(widget.existingField!.name),
+        const SizedBox(height: 12),
+        Align(alignment: Alignment.centerLeft, child: Text(
+          '${widget.area.toStringAsFixed(1)} m² • ${(widget.area / 10000).toStringAsFixed(4)} ha\n'
+          'Chu vi ${widget.perimeter.toStringAsFixed(1)} m\n'
+          'Độ chính xác cuối: ${(widget.accuracy ?? 0).toStringAsFixed(1)} m')),
+      ],
+    )),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy')),
+      FilledButton(key: const Key('gps-confirm-save'),
+        onPressed: () => Navigator.pop(context,
+          (name: _name.text.trim(), crop: _crop.text.trim())),
+        child: Text(widget.existingField == null ? 'Lưu thửa' : 'Lưu ranh giới')),
+    ],
+  );
 }
