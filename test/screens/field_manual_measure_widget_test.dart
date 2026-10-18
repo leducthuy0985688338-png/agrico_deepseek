@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:agrico_deepseek/screens/field_manual_measure_screen.dart';
 import 'package:agrico_deepseek/models/field_model.dart';
 import 'package:agrico_deepseek/models/distance_measurement.dart';
@@ -36,6 +35,8 @@ void main() {
     expect(attempts, hasLength(2));
     expect(attempts[0].id, attempts[1].id);
     expect(attempts[0].measuredAt, attempts[1].measuredAt);
+    expect(attempts[1].name, 'Thửa lạc');
+    expect(attempts[1].crop, 'Lạc');
     tapMap!(const LatLng(16,105.001));
     await tester.pump();
     await tester.tap(find.text('LƯU THỬA'));
@@ -44,6 +45,7 @@ void main() {
     await tester.tap(find.byKey(const Key('manual-confirm-save')));
     await tester.pumpAndSettle();
     expect(attempts[2].id, isNot(attempts[1].id));
+    expect(attempts[2].name, isNot('Thửa lạc'));
     expect(tester.takeException(), isNull);
   });
 
