@@ -324,6 +324,24 @@ class SqliteCompanyCatalog implements CompanyCatalogRepository {
         );
       }
     }
+    if (e.kind == CatalogKind.unit) {
+      // A unit rename must update material projections atomically. Preserve
+      // warehouse stock, valuation settings and movement history.
+      final linkedMaterials = await tx.query(
+        entriesTable,
+        columns: ['id'],
+        where: 'farm_id=? AND kind=? AND unit_id=?',
+        whereArgs: [e.farmId, CatalogKind.material.name, e.id],
+      );
+      for (final material in linkedMaterials) {
+        await tx.update(
+          'inventory_items_v2',
+          {'unit': e.name},
+          where: 'id=? AND farm_id=?',
+          whereArgs: [material['id'], e.farmId],
+        );
+      }
+    }
     if (e.kind == CatalogKind.material) {
       final unit = (await tx.query(
         entriesTable,
