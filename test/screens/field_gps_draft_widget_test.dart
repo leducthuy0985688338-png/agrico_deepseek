@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:agrico_deepseek/models/field_model.dart';
+import 'package:agrico_deepseek/models/field_measurement_history.dart';
+import 'package:agrico_deepseek/providers/field_provider.dart';
 import 'package:agrico_deepseek/screens/field_gps_measure_screen.dart';
 import 'package:agrico_deepseek/services/gps_field_service.dart';
 import 'package:flutter/material.dart';
@@ -59,7 +61,7 @@ Future<void> confirmMeasurement(WidgetTester tester) async {
   await tester.tap(find.byWidgetPredicate((widget) =>
       widget is IconButton && widget.tooltip == 'Lưu thửa'));
   await tester.pumpAndSettle();
-  await tester.tap(find.text('Lưu thửa').last);
+  await tester.tap(find.byKey(const Key('gps-confirm-save')));
   await tester.pump();
 }
 
@@ -133,4 +135,67 @@ void main() {
     expect(tester.widget<IconButton>(find.byWidgetPredicate((widget) =>
       widget is IconButton && widget.tooltip == 'Lưu thửa')).onPressed, isNotNull);
   });
+
+  testWidgets('remeasure updates original identity and preserves current metadata', (tester) async {
+    const original = FieldModel(id: 'existing-field', name: 'Original',
+      crop: 'Rice', status: 'Active', area: 100, photoPaths: ['shared.jpg']);
+    FieldModel? persisted;
+    final gate = Completer<void>();
+    final provider = FieldProvider.forTest(
+      loadFields: () async => [original.copyWith(name: 'Latest name', crop: 'Peanut')],
+      saveField: (_) async {}, deleteField: (_) async {},
+      saveBoundary: (field) async {
+        persisted = field;
+        await gate.future;
+        return FieldMeasurementHistory(id: 'measurement', fieldId: field.id,
+          fieldName: field.name, measurementMethod: field.measurementMethod,
+          polygon: field.polygon, area: field.area, perimeter: field.perimeter,
+          measuredAt: field.measuredAt!, createdAt: field.measuredAt!);
+      },
+    );
+    addTearDown(provider.dispose);
+    FieldModel? result;
+    await openMeasurement(tester, FieldGpsMeasureScreen.forField(
+      field: original, gpsOverride: FakeGps(), mapBuilder: fakeMap,
+      saveOverride: provider.saveBoundaryLocally,
+    ), (value) => result = value);
+    await confirmMeasurement(tester);
+    expect(result, isNull);
+    expect(persisted?.id, original.id);
+    expect(persisted?.name, 'Latest name');
+    expect(persisted?.crop, 'Peanut');
+    expect(persisted?.status, original.status);
+    expect(persisted?.photoPaths, original.photoPaths);
+    expect(persisted?.polygon, hasLength(3));
+    expect(provider.fields, hasLength(1));
+    gate.complete();
+    await tester.pumpAndSettle();
+    await provider.cloudIdleForTest;
+    expect(result?.id, original.id);
+    expect(provider.fields.single.id, original.id);
+  });
+
+  testWidgets('remeasure of deleted field fails without creating a replacement', (tester) async {
+    const original = FieldModel(id: 'deleted-field', name: 'Deleted',
+      crop: 'Rice', status: 'Active', area: 100);
+    var writes = 0;
+    final provider = FieldProvider.forTest(
+      loadFields: () async => [], saveField: (_) async { writes++; },
+      deleteField: (_) async {},
+    );
+    addTearDown(provider.dispose);
+    FieldModel? result;
+    await openMeasurement(tester, FieldGpsMeasureScreen.forField(
+      field: original, gpsOverride: FakeGps(), mapBuilder: fakeMap,
+      saveOverride: provider.saveBoundaryLocally,
+    ), (value) => result = value);
+    await confirmMeasurement(tester);
+    await tester.pumpAndSettle();
+    expect(result, isNull);
+    expect(writes, 0);
+    expect(provider.fields, isEmpty);
+    expect(find.textContaining('Không thể lưu thửa'), findsOneWidget);
+    expect(find.byType(FieldGpsMeasureScreen), findsOneWidget);
+  });
+
 }

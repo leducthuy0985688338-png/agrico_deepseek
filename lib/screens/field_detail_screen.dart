@@ -115,6 +115,12 @@ class _FieldDetailScreenState extends State<FieldDetailScreen> {
     if (changed == true && mounted) setState(() {});
   }
 
+  Future<void> _remeasureField() async {
+    final measured = await Navigator.push<FieldModel>(context,
+      MaterialPageRoute(builder: (_) => FieldGpsMeasureScreen.forField(field: _field)));
+    if (measured != null && mounted) setState(() {});
+  }
+
   Future<void> _openSeasons() async {
     await Navigator.push(context, MaterialPageRoute(builder: (_) => ProductionSeasonScreen(field: _field)));
     await _loadProductionProfile();
@@ -178,7 +184,7 @@ class _FieldDetailScreenState extends State<FieldDetailScreen> {
         foregroundColor: Colors.white,
         actions: [
           IconButton(tooltip: 'Sửa thông tin', onPressed: _editField, icon: const Icon(Icons.edit)),
-          IconButton(tooltip: 'Đo/cập nhật thửa', onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FieldGpsMeasureScreen())), icon: const Icon(Icons.gps_fixed)),
+          IconButton(tooltip: 'Đo/cập nhật thửa', onPressed: _remeasureField, icon: const Icon(Icons.gps_fixed)),
         ],
       ),
       body: RefreshIndicator(

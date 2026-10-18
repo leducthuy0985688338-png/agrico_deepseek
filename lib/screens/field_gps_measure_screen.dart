@@ -13,7 +13,17 @@ class FieldGpsMeasureScreen extends StatefulWidget {
     this.gpsOverride,
     this.mapBuilder,
     this.saveOverride,
-  });
+  }) : existingField = null;
+
+  /// Remeasures an existing legacy field without creating another identity.
+  const FieldGpsMeasureScreen.forField({
+    super.key,
+    required FieldModel field,
+    this.gpsOverride,
+    this.mapBuilder,
+    this.saveOverride,
+  }) : existingField = field,
+       persistResult = true;
 
   /// Returns a measurement for the caller's preview/commit workflow.
   const FieldGpsMeasureScreen.draft({
@@ -21,8 +31,10 @@ class FieldGpsMeasureScreen extends StatefulWidget {
     this.gpsOverride,
     this.mapBuilder,
   }) : persistResult = false,
+       existingField = null,
        saveOverride = null;
 
+  final FieldModel? existingField;
   final bool persistResult;
   final GpsFieldService? gpsOverride;
   final Widget Function()? mapBuilder;
@@ -94,22 +106,25 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('GPS đang sai số ${accuracy.toStringAsFixed(1)} m. Hãy chờ tín hiệu tốt hơn.')));
       return;
     }
-    final nameController = TextEditingController(text: 'Lô GPS ${DateTime.now().millisecondsSinceEpoch % 10000}');
-    final cropController = TextEditingController();
+    final target = widget.existingField;
+    final nameController = TextEditingController(text: target?.name ?? 'Lô GPS ${DateTime.now().millisecondsSinceEpoch % 10000}');
+    final cropController = TextEditingController(text: target?.crop);
     final result = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Lưu thửa GPS'),
+        title: Text(target == null ? 'Lưu thửa GPS' : 'Cập nhật ranh giới GPS'),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
+          if (target == null) ...[
           TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Tên lô')),
           const SizedBox(height: 12),
           TextField(controller: cropController, decoration: const InputDecoration(labelText: 'Cây trồng')),
+          ] else Text(target.name),
           const SizedBox(height: 12),
           Align(alignment: Alignment.centerLeft, child: Text('${_area.toStringAsFixed(1)} m² • ${(_area / 10000).toStringAsFixed(4)} ha\nChu vi ${_perimeter.toStringAsFixed(1)} m\nĐộ chính xác cuối: ${(accuracy ?? 0).toStringAsFixed(1)} m')),
         ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Hủy')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Lưu thửa')),
+          FilledButton(key: const Key('gps-confirm-save'), onPressed: () => Navigator.pop(context, true), child: Text(target == null ? 'Lưu thửa' : 'Lưu ranh giới')),
         ],
       ),
     );
@@ -119,11 +134,12 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
     if (result != true || !mounted) return;
     setState(() => _saving = true);
     final field = FieldModel(
-      id: 'GPS-${DateTime.now().millisecondsSinceEpoch}',
+      id: target?.id ?? 'GPS-${DateTime.now().millisecondsSinceEpoch}',
       name: name.isEmpty ? 'Lô chưa đặt tên' : name,
       area: _area,
       crop: crop.isEmpty ? 'Chưa xác định' : crop,
-      status: 'Mới đo GPS',
+      status: target?.status ?? 'Mới đo GPS',
+      photoPaths: target?.photoPaths ?? const [],
       polygon: List.unmodifiable(_points),
       perimeter: _perimeter,
       measurementMethod: 'gps',
@@ -132,8 +148,9 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
     );
     try {
       if (widget.persistResult) {
-        final save = widget.saveOverride ??
-            FieldProvider().createMeasuredFieldLocally;
+        final save = widget.saveOverride ?? (target == null
+            ? FieldProvider().createMeasuredFieldLocally
+            : FieldProvider().saveBoundaryLocally);
         await save(field);
       }
       if (!mounted) return;
