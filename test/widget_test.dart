@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'package:agrico_deepseek/main.dart';
+import 'package:agrico_deepseek/core/auth/company_access_gate.dart';
 import 'package:agrico_deepseek/providers/cloud_sync_provider.dart';
 import 'package:agrico_deepseek/providers/dashboard_provider.dart';
 import 'package:agrico_deepseek/providers/field_provider.dart';
@@ -25,6 +26,8 @@ void main() {
 
     // Kiểm tra MyApp đã được render.
     expect(find.byType(MyApp), findsOneWidget);
+    expect(find.byType(CompanyAccessGate), findsOneWidget);
+    expect(find.byType(DashboardScreen), findsNothing);
 
     final materialAppContext = tester.element(find.byType(MaterialApp));
     expect(
