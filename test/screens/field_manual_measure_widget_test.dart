@@ -44,6 +44,9 @@ void main() {
     expect(attempts[1].crop, 'Lạc');
     tapMap!(const LatLng(16,105.001));
     await tester.pump();
+    // The preceding failed retry also leaves a SnackBar over the save action.
+    ScaffoldMessenger.of(tester.element(find.byType(Scaffold))).hideCurrentSnackBar();
+    await tester.pumpAndSettle();
     await tester.tap(find.text('LƯU THỬA'));
     await tester.pumpAndSettle();
     expect(find.text('Thửa lạc'), findsNothing);
