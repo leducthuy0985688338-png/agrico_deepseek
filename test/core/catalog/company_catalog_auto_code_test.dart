@@ -182,8 +182,12 @@ void main() {
   test(
     'existing manual codes are respected when allocating next code',
     () async {
-      await create(
+      await repo.importHistoricalEntry(
         item('old', CatalogKind.unit, 'Old unit', code: 'DVT-000099'),
+        actorUid: 'migration',
+        reason: 'Adopt existing unit code',
+        occurredAt: now,
+        authorize: () {},
       );
       await create(item('new', CatalogKind.unit, 'New unit'));
       expect(
