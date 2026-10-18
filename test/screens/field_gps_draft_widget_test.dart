@@ -50,8 +50,10 @@ Future<void> openMeasurement(WidgetTester tester, Widget screen,
 }
 
 Future<void> confirmMeasurement(WidgetTester tester) async {
-  expect(tester.widget<IconButton>(find.byTooltip('Lưu thửa')).onPressed, isNotNull);
-  await tester.tap(find.byTooltip('Lưu thửa'));
+  expect(tester.widget<IconButton>(find.byWidgetPredicate((widget) =>
+      widget is IconButton && widget.tooltip == 'Lưu thửa')).onPressed, isNotNull);
+  await tester.tap(find.byWidgetPredicate((widget) =>
+      widget is IconButton && widget.tooltip == 'Lưu thửa'));
   await tester.pumpAndSettle();
   await tester.tap(find.text('Lưu thửa').last);
   await tester.pump();
@@ -79,8 +81,10 @@ void main() {
     await openMeasurement(tester, FieldGpsMeasureScreen.draft(
       gpsOverride: FakeGps(), mapBuilder: fakeMap,
     ), (value) => result = value);
-    expect(tester.widget<IconButton>(find.byTooltip('Lưu thửa')).onPressed, isNotNull);
-  await tester.tap(find.byTooltip('Lưu thửa'));
+    expect(tester.widget<IconButton>(find.byWidgetPredicate((widget) =>
+      widget is IconButton && widget.tooltip == 'Lưu thửa')).onPressed, isNotNull);
+  await tester.tap(find.byWidgetPredicate((widget) =>
+      widget is IconButton && widget.tooltip == 'Lưu thửa'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Hủy'));
     await tester.pumpAndSettle();
@@ -103,7 +107,8 @@ void main() {
     expect(calls, 1);
     expect(result, isNull);
     expect(find.byType(FieldGpsMeasureScreen), findsOneWidget);
-    expect(tester.widget<IconButton>(find.byTooltip('Lưu thửa')).onPressed, isNull);
+    expect(tester.widget<IconButton>(find.byWidgetPredicate((widget) =>
+      widget is IconButton && widget.tooltip == 'Lưu thửa')).onPressed, isNull);
     gate.complete();
     await tester.pumpAndSettle();
     expect(result, isNotNull);
@@ -121,6 +126,7 @@ void main() {
     expect(result, isNull);
     expect(find.byType(FieldGpsMeasureScreen), findsOneWidget);
     expect(find.textContaining('Không thể lưu thửa'), findsOneWidget);
-    expect(tester.widget<IconButton>(find.byTooltip('Lưu thửa')).onPressed, isNotNull);
+    expect(tester.widget<IconButton>(find.byWidgetPredicate((widget) =>
+      widget is IconButton && widget.tooltip == 'Lưu thửa')).onPressed, isNotNull);
   });
 }
