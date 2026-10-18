@@ -5,7 +5,12 @@ import '../providers/field_provider.dart';
 
 class FieldEditScreen extends StatefulWidget {
   final FieldModel field;
-  const FieldEditScreen({super.key, required this.field});
+  final FieldProvider? providerOverride;
+  const FieldEditScreen({
+    super.key,
+    required this.field,
+    this.providerOverride,
+  });
 
   @override
   State<FieldEditScreen> createState() => _FieldEditScreenState();
@@ -16,11 +21,13 @@ class _FieldEditScreenState extends State<FieldEditScreen> {
   final _name = TextEditingController();
   final _crop = TextEditingController();
   final _status = TextEditingController();
-  final _provider = FieldProvider();
+  late final FieldProvider _provider;
+  bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
+    _provider = widget.providerOverride ?? FieldProvider();
     _name.text = widget.field.name;
     _crop.text = widget.field.crop;
     _status.text = widget.field.status;
@@ -34,16 +41,31 @@ class _FieldEditScreenState extends State<FieldEditScreen> {
     super.dispose();
   }
 
-  void _save() {
-    if (!_formKey.currentState!.validate()) return;
-    _provider.updateField(
-      widget.field.copyWith(
-        name: _name.text.trim(),
-        crop: _crop.text.trim(),
-        status: _status.text.trim(),
-      ),
-    );
-    Navigator.pop(context, true);
+  Future<void> _save() async {
+    if (_isSaving || !_formKey.currentState!.validate()) return;
+    setState(() => _isSaving = true);
+    try {
+      await _provider.saveFieldLocally(
+        widget.field.copyWith(
+          name: _name.text.trim(),
+          crop: _crop.text.trim(),
+          status: _status.text.trim(),
+        ),
+      );
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Không thể lưu thông tin thửa đất vào bộ nhớ cục bộ. Vui lòng thử lại.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
   }
 
   @override
@@ -62,9 +84,8 @@ class _FieldEditScreenState extends State<FieldEditScreen> {
                 prefixIcon: Icon(Icons.landscape),
                 border: OutlineInputBorder(),
               ),
-              validator: (value) => value == null || value.trim().isEmpty
-                  ? 'Nhập tên lô'
-                  : null,
+              validator: (value) =>
+                  value == null || value.trim().isEmpty ? 'Nhập tên lô' : null,
             ),
             const SizedBox(height: 16),
             TextFormField(
@@ -102,7 +123,7 @@ class _FieldEditScreenState extends State<FieldEditScreen> {
             ),
             const SizedBox(height: 24),
             FilledButton.icon(
-              onPressed: _save,
+              onPressed: _isSaving ? null : _save,
               icon: const Icon(Icons.save),
               label: const Text('LƯU THÔNG TIN'),
               style: FilledButton.styleFrom(

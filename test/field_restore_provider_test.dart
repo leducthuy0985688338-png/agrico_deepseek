@@ -43,7 +43,13 @@ void main() {
   });
 
   test('field restore replaces samples, deduplicates, and ignores empty cloud', () async {
-    final provider = FieldProvider();
+    final provider = FieldProvider.forTest(
+      loadFields: () async => [],
+      saveField: (_) async {},
+      deleteField: (_) async {},
+      replaceFields: (_) async {},
+    );
+    addTearDown(provider.dispose);
     final field = FieldModel(
       id: 'LO-CLOUD',
       name: 'Lô Cloud',
