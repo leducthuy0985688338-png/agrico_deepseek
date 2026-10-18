@@ -275,19 +275,24 @@ class _CatalogEditorState extends State<_CatalogEditor> {
           reason: reason.text,
         );
       } else {
-        await widget.service.save(
-          CatalogEntry(
-            id: widget.entry?.id ?? _id(),
-            farmId: widget.service.subject.farmId,
-            kind: widget.kind,
-            code: widget.entry == null ? '' : widget.entry!.code,
-            name: name.text.trim(),
-            unitId: unitId,
-            active: active,
-          ),
-          expectedRevision: widget.entry?.revision,
-          reason: reason.text,
+        final entry = CatalogEntry(
+          id: widget.entry?.id ?? _id(),
+          farmId: widget.service.subject.farmId,
+          kind: widget.kind,
+          code: widget.entry?.code ?? '',
+          name: name.text.trim(),
+          unitId: unitId,
+          active: active,
         );
+        if (widget.entry == null) {
+          await widget.service.create(entry, reason: reason.text);
+        } else {
+          await widget.service.save(
+            entry,
+            expectedRevision: widget.entry!.revision,
+            reason: reason.text,
+          );
+        }
       }
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
