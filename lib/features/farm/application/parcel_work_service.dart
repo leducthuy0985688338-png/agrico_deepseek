@@ -34,16 +34,15 @@ class ParcelWorkService {
           catalog!.subject.farmId != subject.farmId) {
         throw StateError('Catalog subject mismatch.');
       }
-      return catalog!.save(
+      return catalog!.create(
         CatalogEntry(
           id: resource.id,
           farmId: resource.farmId,
           kind: CatalogKind.values.byName(resource.kind.name),
-          code: resource.code.trim().toUpperCase(),
+          code: '',
           name: resource.name.trim(),
           active: resource.active,
         ),
-        expectedRevision: null,
         reason: 'Register work resource',
       );
     }
