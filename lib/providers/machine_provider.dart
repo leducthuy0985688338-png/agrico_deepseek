@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../models/machine_model.dart';
-import '../models/field_model.dart';
 import '../services/machine_production_cost_sync_service.dart';
 
 class MachineProvider extends ChangeNotifier {

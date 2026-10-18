@@ -275,19 +275,24 @@ class _CatalogEditorState extends State<_CatalogEditor> {
           reason: reason.text,
         );
       } else {
-        await widget.service.save(
-          CatalogEntry(
-            id: widget.entry?.id ?? _id(),
-            farmId: widget.service.subject.farmId,
-            kind: widget.kind,
-            code: widget.entry == null ? '' : widget.entry!.code,
-            name: name.text.trim(),
-            unitId: unitId,
-            active: active,
-          ),
-          expectedRevision: widget.entry?.revision,
-          reason: reason.text,
+        final entry = CatalogEntry(
+          id: widget.entry?.id ?? _id(),
+          farmId: widget.service.subject.farmId,
+          kind: widget.kind,
+          code: widget.entry?.code ?? '',
+          name: name.text.trim(),
+          unitId: unitId,
+          active: active,
         );
+        if (widget.entry == null) {
+          await widget.service.create(entry, reason: reason.text);
+        } else {
+          await widget.service.save(
+            entry,
+            expectedRevision: widget.entry!.revision,
+            reason: reason.text,
+          );
+        }
       }
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -427,12 +432,11 @@ class _ResolveRequest extends StatefulWidget {
 class _ResolveRequestState extends State<_ResolveRequest> {
   String? entryId, error;
   final reason = TextEditingController();
-  late final TextEditingController code, name;
+  late final TextEditingController name;
   String? unitId;
   @override
   void initState() {
     super.initState();
-    code = TextEditingController(text: widget.request.code);
     name = TextEditingController(text: widget.request.name);
     reason.text = widget.request.reason;
     for (final e in widget.entries) {
@@ -449,7 +453,6 @@ class _ResolveRequestState extends State<_ResolveRequest> {
   bool saving = false;
   @override
   void dispose() {
-    code.dispose();
     name.dispose();
     reason.dispose();
     super.dispose();
@@ -470,7 +473,7 @@ class _ResolveRequestState extends State<_ResolveRequest> {
                 id: 'catalog-${DateTime.now().microsecondsSinceEpoch}',
                 farmId: widget.service.subject.farmId,
                 kind: widget.request.kind,
-                code: code.text.trim().toUpperCase(),
+                code: '',
                 name: name.text.trim(),
                 unitId: widget.request.kind == CatalogKind.unit ? null : unitId,
               )
@@ -535,14 +538,8 @@ class _ResolveRequestState extends State<_ResolveRequest> {
                     : (v) => setState(() => entryId = v == '' ? null : v),
               ),
               if (entryId == null) ...[
-                TextField(
-                  key: const Key('catalog-approval-code'),
-                  controller: code,
-                  enabled: !saving,
-                  maxLength: 40,
-                  decoration: InputDecoration(
-                    labelText: l.text('catalog.code'),
-                  ),
+                Text(
+                  'Mã danh mục mới sẽ được hệ thống cấp tự động khi phê duyệt.',
                 ),
                 TextField(
                   key: const Key('catalog-approval-name'),

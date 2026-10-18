@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'package:agrico_deepseek/main.dart';
+import 'package:agrico_deepseek/core/auth/company_access_gate.dart';
 import 'package:agrico_deepseek/providers/cloud_sync_provider.dart';
 import 'package:agrico_deepseek/providers/dashboard_provider.dart';
 import 'package:agrico_deepseek/providers/field_provider.dart';
@@ -25,6 +26,33 @@ void main() {
 
     // Kiểm tra MyApp đã được render.
     expect(find.byType(MyApp), findsOneWidget);
+    expect(find.byType(CompanyAccessGate), findsOneWidget);
+    expect(find.byType(DashboardScreen), findsNothing);
+
+    final materialAppContext = tester.element(find.byType(MaterialApp));
+    expect(
+      Provider.of<FieldProvider?>(materialAppContext, listen: false),
+      isNull,
+    );
+    expect(
+      Provider.of<CloudSyncProvider?>(materialAppContext, listen: false),
+      isNull,
+    );
+    expect(
+      Provider.of<DashboardProvider?>(materialAppContext, listen: false),
+      isNull,
+    );
+
+    // Khôi phục kích thước màn hình mặc định.
+    await tester.binding.setSurfaceSize(null);
+  });
+
+  testWidgets('settings tab opens the real cloud sync screen', (
+    WidgetTester tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 1000));
+    await tester.pumpWidget(const MyApp.legacy());
+    await tester.pumpAndSettle();
 
     final materialAppContext = tester.element(find.byType(MaterialApp));
     expect(
@@ -56,17 +84,6 @@ void main() {
       isA<ProductionCostProvider>(),
     );
 
-    // Khôi phục kích thước màn hình mặc định.
-    await tester.binding.setSurfaceSize(null);
-  });
-
-  testWidgets('settings tab opens the real cloud sync screen', (
-    WidgetTester tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 1000));
-    await tester.pumpWidget(const MyApp(homeOverride: DashboardScreen()));
-    await tester.pumpAndSettle();
-
     expect(find.byType(SettingsPage), findsNothing);
     await tester.tap(find.text('Cài đặt'));
     await tester.pumpAndSettle();
@@ -79,6 +96,21 @@ void main() {
       ),
       findsOneWidget,
     );
+
+    // A pushed route must share the explicit compatibility scope.
+    Navigator.of(tester.element(find.byType(SettingsPage))).push<void>(
+      MaterialPageRoute<void>(
+        builder: (context) => Scaffold(
+          body: Text(
+            identical(context.read<FieldProvider>(), FieldProvider.instance)
+                ? 'legacy route scope retained'
+                : 'unexpected provider',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('legacy route scope retained'), findsOneWidget);
 
     await tester.binding.setSurfaceSize(null);
   });

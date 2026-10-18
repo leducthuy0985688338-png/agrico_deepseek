@@ -1,5 +1,4 @@
 import 'field_provider.dart';
-import 'warehouse_provider.dart';
 import 'machine_provider.dart';
 import 'employee_provider.dart';
 import 'finance_provider.dart';
@@ -8,7 +7,6 @@ import '../models/finance_model.dart';
 
 class DashboardProvider {
   final FieldProvider _fieldProvider;
-  final WarehouseProvider _warehouseProvider;
   final MachineProvider _machineProvider;
   final EmployeeProvider _employeeProvider;
   final FinanceProvider _financeProvider;
@@ -16,13 +14,11 @@ class DashboardProvider {
 
   DashboardProvider({
     FieldProvider? fieldProvider,
-    WarehouseProvider? warehouseProvider,
     MachineProvider? machineProvider,
     EmployeeProvider? employeeProvider,
     FinanceProvider? financeProvider,
     FuelProvider? fuelProvider,
   })  : _fieldProvider = fieldProvider ?? FieldProvider(),
-        _warehouseProvider = warehouseProvider ?? WarehouseProvider(),
         _machineProvider = machineProvider ?? MachineProvider(),
         _employeeProvider = employeeProvider ?? EmployeeProvider(),
         _financeProvider = financeProvider ?? FinanceProvider(),
@@ -34,11 +30,6 @@ class DashboardProvider {
   int get totalRevenue => _financeProvider.getTotalRevenue().toInt();
   int get totalCost => _financeProvider.getTotalCost().toInt();
   int get totalProfit => _financeProvider.getTotalProfit().toInt();
-
-  double get totalInventoryStock => _warehouseProvider.items.fold<double>(
-        0,
-        (sum, item) => sum + item.stock.toDouble(),
-      );
 
   double get totalFuelStock => _fuelProvider.fuels.fold<double>(
         0,
@@ -74,8 +65,6 @@ class DashboardProvider {
       {'status': 'Hỏng', 'count': machines.where((m) => m.status == 'Hỏng').length},
     ];
   }
-
-  List<Map<String, dynamic>> getInventoryData() => _warehouseProvider.items.map((item) => {'name': item.name, 'stock': item.stock, 'unit': item.unit}).toList();
 
   List<Map<String, dynamic>> getProfitByFieldData() => _financeProvider.generateProfitReport().map((report) => {'field': report.fieldName, 'profit': report.profit / 1000000, 'profitMargin': report.profitMargin}).toList();
 

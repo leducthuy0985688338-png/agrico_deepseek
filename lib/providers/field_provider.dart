@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/field_model.dart';
+import '../models/field_measurement_history.dart';
 import '../services/cloud_service.dart';
 import '../services/field_storage_service.dart';
 
@@ -13,7 +14,9 @@ class FieldProvider extends ChangeNotifier {
       _testDelete = null,
       _testReplace = null,
       _testCloudSave = null,
-      _testCloudDelete = null {
+      _testCloudDelete = null,
+      _testBoundarySave = null,
+      _testCloudMeasurement = null {
     _fields = [];
     _loadPersistedFields();
   }
@@ -26,12 +29,16 @@ class FieldProvider extends ChangeNotifier {
     Future<void> Function(List<FieldModel>)? replaceFields,
     Future<void> Function(FieldModel)? cloudSaveField,
     Future<void> Function(String)? cloudDelete,
+    Future<FieldMeasurementHistory> Function(FieldModel)? saveBoundary,
+    Future<void> Function(FieldMeasurementHistory)? cloudMeasurement,
   }) : _testLoad = loadFields,
        _testSave = saveField,
        _testDelete = deleteField,
        _testReplace = replaceFields,
        _testCloudSave = cloudSaveField,
-       _testCloudDelete = cloudDelete {
+       _testCloudDelete = cloudDelete,
+       _testBoundarySave = saveBoundary,
+       _testCloudMeasurement = cloudMeasurement {
     _fields = [];
     _loadPersistedFields();
   }
@@ -43,6 +50,8 @@ class FieldProvider extends ChangeNotifier {
   final Future<void> Function(List<FieldModel>)? _testReplace;
   final Future<void> Function(FieldModel)? _testCloudSave;
   final Future<void> Function(String)? _testCloudDelete;
+  final Future<FieldMeasurementHistory> Function(FieldModel)? _testBoundarySave;
+  final Future<void> Function(FieldMeasurementHistory)? _testCloudMeasurement;
   Future<void> _cloudTail = Future<void>.value();
   final Map<String, FieldModel> _cloudCandidates = {};
   // Only a successfully persisted restore invalidates older queued deletions.
@@ -55,6 +64,13 @@ class FieldProvider extends ChangeNotifier {
   bool _isLoading = true;
   bool _hasRestoredFromCloud = false;
   int _localMutationVersion = 0;
+  final Map<String, Object> _fieldMutations = {};
+  Object? _restoreOperation;
+
+  Object _markFieldMutation(String id) {
+    _localMutationVersion++;
+    return _fieldMutations[id] = Object();
+  }
   Future<void> _writeTail = Future<void>.value();
 
   // Preserve ordering, but let each caller observe its own write failure.
@@ -94,18 +110,41 @@ class FieldProvider extends ChangeNotifier {
       for (final field in fields) field.id: field,
     }.values.toList()..sort((a, b) => a.name.compareTo(b.name));
 
-    _cloudCandidates.clear();
+    final previous = List<FieldModel>.of(_fields);
+    final previousRestored = _hasRestoredFromCloud;
+    final operation = Object();
+    _restoreOperation = operation;
+    for (final id in {...previous.map((field) => field.id), ...restored.map((field) => field.id)}) {
+      _fieldMutations[id] = operation;
+    }
     _hasRestoredFromCloud = true;
     _localMutationVersion++;
     _fields = restored;
     notifyListeners();
 
-    await _enqueueWrite(() async {
-      await (_testReplace?.call(restored) ?? _storage.replaceFields(restored));
-      for (final field in restored) {
-        _cloudRestoreTokens[field.id] = Object();
-      }
-    });
+    try {
+      await _enqueueWrite(() async {
+        await (_testReplace?.call(restored) ?? _storage.replaceFields(restored));
+        _cloudCandidates.clear();
+        for (final field in restored) {
+          _cloudRestoreTokens[field.id] = Object();
+        }
+      });
+    } catch (_) {
+      final previousIds = previous.map((field) => field.id).toSet();
+      _fields = [
+        for (final field in previous)
+          if (identical(_fieldMutations[field.id], operation)) field
+          else if (getFieldById(field.id) case final current?) current,
+        for (final field in _fields)
+          if (!previousIds.contains(field.id) &&
+              !identical(_fieldMutations[field.id], operation)) field,
+      ];
+      if (identical(_restoreOperation, operation)) _hasRestoredFromCloud = previousRestored;
+      _localMutationVersion++;
+      notifyListeners();
+      rethrow;
+    }
   }
 
   FieldModel? getFieldById(String id) {
@@ -118,7 +157,7 @@ class FieldProvider extends ChangeNotifier {
   void updateFieldPhotos(String id, List<String> newPhotoPaths) {
     final index = _fields.indexWhere((f) => f.id == id);
     if (index == -1) return;
-    _localMutationVersion++;
+    _markFieldMutation(id);
     _fields[index] = _fields[index].copyWith(
       photoPaths: List.unmodifiable(newPhotoPaths),
     );
@@ -133,7 +172,7 @@ class FieldProvider extends ChangeNotifier {
   }
 
   void addField(FieldModel field) {
-    _localMutationVersion++;
+    _markFieldMutation(field.id);
     _fields = [..._fields, field];
     _persistField(field);
     _recordMeasurement(field);
@@ -143,7 +182,7 @@ class FieldProvider extends ChangeNotifier {
   void updateField(FieldModel updated) {
     final index = _fields.indexWhere((f) => f.id == updated.id);
     if (index == -1) return;
-    _localMutationVersion++;
+    _markFieldMutation(updated.id);
     _fields[index] = updated;
     _persistField(updated);
     _recordMeasurement(updated);
@@ -153,8 +192,15 @@ class FieldProvider extends ChangeNotifier {
   /// Saves a field to local storage and completes only after SQLite confirms it.
   /// Cloud is scheduled after local success and never delays this Future.
   Future<void> saveFieldLocally(FieldModel field) async {
-    _localMutationVersion++;
-    final mutationVersion = _localMutationVersion;
+    await _saveFieldLocally(
+      field, () => _testSave?.call(field) ?? _storage.saveField(field),
+    );
+  }
+
+  Future<void> _saveFieldLocally(
+    FieldModel field, Future<void> Function() persist,
+  ) async {
+    final mutationToken = _markFieldMutation(field.id);
     final index = _fields.indexWhere((existing) => existing.id == field.id);
     final previous = index == -1 ? null : _fields[index];
     if (index == -1) {
@@ -167,13 +213,11 @@ class FieldProvider extends ChangeNotifier {
     }
     notifyListeners();
     try {
-      await _enqueueWrite(
-        () => _testSave?.call(field) ?? _storage.saveField(field),
-      );
+      await _enqueueWrite(persist);
     } catch (_) {
       // Never overwrite a newer mutation (including a queued deletion).
       final currentIndex = _fields.indexWhere((item) => item.id == field.id);
-      if (_localMutationVersion == mutationVersion &&
+      if (identical(_fieldMutations[field.id], mutationToken) &&
           currentIndex != -1 &&
           identical(_fields[currentIndex], field)) {
         if (previous == null) {
@@ -187,7 +231,7 @@ class FieldProvider extends ChangeNotifier {
               if (i == currentIndex) previous else _fields[i],
           ];
         }
-        _localMutationVersion++;
+        _markFieldMutation(field.id);
         notifyListeners();
       }
       rethrow;
@@ -196,26 +240,90 @@ class FieldProvider extends ChangeNotifier {
     _scheduleCloudSync(field.id);
   }
 
+  /// Persists boundary and measurement atomically, preserving current metadata.
+  Future<void> saveBoundaryLocally(FieldModel boundary) async {
+    final current = getFieldById(boundary.id);
+    if (current == null) throw StateError('Cannot edit a missing field');
+    final field = current.copyWith(
+      polygon: List.unmodifiable(boundary.polygon), area: boundary.area,
+      perimeter: boundary.perimeter, measurementMethod: boundary.measurementMethod,
+      gpsAccuracy: boundary.gpsAccuracy, measuredAt: boundary.measuredAt,
+    );
+    await _saveMeasuredField(field, create: false);
+  }
+
+  Future<void> createMeasuredFieldLocally(FieldModel field) async {
+    if (getFieldById(field.id) != null) throw StateError('Field already exists');
+    await _saveMeasuredField(field, create: true);
+  }
+
+  Future<void> saveFieldPhotosLocally(String id, List<String> paths) async {
+    final current = getFieldById(id);
+    if (current == null) throw StateError('Field no longer exists');
+    await saveFieldLocally(current.copyWith(photoPaths: List.unmodifiable(paths)));
+  }
+
+  Future<void> _saveMeasuredField(FieldModel field, {required bool create}) async {
+    final restoreToken = _cloudRestoreTokens[field.id];
+    late FieldMeasurementHistory measurement;
+    await _saveFieldLocally(field, () async {
+      if (_testBoundarySave != null) {
+        measurement = await _testBoundarySave(field);
+      } else if (_testLoad != null) {
+        throw StateError('An isolated boundary test requires saveBoundary');
+      } else {
+        measurement = create
+            ? await _storage.createMeasuredFieldLocally(field)
+            : await _storage.saveBoundaryLocally(field);
+      }
+    });
+    _enqueueCloud(() async {
+      bool isCurrent() => getFieldById(field.id) != null &&
+          identical(_cloudRestoreTokens[field.id], restoreToken);
+      if (!isCurrent()) return;
+      if (_testCloudMeasurement != null) {
+        await _testCloudMeasurement(measurement);
+      } else if (_testLoad == null) {
+        await CloudService.initialize();
+        if (!isCurrent()) return;
+        await CloudService.saveFieldMeasurement(measurement);
+      }
+    });
+  }
+
   Future<void> deleteField(String id) async {
     if (_fields.every((field) => field.id != id)) return;
     final restoreToken = _cloudRestoreTokens[id];
-    _localMutationVersion++;
+    final previous = getFieldById(id)!;
+    final previousIndex = _fields.indexOf(previous);
+    final mutation = _markFieldMutation(id);
     _fields = _fields.where((field) => field.id != id).toList(growable: false);
-    await _enqueueWrite(() async {
-      await (_testDelete?.call(id) ?? _storage.deleteField(id));
-      _cloudCandidates.remove(id);
-      _enqueueCloud(() async {
-        if (!identical(_cloudRestoreTokens[id], restoreToken)) return;
-        if (_testCloudDelete != null) {
-          await _testCloudDelete(id);
-        } else if (_testLoad == null) {
-          await CloudService.initialize();
-          if (!identical(_cloudRestoreTokens[id], restoreToken)) return;
-          await CloudService.deleteField(id);
-        }
-      });
-    });
     notifyListeners();
+    try {
+      await _enqueueWrite(() async {
+        await (_testDelete?.call(id) ?? _storage.deleteField(id));
+        _cloudCandidates.remove(id);
+        _enqueueCloud(() async {
+          if (!identical(_cloudRestoreTokens[id], restoreToken)) return;
+          if (_testCloudDelete != null) {
+            await _testCloudDelete(id);
+          } else if (_testLoad == null) {
+            await CloudService.initialize();
+            if (!identical(_cloudRestoreTokens[id], restoreToken)) return;
+            await CloudService.deleteField(id);
+          }
+        });
+      });
+    } catch (_) {
+      if (identical(_fieldMutations[id], mutation) && getFieldById(id) == null) {
+        final restored = List<FieldModel>.of(_fields);
+        restored.insert(previousIndex < restored.length ? previousIndex : restored.length, previous);
+        _fields = restored;
+        _markFieldMutation(id);
+        notifyListeners();
+      }
+      rethrow;
+    }
   }
 
   Future<void> _recordMeasurement(FieldModel field) async {

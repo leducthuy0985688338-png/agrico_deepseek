@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -171,6 +172,54 @@ class FieldDatabase {
     );
   }
 
+  /// Boundary and its measurement are one local commit; Cloud is separate.
+  Future<FieldMeasurementHistory> saveBoundaryAndMeasurement(FieldModel field, {bool requireExisting = true}) async {
+    return saveBoundaryIn(await database, field, requireExisting: requireExisting);
+  }
+
+  /// Uses the supplied connection so isolated tests never open the app database.
+  Future<FieldMeasurementHistory> saveBoundaryIn(Database db, FieldModel field, {bool requireExisting = true}) async {
+    if (field.polygon.length < 3 || field.measuredAt == null ||
+        field.measurementMethod == 'unknown' || !field.area.isFinite || field.area <= 0) {
+      throw ArgumentError('A measured boundary requires three points, positive area and a measurement date');
+    }
+    final createdAt = DateTime.now().toUtc();
+    // Retrying one measured snapshot reuses the history identity. A new
+    // measurement date or geometry produces a distinct append-only entry.
+    final identity = jsonEncode({
+      'fieldId': field.id,
+      'polygon': field.polygon.map((point) => [point.latitude, point.longitude]).toList(),
+      'area': field.area, 'perimeter': field.perimeter,
+      'method': field.measurementMethod, 'accuracy': field.gpsAccuracy,
+      'measuredAt': field.measuredAt!.toUtc().toIso8601String(),
+    });
+    final measurement = FieldMeasurementHistory(
+      id: '${field.id}_boundary_${sha256.convert(utf8.encode(identity))}',
+      fieldId: field.id, fieldName: field.name,
+      measurementMethod: field.measurementMethod,
+      polygon: List.unmodifiable(field.polygon), area: field.area,
+      perimeter: field.perimeter, gpsAccuracy: field.gpsAccuracy,
+      measuredAt: field.measuredAt!.toUtc(), createdAt: createdAt,
+    );
+    return db.transaction((transaction) async {
+      final existing = await transaction.query(_table, columns: ['id'],
+          where: 'id = ?', whereArgs: [field.id]);
+      if (requireExisting && existing.isEmpty) throw StateError('Cannot edit a missing field');
+      if (!requireExisting && existing.isNotEmpty) throw StateError('Cannot recreate an existing field');
+      if (existing.isEmpty) {
+        await transaction.insert(_table, _toRow(field));
+      } else {
+        await transaction.update(_table, _toRow(field),
+            where: 'id = ?', whereArgs: [field.id]);
+      }
+      await transaction.insert(_historyTable, _historyToRow(measurement),
+          conflictAlgorithm: ConflictAlgorithm.ignore);
+      final row = (await transaction.query(_historyTable,
+          where: 'id = ?', whereArgs: [measurement.id])).single;
+      return _historyFromRow(row);
+    });
+  }
+
   Future<void> replaceAll(List<FieldModel> fields) async {
     final db = await database;
     await db.transaction((transaction) async {
@@ -187,9 +236,14 @@ class FieldDatabase {
 
   Future<void> delete(String id) async {
     final db = await database;
-    await db.delete(_table, where: 'id = ?', whereArgs: [id]);
-    await db.delete(_historyTable, where: 'field_id = ?', whereArgs: [id]);
+    await deleteIn(db, id);
   }
+
+  Future<void> deleteIn(Database db, String id) => db.transaction((transaction) async {
+    await transaction.delete(_historyTable, where: 'field_id = ?', whereArgs: [id]);
+    await transaction.delete(_table, where: 'id = ?', whereArgs: [id]);
+  });
+
 
   Future<FieldMeasurementHistory> addMeasurementHistory(
     FieldModel field,
@@ -242,32 +296,32 @@ class FieldDatabase {
       whereArgs: fieldId == null ? null : [fieldId],
       orderBy: 'created_at DESC',
     );
-    return rows
-        .map((row) {
-          final rawPolygon =
-              jsonDecode(row['polygon']! as String) as List<dynamic>;
-          return FieldMeasurementHistory(
-            id: row['id']! as String,
-            fieldId: row['field_id']! as String,
-            fieldName: row['field_name']! as String,
-            measurementMethod: row['measurement_method']! as String,
-            polygon: rawPolygon
-                .map((point) {
-                  final item = point as Map<String, dynamic>;
-                  return LatLng(
-                    (item['lat'] as num).toDouble(),
-                    (item['lng'] as num).toDouble(),
-                  );
-                })
-                .toList(growable: false),
-            area: (row['area']! as num).toDouble(),
-            perimeter: (row['perimeter']! as num).toDouble(),
-            gpsAccuracy: (row['gps_accuracy'] as num?)?.toDouble(),
-            measuredAt: DateTime.parse(row['measured_at']! as String),
-            createdAt: DateTime.parse(row['created_at']! as String),
-          );
-        })
-        .toList(growable: false);
+    return rows.map(_historyFromRow).toList(growable: false);
+  }
+
+  FieldMeasurementHistory _historyFromRow(Map<String, Object?> row) {
+    final rawPolygon =
+        jsonDecode(row['polygon']! as String) as List<dynamic>;
+    return FieldMeasurementHistory(
+      id: row['id']! as String,
+      fieldId: row['field_id']! as String,
+      fieldName: row['field_name']! as String,
+      measurementMethod: row['measurement_method']! as String,
+      polygon: rawPolygon
+          .map((point) {
+            final item = point as Map<String, dynamic>;
+            return LatLng(
+              (item['lat'] as num).toDouble(),
+              (item['lng'] as num).toDouble(),
+            );
+          })
+          .toList(growable: false),
+      area: (row['area']! as num).toDouble(),
+      perimeter: (row['perimeter']! as num).toDouble(),
+      gpsAccuracy: (row['gps_accuracy'] as num?)?.toDouble(),
+      measuredAt: DateTime.parse(row['measured_at']! as String),
+      createdAt: DateTime.parse(row['created_at']! as String),
+    );
   }
 
   Future<void> addDistanceMeasurement(DistanceMeasurement measurement) async {

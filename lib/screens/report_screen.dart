@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../providers/warehouse_provider.dart';
 import '../providers/machine_provider.dart';
 import '../providers/employee_provider.dart';
 import '../providers/finance_provider.dart';
@@ -12,7 +11,6 @@ class ReportScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final warehouseProvider = context.read<WarehouseProvider>();
     final machineProvider = context.read<MachineProvider>();
     final employeeProvider = context.read<EmployeeProvider>();
     final financeProvider = context.read<FinanceProvider>();
@@ -79,12 +77,11 @@ class ReportScreen extends StatelessWidget {
             icon: Icons.summarize,
             title: 'Báo cáo Tổng hợp toàn bộ',
             subtitle:
-                'Xuất tất cả dữ liệu: Kho, Máy móc, Nhân sự, Tài chính, Nhiên liệu',
+                'Xuất Máy móc, Nhân sự, Tài chính, Nhiên liệu; tồn kho xem tại Kho V2',
             color: Colors.purple,
             onTap: () async {
               try {
                 await ReportService.exportFullSystemReport(
-                  warehouseProvider,
                   machineProvider,
                   employeeProvider,
                   financeProvider,
@@ -101,22 +98,6 @@ class ReportScreen extends StatelessWidget {
 
           // ====== BÁO CÁO CŨ ======
           _buildSectionTitle('📦 Các báo cáo khác'),
-
-          _buildReportCard(
-            context,
-            icon: Icons.inventory,
-            title: 'Báo cáo Tồn kho',
-            subtitle: 'Xuất danh sách vật tư trong kho',
-            color: Colors.blue,
-            onTap: () async {
-              try {
-                await ReportService.exportWarehouseReport(warehouseProvider);
-                _showSuccess(context, 'Đã xuất báo cáo tồn kho!');
-              } catch (e) {
-                _showError(context, 'Lỗi: $e');
-              }
-            },
-          ),
 
           _buildReportCard(
             context,

@@ -2,6 +2,8 @@ import 'v2_resource_module_routes.dart';
 import '../features/farm/presentation/screens/work_resource_catalog_screen.dart';
 import '../features/farm/domain/entities/parcel_work.dart';
 import '../features/inventory/application/inventory_service.dart';
+import '../features/inventory/application/inventory_cost_reconciler.dart';
+import '../services/material_production_cost_sync_service.dart';
 import '../features/inventory/presentation/inventory_catalog_screen.dart';
 import '../core/backup/local_backup_access.dart';
 import '../core/backup/local_backup_screen.dart';
@@ -469,6 +471,10 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
           openInventory: () => push(
             InventoryCatalogScreen(
               subject: deps.subject,
+              costReconciler: InventoryCostReconciler(
+                inventory: SqliteInventoryRepository(deps.database),
+                costs: MaterialProductionCostSyncService(),
+              ),
               catalog: CompanyCatalogService(
                 repository: SqliteCompanyCatalog(deps.database),
                 subject: deps.subject,
@@ -567,7 +573,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     String parcelId,
   ) async {
     final measured = await Navigator.of(context).push<FieldModel>(
-      MaterialPageRoute(builder: (_) => const FieldGpsMeasureScreen()),
+      MaterialPageRoute(builder: (_) => const FieldGpsMeasureScreen.draft()),
     );
     if (!context.mounted || measured == null) return;
     final parcel = await deps.controller.parcels.getById(
@@ -912,7 +918,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
   ) async {
     final measured = await Navigator.of(context).push<FieldModel>(
       MaterialPageRoute(
-        builder: (_) => const FieldGpsMeasureScreen(persistResult: false),
+        builder: (_) => const FieldGpsMeasureScreen.draft(),
       ),
     );
     if (!context.mounted || measured == null) return null;

@@ -249,12 +249,15 @@ class SqliteCompanyCatalog implements CompanyCatalogRepository {
       );
       if (units.isEmpty) throw const CatalogFailure('catalog.unitRequired');
     }
+    // Inactivation of a referenced unit is forbidden. Renaming is safe:
+    // projectEntry updates all dependent warehouse unit labels in this same
+    // transaction, preserving stock and movement history.
     if (entry.kind == CatalogKind.unit &&
-        (!entry.active || (old != null && old['name'] != entry.name)) &&
+        !entry.active &&
         (await tx.query(
           entriesTable,
           columns: ['id'],
-          where: !entry.active ? 'unit_id=? AND active=1' : 'unit_id=?',
+          where: 'unit_id=? AND active=1',
           whereArgs: [entry.id],
           limit: 1,
         )).isNotEmpty) {
@@ -321,6 +324,24 @@ class SqliteCompanyCatalog implements CompanyCatalogRepository {
           row,
           where: 'id=?',
           whereArgs: [e.id],
+        );
+      }
+    }
+    if (e.kind == CatalogKind.unit) {
+      // A unit rename must update material projections atomically. Preserve
+      // warehouse stock, valuation settings and movement history.
+      final linkedMaterials = await tx.query(
+        entriesTable,
+        columns: ['id'],
+        where: 'farm_id=? AND kind=? AND unit_id=?',
+        whereArgs: [e.farmId, CatalogKind.material.name, e.id],
+      );
+      for (final material in linkedMaterials) {
+        await tx.update(
+          'inventory_items_v2',
+          {'unit': e.name},
+          where: 'id=? AND farm_id=?',
+          whereArgs: [material['id'], e.farmId],
         );
       }
     }
@@ -456,9 +477,22 @@ class SqliteCompanyCatalog implements CompanyCatalogRepository {
           if (old['actor_uid'] == actorUid) {
             throw const CatalogFailure('catalog.selfApproval');
           }
+          // Approvals create a new catalog identity inside this transaction.
+          // Allocate a code here, just as direct catalog creation does.
+          final approvedEntry = createEntry.code.isEmpty
+              ? CatalogEntry(
+                  id: createEntry.id,
+                  farmId: createEntry.farmId,
+                  kind: createEntry.kind,
+                  code: await _nextCode(tx, createEntry.farmId, createEntry.kind),
+                  name: createEntry.name,
+                  unitId: createEntry.unitId,
+                  active: createEntry.active,
+                )
+              : createEntry;
           await _saveInTransaction(
             tx,
-            createEntry,
+            approvedEntry,
             expectedRevision: null,
             actorUid: actorUid,
             reason: reason,
@@ -511,6 +545,31 @@ class SqliteCompanyCatalog implements CompanyCatalogRepository {
       }
       rethrow;
     }
+  }
+
+  /// Imports a pre-existing catalog identity with its original code.
+  ///
+  /// This is deliberately separate from the normal user-facing creation flow:
+  /// migration/restore callers must explicitly choose historical-code import.
+  /// Identity, uniqueness and audit rules remain enforced by [save].
+  Future<void> importHistoricalEntry(
+    CatalogEntry entry, {
+    required String actorUid,
+    required String reason,
+    required DateTime occurredAt,
+    required void Function() authorize,
+  }) {
+    if (entry.code.isEmpty) {
+      throw const CatalogFailure('catalog.invalid');
+    }
+    return save(
+      entry,
+      expectedRevision: null,
+      actorUid: actorUid,
+      reason: reason,
+      occurredAt: occurredAt,
+      authorize: authorize,
+    );
   }
 
   /// One-time adoption of already persisted values; never create entries from new form input.

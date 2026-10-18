@@ -135,6 +135,10 @@ class CompanyCatalogService {
     return repository.entries(subject.farmId);
   }
 
+  /// Updates an existing catalog entry or preserves a historical import code.
+  ///
+  /// New user-facing records must go through [create], which rejects
+  /// caller-supplied codes. Retained for existing callers and migrations.
   Future<void> save(
     CatalogEntry entry, {
     required int? expectedRevision,
@@ -164,6 +168,20 @@ class CompanyCatalogService {
       occurredAt: (clock ?? DateTime.now)().toUtc(),
       authorize: () => require(PermissionCodes.catalogManage),
     );
+  }
+
+  /// Creates a new catalog identity. The repository allocates its code.
+  ///
+  /// Historical imports use a separate repository operation; user-facing
+  /// creation must never accept a caller-supplied code.
+  Future<void> create(
+    CatalogEntry entry, {
+    required String reason,
+  }) {
+    if (entry.code.isNotEmpty) {
+      throw const CatalogFailure('catalog.invalid');
+    }
+    return save(entry, expectedRevision: null, reason: reason);
   }
 
   Future<void> request({
@@ -210,6 +228,14 @@ class CompanyCatalogService {
     required String reason,
   }) {
     require(PermissionCodes.catalogManage);
+    if (createEntry != null) {
+      if (entryId != null || createEntry.code.isNotEmpty) {
+        throw const CatalogFailure('catalog.invalid');
+      }
+      if (createEntry.farmId != subject.farmId) {
+        throw const CatalogFailure('catalog.denied');
+      }
+    }
     return repository.resolve(
       farmId: subject.farmId,
       requestId: requestId,

@@ -95,19 +95,95 @@ void main() {
       createEntry: entry(
         'direct-unit',
         CatalogKind.unit,
-        'DIRECT',
+        '',
         'Direct unit',
       ),
       reason: 'Approved',
     );
     expect((await admin.entries()).single.id, 'direct-unit');
+    expect((await admin.entries()).single.code, 'DVT-000001');
     final request = (await admin.requests()).single;
     expect(request.status, 'approved');
     expect(request.entryId, 'direct-unit');
     expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(3));
   });
+  test('approval rejects caller-supplied code without changing request', () async {
+    await worker.request(
+      id: 'manual-approval',
+      kind: CatalogKind.unit,
+      code: 'SUGGESTED',
+      name: 'Proposed unit',
+      reason: 'Needed',
+    );
+    expect(
+      () => admin.resolve(
+        'manual-approval',
+        createEntry: entry('manual-unit', CatalogKind.unit, 'CUSTOM', 'Proposed unit'),
+        reason: 'Attempt',
+      ),
+      throwsA(isA<CatalogFailure>()),
+    );
+    expect(await admin.entries(), isEmpty);
+    expect((await admin.requests()).single.status, 'pending');
+    await admin.resolve(
+      'manual-approval',
+      createEntry: entry('approved-unit', CatalogKind.unit, '', 'Proposed unit'),
+      reason: 'Approved',
+    );
+    expect((await admin.entries()).single.code, 'DVT-000001');
+  });
+
+  test('approved suggestion allocates the next system code atomically', () async {
+    await save(entry('existing', CatalogKind.unit, '', 'Existing'));
+    await worker.request(
+      id: 'suggested-unit',
+      kind: CatalogKind.unit,
+      code: 'SUGGESTED',
+      name: 'Suggested unit',
+      reason: 'Needed',
+    );
+    await admin.resolve(
+      'suggested-unit',
+      createEntry: entry(
+        'approved-unit',
+        CatalogKind.unit,
+        '',
+        'Suggested unit',
+      ),
+      reason: 'Approved',
+    );
+    final entries = await admin.entries();
+    expect(entries.firstWhere((e) => e.id == 'existing').code, 'DVT-000001');
+    expect(entries.firstWhere((e) => e.id == 'approved-unit').code, 'DVT-000002');
+    expect((await admin.requests()).single.status, 'approved');
+  });
+
+  test('failed approval does not consume an automatic catalog code', () async {
+    await save(entry('existing', CatalogKind.unit, '', 'Existing'));
+    await worker.request(
+      id: 'duplicate-request',
+      kind: CatalogKind.unit,
+      code: 'DUP',
+      name: 'Existing',
+      reason: 'Requested duplicate',
+    );
+    await expectLater(
+      admin.resolve(
+        'duplicate-request',
+        createEntry: entry('duplicate', CatalogKind.unit, '', 'Existing'),
+        reason: 'Attempt',
+      ),
+      throwsA(isA<CatalogFailure>()),
+    );
+    expect((await admin.requests()).single.status, 'pending');
+    await save(entry('next', CatalogKind.unit, '', 'Next unit'));
+    final entries = await admin.entries();
+    expect(entries.firstWhere((e) => e.id == 'next').code, 'DVT-000002');
+    expect(entries, hasLength(2));
+  });
+
   test('duplicate creation rolls back and leaves request pending', () async {
-    await save(entry('existing', CatalogKind.unit, 'DIRECT', 'Existing'));
+    await save(entry('existing', CatalogKind.unit, '', 'Existing'));
     await worker.request(
       id: 'direct',
       kind: CatalogKind.unit,
@@ -121,8 +197,8 @@ void main() {
         createEntry: entry(
           'new-unit',
           CatalogKind.unit,
-          'DIRECT',
-          'Direct unit',
+          '',
+          'Existing',
         ),
         reason: 'Approved',
       ),
@@ -155,7 +231,7 @@ void main() {
     await expectLater(
       admin.resolve(
         'self-direct',
-        createEntry: entry('self-unit', CatalogKind.unit, 'SELF', 'Self'),
+        createEntry: entry('self-unit', CatalogKind.unit, '', 'Self'),
         reason: 'Approved',
       ),
       throwsA(isA<CatalogFailure>()),
@@ -279,14 +355,16 @@ void main() {
     () async {
       await save(entry('u', CatalogKind.unit, 'KG', 'kg'));
       await save(entry('c', CatalogKind.crop, 'PEANUT', 'Lạc', unit: 'u'));
-      await expectLater(
-        () => save(entry('u', CatalogKind.unit, 'KG', 'kilogram'), revision: 1),
-        throwsA(isA<CatalogFailure>()),
+      // Renaming a referenced unit is allowed; deactivating it is not.
+      await save(entry('u', CatalogKind.unit, 'KG', 'kilogram'), revision: 1);
+      expect(
+        (await repo.entries('farm')).firstWhere((e) => e.id == 'u').name,
+        'kilogram',
       );
       await expectLater(
         () => save(
-          entry('u', CatalogKind.unit, 'KG', 'kg', active: false),
-          revision: 1,
+          entry('u', CatalogKind.unit, 'KG', 'kilogram', active: false),
+          revision: 2,
         ),
         throwsA(isA<CatalogFailure>()),
       );

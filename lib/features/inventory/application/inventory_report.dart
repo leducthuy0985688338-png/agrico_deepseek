@@ -7,6 +7,11 @@ class InventoryReport {
   final List<InventoryItem> items;
   final List<InventoryMovement> movements;
 
+  static DateTime _laosDay(DateTime instant) {
+    final local = instant.toUtc().add(const Duration(hours: 7));
+    return DateTime.utc(local.year, local.month, local.day);
+  }
+
   List<InventoryMovement> filter({
     String query = '',
     String? itemId,
@@ -20,10 +25,7 @@ class InventoryReport {
         .where((movement) {
           if (itemId != null && movement.itemId != itemId) return false;
           if (kind != null && movement.kind != kind) return false;
-          final local = movement.occurredAt.toUtc().add(
-            const Duration(hours: 7),
-          );
-          final day = DateTime.utc(local.year, local.month, local.day);
+          final day = _laosDay(movement.occurredAt);
           if (from != null &&
               day.isBefore(DateTime.utc(from.year, from.month, from.day))) {
             return false;
@@ -149,10 +151,9 @@ class InventoryReport {
       final before = all.where(
         (m) =>
             from != null &&
-            m.occurredAt
-                .toUtc()
-                .add(const Duration(hours: 7))
-                .isBefore(DateTime.utc(from.year, from.month, from.day)),
+            _laosDay(m.occurredAt).isBefore(
+              DateTime.utc(from.year, from.month, from.day),
+            ),
       );
       final periodOpening =
           opening +
@@ -166,8 +167,7 @@ class InventoryReport {
           );
       // Stock summary is date-based, independent of search and type filters.
       final inPeriod = all.where((m) {
-        final local = m.occurredAt.toUtc().add(const Duration(hours: 7));
-        final day = DateTime.utc(local.year, local.month, local.day);
+        final day = _laosDay(m.occurredAt);
         return (from == null ||
                 !day.isBefore(DateTime.utc(from.year, from.month, from.day))) &&
             (to == null ||

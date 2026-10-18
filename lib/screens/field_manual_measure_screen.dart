@@ -11,17 +11,18 @@ import '../services/gps_field_service.dart';
 enum _MeasureMode { field, distance }
 
 class FieldManualMeasureScreen extends StatefulWidget {
-  const FieldManualMeasureScreen({super.key});
+  const FieldManualMeasureScreen({super.key, this.mapBuilder, this.saveOverride, this.saveDistanceOverride});
+  final Widget Function(void Function(LatLng) onTap, Set<Marker> markers)? mapBuilder;
+  final Future<void> Function(FieldModel)? saveOverride;
+  final Future<bool> Function(DistanceMeasurement)? saveDistanceOverride;
   @override
   State<FieldManualMeasureScreen> createState() => _FieldManualMeasureScreenState();
 }
 
 class _FieldManualMeasureScreenState extends State<FieldManualMeasureScreen> {
   final _gps = GpsFieldService();
-  final _fieldProvider = FieldProvider();
-  final _storage = FieldStorageService();
+  FieldModel? _pendingSave;
   final List<LatLng> _points = [];
-  GoogleMapController? _mapController;
   _MeasureMode _mode = _MeasureMode.field;
   bool _saving = false;
 
@@ -30,15 +31,16 @@ class _FieldManualMeasureScreenState extends State<FieldManualMeasureScreen> {
   double get _distance => _points.length < 2 ? 0 : Geolocator.distanceBetween(_points[0].latitude, _points[0].longitude, _points[1].latitude, _points[1].longitude);
 
   void _addPoint(LatLng point) {
+    if (_saving) return;
     if (_mode == _MeasureMode.distance && _points.length >= 2) {
-      setState(() { _points..clear()..add(point); });
+      setState(() { _pendingSave = null; _points..clear()..add(point); });
       return;
     }
-    setState(() => _points.add(point));
+    setState(() { _pendingSave = null; _points.add(point); });
   }
 
-  void _undo() { if (_points.isNotEmpty) setState(() => _points.removeLast()); }
-  void _clear() => setState(_points.clear);
+  void _undo() { if (_points.isNotEmpty) setState(() { _pendingSave = null; _points.removeLast(); }); }
+  void _clear() { if (!_saving) setState(() { _pendingSave = null; _points.clear(); }); }
 
   Set<Marker> get _markers => {
     for (var i = 0; i < _points.length; i++)
@@ -47,7 +49,7 @@ class _FieldManualMeasureScreenState extends State<FieldManualMeasureScreen> {
         position: _points[i],
         infoWindow: InfoWindow(title: _mode == _MeasureMode.distance ? (i == 0 ? 'Điểm A' : 'Điểm B') : 'Điểm ${i + 1}'),
         draggable: true,
-        onDragEnd: (position) => setState(() => _points[i] = position),
+        onDragEnd: (position) { if (!_saving) setState(() { _pendingSave = null; _points[i] = position; }); },
       ),
   };
 
@@ -62,32 +64,20 @@ class _FieldManualMeasureScreenState extends State<FieldManualMeasureScreen> {
 
   Future<void> _saveField() async {
     if (_saving || _points.length < 3) return;
-    final nameController = TextEditingController(text: 'Lô mới ${DateTime.now().millisecondsSinceEpoch % 10000}');
-    final cropController = TextEditingController();
-    final result = await showDialog<bool>(
+    final result = await showDialog<({String name, String crop})>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Lưu thửa thủ công'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Tên lô')),
-          const SizedBox(height: 12),
-          TextField(controller: cropController, decoration: const InputDecoration(labelText: 'Cây trồng')),
-          const SizedBox(height: 12),
-          Align(alignment: Alignment.centerLeft, child: Text('${_area.toStringAsFixed(1)} m² • ${(_area / 10000).toStringAsFixed(4)} ha\nChu vi ${_perimeter.toStringAsFixed(1)} m')),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Hủy')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Lưu thửa')),
-        ],
+      builder: (_) => _ManualSaveDialog(
+        initialName: _pendingSave?.name ?? 'Lô mới ${DateTime.now().millisecondsSinceEpoch % 10000}',
+        initialCrop: _pendingSave?.crop ?? '',
+        area: _area, perimeter: _perimeter,
       ),
     );
-    final name = nameController.text.trim();
-    final crop = cropController.text.trim();
-    nameController.dispose(); cropController.dispose();
-    if (result != true || !mounted) return;
+    if (result == null || !mounted) return;
+    final name = result.name;
+    final crop = result.crop;
     setState(() => _saving = true);
     final field = FieldModel(
-      id: 'MAN-${DateTime.now().millisecondsSinceEpoch}',
+      id: _pendingSave?.id ?? 'MAN-${DateTime.now().microsecondsSinceEpoch}',
       name: name.isEmpty ? 'Lô chưa đặt tên' : name,
       area: _area,
       crop: crop.isEmpty ? 'Chưa xác định' : crop,
@@ -95,13 +85,20 @@ class _FieldManualMeasureScreenState extends State<FieldManualMeasureScreen> {
       polygon: List.unmodifiable(_points),
       perimeter: _perimeter,
       measurementMethod: 'manual',
-      measuredAt: DateTime.now().toUtc(),
+      measuredAt: _pendingSave?.measuredAt ?? DateTime.now().toUtc(),
     );
-    _fieldProvider.addField(field);
-    if (!mounted) return;
-    setState(() => _saving = false);
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã lưu thửa thủ công vào AGRICO.')));
-    Navigator.pop(context, field);
+    _pendingSave = field;
+    try {
+      await (widget.saveOverride ?? FieldProvider().createMeasuredFieldLocally)(field);
+      if (!mounted) return;
+      Navigator.pop(context, field);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Không thể lưu thửa và lịch sử đo đạc. Vui lòng thử lại.')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Future<void> _saveDistance() async {
@@ -116,7 +113,8 @@ class _FieldManualMeasureScreenState extends State<FieldManualMeasureScreen> {
       measuredAt: DateTime.now().toUtc(),
     );
     try {
-      final cloudSaved = await _storage.saveDistanceMeasurement(measurement);
+      final cloudSaved = await (widget.saveDistanceOverride ??
+          FieldStorageService().saveDistanceMeasurement)(measurement);
       if (!mounted) return;
       final message = cloudSaved
           ? 'Đã lưu phép đo khoảng cách vào AGRICO và Cloud.'
@@ -144,11 +142,10 @@ class _FieldManualMeasureScreenState extends State<FieldManualMeasureScreen> {
         ],
       ),
       body: Stack(children: [
-        GoogleMap(
+        widget.mapBuilder?.call(_addPoint, _markers) ?? GoogleMap(
           initialCameraPosition: const CameraPosition(target: LatLng(16.55, 104.75), zoom: 14),
           mapType: MapType.satellite, myLocationEnabled: true, myLocationButtonEnabled: true, compassEnabled: true,
           markers: _markers, polylines: _lines, polygons: _polygon,
-          onMapCreated: (controller) => _mapController = controller,
           onTap: _addPoint,
         ),
         Positioned(left: 12, right: 12, top: 12, child: Card(child: Padding(
@@ -159,7 +156,7 @@ class _FieldManualMeasureScreenState extends State<FieldManualMeasureScreen> {
               ButtonSegment(value: _MeasureMode.distance, icon: Icon(Icons.straighten), label: Text('Khoảng cách')),
             ],
             selected: {_mode},
-            onSelectionChanged: (value) => setState(() { _mode = value.first; _points.clear(); }),
+            onSelectionChanged: _saving ? null : (value) => setState(() { _mode = value.first; _pendingSave = null; _points.clear(); }),
           ),
         ))),
         Positioned(left: 12, right: 12, bottom: 18, child: SafeArea(child: Card(child: Padding(
@@ -184,4 +181,45 @@ class _FieldManualMeasureScreenState extends State<FieldManualMeasureScreen> {
       ]),
     );
   }
+}
+
+class _ManualSaveDialog extends StatefulWidget {
+  const _ManualSaveDialog({required this.initialName, required this.initialCrop,
+    required this.area, required this.perimeter});
+  final String initialName;
+  final String initialCrop;
+  final double area;
+  final double perimeter;
+  @override
+  State<_ManualSaveDialog> createState() => _ManualSaveDialogState();
+}
+class _ManualSaveDialogState extends State<_ManualSaveDialog> {
+  late final _name = TextEditingController(text: widget.initialName);
+  late final _crop = TextEditingController(text: widget.initialCrop);
+  @override
+  void dispose() {
+    _name.dispose();
+    _crop.dispose();
+    super.dispose();
+  }
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Lưu thửa thủ công'),
+    content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      TextField(controller: _name, decoration: const InputDecoration(labelText: 'Tên lô')),
+      const SizedBox(height: 12),
+      TextField(controller: _crop, decoration: const InputDecoration(labelText: 'Cây trồng')),
+      const SizedBox(height: 12),
+      Align(alignment: Alignment.centerLeft, child: Text(
+        '${widget.area.toStringAsFixed(1)} m² • ${(widget.area / 10000).toStringAsFixed(4)} ha\n'
+        'Chu vi ${widget.perimeter.toStringAsFixed(1)} m')),
+    ])),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy')),
+      FilledButton(key: const Key('manual-confirm-save'),
+        onPressed: () => Navigator.pop(context,
+          (name: _name.text.trim(), crop: _crop.text.trim())),
+        child: const Text('Lưu thửa')),
+    ],
+  );
 }

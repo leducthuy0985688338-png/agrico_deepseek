@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
-import '../models/warehouse_item.dart';
 import '../models/machine_model.dart';
 import '../models/employee_model.dart';
 import '../models/task_model.dart';
@@ -267,29 +266,6 @@ class CloudService {
   static Future<void> deleteDistanceMeasurement(String id) =>
       db.collection('distance_measurements').doc(id).delete();
 
-  // ====== VẬT TƯ ======
-  static Future<void> saveWarehouseItem(WarehouseItem item) async {
-    await db.collection('warehouse').doc(item.id).set({
-      ...item.toMap(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-  }
-
-  static Stream<QuerySnapshot> getWarehouseItems() =>
-      db.collection('warehouse').orderBy('name').snapshots();
-
-  static Future<List<WarehouseItem>> loadWarehouseItems() async {
-    final snapshot = await db.collection('warehouse').orderBy('name').get();
-    return snapshot.docs.map((doc) {
-      final data = Map<String, dynamic>.from(doc.data());
-      data['id'] ??= doc.id;
-      return WarehouseItem.fromMap(data);
-    }).toList(growable: false);
-  }
-
-  static Future<void> deleteWarehouseItem(String id) =>
-      db.collection('warehouse').doc(id).delete();
-
   // ====== MÁY MÓC ======
   static Future<void> saveMachine(MachineModel machine) async {
     await db.collection('machines').doc(machine.id).set({
@@ -418,14 +394,13 @@ class CloudService {
         .toList(growable: false);
   }
 
-  static Future<void> syncAllData({required List<WarehouseItem> warehouseItems, required List<MachineModel> machines, required List<EmployeeModel> employees, required List<TaskModel> tasks, required List<FinanceRecord> financeRecords, required List<FuelModel> fuels, required List<FuelTransaction> fuelTransactions, required List<FieldModel> fields, required List<ProductionSeasonModel> seasons, required List<ProductionLogModel> productionLogs, required List<HarvestRecordModel> harvestRecords, required List<ProductionCostModel> productionCosts}) async {
+  static Future<void> syncAllData({required List<MachineModel> machines, required List<EmployeeModel> employees, required List<TaskModel> tasks, required List<FinanceRecord> financeRecords, required List<FuelModel> fuels, required List<FuelTransaction> fuelTransactions, required List<FieldModel> fields, required List<ProductionSeasonModel> seasons, required List<ProductionLogModel> productionLogs, required List<HarvestRecordModel> harvestRecords, required List<ProductionCostModel> productionCosts}) async {
     final batch = db.batch();
     for (final field in fields) { batch.set(db.collection('fields').doc(field.id), {'id': field.id, 'name': field.name, 'area': field.area, 'crop': field.crop, 'status': field.status, 'perimeter': field.perimeter, 'measurementMethod': field.measurementMethod, 'gpsAccuracy': field.gpsAccuracy, 'measuredAt': field.measuredAt == null ? null : Timestamp.fromDate(field.measuredAt!.toUtc()), 'polygon': field.polygon.map((p) => {'lat': p.latitude, 'lng': p.longitude}).toList(growable: false), 'photoPaths': field.photoPaths, 'updatedAt': FieldValue.serverTimestamp()}); }
     for (final season in seasons) { batch.set(db.collection('production_seasons').doc(season.id), {...season.toJson(), 'updatedAt': FieldValue.serverTimestamp()}); }
     for (final log in productionLogs) { batch.set(db.collection('production_logs').doc(log.id), {...log.toJson(), 'updatedAt': FieldValue.serverTimestamp()}); }
     for (final record in harvestRecords) { batch.set(db.collection('harvest_records').doc(record.id), {...record.toJson(), 'updatedAt': FieldValue.serverTimestamp()}); }
     for (final cost in productionCosts) { batch.set(db.collection('production_costs').doc(cost.id), {...cost.toJson(), 'updatedAt': FieldValue.serverTimestamp()}); }
-    for (final item in warehouseItems) { batch.set(db.collection('warehouse').doc(item.id), {...item.toMap(), 'updatedAt': FieldValue.serverTimestamp()}); }
     for (final machine in machines) { batch.set(db.collection('machines').doc(machine.id), {...machine.toMap(), 'updatedAt': FieldValue.serverTimestamp()}); }
     for (final employee in employees) { batch.set(db.collection('employees').doc(employee.id), {...employee.toMap(), 'updatedAt': FieldValue.serverTimestamp()}); }
     for (final task in tasks) { batch.set(db.collection('tasks').doc(task.id), {...task.toMap(), 'updatedAt': FieldValue.serverTimestamp()}); }
