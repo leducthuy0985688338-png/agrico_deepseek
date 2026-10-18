@@ -104,6 +104,21 @@ void main() {
     expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(2));
   });
 
+  test('historical import preserves code and advances automatic sequence', () async {
+    await repo.importHistoricalEntry(
+      item('historical', CatalogKind.unit, 'Legacy unit', code: 'DVT-000099'),
+      actorUid: 'migration',
+      reason: 'Import persisted catalog identity',
+      occurredAt: now,
+      authorize: () {},
+    );
+    await create(item('new', CatalogKind.unit, 'New unit'));
+    final entries = await admin.entries();
+    expect(entries.firstWhere((e) => e.id == 'historical').code, 'DVT-000099');
+    expect(entries.firstWhere((e) => e.id == 'new').code, 'DVT-000100');
+    expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(2));
+  });
+
   test(
     'existing manual codes are respected when allocating next code',
     () async {
