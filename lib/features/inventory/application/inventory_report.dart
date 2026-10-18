@@ -149,10 +149,11 @@ class InventoryReport {
       final before = all.where(
         (m) =>
             from != null &&
-            m.occurredAt
-                .toUtc()
-                .add(const Duration(hours: 7))
-                .isBefore(DateTime.utc(from.year, from.month, from.day)),
+            DateTime.utc(
+              m.occurredAt.toUtc().add(const Duration(hours: 7)).year,
+              m.occurredAt.toUtc().add(const Duration(hours: 7)).month,
+              m.occurredAt.toUtc().add(const Duration(hours: 7)).day,
+            ).isBefore(DateTime.utc(from.year, from.month, from.day)),
       );
       final periodOpening =
           opening +
