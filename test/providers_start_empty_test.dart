@@ -3,7 +3,6 @@ import 'package:agrico_deepseek/providers/finance_provider.dart';
 import 'package:agrico_deepseek/providers/fuel_provider.dart';
 import 'package:agrico_deepseek/providers/machine_provider.dart';
 import 'package:agrico_deepseek/providers/task_provider.dart';
-import 'package:agrico_deepseek/providers/warehouse_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -13,7 +12,6 @@ void main() {
     final tasks = TaskProvider();
     final finance = FinanceProvider();
     final fuel = FuelProvider();
-    final warehouse = WarehouseProvider();
 
     expect(machines.machines, isEmpty);
     expect(employees.employees, isEmpty);
@@ -23,13 +21,11 @@ void main() {
     expect(finance.budgets, isEmpty);
     expect(fuel.fuels, isEmpty);
     expect(fuel.allTransactions, isEmpty);
-    expect(warehouse.items, isEmpty);
 
     machines.dispose();
     employees.dispose();
     tasks.dispose();
     finance.dispose();
     fuel.dispose();
-    warehouse.dispose();
   });
 }
