@@ -49,6 +49,28 @@ void main() {
     );
     expect(report.filter(to: DateTime(2026, 9, 30)), isEmpty);
   });
+  test('opening balance includes all movements before the Laos start day', () {
+    final report = InventoryReport(items: [item], movements: events);
+    // The first receipt occurs at 00:00 on October 1 in Laos, not
+    // September 30. Both movements belong to October 1.
+    final october = report.workbook(
+      from: DateTime.utc(2026, 10, 1),
+      to: DateTime.utc(2026, 10, 1),
+    );
+    final row = october['Stock'].rows[1];
+    expect(row[3]?.value.toString(), '0');
+    expect(row[4]?.value.toString(), '10');
+    expect(row[5]?.value.toString(), '3');
+    expect(row[6]?.value.toString(), '7');
+
+    final november = report.workbook(from: DateTime.utc(2026, 11, 1));
+    final next = november['Stock'].rows[1];
+    expect(next[3]?.value.toString(), '7');
+    expect(next[4]?.value.toString(), '0');
+    expect(next[5]?.value.toString(), '0');
+    expect(next[6]?.value.toString(), '7');
+  });
+
   test('Excel contains overview, filtered movements and date-based stock', () {
     final report = InventoryReport(items: [item], movements: events);
     final excel = report.workbook(
