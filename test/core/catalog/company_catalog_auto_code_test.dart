@@ -28,9 +28,8 @@ void main() {
     unitId: unit,
   );
 
-  Future<void> create(CatalogEntry entry) => admin.save(
+  Future<void> create(CatalogEntry entry) => admin.create(
     entry,
-    expectedRevision: null,
     reason: 'Approved catalog entry',
   );
 
