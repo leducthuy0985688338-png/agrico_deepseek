@@ -7,6 +7,7 @@ import '../../../core/catalog/company_catalog.dart';
 import '../../../core/catalog/company_catalog_screen.dart';
 import '../../../core/permissions/authorization.dart';
 import '../application/inventory_service.dart';
+import '../application/inventory_cost_reconciler.dart';
 import '../domain/entities/inventory_item.dart';
 import 'inventory_history_screen.dart';
 
@@ -16,9 +17,11 @@ class InventoryCatalogScreen extends StatefulWidget {
     required this.subject,
     required this.service,
     this.catalog,
+    this.costReconciler,
   });
 
   final CompanyCatalogService? catalog;
+  final InventoryCostReconciler? costReconciler;
   final AuthorizationSubject subject;
   final InventoryService service;
 
@@ -33,6 +36,29 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
   void initState() {
     super.initState();
     items = widget.service.list(widget.subject);
+  }
+
+  bool reconciling = false;
+
+  Future<void> retryCostSync() async {
+    if (reconciling || widget.costReconciler == null) return;
+    setState(() => reconciling = true);
+    try {
+      final count = await widget.costReconciler!.reconcile(widget.subject.farmId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Đã đồng bộ $count phiếu chi phí vật tư.')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đồng bộ chi phí chưa hoàn tất. Có thể thử lại.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => reconciling = false);
+    }
   }
 
   void reload() {
@@ -84,6 +110,17 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
       appBar: AppBar(
         title: Text(l10n.text('module.warehouse')),
         actions: [
+          if (widget.costReconciler != null &&
+              widget.subject.permissionCodes.contains(PermissionCodes.inventoryManage) &&
+              widget.subject.dataScopes.contains(DataScope.allFarm))
+            IconButton(
+              key: const Key('inventory-retry-cost-sync'),
+              tooltip: 'Đồng bộ chi phí vật tư đang chờ',
+              icon: reconciling
+                  ? const Icon(Icons.sync_disabled)
+                  : const Icon(Icons.sync),
+              onPressed: reconciling ? null : retryCostSync,
+            ),
           IconButton(
             key: const Key('inventory-history-open'),
             tooltip: l10n.text('inventory.history'),
