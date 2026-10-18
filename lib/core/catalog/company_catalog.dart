@@ -166,6 +166,20 @@ class CompanyCatalogService {
     );
   }
 
+  /// Creates a new catalog identity. The repository allocates its code.
+  ///
+  /// Historical imports use a separate repository operation; user-facing
+  /// creation must never accept a caller-supplied code.
+  Future<void> create(
+    CatalogEntry entry, {
+    required String reason,
+  }) {
+    if (entry.code.isNotEmpty) {
+      throw const CatalogFailure('catalog.invalid');
+    }
+    return save(entry, expectedRevision: null, reason: reason);
+  }
+
   Future<void> request({
     required String id,
     required CatalogKind kind,
