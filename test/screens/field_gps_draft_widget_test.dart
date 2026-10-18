@@ -45,8 +45,12 @@ Future<void> openMeasurement(WidgetTester tester, Widget screen,
   gps.positions.add(point(16.001, 105.001));
   await tester.pump();
   expect(find.textContaining('3 điểm'), findsOneWidget);
-  await tester.tap(find.text('DỪNG ĐO'));
+  final stop = tester.widget<FilledButton>(
+    find.widgetWithText(FilledButton, 'DỪNG ĐO'),
+  ).onPressed! as Future<void> Function();
+  await tester.runAsync(stop);
   await tester.pumpAndSettle();
+  expect(find.text('BẮT ĐẦU ĐO GPS'), findsOneWidget);
 }
 
 Future<void> confirmMeasurement(WidgetTester tester) async {
