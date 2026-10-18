@@ -253,6 +253,7 @@ class _CatalogEditorState extends State<_CatalogEditor> {
   String? error;
   @override
   void dispose() {
+    code.dispose();
     name.dispose();
     reason.dispose();
     super.dispose();
