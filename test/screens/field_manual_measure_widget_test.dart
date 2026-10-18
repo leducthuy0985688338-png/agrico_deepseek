@@ -18,6 +18,10 @@ void main() {
     }
     await tester.pump();
     Future<void> confirm({bool enter = false}) async {
+      // A failed save shows a SnackBar over the bottom action button.
+      // Dismiss it before simulating the user's next attempt.
+      ScaffoldMessenger.of(tester.element(find.byType(Scaffold))).hideCurrentSnackBar();
+      await tester.pumpAndSettle();
       await tester.tap(find.text('LƯU THỬA'));
       await tester.pumpAndSettle();
       if (enter) {
