@@ -50,13 +50,14 @@ class _WorkResourceCatalogScreenState extends State<WorkResourceCatalogScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(
-                  key: const Key('catalog-code'),
-                  controller: code,
-                  decoration: InputDecoration(
-                    labelText: l10n.text('work.code'),
+                if (widget.service.catalog == null)
+                  TextField(
+                    key: const Key('catalog-code'),
+                    controller: code,
+                    decoration: InputDecoration(
+                      labelText: l10n.text('work.code'),
+                    ),
                   ),
-                ),
                 TextField(
                   key: const Key('catalog-name'),
                   controller: name,
