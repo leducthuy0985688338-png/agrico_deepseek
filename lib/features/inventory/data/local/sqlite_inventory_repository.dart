@@ -209,6 +209,19 @@ class SqliteInventoryRepository implements InventoryRepository {
       throw const FormatException('Movement codes are assigned by SQLite.');
     }
     await database.transaction((tx) async {
+      if (fieldId != null) {
+        // Revalidate inside the stock/outbox transaction: a season deleted
+        // between the preliminary check and this write cannot receive costs.
+        final destination = await tx.rawQuery(
+          'SELECT s.id FROM production_seasons s '
+          'JOIN fields f ON f.id = s.field_id '
+          'WHERE f.id = ? AND s.id = ? LIMIT 1',
+          [fieldId, seasonId],
+        );
+        if (destination.isEmpty) {
+          throw StateError('Production destination changed before posting.');
+        }
+      }
       final delta = movement.kind == InventoryMovementKind.receipt
           ? movement.quantity
           : -movement.quantity;
