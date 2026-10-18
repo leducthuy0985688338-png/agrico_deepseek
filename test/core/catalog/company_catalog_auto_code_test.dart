@@ -73,6 +73,21 @@ void main() {
     },
   );
 
+  test('concurrent new entries receive distinct sequential codes', () async {
+    await Future.wait([
+      create(item('unit-1', CatalogKind.unit, 'Kilogram')),
+      create(item('unit-2', CatalogKind.unit, 'Litre')),
+      create(item('unit-3', CatalogKind.unit, 'Bag')),
+    ]);
+    final entries = await admin.entries();
+    expect(
+      entries.map((e) => e.code).toSet(),
+      {'DVT-000001', 'DVT-000002', 'DVT-000003'},
+    );
+    expect(entries, hasLength(3));
+    expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(3));
+  });
+
   test('failed insert rolls back allocated number and audit', () async {
     await create(item('unit-1', CatalogKind.unit, 'Kilogram'));
     await expectLater(
