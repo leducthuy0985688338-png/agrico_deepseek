@@ -1,4 +1,5 @@
 import 'package:agrico_deepseek/features/inventory/data/local/sqlite_inventory_repository.dart';
+import 'package:agrico_deepseek/core/catalog/sqlite_company_catalog.dart';
 import 'package:agrico_deepseek/core/identity/data/sqlite_monthly_document_sequence.dart';
 import 'package:agrico_deepseek/features/inventory/domain/entities/inventory_item.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -74,6 +75,46 @@ void main() {
       throwsA(isA<DatabaseException>()),
     );
     expect((await repository.listByFarm('farm-1')).single.stock, 7);
+  });
+
+  test('shared-catalog material registration reuses its projected inventory identity', () async {
+    await SqliteCompanyCatalog.createSchema(database);
+    await database.insert(SqliteCompanyCatalog.entriesTable, {
+      'id': 'unit-kg', 'farm_id': 'farm-1', 'kind': 'unit',
+      'code': 'DVT-000001', 'name': 'kg', 'name_key': 'KG',
+      'unit_id': null, 'active': 1, 'revision': 1,
+    });
+    await database.insert(SqliteCompanyCatalog.entriesTable, {
+      'id': 'material-1', 'farm_id': 'farm-1', 'kind': 'material',
+      'code': 'VT-000001', 'name': 'Vật tư A', 'name_key': 'VẬT TƯ A',
+      'unit_id': 'unit-kg', 'active': 1, 'revision': 1,
+    });
+    await database.insert(SqliteInventoryRepository.itemsTable, {
+      'id': 'material-1', 'farm_id': 'farm-1',
+      'code': 'VT-000001', 'name': 'Vật tư A', 'unit': 'kg',
+      'unit_price': 0, 'supplier': '', 'stock': 0,
+    });
+    const material = InventoryItem(
+      id: 'material-1', farmId: 'farm-1', code: 'VT-000001',
+      name: 'Vật tư A', unit: 'kg', unitPrice: 120, supplier: 'NCC',
+    );
+    await repository.register(material);
+    await repository.record(InventoryMovement(
+      id: 'material-receipt', farmId: 'farm-1', itemId: 'material-1',
+      kind: InventoryMovementKind.receipt, quantity: 3,
+      occurredAt: DateTime.utc(2026, 10, 18),
+    ));
+    await repository.register(material);
+    final rows = await database.query(SqliteInventoryRepository.itemsTable,
+        where: 'id=?', whereArgs: ['material-1']);
+    expect(rows, hasLength(1));
+    expect(rows.single['stock'], 3);
+    expect(rows.single['unit_price'], 120.0);
+    expect(await repository.movementsByFarm('farm-1'), hasLength(1));
+    await expectLater(repository.register(const InventoryItem(
+      id: 'unknown', farmId: 'farm-1', code: 'VT-999999',
+      name: 'Unknown', unit: 'kg', unitPrice: 0, supplier: '',
+    )), throwsA(isA<Exception>()));
   });
 
   test('receipt and issue persist stock with an audit trail', () async {
