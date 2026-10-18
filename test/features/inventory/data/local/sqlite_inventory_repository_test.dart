@@ -41,6 +41,41 @@ void main() {
     occurredAt: DateTime.utc(2026, 9, 29),
   );
 
+  test('registering an existing projected item updates metadata without resetting stock', () async {
+    await repository.record(movement('in-before-register', InventoryMovementKind.receipt, 7));
+    await repository.register(
+      const InventoryItem(
+        id: 'item-1',
+        farmId: 'farm-1',
+        code: 'PB001',
+        name: 'Phân bón',
+        unit: 'kg',
+        unitPrice: 25000,
+        supplier: 'Nhà cung cấp B',
+      ),
+    );
+    final item = (await repository.listByFarm('farm-1')).single;
+    expect(item.stock, 7);
+    expect(item.unitPrice, 25000);
+    expect(item.supplier, 'Nhà cung cấp B');
+    expect(await repository.movementsByFarm('farm-1'), hasLength(1));
+    await expectLater(
+      repository.register(
+        const InventoryItem(
+          id: 'item-1',
+          farmId: 'farm-1',
+          code: 'OTHER',
+          name: 'Wrong identity',
+          unit: 'kg',
+          unitPrice: 1,
+          supplier: '',
+        ),
+      ),
+      throwsA(isA<DatabaseException>()),
+    );
+    expect((await repository.listByFarm('farm-1')).single.stock, 7);
+  });
+
   test('receipt and issue persist stock with an audit trail', () async {
     await repository.record(movement('in-1', InventoryMovementKind.receipt, 5));
     await repository.record(movement('out-1', InventoryMovementKind.issue, 2));
