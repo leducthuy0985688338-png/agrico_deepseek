@@ -26,16 +26,27 @@ class MaterialProductionCostSyncService {
     DateTime? date,
     String? notes,
   }) async {
-    if (fieldId.isEmpty || quantity <= 0) return null;
+    if (fieldId.trim().isEmpty || quantity <= 0) return null;
+    if (!quantity.isFinite || !unitPrice.isFinite || unitPrice < 0) {
+      throw const FormatException('Invalid material cost quantity or unit price.');
+    }
+    if (transactionId.trim().isEmpty || itemId.trim().isEmpty ||
+        itemName.trim().isEmpty || unit.trim().isEmpty) {
+      throw const FormatException('Material cost source and item are required.');
+    }
+
+    // A delivered movement is immutable for cost purposes. A retry must not
+    // overwrite the original price, destination, date or quantity.
+    final existing = await _costDatabase.getBySource('material', transactionId);
+    if (existing != null) return existing;
 
     final resolvedSeasonId = (seasonId == null || seasonId.isEmpty)
         ? (await _seasonDatabase.getLatestByField(fieldId))?.id
         : seasonId;
     if (resolvedSeasonId == null || resolvedSeasonId.isEmpty) return null;
 
-    final existing = await _costDatabase.getBySource('material', transactionId);
     final record = ProductionCostModel(
-      id: existing?.id ?? 'MATERIAL-COST-$transactionId',
+      id: 'MATERIAL-COST-$transactionId',
       fieldId: fieldId,
       seasonId: resolvedSeasonId,
       category: ProductionCostCategory.material,
