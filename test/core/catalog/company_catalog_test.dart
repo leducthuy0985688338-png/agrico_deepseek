@@ -183,7 +183,7 @@ void main() {
   });
 
   test('duplicate creation rolls back and leaves request pending', () async {
-    await save(entry('existing', CatalogKind.unit, 'DIRECT', 'Existing'));
+    await save(entry('existing', CatalogKind.unit, '', 'Existing'));
     await worker.request(
       id: 'direct',
       kind: CatalogKind.unit,
@@ -197,8 +197,8 @@ void main() {
         createEntry: entry(
           'new-unit',
           CatalogKind.unit,
-          'DIRECT',
-          'Direct unit',
+          '',
+          'Existing',
         ),
         reason: 'Approved',
       ),
@@ -231,7 +231,7 @@ void main() {
     await expectLater(
       admin.resolve(
         'self-direct',
-        createEntry: entry('self-unit', CatalogKind.unit, 'SELF', 'Self'),
+        createEntry: entry('self-unit', CatalogKind.unit, '', 'Self'),
         reason: 'Approved',
       ),
       throwsA(isA<CatalogFailure>()),
