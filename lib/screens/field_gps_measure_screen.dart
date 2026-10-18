@@ -10,16 +10,29 @@ class FieldGpsMeasureScreen extends StatefulWidget {
   const FieldGpsMeasureScreen({
     super.key,
     this.persistResult = true,
+    this.gpsOverride,
+    this.mapBuilder,
+    this.saveOverride,
   });
 
+  /// Returns a measurement for the caller's preview/commit workflow.
+  const FieldGpsMeasureScreen.draft({
+    super.key,
+    this.gpsOverride,
+    this.mapBuilder,
+  }) : persistResult = false,
+       saveOverride = null;
+
   final bool persistResult;
+  final GpsFieldService? gpsOverride;
+  final Widget Function()? mapBuilder;
+  final Future<void> Function(FieldModel)? saveOverride;
   @override
   State<FieldGpsMeasureScreen> createState() => _FieldGpsMeasureScreenState();
 }
 
 class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
-  final _gps = GpsFieldService();
-  final _fieldProvider = FieldProvider();
+  late final _gps = widget.gpsOverride ?? GpsFieldService();
   final List<LatLng> _points = [];
   StreamSubscription<Position>? _subscription;
   GoogleMapController? _mapController;
@@ -119,7 +132,9 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
     );
     try {
       if (widget.persistResult) {
-        await _fieldProvider.createMeasuredFieldLocally(field);
+        final save = widget.saveOverride ??
+            FieldProvider().createMeasuredFieldLocally;
+        await save(field);
       }
       if (!mounted) return;
       Navigator.pop(context, field);
@@ -144,7 +159,7 @@ class _FieldGpsMeasureScreenState extends State<FieldGpsMeasureScreen> {
         IconButton(tooltip: 'Lưu thửa', onPressed: _recording || _saving || _points.length < 3 ? null : _saveField, icon: _saving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save)),
       ]),
       body: Stack(children: [
-        GoogleMap(
+        widget.mapBuilder?.call() ?? GoogleMap(
           initialCameraPosition: CameraPosition(target: initial, zoom: 17),
           myLocationEnabled: true, myLocationButtonEnabled: true, compassEnabled: true,
           polygons: _polygons, polylines: _polylines,

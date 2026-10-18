@@ -567,7 +567,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     String parcelId,
   ) async {
     final measured = await Navigator.of(context).push<FieldModel>(
-      MaterialPageRoute(builder: (_) => const FieldGpsMeasureScreen()),
+      MaterialPageRoute(builder: (_) => const FieldGpsMeasureScreen.draft()),
     );
     if (!context.mounted || measured == null) return;
     final parcel = await deps.controller.parcels.getById(
@@ -912,7 +912,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
   ) async {
     final measured = await Navigator.of(context).push<FieldModel>(
       MaterialPageRoute(
-        builder: (_) => const FieldGpsMeasureScreen(persistResult: false),
+        builder: (_) => const FieldGpsMeasureScreen.draft(),
       ),
     );
     if (!context.mounted || measured == null) return null;
