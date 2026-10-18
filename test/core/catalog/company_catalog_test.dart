@@ -106,6 +106,31 @@ void main() {
     expect(request.entryId, 'direct-unit');
     expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(3));
   });
+  test('approved suggestion allocates the next system code atomically', () async {
+    await save(entry('existing', CatalogKind.unit, '', 'Existing'));
+    await worker.request(
+      id: 'suggested-unit',
+      kind: CatalogKind.unit,
+      code: 'SUGGESTED',
+      name: 'Suggested unit',
+      reason: 'Needed',
+    );
+    await admin.resolve(
+      'suggested-unit',
+      createEntry: entry(
+        'approved-unit',
+        CatalogKind.unit,
+        '',
+        'Suggested unit',
+      ),
+      reason: 'Approved',
+    );
+    final entries = await admin.entries();
+    expect(entries.firstWhere((e) => e.id == 'existing').code, 'DVT-000001');
+    expect(entries.firstWhere((e) => e.id == 'approved-unit').code, 'DVT-000002');
+    expect((await admin.requests()).single.status, 'approved');
+  });
+
   test('duplicate creation rolls back and leaves request pending', () async {
     await save(entry('existing', CatalogKind.unit, 'DIRECT', 'Existing'));
     await worker.request(
