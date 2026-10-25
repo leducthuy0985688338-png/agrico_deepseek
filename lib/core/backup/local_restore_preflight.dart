@@ -29,6 +29,20 @@ class LocalRestorePreflight {
     if (data.length != 2 || !data.containsKey('agrico_costs.db')) {
       throw const RestorePreflightException('missingCosts');
     }
+    final cutover = await primary.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='production_v2_test_cleanup_v1'",
+    );
+    if (cutover.isNotEmpty) {
+      final oldCosts =
+          (data['agrico_costs.db']!['tables'] as Map)['production_costs']
+              as List?;
+      if (oldCosts != null && oldCosts.isNotEmpty) {
+        throw const RestorePreflightException(
+          'incompatibleProductionData',
+          database: 'agrico_costs.db',
+        );
+      }
+    }
     var index = 0;
     for (final entry in <String, Database>{
       'agrico.db': primary,
@@ -94,6 +108,12 @@ class LocalRestorePreflight {
               'farm_task_work_links_v1',
               'agrico_production_parcel_sequences_v4',
               'agrico_production_standalone_plot_sequences_v1',
+              'production_seasons_v2',
+              'production_material_costs_v2',
+              'production_v2_test_cleanup_v1',
+              'production_field_links_v1',
+              'inventory_cost_outbox_v2',
+              'production_seasons',
               'inventory_items_v2',
               'inventory_movements_v2',
               'company_catalog_entries_v1',
@@ -108,6 +128,39 @@ class LocalRestorePreflight {
               'company_catalog_sync_conflicts_v1',
             }
           : <String>{};
+      if (tables.contains('production_v2_test_cleanup_v1')) {
+        final marker =
+            saved['production_v2_test_cleanup_v1'] as List? ?? const [];
+        if (marker.isEmpty &&
+            [
+              'production_seasons_v2',
+              'production_material_costs_v2',
+            ].any((name) => (saved[name] as List? ?? const []).isNotEmpty)) {
+          throw RestorePreflightException(
+            'incompatibleProductionData',
+            database: databaseName,
+          );
+        }
+
+        final incompatible = databaseName == 'agrico.db'
+            ? [
+                'fields',
+                'field_measurement_history',
+                'production_seasons',
+                'production_logs',
+                'production_field_links_v1',
+                'inventory_cost_outbox_v2',
+              ]
+            : ['production_costs'];
+        if (incompatible.any(
+          (name) => (saved[name] as List? ?? const []).isNotEmpty,
+        )) {
+          throw RestorePreflightException(
+            'incompatibleProductionData',
+            database: databaseName,
+          );
+        }
+      }
       final missing = tables.difference(saved.keys.toSet());
       final productionCode = RegExp(r'^(.+)-L([0-9]{3,})(?:-T([0-9]{3,}))?$');
       final standaloneProductionCode = RegExp(r'^(.+)-T([0-9]{3,})$');
@@ -234,6 +287,48 @@ class LocalRestorePreflight {
       for (final row in schema.where((row) => row['type'] == 'index')) {
         step = 'index ${row['name']}';
         await staged.execute(row['sql']! as String);
+      }
+      if (databaseName == 'agrico.db' &&
+          tables.contains('production_seasons_v2')) {
+        step = 'V2 production integrity';
+        if ((await staged.query(
+          'production_seasons_v2',
+          limit: 1,
+        )).isNotEmpty) {
+          final invalid = await staged.rawQuery(
+            'SELECT s.id FROM production_seasons_v2 s LEFT JOIN land_parcels p '
+            'ON p.id=s.parcel_id WHERE p.id IS NULL OR p.farm_id<>s.farm_id '
+            "OR p.kind<>'fieldPlot' LIMIT 1",
+          );
+          if (invalid.isNotEmpty) {
+            throw RestorePreflightException(
+              'integrity',
+              database: databaseName,
+              step: step,
+            );
+          }
+        }
+        if ((await staged.query(
+          'production_material_costs_v2',
+          limit: 1,
+        )).isNotEmpty) {
+          final invalid = await staged.rawQuery(
+            'SELECT c.movement_id FROM production_material_costs_v2 c '
+            'LEFT JOIN inventory_movements_v2 m ON m.id=c.movement_id '
+            'LEFT JOIN production_seasons_v2 s ON s.id=c.season_id '
+            'WHERE m.id IS NULL OR s.id IS NULL OR m.farm_id<>c.farm_id '
+            'OR s.farm_id<>c.farm_id OR s.parcel_id<>c.parcel_id '
+            "OR m.kind<>'issue' OR m.item_id<>c.item_id OR m.quantity<>c.quantity "
+            'OR m.occurred_at<>c.occurred_at OR c.amount<>c.quantity*c.unit_price LIMIT 1',
+          );
+          if (invalid.isNotEmpty) {
+            throw RestorePreflightException(
+              'integrity',
+              database: databaseName,
+              step: step,
+            );
+          }
+        }
       }
       if (databaseName == 'agrico.db' &&
           tables.contains('agrico_production_parcel_sequences_v4')) {

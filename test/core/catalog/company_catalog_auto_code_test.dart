@@ -352,9 +352,13 @@ void main() {
   );
 
   test('work resource registration uses generated shared catalog identities', () async {
+    final workSubject = AuthorizationSubject(
+      userId: admin.subject.userId, membershipId: admin.subject.membershipId,
+      farmId: admin.subject.farmId, permissionCodes: admin.subject.permissionCodes,
+      dataScopes: admin.subject.dataScopes);
     final work = ParcelWorkService(SqliteParcelWorkRepository(db), catalog: admin);
     await work.register(
-      admin.subject,
+      workSubject,
       const WorkResource(
         id: 'machine-one',
         farmId: 'farm',
@@ -364,7 +368,7 @@ void main() {
       ),
     );
     await work.register(
-      admin.subject,
+      workSubject,
       const WorkResource(
         id: 'worker-one',
         farmId: 'farm',
@@ -376,7 +380,7 @@ void main() {
     final entries = await admin.entries();
     expect(entries.firstWhere((e) => e.id == 'machine-one').code, 'MAY-000001');
     expect(entries.firstWhere((e) => e.id == 'worker-one').code, 'NS-000001');
-    final resources = await work.resources(admin.subject);
+    final resources = await work.resources(workSubject);
     expect(resources.firstWhere((e) => e.id == 'machine-one').code, 'MAY-000001');
     expect(resources.firstWhere((e) => e.id == 'worker-one').code, 'NS-000001');
     expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(2));

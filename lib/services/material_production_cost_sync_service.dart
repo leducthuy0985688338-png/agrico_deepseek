@@ -11,8 +11,8 @@ class MaterialProductionCostSyncService {
   MaterialProductionCostSyncService({
     ProductionCostDatabase? costDatabase,
     ProductionSeasonDatabase? seasonDatabase,
-  })  : _costDatabase = costDatabase ?? ProductionCostDatabase(),
-        _seasonDatabase = seasonDatabase ?? ProductionSeasonDatabase();
+  }) : _costDatabase = costDatabase ?? ProductionCostDatabase(),
+       _seasonDatabase = seasonDatabase ?? ProductionSeasonDatabase();
 
   Future<ProductionCostModel?> syncExport({
     required String transactionId,
@@ -27,12 +27,21 @@ class MaterialProductionCostSyncService {
     String? notes,
   }) async {
     if (fieldId.trim().isEmpty || quantity <= 0) return null;
-    if (!quantity.isFinite || !unitPrice.isFinite || unitPrice < 0) {
-      throw const FormatException('Invalid material cost quantity or unit price.');
+    if (!quantity.isFinite ||
+        !unitPrice.isFinite ||
+        unitPrice < 0 ||
+        !(quantity * unitPrice).isFinite) {
+      throw const FormatException(
+        'Invalid material cost quantity or unit price.',
+      );
     }
-    if (transactionId.trim().isEmpty || itemId.trim().isEmpty ||
-        itemName.trim().isEmpty || unit.trim().isEmpty) {
-      throw const FormatException('Material cost source and item are required.');
+    if (transactionId.trim().isEmpty ||
+        itemId.trim().isEmpty ||
+        itemName.trim().isEmpty ||
+        unit.trim().isEmpty) {
+      throw const FormatException(
+        'Material cost source and item are required.',
+      );
     }
 
     // A delivered movement is immutable for cost purposes. A retry must not

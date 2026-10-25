@@ -3,6 +3,7 @@ import 'package:agrico_deepseek/core/catalog/sqlite_company_catalog.dart';
 import 'package:agrico_deepseek/core/identity/data/sqlite_monthly_document_sequence.dart';
 import 'package:agrico_deepseek/features/inventory/domain/entities/inventory_item.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:agrico_deepseek/features/inventory/domain/repositories/production_destination_repository.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
@@ -13,15 +14,26 @@ void main() {
   setUp(() async {
     database = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
     await SqliteInventoryRepository.createSchema(database);
-    await database.execute('CREATE TABLE fields (id TEXT PRIMARY KEY)');
-    await database.execute('CREATE TABLE production_seasons (id TEXT PRIMARY KEY, field_id TEXT NOT NULL)');
-    await database.insert('fields', {'id': 'field-1'});
-    await database.insert('production_seasons', {
-      'id': 'season-1',
-      'field_id': 'field-1',
+    await database.execute(
+      "CREATE TABLE land_parcels(id TEXT PRIMARY KEY, farm_id TEXT, parcel_code TEXT, active INTEGER, kind TEXT)",
+    );
+    await database.insert('land_parcels', {
+      'id': 'parcel-1',
+      'farm_id': 'farm-1',
+      'parcel_code': 'P1',
+      'active': 1,
+      'kind': 'fieldPlot',
     });
-
     repository = SqliteInventoryRepository(database);
+    await repository.createProductionSeason(
+      const ProductionSeason(
+        id: 'season-1',
+        farmId: 'farm-1',
+        parcelId: 'parcel-1',
+        name: 'Season',
+        startsOn: '2026-09-01',
+      ),
+    );
     await repository.register(
       const InventoryItem(
         id: 'item-1',
@@ -50,122 +62,175 @@ void main() {
     occurredAt: DateTime.utc(2026, 9, 29),
   );
 
-  test('production issue atomically creates immutable cost intent', () async {
-    await repository.record(movement('receipt', InventoryMovementKind.receipt, 10));
-    await expectLater(
-      repository.recordProductionIssue(
-        movement('invalid-destination', InventoryMovementKind.issue, 2),
-        fieldId: 'field-1',
-        seasonId: 'unknown-season',
-      ),
-      throwsA(isA<StateError>()),
-    );
-    expect((await repository.listByFarm('farm-1')).single.stock, 10);
-    expect(await repository.pendingProductionCosts('farm-1'), isEmpty);
-    await repository.recordProductionIssue(
-      movement('production-issue', InventoryMovementKind.issue, 4),
-      fieldId: 'field-1',
-      seasonId: 'season-1',
-    );
-    final intents = await repository.pendingProductionCosts('farm-1');
-    expect(intents, hasLength(1));
-    expect(intents.single['movement_id'], 'production-issue');
-    expect(intents.single['quantity'], 4);
-    expect(intents.single['unit_price'], 20000);
-    expect(intents.single['field_id'], 'field-1');
-    expect((await repository.listByFarm('farm-1')).single.stock, 6);
-
-    await expectLater(
-      repository.recordProductionIssue(
-        movement('failed-issue', InventoryMovementKind.issue, 7),
-        fieldId: 'field-1',
+  test(
+    'production issue atomically creates immutable V2 production cost',
+    () async {
+      await repository.record(
+        movement('receipt', InventoryMovementKind.receipt, 10),
+      );
+      await expectLater(
+        repository.recordProductionIssue(
+          movement('invalid-destination', InventoryMovementKind.issue, 2),
+          parcelId: 'parcel-1',
+          seasonId: 'unknown-season',
+        ),
+        throwsA(isA<StateError>()),
+      );
+      expect((await repository.listByFarm('farm-1')).single.stock, 10);
+      expect(await repository.productionCosts('farm-1'), isEmpty);
+      await repository.recordProductionIssue(
+        movement('production-issue', InventoryMovementKind.issue, 4),
+        parcelId: 'parcel-1',
         seasonId: 'season-1',
-      ),
-      throwsA(isA<StateError>()),
-    );
-    expect(await repository.pendingProductionCosts('farm-1'), hasLength(1));
-    expect((await repository.listByFarm('farm-1')).single.stock, 6);
+      );
+      final intents = await repository.productionCosts('farm-1');
+      expect(intents, hasLength(1));
+      expect(intents.single.movementId, 'production-issue');
+      expect(intents.single.quantity, 4);
+      expect(intents.single.unitPrice, 20000);
+      expect(intents.single.parcelId, 'parcel-1');
+      expect((await repository.listByFarm('farm-1')).single.stock, 6);
 
-    await repository.acknowledgeProductionCost('farm-1', 'production-issue');
-    expect(await repository.pendingProductionCosts('farm-1'), isEmpty);
-    expect(await database.query(SqliteInventoryRepository.costOutboxTable),
-        hasLength(1));
-  });
+      await expectLater(
+        repository.recordProductionIssue(
+          movement('failed-issue', InventoryMovementKind.issue, 7),
+          parcelId: 'parcel-1',
+          seasonId: 'season-1',
+        ),
+        throwsA(isA<StateError>()),
+      );
+      expect(await repository.productionCosts('farm-1'), hasLength(1));
+      expect((await repository.listByFarm('farm-1')).single.stock, 6);
 
-  test('registering an existing projected item updates metadata without resetting stock', () async {
-    await repository.record(movement('in-before-register', InventoryMovementKind.receipt, 7));
-    await repository.register(
-      const InventoryItem(
-        id: 'item-1',
-        farmId: 'farm-1',
-        code: 'PB001',
-        name: 'Phân bón',
-        unit: 'kg',
-        unitPrice: 25000,
-        supplier: 'Nhà cung cấp B',
-      ),
-    );
-    final item = (await repository.listByFarm('farm-1')).single;
-    expect(item.stock, 7);
-    expect(item.unitPrice, 25000);
-    expect(item.supplier, 'Nhà cung cấp B');
-    expect(await repository.movementsByFarm('farm-1'), hasLength(1));
-    await expectLater(
-      repository.register(
+      expect(
+        await database.query(SqliteInventoryRepository.costsTable),
+        hasLength(1),
+      );
+    },
+  );
+
+  test(
+    'registering an existing projected item updates metadata without resetting stock',
+    () async {
+      await repository.record(
+        movement('in-before-register', InventoryMovementKind.receipt, 7),
+      );
+      await repository.register(
         const InventoryItem(
           id: 'item-1',
           farmId: 'farm-1',
-          code: 'OTHER',
-          name: 'Wrong identity',
+          code: 'PB001',
+          name: 'Phân bón',
           unit: 'kg',
-          unitPrice: 1,
-          supplier: '',
+          unitPrice: 25000,
+          supplier: 'Nhà cung cấp B',
         ),
-      ),
-      throwsA(isA<DatabaseException>()),
-    );
-    expect((await repository.listByFarm('farm-1')).single.stock, 7);
-  });
+      );
+      final item = (await repository.listByFarm('farm-1')).single;
+      expect(item.stock, 7);
+      expect(item.unitPrice, 25000);
+      expect(item.supplier, 'Nhà cung cấp B');
+      expect(await repository.movementsByFarm('farm-1'), hasLength(1));
+      await expectLater(
+        repository.register(
+          const InventoryItem(
+            id: 'item-1',
+            farmId: 'farm-1',
+            code: 'OTHER',
+            name: 'Wrong identity',
+            unit: 'kg',
+            unitPrice: 1,
+            supplier: '',
+          ),
+        ),
+        throwsA(isA<DatabaseException>()),
+      );
+      expect((await repository.listByFarm('farm-1')).single.stock, 7);
+    },
+  );
 
-  test('shared-catalog material registration reuses its projected inventory identity', () async {
-    await SqliteCompanyCatalog.createSchema(database);
-    await database.insert(SqliteCompanyCatalog.entriesTable, {
-      'id': 'unit-kg', 'farm_id': 'farm-1', 'kind': 'unit',
-      'code': 'DVT-000001', 'name': 'kg', 'name_key': 'KG',
-      'unit_id': null, 'active': 1, 'revision': 1,
-    });
-    await database.insert(SqliteCompanyCatalog.entriesTable, {
-      'id': 'material-1', 'farm_id': 'farm-1', 'kind': 'material',
-      'code': 'VT-000001', 'name': 'Vật tư A', 'name_key': 'VẬT TƯ A',
-      'unit_id': 'unit-kg', 'active': 1, 'revision': 1,
-    });
-    await database.insert(SqliteInventoryRepository.itemsTable, {
-      'id': 'material-1', 'farm_id': 'farm-1',
-      'code': 'VT-000001', 'name': 'Vật tư A', 'unit': 'kg',
-      'unit_price': 0, 'supplier': '', 'stock': 0,
-    });
-    const material = InventoryItem(
-      id: 'material-1', farmId: 'farm-1', code: 'VT-000001',
-      name: 'Vật tư A', unit: 'kg', unitPrice: 120, supplier: 'NCC',
-    );
-    await repository.register(material);
-    await repository.record(InventoryMovement(
-      id: 'material-receipt', farmId: 'farm-1', itemId: 'material-1',
-      kind: InventoryMovementKind.receipt, quantity: 3,
-      occurredAt: DateTime.utc(2026, 10, 18),
-    ));
-    await repository.register(material);
-    final rows = await database.query(SqliteInventoryRepository.itemsTable,
-        where: 'id=?', whereArgs: ['material-1']);
-    expect(rows, hasLength(1));
-    expect(rows.single['stock'], 3);
-    expect(rows.single['unit_price'], 120.0);
-    expect(await repository.movementsByFarm('farm-1'), hasLength(1));
-    await expectLater(repository.register(const InventoryItem(
-      id: 'unknown', farmId: 'farm-1', code: 'VT-999999',
-      name: 'Unknown', unit: 'kg', unitPrice: 0, supplier: '',
-    )), throwsA(isA<Exception>()));
-  });
+  test(
+    'shared-catalog material registration reuses its projected inventory identity',
+    () async {
+      await SqliteCompanyCatalog.createSchema(database);
+      await database.insert(SqliteCompanyCatalog.entriesTable, {
+        'id': 'unit-kg',
+        'farm_id': 'farm-1',
+        'kind': 'unit',
+        'code': 'DVT-000001',
+        'name': 'kg',
+        'name_key': 'KG',
+        'unit_id': null,
+        'active': 1,
+        'revision': 1,
+      });
+      await database.insert(SqliteCompanyCatalog.entriesTable, {
+        'id': 'material-1',
+        'farm_id': 'farm-1',
+        'kind': 'material',
+        'code': 'VT-000001',
+        'name': 'Vật tư A',
+        'name_key': 'VẬT TƯ A',
+        'unit_id': 'unit-kg',
+        'active': 1,
+        'revision': 1,
+      });
+      await database.insert(SqliteInventoryRepository.itemsTable, {
+        'id': 'material-1',
+        'farm_id': 'farm-1',
+        'code': 'VT-000001',
+        'name': 'Vật tư A',
+        'unit': 'kg',
+        'unit_price': 0,
+        'supplier': '',
+        'stock': 0,
+      });
+      const material = InventoryItem(
+        id: 'material-1',
+        farmId: 'farm-1',
+        code: 'VT-000001',
+        name: 'Vật tư A',
+        unit: 'kg',
+        unitPrice: 120,
+        supplier: 'NCC',
+      );
+      await repository.register(material);
+      await repository.record(
+        InventoryMovement(
+          id: 'material-receipt',
+          farmId: 'farm-1',
+          itemId: 'material-1',
+          kind: InventoryMovementKind.receipt,
+          quantity: 3,
+          occurredAt: DateTime.utc(2026, 10, 18),
+        ),
+      );
+      await repository.register(material);
+      final rows = await database.query(
+        SqliteInventoryRepository.itemsTable,
+        where: 'id=?',
+        whereArgs: ['material-1'],
+      );
+      expect(rows, hasLength(1));
+      expect(rows.single['stock'], 3);
+      expect(rows.single['unit_price'], 120.0);
+      expect(await repository.movementsByFarm('farm-1'), hasLength(1));
+      await expectLater(
+        repository.register(
+          const InventoryItem(
+            id: 'unknown',
+            farmId: 'farm-1',
+            code: 'VT-999999',
+            name: 'Unknown',
+            unit: 'kg',
+            unitPrice: 0,
+            supplier: '',
+          ),
+        ),
+        throwsA(isA<Exception>()),
+      );
+    },
+  );
 
   test('receipt and issue persist stock with an audit trail', () async {
     await repository.record(movement('in-1', InventoryMovementKind.receipt, 5));

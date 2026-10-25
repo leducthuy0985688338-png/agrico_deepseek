@@ -1,5 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 
+import '../../domain/repositories/production_destination_repository.dart';
+
 import '../../../../core/identity/data/sqlite_monthly_document_sequence.dart';
 import '../../../../core/identity/domain/business_reference_code.dart';
 
@@ -8,13 +10,15 @@ import '../../domain/repositories/inventory_repository.dart';
 import '../../../../core/catalog/sqlite_company_catalog.dart';
 import '../../../../core/catalog/company_catalog.dart';
 
-class SqliteInventoryRepository implements InventoryRepository {
+class SqliteInventoryRepository
+    implements InventoryRepository, ProductionDestinationRepository {
   const SqliteInventoryRepository(this.database);
 
   final Database database;
+  static const seasonsTable = 'production_seasons_v2';
+  static const costsTable = 'production_material_costs_v2';
   static const itemsTable = 'inventory_items_v2';
   static const movementsTable = 'inventory_movements_v2';
-  static const costOutboxTable = 'inventory_cost_outbox_v2';
 
   static Future<void> createSchema(DatabaseExecutor db) async {
     await SqliteMonthlyDocumentSequence.createSchema(db);
@@ -38,22 +42,35 @@ class SqliteInventoryRepository implements InventoryRepository {
       occurred_at TEXT NOT NULL,
       code TEXT
     )''');
-    await db.execute('''CREATE TABLE IF NOT EXISTS $costOutboxTable (
+    await db.execute('''CREATE TABLE IF NOT EXISTS $seasonsTable (
+      id TEXT PRIMARY KEY,
+      farm_id TEXT NOT NULL,
+      parcel_id TEXT NOT NULL REFERENCES land_parcels(id) ON DELETE RESTRICT,
+      name TEXT NOT NULL,
+      starts_on TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
+      UNIQUE(farm_id, parcel_id, name)
+    )''');
+    await db.execute('''CREATE TABLE IF NOT EXISTS $costsTable (
       movement_id TEXT PRIMARY KEY REFERENCES $movementsTable(id) ON DELETE RESTRICT,
       farm_id TEXT NOT NULL,
-      item_id TEXT NOT NULL,
-      field_id TEXT NOT NULL,
-      season_id TEXT NOT NULL,
+      parcel_id TEXT NOT NULL REFERENCES land_parcels(id) ON DELETE RESTRICT,
+      season_id TEXT NOT NULL REFERENCES $seasonsTable(id) ON DELETE RESTRICT,
+      item_id TEXT NOT NULL REFERENCES $itemsTable(id) ON DELETE RESTRICT,
       item_name TEXT NOT NULL,
       unit TEXT NOT NULL,
       quantity INTEGER NOT NULL CHECK(quantity > 0),
       unit_price REAL NOT NULL CHECK(unit_price >= 0),
-      occurred_at TEXT NOT NULL,
-      delivered INTEGER NOT NULL DEFAULT 0 CHECK(delivered IN (0, 1))
+      amount REAL NOT NULL CHECK(amount >= 0),
+      occurred_at TEXT NOT NULL
     )''');
     await db.execute(
-      'CREATE INDEX IF NOT EXISTS idx_inventory_cost_outbox_pending '
-      'ON $costOutboxTable(farm_id, delivered, occurred_at)',
+      'CREATE INDEX IF NOT EXISTS idx_production_seasons_v2_farm '
+      'ON $seasonsTable(farm_id, parcel_id, active)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_production_material_costs_v2_farm '
+      'ON $costsTable(farm_id, parcel_id, season_id, occurred_at)',
     );
     final columns = await db.rawQuery('PRAGMA table_info($movementsTable)');
     if (!columns.any((column) => column['name'] == 'code')) {
@@ -162,38 +179,22 @@ class SqliteInventoryRepository implements InventoryRepository {
     );
   }
 
-  /// An issue intended for production. Stock and its immutable cost intent
-  /// are committed in the same database transaction. Delivery to the separate
-  /// cost database is intentionally performed by a later reconciler.
+  /// An issue intended for production. Stock and its immutable production cost
+  /// are committed in the same database transaction. All writes use the same agrico.db connection; there is no second cost writer.
+  @override
   Future<void> recordProductionIssue(
     InventoryMovement movement, {
-    required String fieldId,
+    required String parcelId,
     required String seasonId,
   }) async {
     if (movement.kind != InventoryMovementKind.issue ||
-        fieldId.trim().isEmpty || seasonId.trim().isEmpty) {
-      throw const FormatException('Production issue requires a field and season.');
+        parcelId.trim().isEmpty ||
+        seasonId.trim().isEmpty) {
+      throw const FormatException(
+        'Production issue requires a V2 parcel and season.',
+      );
     }
-    // Legacy production costs reference fields and production_seasons.
-    // Until their identities are mapped to V2 land_parcels, never accept
-    // arbitrary strings as a production cost destination.
-    final tables = await database.rawQuery(
-      "SELECT name FROM sqlite_master WHERE type='table' "
-      "AND name IN ('fields', 'production_seasons')",
-    );
-    if (tables.length != 2) {
-      throw StateError('Production field/season catalog is unavailable.');
-    }
-    final destination = await database.rawQuery(
-      'SELECT s.id FROM production_seasons s '
-      'JOIN fields f ON f.id = s.field_id '
-      'WHERE f.id = ? AND s.id = ? LIMIT 1',
-      [fieldId, seasonId],
-    );
-    if (destination.isEmpty) {
-      throw StateError('Production season does not belong to the selected field.');
-    }
-    await _record(movement, fieldId: fieldId, seasonId: seasonId);
+    await _record(movement, parcelId: parcelId, seasonId: seasonId);
   }
 
   @override
@@ -201,7 +202,7 @@ class SqliteInventoryRepository implements InventoryRepository {
 
   Future<void> _record(
     InventoryMovement movement, {
-    String? fieldId,
+    String? parcelId,
     String? seasonId,
   }) async {
     movement.validate();
@@ -209,17 +210,25 @@ class SqliteInventoryRepository implements InventoryRepository {
       throw const FormatException('Movement codes are assigned by SQLite.');
     }
     await database.transaction((tx) async {
-      if (fieldId != null) {
-        // Revalidate inside the stock/outbox transaction: a season deleted
-        // between the preliminary check and this write cannot receive costs.
+      if (parcelId != null) {
         final destination = await tx.rawQuery(
-          'SELECT s.id FROM production_seasons s '
-          'JOIN fields f ON f.id = s.field_id '
-          'WHERE f.id = ? AND s.id = ? LIMIT 1',
-          [fieldId, seasonId],
+          'SELECT s.id FROM $seasonsTable s '
+          'JOIN land_parcels p ON p.id=s.parcel_id AND p.farm_id=s.farm_id '
+          "WHERE p.id=? AND s.id=? AND s.farm_id=? AND p.active=1 "
+          "AND p.kind='fieldPlot' AND s.active=1 AND s.starts_on<=? LIMIT 1",
+          [
+            parcelId,
+            seasonId,
+            movement.farmId,
+            movement.occurredAt
+                .toUtc()
+                .add(const Duration(hours: 7))
+                .toIso8601String()
+                .substring(0, 10),
+          ],
         );
         if (destination.isEmpty) {
-          throw StateError('Production destination changed before posting.');
+          throw StateError('Invalid V2 parcel/season for this farm and date.');
         }
       }
       final delta = movement.kind == InventoryMovementKind.receipt
@@ -235,7 +244,7 @@ class SqliteInventoryRepository implements InventoryRepository {
           'Item is missing or stock is insufficient in this farm.',
         );
       }
-      final costItem = fieldId == null
+      final costItem = parcelId == null
           ? null
           : (await tx.query(
               itemsTable,
@@ -267,43 +276,161 @@ class SqliteInventoryRepository implements InventoryRepository {
         }, conflictAlgorithm: ConflictAlgorithm.abort),
       );
       if (costItem != null) {
-        await tx.insert(costOutboxTable, {
+        final price = (costItem['unit_price']! as num).toDouble();
+        final amount = price * movement.quantity;
+        if (!price.isFinite || price < 0 || !amount.isFinite) {
+          throw const FormatException('Invalid material cost snapshot.');
+        }
+        await tx.insert(costsTable, {
           'movement_id': movement.id,
           'farm_id': movement.farmId,
           'item_id': movement.itemId,
-          'field_id': fieldId,
+          'parcel_id': parcelId,
           'season_id': seasonId,
           'item_name': costItem['name'],
           'unit': costItem['unit'],
           'quantity': movement.quantity,
           'unit_price': costItem['unit_price'],
           'occurred_at': movement.occurredAt.toIso8601String(),
-          'delivered': 0,
+          'amount': amount,
         }, conflictAlgorithm: ConflictAlgorithm.abort);
       }
     });
   }
 
-  /// Read-only pending intents; the consumer must acknowledge only after
-  /// the cost record is durably persisted.
-  Future<List<Map<String, Object?>>> pendingProductionCosts(String farmId) async {
-    final rows = await database.query(
-      costOutboxTable,
-      where: 'farm_id=? AND delivered=0',
-      whereArgs: [farmId],
-      orderBy: 'occurred_at, movement_id',
+  @override
+  Future<List<ProductionDestination>> productionDestinations(
+    String farmId,
+  ) async {
+    final rows = await database.rawQuery(
+      'SELECT p.id AS parcel_id, p.parcel_code, s.id AS season_id, s.name '
+      'FROM $seasonsTable s JOIN land_parcels p '
+      'ON p.id=s.parcel_id AND p.farm_id=s.farm_id '
+      "WHERE s.farm_id=? AND p.active=1 AND p.kind='fieldPlot' AND s.active=1 "
+      'ORDER BY p.parcel_code, s.starts_on DESC, s.id',
+      [farmId],
     );
-    return List.unmodifiable(rows);
+    return List.unmodifiable(
+      rows.map(
+        (r) => ProductionDestination(
+          parcelId: r['parcel_id']! as String,
+          parcelCode: r['parcel_code']! as String,
+          seasonId: r['season_id']! as String,
+          seasonName: r['name']! as String,
+        ),
+      ),
+    );
   }
 
-  Future<void> acknowledgeProductionCost(String farmId, String movementId) async {
-    final changed = await database.update(
-      costOutboxTable,
-      {'delivered': 1},
-      where: 'farm_id=? AND movement_id=?',
-      whereArgs: [farmId, movementId],
+  @override
+  Future<List<ProductionIdentityChoice>> productionParcels(
+    String farmId,
+  ) async {
+    final rows = await database.query(
+      'land_parcels',
+      columns: ['id', 'parcel_code'],
+      where: "farm_id=? AND active=1 AND kind='fieldPlot'",
+      whereArgs: [farmId],
+      orderBy: 'parcel_code, id',
     );
-    if (changed != 1) throw StateError('Unknown production cost intent.');
+    return List.unmodifiable(
+      rows.map(
+        (r) => ProductionIdentityChoice(
+          r['id']! as String,
+          r['parcel_code']! as String,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Future<List<ProductionSeason>> productionSeasons(String farmId) async {
+    final rows = await database.query(
+      seasonsTable,
+      where: 'farm_id=?',
+      whereArgs: [farmId],
+      orderBy: 'starts_on DESC, id',
+    );
+    return List.unmodifiable(
+      rows.map(
+        (r) => ProductionSeason(
+          id: r['id']! as String,
+          farmId: r['farm_id']! as String,
+          parcelId: r['parcel_id']! as String,
+          name: r['name']! as String,
+          startsOn: r['starts_on']! as String,
+          active: r['active'] == 1,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Future<void> createProductionSeason(ProductionSeason season) async {
+    season.validate();
+    await database.transaction((tx) async {
+      final parcel = await tx.query(
+        'land_parcels',
+        columns: ['id'],
+        where: "id=? AND farm_id=? AND active=1 AND kind='fieldPlot'",
+        whereArgs: [season.parcelId, season.farmId],
+      );
+      if (parcel.length != 1) {
+        throw StateError('Active V2 production plot required.');
+      }
+      await tx.insert(seasonsTable, {
+        'id': season.id,
+        'farm_id': season.farmId,
+        'parcel_id': season.parcelId,
+        'name': season.name,
+        'starts_on': season.startsOn,
+        'active': season.active ? 1 : 0,
+      }, conflictAlgorithm: ConflictAlgorithm.abort);
+    });
+  }
+
+  @override
+  Future<void> setProductionSeasonActive(
+    String farmId,
+    String seasonId,
+    bool active,
+  ) async {
+    final changed = await database.update(
+      seasonsTable,
+      {'active': active ? 1 : 0},
+      where: 'id=? AND farm_id=?',
+      whereArgs: [seasonId, farmId],
+    );
+    if (changed != 1) throw StateError('Season not found in this farm.');
+  }
+
+  @override
+  Future<List<ProductionMaterialCost>> productionCosts(String farmId) async {
+    final rows = await database.rawQuery(
+      'SELECT c.*, p.parcel_code, s.name AS season_name FROM $costsTable c '
+      'JOIN land_parcels p ON p.id=c.parcel_id AND p.farm_id=c.farm_id '
+      'JOIN $seasonsTable s ON s.id=c.season_id AND s.farm_id=c.farm_id '
+      'AND s.parcel_id=c.parcel_id '
+      'WHERE c.farm_id=? ORDER BY c.occurred_at DESC, c.movement_id',
+      [farmId],
+    );
+    return List.unmodifiable(
+      rows.map(
+        (r) => ProductionMaterialCost(
+          movementId: r['movement_id']! as String,
+          parcelId: r['parcel_id']! as String,
+          parcelCode: r['parcel_code']! as String,
+          seasonId: r['season_id']! as String,
+          seasonName: r['season_name']! as String,
+          itemName: r['item_name']! as String,
+          unit: r['unit']! as String,
+          quantity: r['quantity']! as int,
+          unitPrice: (r['unit_price']! as num).toDouble(),
+          amount: (r['amount']! as num).toDouble(),
+          occurredAt: DateTime.parse(r['occurred_at']! as String),
+        ),
+      ),
+    );
   }
 
   @override

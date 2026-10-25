@@ -7,9 +7,10 @@ import '../../../core/catalog/company_catalog.dart';
 import '../../../core/catalog/company_catalog_screen.dart';
 import '../../../core/permissions/authorization.dart';
 import '../application/inventory_service.dart';
-import '../application/inventory_cost_reconciler.dart';
 import '../domain/entities/inventory_item.dart';
 import 'inventory_history_screen.dart';
+import 'production_workspace_screen.dart';
+import '../domain/repositories/production_destination_repository.dart';
 
 class InventoryCatalogScreen extends StatefulWidget {
   const InventoryCatalogScreen({
@@ -17,11 +18,11 @@ class InventoryCatalogScreen extends StatefulWidget {
     required this.subject,
     required this.service,
     this.catalog,
-    this.costReconciler,
+    this.productionIssuesEnabled = false,
   });
 
+  final bool productionIssuesEnabled;
   final CompanyCatalogService? catalog;
-  final InventoryCostReconciler? costReconciler;
   final AuthorizationSubject subject;
   final InventoryService service;
 
@@ -36,29 +37,6 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
   void initState() {
     super.initState();
     items = widget.service.list(widget.subject);
-  }
-
-  bool reconciling = false;
-
-  Future<void> retryCostSync() async {
-    if (reconciling || widget.costReconciler == null) return;
-    setState(() => reconciling = true);
-    try {
-      final count = await widget.costReconciler!.reconcile(widget.subject.farmId);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Đã đồng bộ $count phiếu chi phí vật tư.')),
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Đồng bộ chi phí chưa hoàn tất. Có thể thử lại.')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => reconciling = false);
-    }
   }
 
   void reload() {
@@ -81,7 +59,11 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
     }
   }
 
-  Future<void> record(InventoryItem item, InventoryMovementKind kind) async {
+  Future<void> record(
+    InventoryItem item,
+    InventoryMovementKind kind, {
+    bool production = false,
+  }) async {
     final saved = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -90,6 +72,7 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
         service: widget.service,
         item: item,
         kind: kind,
+        production: production,
       ),
     );
     if (saved == true && mounted) {
@@ -110,16 +93,19 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
       appBar: AppBar(
         title: Text(l10n.text('module.warehouse')),
         actions: [
-          if (widget.costReconciler != null &&
-              widget.subject.permissionCodes.contains(PermissionCodes.inventoryManage) &&
-              widget.subject.dataScopes.contains(DataScope.allFarm))
+          if (widget.productionIssuesEnabled)
             IconButton(
-              key: const Key('inventory-retry-cost-sync'),
-              tooltip: 'Đồng bộ chi phí vật tư đang chờ',
-              icon: reconciling
-                  ? const Icon(Icons.sync_disabled)
-                  : const Icon(Icons.sync),
-              onPressed: reconciling ? null : retryCostSync,
+              key: const Key('inventory-production-workspace'),
+              tooltip: l10n.text('production.title'),
+              icon: const Icon(Icons.grass),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => ProductionWorkspaceScreen(
+                    service: widget.service,
+                    subject: widget.subject,
+                  ),
+                ),
+              ),
             ),
           IconButton(
             key: const Key('inventory-history-open'),
@@ -206,6 +192,18 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
                                 record(item, InventoryMovementKind.receipt),
                             child: Text(l10n.text('inventory.receipt')),
                           ),
+                          if (widget.productionIssuesEnabled)
+                            TextButton(
+                              key: Key('inventory-production-issue-${item.id}'),
+                              onPressed: () => record(
+                                item,
+                                InventoryMovementKind.issue,
+                                production: true,
+                              ),
+                              child: Text(
+                                l10n.text('inventory.productionIssue'),
+                              ),
+                            ),
                           TextButton(
                             key: Key('inventory-direct-issue-${item.id}'),
                             onPressed: () =>
@@ -493,8 +491,10 @@ class _MovementDialog extends StatefulWidget {
     required this.service,
     required this.item,
     required this.kind,
+    this.production = false,
   });
 
+  final bool production;
   final AuthorizationSubject subject;
   final InventoryService service;
   final InventoryItem item;
@@ -508,6 +508,12 @@ class _MovementDialogState extends State<_MovementDialog> {
   final quantity = TextEditingController();
   bool saving = false;
   String? errorKey;
+  ProductionDestination? destination;
+  String? selectedParcel;
+  late final Future<List<ProductionDestination>>? destinations =
+      widget.production
+      ? widget.service.productionDestinations(widget.subject)
+      : null;
 
   @override
   void dispose() {
@@ -517,6 +523,10 @@ class _MovementDialogState extends State<_MovementDialog> {
 
   Future<void> save() async {
     if (saving) {
+      return;
+    }
+    if (widget.production && destination == null) {
+      setState(() => errorKey = 'inventory.destinationRequired');
       return;
     }
     final amount = int.tryParse(quantity.text.trim());
@@ -531,19 +541,26 @@ class _MovementDialogState extends State<_MovementDialog> {
       errorKey = null;
     });
     try {
-      await widget.service.record(
-        widget.subject,
-        InventoryMovement(
-          id:
-              'inventory-movement-${DateTime.now().microsecondsSinceEpoch}-'
-              '${Random.secure().nextInt(1 << 32)}',
-          farmId: widget.subject.farmId,
-          itemId: widget.item.id,
-          kind: widget.kind,
-          quantity: amount,
-          occurredAt: DateTime.now().toUtc(),
-        ),
+      final movement = InventoryMovement(
+        id:
+            'inventory-movement-${DateTime.now().microsecondsSinceEpoch}-'
+            '${Random.secure().nextInt(1 << 32)}',
+        farmId: widget.subject.farmId,
+        itemId: widget.item.id,
+        kind: widget.kind,
+        quantity: amount,
+        occurredAt: DateTime.now().toUtc(),
       );
+      if (widget.production) {
+        await widget.service.recordProductionIssue(
+          widget.subject,
+          movement,
+          parcelId: destination!.parcelId,
+          seasonId: destination!.seasonId,
+        );
+      } else {
+        await widget.service.record(widget.subject, movement);
+      }
       if (mounted) {
         Navigator.pop(context, true);
       }
@@ -563,7 +580,13 @@ class _MovementDialogState extends State<_MovementDialog> {
     return PopScope(
       canPop: !saving,
       child: AlertDialog(
-        title: Text(l10n.text('inventory.${widget.kind.name}')),
+        title: Text(
+          l10n.text(
+            widget.production
+                ? 'inventory.productionIssue'
+                : 'inventory.${widget.kind.name}',
+          ),
+        ),
         content: SizedBox(
           width: double.maxFinite,
           child: SingleChildScrollView(
@@ -574,6 +597,77 @@ class _MovementDialogState extends State<_MovementDialog> {
                 Text(
                   '${l10n.text('inventory.stock')}: ${widget.item.stock} ${widget.item.unit}',
                 ),
+                if (destinations != null)
+                  FutureBuilder<List<ProductionDestination>>(
+                    future: destinations,
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return Text(l10n.text('inventory.destinationFailed'));
+                      }
+                      if (!snapshot.hasData) {
+                        return const LinearProgressIndicator();
+                      }
+                      final rows = snapshot.data!;
+                      if (rows.isEmpty) {
+                        return Text(l10n.text('inventory.noDestinations'));
+                      }
+                      final parcels = {
+                        for (final r in rows) r.parcelId: r.parcelCode,
+                      };
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          DropdownButtonFormField<String>(
+                            key: const Key('inventory-production-parcel'),
+                            isExpanded: true,
+                            decoration: InputDecoration(
+                              labelText: l10n.text('inventory.parcel'),
+                            ),
+                            items: [
+                              for (final p in parcels.entries)
+                                DropdownMenuItem(
+                                  value: p.key,
+                                  child: Text(p.value),
+                                ),
+                            ],
+                            onChanged: saving
+                                ? null
+                                : (id) => setState(() {
+                                    selectedParcel = id;
+                                    destination = null;
+                                  }),
+                          ),
+                          DropdownButtonFormField<String>(
+                            key: ValueKey(
+                              'inventory-production-season-$selectedParcel',
+                            ),
+                            isExpanded: true,
+                            decoration: InputDecoration(
+                              labelText: l10n.text('inventory.season'),
+                            ),
+                            items: [
+                              for (final r in rows.where(
+                                (r) => r.parcelId == selectedParcel,
+                              ))
+                                DropdownMenuItem(
+                                  value: r.seasonId,
+                                  child: Text(r.seasonName),
+                                ),
+                            ],
+                            onChanged: saving
+                                ? null
+                                : (id) => setState(() {
+                                    destination = rows.firstWhere(
+                                      (r) =>
+                                          r.parcelId == selectedParcel &&
+                                          r.seasonId == id,
+                                    );
+                                  }),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
                 TextField(
                   key: const Key('inventory-movement-quantity'),
                   controller: quantity,

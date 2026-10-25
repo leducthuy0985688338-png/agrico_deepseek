@@ -1,7 +1,7 @@
 import '../../../core/permissions/authorization.dart';
-import '../data/local/sqlite_inventory_repository.dart';
 import '../domain/entities/inventory_item.dart';
 import '../domain/repositories/inventory_repository.dart';
+import '../domain/repositories/production_destination_repository.dart';
 
 class InventoryService {
   const InventoryService(this.repository);
@@ -38,12 +38,73 @@ class InventoryService {
     return repository.register(item);
   }
 
+  ProductionDestinationRepository get _destinations {
+    final store = repository;
+    if (store is! ProductionDestinationRepository) {
+      throw StateError('Production destinations are unavailable.');
+    }
+    return store as ProductionDestinationRepository;
+  }
+
+  Future<List<ProductionDestination>> productionDestinations(
+    AuthorizationSubject subject,
+  ) {
+    _authorize(subject, PermissionCodes.inventoryManage);
+    return _destinations.productionDestinations(subject.farmId);
+  }
+
+  Future<List<ProductionIdentityChoice>> productionParcels(
+    AuthorizationSubject subject,
+  ) {
+    _authorize(subject, PermissionCodes.inventoryView);
+    return _destinations.productionParcels(subject.farmId);
+  }
+
+  Future<List<ProductionSeason>> productionSeasons(
+    AuthorizationSubject subject,
+  ) {
+    _authorize(subject, PermissionCodes.inventoryView);
+    return _destinations.productionSeasons(subject.farmId);
+  }
+
+  Future<List<ProductionMaterialCost>> productionCosts(
+    AuthorizationSubject subject,
+  ) {
+    _authorize(subject, PermissionCodes.financeView);
+    return _destinations.productionCosts(subject.farmId);
+  }
+
+  Future<void> createProductionSeason(
+    AuthorizationSubject subject,
+    ProductionSeason season,
+  ) {
+    _authorize(subject, PermissionCodes.productionPlan);
+    if (season.farmId != subject.farmId) {
+      throw StateError('Season is outside this farm.');
+    }
+    season.validate();
+    return _destinations.createProductionSeason(season);
+  }
+
+  Future<void> setProductionSeasonActive(
+    AuthorizationSubject subject,
+    String seasonId,
+    bool active,
+  ) {
+    _authorize(subject, PermissionCodes.productionPlan);
+    return _destinations.setProductionSeasonActive(
+      subject.farmId,
+      seasonId,
+      active,
+    );
+  }
+
   /// Production issues require an explicit destination and a SQLite-backed
-  /// repository so stock and cost intent share the same transaction.
+  /// repository whose contract commits stock and production cost atomically.
   Future<void> recordProductionIssue(
     AuthorizationSubject subject,
     InventoryMovement movement, {
-    required String fieldId,
+    required String parcelId,
     required String seasonId,
   }) {
     _authorize(subject, PermissionCodes.inventoryManage);
@@ -51,13 +112,9 @@ class InventoryService {
       throw StateError('Movement is outside the current farm.');
     }
     movement.validate();
-    final store = repository;
-    if (store is! SqliteInventoryRepository) {
-      throw StateError('Atomic production issues require SQLite inventory.');
-    }
-    return store.recordProductionIssue(
+    return _destinations.recordProductionIssue(
       movement,
-      fieldId: fieldId,
+      parcelId: parcelId,
       seasonId: seasonId,
     );
   }

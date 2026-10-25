@@ -8,6 +8,7 @@ import 'package:agrico_deepseek/features/inventory/data/local/sqlite_inventory_r
 import 'package:agrico_deepseek/features/inventory/domain/entities/inventory_item.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:agrico_deepseek/features/inventory/domain/repositories/production_destination_repository.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
@@ -85,6 +86,70 @@ void main() {
       isEmpty,
     );
   }
+
+  test('native V2 seasons and cost snapshots survive backup preflight', () async {
+    await primary.execute(
+      'CREATE TABLE land_parcels(id TEXT PRIMARY KEY, farm_id TEXT, parcel_code TEXT, active INTEGER, kind TEXT)',
+    );
+    await primary.insert('land_parcels', {
+      'id': 'p',
+      'farm_id': 'farm-1',
+      'parcel_code': 'P1',
+      'active': 1,
+      'kind': 'fieldPlot',
+    });
+    await repository.createProductionSeason(
+      const ProductionSeason(
+        id: 's',
+        farmId: 'farm-1',
+        parcelId: 'p',
+        name: 'Season',
+        startsOn: '2026-09-01',
+      ),
+    );
+    await repository.recordProductionIssue(
+      InventoryMovement(
+        id: 'production',
+        farmId: 'farm-1',
+        itemId: 'item-1',
+        kind: InventoryMovementKind.issue,
+        quantity: 1,
+        occurredAt: DateTime.utc(2026, 10, 25),
+      ),
+      parcelId: 'p',
+      seasonId: 's',
+    );
+    final original = await snapshot();
+    final counts = await validate(original);
+    expect(counts['agrico.db/production_seasons_v2'], 1);
+    expect(counts['agrico.db/production_material_costs_v2'], 1);
+    for (final table in [
+      'production_seasons_v2',
+      'production_material_costs_v2',
+    ]) {
+      await expectLater(
+        validate(
+          _rewrite(original, (tables) {
+            ((tables[table] as List).single as Map)['farm_id'] = 'wrong-farm';
+          }),
+        ),
+        throwsA(isA<RestorePreflightException>()),
+      );
+    }
+    expect((await repository.productionCosts('farm-1')).single.amount, 100);
+  });
+
+  test(
+    'pre-production backup may omit empty native production tables',
+    () async {
+      final bytes = _rewrite(await snapshot(), (tables) {
+        tables.remove('production_seasons_v2');
+        tables.remove('production_material_costs_v2');
+      });
+      await validate(bytes);
+      await unchanged();
+    },
+  );
 
   test(
     'stages inventory stock and Unicode movement snapshot without live changes',

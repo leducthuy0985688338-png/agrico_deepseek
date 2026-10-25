@@ -1,5 +1,8 @@
 # Company catalog — A04
 
+> Production cutover update (2026-10-25): the dated legacy field/outbox integration notes below are superseded by [Native V2 production](../architecture_v2/native-production-cutover-20261025.md). New V2 production seasons and material costs use V2 parcel identities and one SQLite transaction.
+
+
 ## Scope
 
 The authenticated Settings route provides units, crops, machines, workers, materials, task types, suppliers, income categories and expense categories. The authoritative catalog and its business projections are stored in local SQLite. Catalog synchronization has separate transport, verification and conflict-handling components; do not infer that other V2 business modules are cloud-synchronized.

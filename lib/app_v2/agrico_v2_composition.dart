@@ -1,9 +1,10 @@
+import '../core/migrations/production_v2_test_cleanup.dart';
+import '../services/production_cost_database.dart';
+import '../features/inventory/presentation/production_workspace_screen.dart';
 import 'v2_resource_module_routes.dart';
 import '../features/farm/presentation/screens/work_resource_catalog_screen.dart';
 import '../features/farm/domain/entities/parcel_work.dart';
 import '../features/inventory/application/inventory_service.dart';
-import '../features/inventory/application/inventory_cost_reconciler.dart';
-import '../services/material_production_cost_sync_service.dart';
 import '../features/inventory/presentation/inventory_catalog_screen.dart';
 import '../core/backup/local_backup_access.dart';
 import '../core/backup/local_backup_screen.dart';
@@ -126,6 +127,11 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     await SqliteParcelWorkRepository.createSchema(database);
     await SqliteFarmTaskRepository.createSchema(database);
     await SqliteInventoryRepository.createSchema(database);
+    await ProductionV2TestCleanup.run(
+      primary: database,
+      legacyCosts: await ProductionCostDatabase().database,
+      farmId: subject.farmId,
+    );
     await SqliteCompanyCatalog.createSchema(database);
     await SqliteCompanyCatalog(database).adoptExisting(subject.farmId);
     await SqliteParcelLandHistoryRepository.createSchema(database);
@@ -220,18 +226,46 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         currentSubject: () => mounted ? widget.subject : null,
       );
       final costService = ProductionCostSummary(financeService);
+      final canViewProduction =
+          deps.subject.dataScopes.contains(DataScope.allFarm) &&
+          const AuthorizationService().can(
+            subject: deps.subject,
+            permission: PermissionCodes.inventoryView,
+            resource: ResourceContext(farmId: deps.subject.farmId),
+          );
       late final VoidCallback openParcels;
       Widget detail(String id) => LandParcelDetailScreen(
         landOnly: true,
         controller: deps.controller,
         parcelId: id,
-        onCostsRequested: costService.canView && financeService.canViewParcels
+        onCostsRequested:
+            canViewProduction ||
+                (costService.canView && financeService.canViewParcels)
             ? () {
                 final parcel = deps.controller.detail?.parcel;
-                if (costService.canView &&
-                    financeService.canViewParcels &&
-                    parcel?.id == id &&
-                    parcel?.farmId == financeService.organizationId) {
+                if (parcel?.id != id || parcel?.farmId != deps.subject.farmId)
+                  return;
+                if (canViewProduction) {
+                  push(
+                    ProductionWorkspaceScreen(
+                      service: InventoryService(
+                        SqliteInventoryRepository(deps.database),
+                      ),
+                      subject: deps.subject,
+                      initialParcelId: id,
+                      openFinanceCosts:
+                          costService.canView && financeService.canViewParcels
+                          ? () => push(
+                              ProductionCostsScreen(
+                                service: costService,
+                                initialParcelId: id,
+                              ),
+                            )
+                          : null,
+                    ),
+                  );
+                } else if (costService.canView &&
+                    financeService.canViewParcels) {
                   push(
                     ProductionCostsScreen(
                       service: costService,
@@ -470,11 +504,8 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
           ),
           openInventory: () => push(
             InventoryCatalogScreen(
+              productionIssuesEnabled: true,
               subject: deps.subject,
-              costReconciler: InventoryCostReconciler(
-                inventory: SqliteInventoryRepository(deps.database),
-                costs: MaterialProductionCostSyncService(),
-              ),
               catalog: CompanyCatalogService(
                 repository: SqliteCompanyCatalog(deps.database),
                 subject: deps.subject,
@@ -533,10 +564,22 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       }
       if (costService.canView) {
         legacy['costs'] = () {
-          if (costService.canView) {
+          if (costService.canView)
             push(ProductionCostsScreen(service: costService));
-          }
         };
+      }
+      if (canViewProduction) {
+        void openProduction() => push(
+          ProductionWorkspaceScreen(
+            service: InventoryService(SqliteInventoryRepository(deps.database)),
+            subject: deps.subject,
+            openFinanceCosts: costService.canView
+                ? () => push(ProductionCostsScreen(service: costService))
+                : null,
+          ),
+        );
+        legacy['seasons'] = openProduction;
+        legacy['costs'] = openProduction;
       }
       // Unsupported routes stay closed until domain-level scope guards exist.
       if (!const AuthorizationService().can(
@@ -917,9 +960,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     BuildContext context,
   ) async {
     final measured = await Navigator.of(context).push<FieldModel>(
-      MaterialPageRoute(
-        builder: (_) => const FieldGpsMeasureScreen.draft(),
-      ),
+      MaterialPageRoute(builder: (_) => const FieldGpsMeasureScreen.draft()),
     );
     if (!context.mounted || measured == null) return null;
 
