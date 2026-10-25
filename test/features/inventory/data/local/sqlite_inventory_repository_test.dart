@@ -1,3 +1,4 @@
+import 'package:agrico_deepseek/features/inventory/domain/repositories/production_planning_repository.dart';
 import 'package:agrico_deepseek/features/inventory/data/local/sqlite_inventory_repository.dart';
 import 'package:agrico_deepseek/core/catalog/sqlite_company_catalog.dart';
 import 'package:agrico_deepseek/core/identity/data/sqlite_monthly_document_sequence.dart';
@@ -34,6 +35,32 @@ void main() {
         startsOn: '2026-09-01',
       ),
     );
+    await repository.createProductionPlan(
+      const ProductionPlan(
+        id: 'plan',
+        farmId: 'farm-1',
+        parcelId: 'parcel-1',
+        seasonId: 'season-1',
+        name: 'Plan',
+        crop: 'Peanut',
+        startsOn: '2026-09-01',
+        endsOn: '2026-12-31',
+        currency: 'VND',
+        materialBudget: '1000000',
+        laborBudget: '0',
+        machineBudget: '0',
+        laborHours: '0',
+        machineShifts: '0',
+      ),
+      'admin',
+    );
+    await repository.changeProductionPlanStatus(
+      'farm-1',
+      'plan',
+      0,
+      ProductionPlanStatus.active,
+      'admin',
+    );
     await repository.register(
       const InventoryItem(
         id: 'item-1',
@@ -54,6 +81,9 @@ void main() {
     int quantity, {
     String farmId = 'farm-1',
   }) => InventoryMovement(
+    unitPriceText: '20000',
+    currency: 'VND',
+    pricedBy: 'admin',
     id: id,
     farmId: farmId,
     itemId: 'item-1',
@@ -73,6 +103,7 @@ void main() {
           movement('invalid-destination', InventoryMovementKind.issue, 2),
           parcelId: 'parcel-1',
           seasonId: 'unknown-season',
+          planId: 'plan',
         ),
         throwsA(isA<StateError>()),
       );
@@ -82,6 +113,7 @@ void main() {
         movement('production-issue', InventoryMovementKind.issue, 4),
         parcelId: 'parcel-1',
         seasonId: 'season-1',
+        planId: 'plan',
       );
       final intents = await repository.productionCosts('farm-1');
       expect(intents, hasLength(1));
@@ -96,6 +128,7 @@ void main() {
           movement('failed-issue', InventoryMovementKind.issue, 7),
           parcelId: 'parcel-1',
           seasonId: 'season-1',
+          planId: 'plan',
         ),
         throwsA(isA<StateError>()),
       );
@@ -197,6 +230,9 @@ void main() {
       await repository.register(material);
       await repository.record(
         InventoryMovement(
+          unitPriceText: '20000',
+          currency: 'VND',
+          pricedBy: 'admin',
           id: 'material-receipt',
           farmId: 'farm-1',
           itemId: 'material-1',
@@ -258,7 +294,7 @@ void main() {
     await repository.record(movement('in-1', InventoryMovementKind.receipt, 2));
     await expectLater(
       repository.record(movement('in-1', InventoryMovementKind.receipt, 5)),
-      throwsA(isA<DatabaseException>()),
+      throwsStateError,
     );
     expect((await repository.listByFarm('farm-1')).single.stock, 2);
     expect(await repository.movementsByFarm('farm-1'), hasLength(1));
@@ -271,6 +307,9 @@ void main() {
         DateTime at, [
         InventoryMovementKind kind = InventoryMovementKind.receipt,
       ]) => InventoryMovement(
+        unitPriceText: '20000',
+        currency: 'VND',
+        pricedBy: 'admin',
         id: id,
         farmId: 'farm-1',
         itemId: 'item-1',
@@ -307,6 +346,9 @@ void main() {
       );
       await repository.record(
         InventoryMovement(
+          unitPriceText: '20000',
+          currency: 'VND',
+          pricedBy: 'admin',
           id: 'farm-2-receipt',
           farmId: 'farm-2',
           itemId: 'item-2',
@@ -330,7 +372,7 @@ void main() {
       );
       await expectLater(
         repository.record(movement('first', InventoryMovementKind.receipt, 5)),
-        throwsA(isA<DatabaseException>()),
+        throwsStateError,
       );
       await repository.record(
         movement('second', InventoryMovementKind.receipt, 1),

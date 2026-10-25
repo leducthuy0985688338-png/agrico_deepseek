@@ -1,3 +1,5 @@
+import '../../features/inventory/data/local/production_inventory_integrity.dart';
+
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -108,6 +110,10 @@ class LocalRestorePreflight {
               'farm_task_work_links_v1',
               'agrico_production_parcel_sequences_v4',
               'agrico_production_standalone_plot_sequences_v1',
+              'production_plans_v1',
+              'production_plan_tasks_v1',
+              'production_plan_sequences_v1',
+              'production_plan_audit_v1',
               'production_seasons_v2',
               'production_material_costs_v2',
               'production_v2_test_cleanup_v1',
@@ -312,6 +318,9 @@ class LocalRestorePreflight {
           'production_material_costs_v2',
           limit: 1,
         )).isNotEmpty) {
+          final arithmetic = tables.contains('production_plans_v1')
+              ? 'LIMIT 1'
+              : 'OR c.amount<>c.quantity*c.unit_price LIMIT 1';
           final invalid = await staged.rawQuery(
             'SELECT c.movement_id FROM production_material_costs_v2 c '
             'LEFT JOIN inventory_movements_v2 m ON m.id=c.movement_id '
@@ -319,7 +328,7 @@ class LocalRestorePreflight {
             'WHERE m.id IS NULL OR s.id IS NULL OR m.farm_id<>c.farm_id '
             'OR s.farm_id<>c.farm_id OR s.parcel_id<>c.parcel_id '
             "OR m.kind<>'issue' OR m.item_id<>c.item_id OR m.quantity<>c.quantity "
-            'OR m.occurred_at<>c.occurred_at OR c.amount<>c.quantity*c.unit_price LIMIT 1',
+            'OR m.occurred_at<>c.occurred_at $arithmetic',
           );
           if (invalid.isNotEmpty) {
             throw RestorePreflightException(
@@ -443,6 +452,19 @@ class LocalRestorePreflight {
           );
         }
       }
+      if (databaseName == 'agrico.db' &&
+          tables.contains('production_plans_v1')) {
+        step = 'inventory reconciliation';
+        try {
+          await ProductionInventoryIntegrity.validate(staged);
+        } catch (_) {
+          throw RestorePreflightException(
+            'integrity',
+            database: databaseName,
+            step: step,
+          );
+        }
+      }
       if (databaseName == 'agrico.db' && tables.containsAll(inventoryTables)) {
         step = 'inventory reconciliation';
         final wrongFarm = await staged.rawQuery('''
@@ -450,7 +472,9 @@ class LocalRestorePreflight {
           JOIN inventory_items_v2 i ON i.id = m.item_id
           WHERE m.farm_id != i.farm_id LIMIT 1
         ''');
-        final wrongStock = await staged.rawQuery('''
+        final wrongStock = tables.contains('production_plans_v1')
+            ? <Map<String, Object?>>[]
+            : await staged.rawQuery('''
           SELECT i.id FROM inventory_items_v2 i
           LEFT JOIN inventory_movements_v2 m ON m.item_id = i.id
           GROUP BY i.id, i.stock

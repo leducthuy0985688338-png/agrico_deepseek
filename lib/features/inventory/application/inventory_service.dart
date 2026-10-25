@@ -1,3 +1,5 @@
+import '../domain/repositories/production_planning_repository.dart';
+import '../domain/entities/exact_decimal.dart';
 import '../../../core/permissions/authorization.dart';
 import '../domain/entities/inventory_item.dart';
 import '../domain/repositories/inventory_repository.dart';
@@ -106,6 +108,7 @@ class InventoryService {
     InventoryMovement movement, {
     required String parcelId,
     required String seasonId,
+    String? planId,
   }) {
     _authorize(subject, PermissionCodes.inventoryManage);
     if (movement.farmId != subject.farmId) {
@@ -113,7 +116,8 @@ class InventoryService {
     }
     movement.validate();
     return _destinations.recordProductionIssue(
-      movement,
+      _priced(subject, movement),
+      planId: planId,
       parcelId: parcelId,
       seasonId: seasonId,
     );
@@ -128,6 +132,108 @@ class InventoryService {
       throw StateError('Movement is outside the current farm.');
     }
     movement.validate();
-    return repository.record(movement);
+    return repository.record(_priced(subject, movement));
+  }
+
+  InventoryMovement _priced(
+    AuthorizationSubject subject,
+    InventoryMovement movement,
+  ) {
+    if (movement.kind == InventoryMovementKind.issue ||
+        movement.unitPriceText != null) {
+      _authorize(subject, PermissionCodes.inventoryPrice);
+      ExactDecimal.validatePrice(
+        movement.unitPriceText ?? '',
+        movement.currency ?? '',
+      );
+      if (ExactDecimal.parse(movement.unitPriceText!).coefficient ==
+              BigInt.zero &&
+          !movement.zeroPriceConfirmed) {
+        throw const FormatException('Zero price must be explicitly confirmed.');
+      }
+      return movement.withPricedBy(subject.userId);
+    }
+    return movement;
+  }
+
+  ProductionPlanningRepository get _planning {
+    final store = repository;
+    if (store is! ProductionPlanningRepository) {
+      throw StateError('Planning unavailable.');
+    }
+    return store as ProductionPlanningRepository;
+  }
+
+  Future<List<ProductionPlan>> productionPlans(AuthorizationSubject subject) {
+    _authorize(subject, PermissionCodes.inventoryView);
+    _authorize(subject, PermissionCodes.financeView);
+    if (repository is! ProductionPlanningRepository) return Future.value([]);
+    return _planning.productionPlans(subject.farmId);
+  }
+
+  Future<List<ProductionPlanTask>> productionPlanTasks(
+    AuthorizationSubject subject,
+  ) {
+    _authorize(subject, PermissionCodes.inventoryView);
+    if (repository is! ProductionPlanningRepository) return Future.value([]);
+    return _planning.productionPlanTasks(subject.farmId);
+  }
+
+  Future<void> createProductionPlan(
+    AuthorizationSubject subject,
+    ProductionPlan plan,
+  ) {
+    _authorize(subject, PermissionCodes.productionPlan);
+    _authorize(subject, PermissionCodes.financeView);
+    if (plan.farmId != subject.farmId) throw StateError('Plan outside farm.');
+    plan.validate();
+    return _planning.createProductionPlan(plan, subject.userId);
+  }
+
+  Future<void> changeProductionPlanStatus(
+    AuthorizationSubject subject,
+    ProductionPlan plan,
+    ProductionPlanStatus status,
+  ) {
+    _authorize(subject, PermissionCodes.productionPlan);
+    if (plan.farmId != subject.farmId) throw StateError('Plan outside farm.');
+    return _planning.changeProductionPlanStatus(
+      subject.farmId,
+      plan.id,
+      plan.revision,
+      status,
+      subject.userId,
+    );
+  }
+
+  Future<void> createProductionPlanTask(
+    AuthorizationSubject subject,
+    ProductionPlanTask task,
+  ) {
+    _authorize(subject, PermissionCodes.productionPlan);
+    _authorize(subject, PermissionCodes.taskCreate);
+    if (task.farmId != subject.farmId) throw StateError('Task outside farm.');
+    task.validate();
+    return _planning.createProductionPlanTask(task, subject.userId);
+  }
+
+  Future<void> completeProductionPlanTask(
+    AuthorizationSubject subject,
+    ProductionPlanTask task,
+    bool completed,
+  ) {
+    _authorize(subject, PermissionCodes.productionPlan);
+    _authorize(
+      subject,
+      completed ? PermissionCodes.taskComplete : PermissionCodes.taskEdit,
+    );
+    if (task.farmId != subject.farmId) throw StateError('Task outside farm.');
+    return _planning.completeProductionPlanTask(
+      subject.farmId,
+      task.id,
+      task.revision,
+      completed,
+      subject.userId,
+    );
   }
 }

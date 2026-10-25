@@ -1,3 +1,7 @@
+import '../../domain/entities/exact_decimal.dart';
+import '../../domain/repositories/production_planning_repository.dart';
+import 'sqlite_production_planning_repository.dart';
+
 import 'package:sqflite/sqflite.dart';
 
 import '../../domain/repositories/production_destination_repository.dart';
@@ -11,7 +15,10 @@ import '../../../../core/catalog/sqlite_company_catalog.dart';
 import '../../../../core/catalog/company_catalog.dart';
 
 class SqliteInventoryRepository
-    implements InventoryRepository, ProductionDestinationRepository {
+    implements
+        InventoryRepository,
+        ProductionDestinationRepository,
+        ProductionPlanningRepository {
   const SqliteInventoryRepository(this.database);
 
   final Database database;
@@ -71,6 +78,40 @@ class SqliteInventoryRepository
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_production_material_costs_v2_farm '
       'ON $costsTable(farm_id, parcel_id, season_id, occurred_at)',
+    );
+    await SqliteProductionPlanningRepository.createSchema(db);
+    Future<void> column(String table, String name, String definition) async {
+      final info = await db.rawQuery('PRAGMA table_info($table)');
+      if (!info.any((r) => r['name'] == name)) {
+        await db.execute('ALTER TABLE $table ADD COLUMN $name $definition');
+      }
+    }
+
+    final itemColumns = await db.rawQuery('PRAGMA table_info($itemsTable)');
+    if (!itemColumns.any((c) => c['name'] == 'stock_units')) {
+      await db.execute(
+        'ALTER TABLE $itemsTable ADD COLUMN stock_units INTEGER NOT NULL DEFAULT 0',
+      );
+      await db.execute('UPDATE $itemsTable SET stock_units=stock*1000000');
+    }
+    await column(movementsTable, 'quantity_units', 'INTEGER');
+    await column(costsTable, 'quantity_units', 'INTEGER');
+    for (final table in [movementsTable, costsTable]) {
+      await column(table, 'unit_price_text', 'TEXT');
+      await column(table, 'amount_text', 'TEXT');
+      await column(table, 'currency', "TEXT CHECK(currency IN ('VND','LAK'))");
+      await column(table, 'priced_by', 'TEXT');
+      await column(table, 'zero_price_confirmed', 'INTEGER NOT NULL DEFAULT 0');
+      await column(table, 'plan_id', 'TEXT REFERENCES production_plans_v1(id)');
+    }
+    await db.execute(
+      'UPDATE $itemsTable SET stock_units=stock*1000000 WHERE stock_units IS NULL',
+    );
+    await db.execute(
+      'UPDATE $movementsTable SET quantity_units=quantity*1000000 WHERE quantity_units IS NULL',
+    );
+    await db.execute(
+      'UPDATE $costsTable SET quantity_units=quantity*1000000 WHERE quantity_units IS NULL',
     );
     final columns = await db.rawQuery('PRAGMA table_info($movementsTable)');
     if (!columns.any((column) => column['name'] == 'code')) {
@@ -150,6 +191,7 @@ class SqliteInventoryRepository
           'unit_price': item.unitPrice,
           'supplier': item.supplier,
           'stock': item.stock,
+          'stock_units': 0,
         }, conflictAlgorithm: ConflictAlgorithm.abort);
       }
     });
@@ -173,7 +215,7 @@ class SqliteInventoryRepository
           unit: row['unit']! as String,
           unitPrice: (row['unit_price']! as num).toDouble(),
           supplier: row['supplier']! as String,
-          stock: row['stock']! as int,
+          stock: ExactDecimal.quantityFromUnits(row['stock_units']! as int),
         ),
       ),
     );
@@ -186,15 +228,23 @@ class SqliteInventoryRepository
     InventoryMovement movement, {
     required String parcelId,
     required String seasonId,
+    String? planId,
   }) async {
     if (movement.kind != InventoryMovementKind.issue ||
         parcelId.trim().isEmpty ||
-        seasonId.trim().isEmpty) {
+        seasonId.trim().isEmpty ||
+        planId == null ||
+        planId.trim().isEmpty) {
       throw const FormatException(
         'Production issue requires a V2 parcel and season.',
       );
     }
-    await _record(movement, parcelId: parcelId, seasonId: seasonId);
+    await _record(
+      movement,
+      parcelId: parcelId,
+      seasonId: seasonId,
+      planId: planId,
+    );
   }
 
   @override
@@ -204,12 +254,50 @@ class SqliteInventoryRepository
     InventoryMovement movement, {
     String? parcelId,
     String? seasonId,
+    String? planId,
   }) async {
     movement.validate();
+    if (movement.kind == InventoryMovementKind.issue &&
+        (movement.unitPriceText == null ||
+            movement.currency == null ||
+            movement.pricedBy == null ||
+            movement.pricedBy!.trim().isEmpty)) {
+      throw const FormatException(
+        'An Admin-confirmed issue price is required.',
+      );
+    }
+    if (movement.unitPriceText != null &&
+        ExactDecimal.parse(movement.unitPriceText!).coefficient ==
+            BigInt.zero &&
+        !movement.zeroPriceConfirmed) {
+      throw const FormatException('Zero price must be confirmed.');
+    }
     if (movement.code != null) {
       throw const FormatException('Movement codes are assigned by SQLite.');
     }
     await database.transaction((tx) async {
+      final prior = await tx.query(
+        movementsTable,
+        where: 'id=?',
+        whereArgs: [movement.id],
+      );
+      if (prior.isNotEmpty) {
+        final r = prior.single;
+        if (r['farm_id'] == movement.farmId &&
+            r['item_id'] == movement.itemId &&
+            r['kind'] == movement.kind.name &&
+            r['quantity_units'] == movement.quantityUnits &&
+            r['occurred_at'] == movement.occurredAt.toUtc().toIso8601String() &&
+            r['currency'] == movement.currency &&
+            r['unit_price_text'] == movement.unitPriceText &&
+            r['priced_by'] == movement.pricedBy &&
+            r['zero_price_confirmed'] ==
+                (movement.zeroPriceConfirmed ? 1 : 0) &&
+            r['plan_id'] == planId) {
+          return;
+        }
+        throw StateError('Movement identity already has different contents.');
+      }
       if (parcelId != null) {
         final destination = await tx.rawQuery(
           'SELECT s.id FROM $seasonsTable s '
@@ -231,13 +319,39 @@ class SqliteInventoryRepository
           throw StateError('Invalid V2 parcel/season for this farm and date.');
         }
       }
+      if (parcelId != null) {
+        final day = movement.occurredAt
+            .toUtc()
+            .add(const Duration(hours: 7))
+            .toIso8601String()
+            .substring(0, 10);
+        final plan = await tx.query(
+          'production_plans_v1',
+          where:
+              "id=? AND farm_id=? AND parcel_id=? AND season_id=? AND status='active' AND currency=? AND starts_on<=? AND ends_on>=?",
+          whereArgs: [
+            planId,
+            movement.farmId,
+            parcelId,
+            seasonId,
+            movement.currency,
+            day,
+            day,
+          ],
+        );
+        if (plan.length != 1) {
+          throw StateError(
+            'Active plan, matching currency and plan dates required.',
+          );
+        }
+      }
       final delta = movement.kind == InventoryMovementKind.receipt
-          ? movement.quantity
-          : -movement.quantity;
+          ? movement.quantityUnits
+          : -movement.quantityUnits;
       final changed = await tx.rawUpdate(
-        'UPDATE $itemsTable SET stock = stock + ? '
-        'WHERE id = ? AND farm_id = ? AND stock + ? >= 0',
-        [delta, movement.itemId, movement.farmId, delta],
+        'UPDATE $itemsTable SET stock = (stock_units + ?) / 1000000.0, stock_units = stock_units + ? '
+        'WHERE id = ? AND farm_id = ? AND stock_units + ? >= 0 AND stock_units + ? <= 9007199254740991',
+        [delta, delta, movement.itemId, movement.farmId, delta, delta],
       );
       if (changed != 1) {
         throw StateError(
@@ -272,12 +386,19 @@ class SqliteInventoryRepository
           'item_id': movement.itemId,
           'kind': movement.kind.name,
           'quantity': movement.quantity,
-          'occurred_at': movement.occurredAt.toIso8601String(),
+          'quantity_units': movement.quantityUnits,
+          'unit_price_text': movement.unitPriceText,
+          'amount_text': movement.amountText,
+          'currency': movement.currency,
+          'priced_by': movement.pricedBy,
+          'zero_price_confirmed': movement.zeroPriceConfirmed ? 1 : 0,
+          'plan_id': planId,
+          'occurred_at': movement.occurredAt.toUtc().toIso8601String(),
         }, conflictAlgorithm: ConflictAlgorithm.abort),
       );
       if (costItem != null) {
-        final price = (costItem['unit_price']! as num).toDouble();
-        final amount = price * movement.quantity;
+        final price = double.parse(movement.unitPriceText!);
+        final amount = double.parse(movement.amountText!);
         if (!price.isFinite || price < 0 || !amount.isFinite) {
           throw const FormatException('Invalid material cost snapshot.');
         }
@@ -290,8 +411,15 @@ class SqliteInventoryRepository
           'item_name': costItem['name'],
           'unit': costItem['unit'],
           'quantity': movement.quantity,
-          'unit_price': costItem['unit_price'],
-          'occurred_at': movement.occurredAt.toIso8601String(),
+          'quantity_units': movement.quantityUnits,
+          'unit_price_text': movement.unitPriceText,
+          'amount_text': movement.amountText,
+          'currency': movement.currency,
+          'priced_by': movement.pricedBy,
+          'zero_price_confirmed': movement.zeroPriceConfirmed ? 1 : 0,
+          'plan_id': planId,
+          'unit_price': price,
+          'occurred_at': movement.occurredAt.toUtc().toIso8601String(),
           'amount': amount,
         }, conflictAlgorithm: ConflictAlgorithm.abort);
       }
@@ -407,10 +535,11 @@ class SqliteInventoryRepository
   @override
   Future<List<ProductionMaterialCost>> productionCosts(String farmId) async {
     final rows = await database.rawQuery(
-      'SELECT c.*, p.parcel_code, s.name AS season_name FROM $costsTable c '
+      'SELECT c.*, p.parcel_code, s.name AS season_name, plan.code AS plan_code FROM $costsTable c '
       'JOIN land_parcels p ON p.id=c.parcel_id AND p.farm_id=c.farm_id '
       'JOIN $seasonsTable s ON s.id=c.season_id AND s.farm_id=c.farm_id '
       'AND s.parcel_id=c.parcel_id '
+      'LEFT JOIN production_plans_v1 plan ON plan.id=c.plan_id AND plan.farm_id=c.farm_id '
       'WHERE c.farm_id=? ORDER BY c.occurred_at DESC, c.movement_id',
       [farmId],
     );
@@ -424,7 +553,12 @@ class SqliteInventoryRepository
           seasonName: r['season_name']! as String,
           itemName: r['item_name']! as String,
           unit: r['unit']! as String,
-          quantity: r['quantity']! as int,
+          quantity: ExactDecimal.quantityFromUnits(r['quantity_units']! as int),
+          currency: r['currency'] as String?,
+          unitPriceText: r['unit_price_text'] as String?,
+          amountText: r['amount_text'] as String?,
+          planId: r['plan_id'] as String?,
+          planCode: r['plan_code'] as String?,
           unitPrice: (r['unit_price']! as num).toDouble(),
           amount: (r['amount']! as num).toDouble(),
           occurredAt: DateTime.parse(r['occurred_at']! as String),
@@ -448,11 +582,62 @@ class SqliteInventoryRepository
           farmId: row['farm_id']! as String,
           itemId: row['item_id']! as String,
           kind: InventoryMovementKind.values.byName(row['kind']! as String),
-          quantity: row['quantity']! as int,
+          quantity: ExactDecimal.quantityFromUnits(
+            row['quantity_units']! as int,
+          ),
+          unitPriceText: row['unit_price_text'] as String?,
+          currency: row['currency'] as String?,
+          pricedBy: row['priced_by'] as String?,
+          zeroPriceConfirmed: row['zero_price_confirmed'] == 1,
           occurredAt: DateTime.parse(row['occurred_at']! as String),
           code: row['code'] as String?,
         ),
       ),
     );
   }
+
+  SqliteProductionPlanningRepository get _planning =>
+      SqliteProductionPlanningRepository(database);
+  @override
+  Future<List<ProductionPlan>> productionPlans(String farmId) =>
+      _planning.productionPlans(farmId);
+  @override
+  Future<void> createProductionPlan(ProductionPlan plan, String actorId) =>
+      _planning.createProductionPlan(plan, actorId);
+  @override
+  Future<void> changeProductionPlanStatus(
+    String farmId,
+    String planId,
+    int revision,
+    ProductionPlanStatus status,
+    String actorId,
+  ) => _planning.changeProductionPlanStatus(
+    farmId,
+    planId,
+    revision,
+    status,
+    actorId,
+  );
+  @override
+  Future<List<ProductionPlanTask>> productionPlanTasks(String farmId) =>
+      _planning.productionPlanTasks(farmId);
+  @override
+  Future<void> createProductionPlanTask(
+    ProductionPlanTask task,
+    String actorId,
+  ) => _planning.createProductionPlanTask(task, actorId);
+  @override
+  Future<void> completeProductionPlanTask(
+    String farmId,
+    String taskId,
+    int revision,
+    bool completed,
+    String actorId,
+  ) => _planning.completeProductionPlanTask(
+    farmId,
+    taskId,
+    revision,
+    completed,
+    actorId,
+  );
 }

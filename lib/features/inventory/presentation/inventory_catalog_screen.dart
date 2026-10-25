@@ -1,3 +1,6 @@
+import '../domain/repositories/production_planning_repository.dart';
+import '../domain/entities/exact_decimal.dart';
+
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -506,6 +509,21 @@ class _MovementDialog extends StatefulWidget {
 
 class _MovementDialogState extends State<_MovementDialog> {
   final quantity = TextEditingController();
+  final issuePrice = TextEditingController();
+  String? currency;
+  String? planId;
+  bool confirmZero = false;
+  late final movementId =
+      'inventory-movement-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}';
+  late final occurredAt = DateTime.now().toUtc();
+  late final Future<List<ProductionPlan>> plans = widget.production
+      ? widget.service.productionPlans(widget.subject)
+      : Future.value([]);
+  bool get canPrice => const AuthorizationService().can(
+    subject: widget.subject,
+    permission: PermissionCodes.inventoryPrice,
+    resource: ResourceContext(farmId: widget.subject.farmId),
+  );
   bool saving = false;
   String? errorKey;
   ProductionDestination? destination;
@@ -518,6 +536,7 @@ class _MovementDialogState extends State<_MovementDialog> {
   @override
   void dispose() {
     quantity.dispose();
+    issuePrice.dispose();
     super.dispose();
   }
 
@@ -525,15 +544,36 @@ class _MovementDialogState extends State<_MovementDialog> {
     if (saving) {
       return;
     }
-    if (widget.production && destination == null) {
+    if (widget.production && (destination == null || planId == null)) {
       setState(() => errorKey = 'inventory.destinationRequired');
       return;
     }
-    final amount = int.tryParse(quantity.text.trim());
-    if (amount == null || amount <= 0) {
+    final amount = num.tryParse(quantity.text.trim().replaceAll(',', '.'));
+    if (amount == null || !amount.isFinite || amount <= 0) {
       setState(() {
         errorKey = 'inventory.invalidQuantity';
       });
+      return;
+    }
+    try {
+      ExactDecimal.quantityUnits(amount);
+      if (widget.kind == InventoryMovementKind.issue ||
+          issuePrice.text.trim().isNotEmpty) {
+        if (!canPrice) throw StateError('Admin price required.');
+        ExactDecimal.validatePrice(
+          issuePrice.text.trim().replaceAll(',', '.'),
+          currency ?? '',
+        );
+        if (ExactDecimal.parse(
+                  issuePrice.text.trim().replaceAll(',', '.'),
+                ).coefficient ==
+                BigInt.zero &&
+            !confirmZero) {
+          throw StateError('Confirm zero price.');
+        }
+      }
+    } catch (_) {
+      setState(() => errorKey = 'planning.priceRequired');
       return;
     }
     setState(() {
@@ -542,14 +582,17 @@ class _MovementDialogState extends State<_MovementDialog> {
     });
     try {
       final movement = InventoryMovement(
-        id:
-            'inventory-movement-${DateTime.now().microsecondsSinceEpoch}-'
-            '${Random.secure().nextInt(1 << 32)}',
+        id: movementId,
         farmId: widget.subject.farmId,
         itemId: widget.item.id,
         kind: widget.kind,
         quantity: amount,
-        occurredAt: DateTime.now().toUtc(),
+        occurredAt: occurredAt,
+        zeroPriceConfirmed: confirmZero,
+        unitPriceText: issuePrice.text.trim().isEmpty
+            ? null
+            : issuePrice.text.trim().replaceAll(',', '.'),
+        currency: issuePrice.text.trim().isEmpty ? null : currency,
       );
       if (widget.production) {
         await widget.service.recordProductionIssue(
@@ -557,6 +600,7 @@ class _MovementDialogState extends State<_MovementDialog> {
           movement,
           parcelId: destination!.parcelId,
           seasonId: destination!.seasonId,
+          planId: planId,
         );
       } else {
         await widget.service.record(widget.subject, movement);
@@ -635,6 +679,7 @@ class _MovementDialogState extends State<_MovementDialog> {
                                 : (id) => setState(() {
                                     selectedParcel = id;
                                     destination = null;
+                                    planId = null;
                                   }),
                           ),
                           DropdownButtonFormField<String>(
@@ -657,6 +702,7 @@ class _MovementDialogState extends State<_MovementDialog> {
                             onChanged: saving
                                 ? null
                                 : (id) => setState(() {
+                                    planId = null;
                                     destination = rows.firstWhere(
                                       (r) =>
                                           r.parcelId == selectedParcel &&
@@ -668,16 +714,97 @@ class _MovementDialogState extends State<_MovementDialog> {
                       );
                     },
                   ),
+                if (widget.production)
+                  FutureBuilder<List<ProductionPlan>>(
+                    future: plans,
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return Text(l10n.text('planning.loadFailed'));
+                      }
+                      if (!snapshot.hasData) {
+                        return const LinearProgressIndicator();
+                      }
+                      final available = snapshot.data!.where(
+                        (p) =>
+                            p.parcelId == selectedParcel &&
+                            p.seasonId == destination?.seasonId &&
+                            p.status == ProductionPlanStatus.active,
+                      );
+                      return DropdownButtonFormField<String>(
+                        key: ValueKey(
+                          'inventory-production-plan-${destination?.seasonId}',
+                        ),
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          labelText: l10n.text('planning.plan'),
+                        ),
+                        items: [
+                          for (final p in available)
+                            DropdownMenuItem(
+                              value: p.id,
+                              child: Text(
+                                '${p.code} · ${p.name} (${p.currency})',
+                              ),
+                            ),
+                        ],
+                        onChanged: saving
+                            ? null
+                            : (id) => setState(() {
+                                planId = id;
+                                currency = snapshot.data!
+                                    .firstWhere((p) => p.id == id)
+                                    .currency;
+                              }),
+                      );
+                    },
+                  ),
                 TextField(
                   key: const Key('inventory-movement-quantity'),
                   controller: quantity,
                   enabled: !saving,
-                  keyboardType: TextInputType.number,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   decoration: InputDecoration(
                     labelText:
                         '${l10n.text('inventory.quantity')} (${widget.item.unit})',
                   ),
                 ),
+                if (canPrice) ...[
+                  TextField(
+                    key: const Key('inventory-movement-price'),
+                    controller: issuePrice,
+                    enabled: !saving,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: l10n.text('planning.adminPrice'),
+                    ),
+                  ),
+                  DropdownButtonFormField<String>(
+                    key: ValueKey('inventory-currency-$planId'),
+                    initialValue: currency,
+                    decoration: InputDecoration(
+                      labelText: l10n.text('planning.currency'),
+                    ),
+                    items: [
+                      for (final c in ['VND', 'LAK'])
+                        DropdownMenuItem(value: c, child: Text(c)),
+                    ],
+                    onChanged: saving || (widget.production && planId != null)
+                        ? null
+                        : (c) => setState(() => currency = c),
+                  ),
+                  CheckboxListTile(
+                    value: confirmZero,
+                    onChanged: saving
+                        ? null
+                        : (v) => setState(() => confirmZero = v ?? false),
+                    title: Text(l10n.text('planning.confirmZero')),
+                  ),
+                ] else if (widget.kind == InventoryMovementKind.issue)
+                  Text(l10n.text('planning.adminOnly')),
                 if (errorKey != null)
                   Text(
                     l10n.text(errorKey!),
@@ -694,7 +821,11 @@ class _MovementDialogState extends State<_MovementDialog> {
           ),
           FilledButton(
             key: const Key('inventory-movement-save'),
-            onPressed: saving ? null : save,
+            onPressed:
+                saving ||
+                    (widget.kind == InventoryMovementKind.issue && !canPrice)
+                ? null
+                : save,
             child: Text(l10n.text('common.save')),
           ),
         ],

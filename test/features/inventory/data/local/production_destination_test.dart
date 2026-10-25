@@ -1,3 +1,4 @@
+import 'package:agrico_deepseek/features/inventory/domain/repositories/production_planning_repository.dart';
 import 'package:agrico_deepseek/core/permissions/authorization.dart';
 import 'package:agrico_deepseek/features/inventory/application/inventory_service.dart';
 import 'package:agrico_deepseek/features/inventory/data/local/sqlite_inventory_repository.dart';
@@ -16,6 +17,7 @@ void main() {
     farmId: 'farm',
     permissionCodes: {
       PermissionCodes.inventoryManage,
+      PermissionCodes.inventoryPrice,
       PermissionCodes.productionPlan,
       PermissionCodes.financeView,
       PermissionCodes.inventoryView,
@@ -28,6 +30,9 @@ void main() {
     String farm = 'farm',
     InventoryMovementKind kind = InventoryMovementKind.issue,
   }) => InventoryMovement(
+    unitPriceText: '12',
+    currency: 'VND',
+    pricedBy: 'admin',
     id: id,
     farmId: farm,
     itemId: 'item',
@@ -87,6 +92,35 @@ void main() {
   });
   tearDown(() => db.close());
 
+  Future<void> seedPlan() async {
+    await repo.createProductionPlan(
+      const ProductionPlan(
+        id: 'plan',
+        farmId: 'farm',
+        parcelId: 'p1',
+        seasonId: 's1',
+        name: 'Plan',
+        crop: 'Peanut',
+        startsOn: '2026-10-01',
+        endsOn: '2026-12-31',
+        currency: 'VND',
+        materialBudget: '100',
+        laborBudget: '0',
+        machineBudget: '0',
+        laborHours: '0',
+        machineShifts: '0',
+      ),
+      'admin',
+    );
+    await repo.changeProductionPlanStatus(
+      'farm',
+      'plan',
+      0,
+      ProductionPlanStatus.active,
+      'admin',
+    );
+  }
+
   test(
     'creates seasons directly on V2 plots without any legacy field table',
     () async {
@@ -130,10 +164,12 @@ void main() {
     'one transaction persists movement stock price and V2 cost; replay cannot duplicate',
     () async {
       await repo.createProductionSeason(season('s1', 'p1'));
+      await seedPlan();
       await repo.recordProductionIssue(
         event('issue'),
         parcelId: 'p1',
         seasonId: 's1',
+        planId: 'plan',
       );
       final reopened = SqliteInventoryRepository(db);
       expect((await reopened.listByFarm('farm')).single.stock, 8);
@@ -144,13 +180,13 @@ void main() {
       await db.update(SqliteInventoryRepository.itemsTable, {
         'unit_price': 999,
       });
-      await expectLater(
-        repo.recordProductionIssue(
+      await Future<void>.sync(
+        () => repo.recordProductionIssue(
           event('issue'),
           parcelId: 'p1',
           seasonId: 's1',
+          planId: 'plan',
         ),
-        throwsA(isA<DatabaseException>()),
       );
       expect((await repo.productionCosts('farm')).single.unitPrice, 12);
       expect((await repo.listByFarm('farm')).single.stock, 8);
@@ -168,6 +204,7 @@ void main() {
     'failed cost insert rolls back stock movement and number; retry succeeds once',
     () async {
       await repo.createProductionSeason(season('s1', 'p1'));
+      await seedPlan();
       await db.execute(
         "CREATE TRIGGER reject_cost BEFORE INSERT ON production_material_costs_v2 BEGIN SELECT RAISE(ABORT,'disk failure'); END",
       );
@@ -176,6 +213,7 @@ void main() {
           event('issue'),
           parcelId: 'p1',
           seasonId: 's1',
+          planId: 'plan',
         ),
         throwsA(isA<DatabaseException>()),
       );
@@ -187,6 +225,7 @@ void main() {
         event('issue'),
         parcelId: 'p1',
         seasonId: 's1',
+        planId: 'plan',
       );
       expect(
         (await repo.movementsByFarm(
@@ -202,6 +241,7 @@ void main() {
     'wrong season farm inactive future date and insufficient stock leave no cost',
     () async {
       await repo.createProductionSeason(season('s1', 'p1'));
+      await seedPlan();
       await repo.createProductionSeason(season('s2', 'p2'));
       await repo.createProductionSeason(
         season('future', 'p1', date: '2026-11-01'),
@@ -216,6 +256,7 @@ void main() {
             event('bad'),
             parcelId: destination.$1,
             seasonId: destination.$2,
+            planId: 'plan',
           ),
           throwsStateError,
         );
@@ -225,6 +266,7 @@ void main() {
           event('bad', farm: 'other-farm'),
           parcelId: 'p1',
           seasonId: 's1',
+          planId: 'plan',
         ),
         throwsStateError,
       );
@@ -233,6 +275,7 @@ void main() {
           event('bad', quantity: 99),
           parcelId: 'p1',
           seasonId: 's1',
+          planId: 'plan',
         ),
         throwsStateError,
       );
@@ -242,6 +285,7 @@ void main() {
           event('bad'),
           parcelId: 'p1',
           seasonId: 's1',
+          planId: 'plan',
         ),
         throwsStateError,
       );
@@ -257,6 +301,7 @@ void main() {
           event('bad'),
           parcelId: 'p1',
           seasonId: 's1',
+          planId: 'plan',
         ),
         throwsStateError,
       );
@@ -283,6 +328,7 @@ void main() {
         permissionCodes: {
           PermissionCodes.inventoryView,
           PermissionCodes.inventoryManage,
+          PermissionCodes.inventoryPrice,
         },
         dataScopes: {DataScope.allFarm},
       );
@@ -310,6 +356,7 @@ void main() {
           event('bad'),
           parcelId: 'p1',
           seasonId: 's1',
+          planId: 'plan',
         ),
         throwsStateError,
       );

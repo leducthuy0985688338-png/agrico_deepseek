@@ -18,6 +18,7 @@ void main() {
       permissionCodes: {
         PermissionCodes.inventoryView,
         PermissionCodes.inventoryManage,
+        PermissionCodes.inventoryPrice,
         PermissionCodes.catalogManage,
       },
       dataScopes: {DataScope.allFarm},
@@ -54,6 +55,16 @@ void main() {
         find.byKey(const Key('inventory-movement-quantity')),
         amount,
       );
+      if (kind == 'issue') {
+        await tester.enterText(
+          find.byKey(const Key('inventory-movement-price')),
+          '100',
+        );
+        await tester.tap(find.byKey(const ValueKey('inventory-currency-null')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('VND').last);
+        await tester.pumpAndSettle();
+      }
       await tester.tap(find.byKey(const Key('inventory-movement-save')));
       await tester.pumpAndSettle();
     }

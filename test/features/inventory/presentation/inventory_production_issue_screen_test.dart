@@ -1,3 +1,4 @@
+import 'package:agrico_deepseek/features/inventory/domain/repositories/production_planning_repository.dart';
 import 'package:agrico_deepseek/core/localization/app_localizations.dart';
 import 'package:agrico_deepseek/core/permissions/authorization.dart';
 import 'package:agrico_deepseek/features/inventory/application/inventory_service.dart';
@@ -13,10 +14,13 @@ import 'package:flutter_test/flutter_test.dart';
 // UI behavior uses a memory repository; real SQLite transaction and cleanup
 // behavior is exercised separately by production_destination_test and migration tests.
 class _Inventory
-    implements InventoryRepository, ProductionDestinationRepository {
+    implements
+        InventoryRepository,
+        ProductionDestinationRepository,
+        ProductionPlanningRepository {
   final seasons = <ProductionSeason>[];
   final posted = <Map<String, Object?>>[];
-  int stock = 10;
+  num stock = 10;
   int costReads = 0;
   final costRows = <ProductionMaterialCost>[];
   @override
@@ -89,6 +93,7 @@ class _Inventory
     InventoryMovement movement, {
     required String parcelId,
     required String seasonId,
+    String? planId,
   }) async {
     posted.add({
       'parcel_id': parcelId,
@@ -103,6 +108,56 @@ class _Inventory
     costReads++;
     return List.of(costRows);
   }
+
+  @override
+  Future<List<ProductionPlan>> productionPlans(String farmId) async => [
+    for (final s in seasons)
+      ProductionPlan(
+        id: 'plan-${s.id}',
+        farmId: farmId,
+        parcelId: s.parcelId,
+        seasonId: s.id,
+        name: 'Plan ${s.id}',
+        crop: 'Peanut',
+        startsOn: '2026-01-01',
+        endsOn: '2099-12-31',
+        currency: 'VND',
+        materialBudget: '100',
+        laborBudget: '0',
+        machineBudget: '0',
+        laborHours: '0',
+        machineShifts: '0',
+        code: 'KH-${s.id}',
+        status: ProductionPlanStatus.active,
+      ),
+  ];
+  @override
+  Future<List<ProductionPlanTask>> productionPlanTasks(String farmId) async =>
+      [];
+  @override
+  Future<void> createProductionPlan(ProductionPlan p, String actor) async =>
+      throw UnimplementedError();
+  @override
+  Future<void> changeProductionPlanStatus(
+    String farm,
+    String id,
+    int rev,
+    ProductionPlanStatus status,
+    String actor,
+  ) async => throw UnimplementedError();
+  @override
+  Future<void> createProductionPlanTask(
+    ProductionPlanTask t,
+    String actor,
+  ) async => throw UnimplementedError();
+  @override
+  Future<void> completeProductionPlanTask(
+    String farm,
+    String id,
+    int rev,
+    bool done,
+    String actor,
+  ) async => throw UnimplementedError();
 }
 
 void main() {
@@ -114,6 +169,7 @@ void main() {
     permissionCodes: {
       PermissionCodes.inventoryView,
       PermissionCodes.inventoryManage,
+      PermissionCodes.inventoryPrice,
       PermissionCodes.productionPlan,
       PermissionCodes.financeView,
     },
@@ -201,6 +257,16 @@ void main() {
         find.byKey(const ValueKey('inventory-production-season-p2')),
         'Season 2',
       );
+      await select(
+        tester,
+        find.byKey(const ValueKey('inventory-production-plan-s2')),
+        'KH-s2 · Plan s2 (VND)',
+      );
+      await tester.enterText(
+        find.byKey(const Key('inventory-movement-price')),
+        '10',
+      );
+
       await tester.tap(find.byKey(const Key('inventory-movement-save')));
       await tester.pumpAndSettle();
       expect(repo.posted.single, {

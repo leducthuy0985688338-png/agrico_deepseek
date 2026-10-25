@@ -1,3 +1,5 @@
+import 'package:agrico_deepseek/features/inventory/domain/repositories/production_planning_repository.dart';
+
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -48,6 +50,9 @@ void main() {
     ].indexed) {
       await repository.record(
         InventoryMovement(
+          unitPriceText: '100',
+          currency: 'VND',
+          pricedBy: 'admin',
           id: 'movement-${entry.$1}',
           farmId: 'farm-1',
           itemId: 'item-1',
@@ -107,8 +112,37 @@ void main() {
         startsOn: '2026-09-01',
       ),
     );
+    await repository.createProductionPlan(
+      const ProductionPlan(
+        id: 'plan',
+        farmId: 'farm-1',
+        parcelId: 'p',
+        seasonId: 's',
+        name: 'Plan',
+        crop: 'Peanut',
+        startsOn: '2026-09-01',
+        endsOn: '2026-12-31',
+        currency: 'VND',
+        materialBudget: '1000',
+        laborBudget: '0',
+        machineBudget: '0',
+        laborHours: '0',
+        machineShifts: '0',
+      ),
+      'admin',
+    );
+    await repository.changeProductionPlanStatus(
+      'farm-1',
+      'plan',
+      0,
+      ProductionPlanStatus.active,
+      'admin',
+    );
     await repository.recordProductionIssue(
       InventoryMovement(
+        unitPriceText: '100',
+        currency: 'VND',
+        pricedBy: 'admin',
         id: 'production',
         farmId: 'farm-1',
         itemId: 'item-1',
@@ -118,6 +152,7 @@ void main() {
       ),
       parcelId: 'p',
       seasonId: 's',
+      planId: 'plan',
     );
     final original = await snapshot();
     final counts = await validate(original);

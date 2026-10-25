@@ -1,4 +1,6 @@
+import '../domain/entities/exact_decimal.dart';
 import 'package:excel/excel.dart';
+
 import '../domain/entities/inventory_item.dart';
 
 /// A read-only snapshot; stock remains authoritative in the repository.
@@ -6,6 +8,10 @@ class InventoryReport {
   const InventoryReport({required this.items, required this.movements});
   final List<InventoryItem> items;
   final List<InventoryMovement> movements;
+
+  static CellValue _number(num n) => n == n.roundToDouble()
+      ? IntCellValue(n.toInt())
+      : DoubleCellValue(n.toDouble());
 
   static DateTime _laosDay(DateTime instant) {
     final local = instant.toUtc().add(const Duration(hours: 7));
@@ -117,7 +123,7 @@ class InventoryReport {
         TextCellValue(item?.code ?? movement.itemId),
         TextCellValue(item?.name ?? ''),
         TextCellValue(movement.kind.name),
-        IntCellValue(movement.quantity),
+        _number(movement.quantity),
         TextCellValue(item?.unit ?? ''),
       ]);
     }
@@ -139,21 +145,21 @@ class InventoryReport {
     )) {
       final all = movements.where((m) => m.itemId == item.id);
       final opening =
-          item.stock -
+          ExactDecimal.quantityUnits(item.stock) -
           all.fold<int>(
             0,
             (sum, m) =>
                 sum +
                 (m.kind == InventoryMovementKind.receipt
-                    ? m.quantity
-                    : -m.quantity),
+                    ? m.quantityUnits
+                    : -m.quantityUnits),
           );
       final before = all.where(
         (m) =>
             from != null &&
-            _laosDay(m.occurredAt).isBefore(
-              DateTime.utc(from.year, from.month, from.day),
-            ),
+            _laosDay(
+              m.occurredAt,
+            ).isBefore(DateTime.utc(from.year, from.month, from.day)),
       );
       final periodOpening =
           opening +
@@ -162,8 +168,8 @@ class InventoryReport {
             (sum, m) =>
                 sum +
                 (m.kind == InventoryMovementKind.receipt
-                    ? m.quantity
-                    : -m.quantity),
+                    ? m.quantityUnits
+                    : -m.quantityUnits),
           );
       // Stock summary is date-based, independent of search and type filters.
       final inPeriod = all.where((m) {
@@ -175,19 +181,21 @@ class InventoryReport {
       });
       final receipts = inPeriod
           .where((m) => m.kind == InventoryMovementKind.receipt)
-          .fold<int>(0, (sum, m) => sum + m.quantity);
+          .fold<int>(0, (sum, m) => sum + m.quantityUnits);
       final issues = inPeriod
           .where((m) => m.kind == InventoryMovementKind.issue)
-          .fold<int>(0, (sum, m) => sum + m.quantity);
+          .fold<int>(0, (sum, m) => sum + m.quantityUnits);
       stock.appendRow([
         TextCellValue(item.code),
         TextCellValue(item.name),
         TextCellValue(item.unit),
-        IntCellValue(periodOpening),
-        IntCellValue(receipts),
-        IntCellValue(issues),
-        IntCellValue(periodOpening + receipts - issues),
-        IntCellValue(item.stock),
+        _number(ExactDecimal.quantityFromUnits(periodOpening)),
+        _number(ExactDecimal.quantityFromUnits(receipts)),
+        _number(ExactDecimal.quantityFromUnits(issues)),
+        _number(
+          ExactDecimal.quantityFromUnits(periodOpening + receipts - issues),
+        ),
+        _number(item.stock),
       ]);
     }
     return excel;

@@ -63,6 +63,11 @@ class ProductionMaterialCost {
     required this.unitPrice,
     required this.amount,
     required this.occurredAt,
+    this.currency,
+    this.unitPriceText,
+    this.amountText,
+    this.planId,
+    this.planCode,
   });
   final String movementId;
   final String parcelId;
@@ -71,10 +76,11 @@ class ProductionMaterialCost {
   final String seasonName;
   final String itemName;
   final String unit;
-  final int quantity;
+  final num quantity;
   final double unitPrice;
   final double amount;
   final DateTime occurredAt;
+  final String? currency, unitPriceText, amountText, planId, planCode;
 }
 
 abstract interface class ProductionDestinationRepository {
@@ -83,6 +89,7 @@ abstract interface class ProductionDestinationRepository {
     InventoryMovement movement, {
     required String parcelId,
     required String seasonId,
+    String? planId,
   });
   Future<List<ProductionDestination>> productionDestinations(String farmId);
   Future<List<ProductionIdentityChoice>> productionParcels(String farmId);

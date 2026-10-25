@@ -14,6 +14,13 @@ class SqliteFarmTaskRepository implements FarmTaskRepository {
 
   static Future<void> createSchema(DatabaseExecutor db) async {
     await SqliteParcelWorkRepository.createSchema(db);
+    await createTaskTable(db);
+    await SqliteTaskWorkRepository.createSchema(db);
+  }
+
+  /// Reusable task identity table. Callers own creation of referenced parcel
+  /// and resource tables; production plans extend this identity, not duplicate it.
+  static Future<void> createTaskTable(DatabaseExecutor db) async {
     await db.execute('''CREATE TABLE IF NOT EXISTS $table (
       id TEXT PRIMARY KEY,
       farm_id TEXT NOT NULL,
@@ -37,7 +44,6 @@ class SqliteFarmTaskRepository implements FarmTaskRepository {
       'CREATE INDEX IF NOT EXISTS idx_farm_tasks_v2_scope_due '
       'ON $table(farm_id, due_at, id)',
     );
-    await SqliteTaskWorkRepository.createSchema(db);
   }
 
   @override

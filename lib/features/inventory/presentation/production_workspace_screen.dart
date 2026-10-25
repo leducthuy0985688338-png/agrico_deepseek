@@ -1,5 +1,9 @@
+import 'production_plans_screen.dart';
+
 import 'dart:math';
+
 import 'package:flutter/material.dart';
+
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/permissions/authorization.dart';
 import '../application/inventory_service.dart';
@@ -110,6 +114,21 @@ class _ProductionWorkspaceScreenState extends State<ProductionWorkspaceScreen> {
       appBar: AppBar(
         title: Text(l10n.text('production.title')),
         actions: [
+          if (canViewCosts)
+            IconButton(
+              key: const Key('production-open-plans'),
+              icon: const Icon(Icons.assignment),
+              tooltip: l10n.text('planning.title'),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => ProductionPlansScreen(
+                    service: widget.service,
+                    subject: widget.subject,
+                    initialParcelId: widget.initialParcelId,
+                  ),
+                ),
+              ),
+            ),
           if (widget.openFinanceCosts != null)
             IconButton(
               icon: const Icon(Icons.account_balance_wallet),
@@ -213,7 +232,7 @@ class _ProductionWorkspaceScreenState extends State<ProductionWorkspaceScreen> {
                             ListTile(
                               contentPadding: EdgeInsets.zero,
                               title: Text(
-                                '${c.itemName}: ${c.quantity} ${c.unit} × ${c.unitPrice} = ${c.amount}',
+                                '${c.itemName}: ${c.quantity} ${c.unit} × ${c.unitPriceText ?? c.unitPrice.toString()} = ${c.amountText ?? c.amount.toString()} ${c.currency ?? '?'}',
                               ),
                               subtitle: Text(
                                 '${c.occurredAt.toUtc().add(const Duration(hours: 7)).toIso8601String().substring(0, 10)} · ${c.movementId}',

@@ -32,6 +32,7 @@ abstract final class PermissionCodes {
   static const taskComplete = 'task.complete';
   static const inventoryView = 'inventory.view';
   static const inventoryManage = 'inventory.manage';
+  static const inventoryPrice = 'inventory.price';
   static const taskVerify = 'task.verify';
   static const chatView = 'chat.view';
   static const chatSend = 'chat.send';
@@ -154,6 +155,7 @@ abstract final class PermissionCodes {
     taskComplete,
     inventoryView,
     inventoryManage,
+    inventoryPrice,
     taskVerify,
     chatView,
     chatSend,

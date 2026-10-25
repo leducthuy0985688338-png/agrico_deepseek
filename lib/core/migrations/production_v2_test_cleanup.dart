@@ -70,9 +70,16 @@ class ProductionV2TestCleanup {
           where: 'farm_id=?',
           whereArgs: [farmId],
         );
+        final itemColumns = await tx.rawQuery(
+          'PRAGMA table_info(inventory_items_v2)',
+        );
         await tx.update(
           'inventory_items_v2',
-          {'stock': 0},
+          {
+            'stock': 0,
+            if (itemColumns.any((c) => c['name'] == 'stock_units'))
+              'stock_units': 0,
+          },
           where: 'farm_id=?',
           whereArgs: [farmId],
         );
