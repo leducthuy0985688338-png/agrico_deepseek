@@ -482,7 +482,70 @@ class IntegrationRepository implements IntegrationStore {
       whereArgs: [expense],
     );
   });
+  static const metadataTables = {
+    'parcel': 'land_parcels',
+    'harvest': 'trade_documents_v1',
+    'machine': 'company_catalog_entries_v1',
+    'maintenance': 'machine_expenses_v1',
+    'worker': 'company_catalog_entries_v1',
+    'payroll': 'personnel_payrolls_v1',
+    'stock': 'inventory_items_v2',
+    'capital': 'finance_documents_v2',
+    'run': 'machine_runs_v1',
+  };
+  static Future<Map<String, Object?>> metadataEntity(
+    DatabaseExecutor db,
+    String farm,
+    String kind,
+    String id,
+  ) async {
+    final table = metadataTables[kind];
+    if (table == null)
+      throw const FormatException('Unknown report detail type.');
+    if (kind != 'capital')
+      return SqliteTradeRepository.one(db, table, farm, id);
+    final rows = await db.query(
+      table,
+      where: 'id=? AND organization_id=?',
+      whereArgs: [id, farm],
+    );
+    if (rows.length != 1)
+      throw StateError('Cash document unavailable in this farm.');
+    return rows.single;
+  }
+
+  static Future<void> validateMetadataLinks(
+    DatabaseExecutor db,
+    String kind,
+    Map<String, Object?> entity,
+    Map<String, String> values,
+  ) async {
+    if (kind != 'capital' || (values['capitalKind'] ?? '').isEmpty) return;
+    final id = entity['id'];
+    for (final link in [
+      'integration_cash_links_v1',
+      'integration_salary_reversals_v1',
+      'trade_settlements_v1',
+      'trade_reversals_v1',
+    ]) {
+      if ((await db.query(
+        link,
+        where: 'finance_id=?',
+        whereArgs: [id],
+      )).isNotEmpty)
+        throw StateError('A settlement cannot also be owner capital.');
+    }
+  }
+
   static const metadataFields = {
+    'stock': {'minimumQuantity'},
+    'capital': {'capitalKind', 'reason'},
+    'run': {
+      'conditionBefore',
+      'conditionAfter',
+      'fuelConsumedLitres',
+      'incident',
+    },
     'parcel': {'soilType', 'pH', 'preparedOn', 'evaluation'},
     'harvest': {'freshKg', 'dryKg', 'quality'},
     'machine': {'type', 'manufacturer', 'year', 'purchasedOn', 'warrantyUntil'},
@@ -503,21 +566,14 @@ class IntegrationRepository implements IntegrationStore {
         values.keys.any((k) => !metadataFields[kind]!.contains(k)) ||
         values.values.any((v) => v.length > 1000))
       throw const FormatException('Invalid metadata.');
-    final table = {
-      'parcel': 'land_parcels',
-      'harvest': 'trade_documents_v1',
-      'machine': 'company_catalog_entries_v1',
-      'maintenance': 'machine_expenses_v1',
-      'worker': 'company_catalog_entries_v1',
-      'payroll': 'personnel_payrolls_v1',
-    }[kind]!;
-    final entity = await SqliteTradeRepository.one(tx, table, farm, id);
+    final entity = await metadataEntity(tx, farm, kind, id);
     if ((kind == 'machine' || kind == 'worker') && entity['kind'] != kind)
       throw StateError('Wrong catalog type.');
     if (kind == 'harvest' && entity['kind'] != 'harvest' ||
         kind == 'maintenance' && entity['kind'] != 'maintenance')
       throw StateError('Wrong source type.');
     validateMetadata(kind, values, entity);
+    await validateMetadataLinks(tx, kind, entity, values);
     final old = await tx.query(
       'integration_report_metadata_v1',
       where: 'farm_id=? AND kind=? AND entity_id=?',
@@ -544,6 +600,25 @@ class IntegrationRepository implements IntegrationStore {
         values.keys.any((k) => !metadataFields[kind]!.contains(k)) ||
         values.values.any((v) => v.length > 1000))
       throw const FormatException('Invalid metadata.');
+    for (final key in ['minimumQuantity', 'fuelConsumedLitres']) {
+      final text = values[key] ?? '';
+      if (text.isEmpty) continue;
+      final number = ExactDecimal.parse(text, maxScale: 6);
+      final units = number.coefficient * BigInt.from(10).pow(6 - number.scale);
+      if (units < BigInt.zero || units > BigInt.from(9007199254740991))
+        throw const FormatException('Invalid exact quantity.');
+    }
+    if (kind == 'capital') {
+      final tag = values['capitalKind'] ?? '';
+      if (!{'', 'contribution', 'return'}.contains(tag))
+        throw const FormatException('Select a capital classification.');
+      if (tag.isNotEmpty &&
+          ((values['reason'] ?? '').trim().isEmpty ||
+              entity['kind'] != (tag == 'contribution' ? 'THU' : 'CHI')))
+        throw StateError(
+          'Capital needs a reason and the matching cash direction.',
+        );
+    }
     for (final field in [
       'freshKg',
       'dryKg',

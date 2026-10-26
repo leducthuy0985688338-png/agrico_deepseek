@@ -66,6 +66,36 @@ class IntegrationSnapshot {
     currency: text(r['currency']),
     category: text(r['category']),
   ).amountText;
+  bool controlledCash(Object? id) => [
+    'integration_cash_links_v1',
+    'integration_salary_reversals_v1',
+    'trade_settlements_v1',
+    'trade_reversals_v1',
+  ].any((table) => rows(table).any((r) => r['finance_id'] == id));
+  String capitalAmount(Map<String, Object?> row) {
+    final tag = metadata('capital', row['id'])['capitalKind'];
+    return tag == 'contribution'
+        ? cashAmount(row)
+        : tag == 'return'
+        ? '-${cashAmount(row)}'
+        : '';
+  }
+
+  String capitalTotal(String currency, {bool before = false}) => sum(
+    rows('finance_documents_v2')
+        .where(
+          (r) =>
+              r['currency'] == currency &&
+              (before
+                  ? (r['occurred_at'] as String)
+                            .substring(0, 10)
+                            .compareTo(from) <
+                        0
+                  : inPeriod((r['occurred_at'] as String).substring(0, 10))),
+        )
+        .map(capitalAmount)
+        .where((v) => v.isNotEmpty),
+  );
   Set<Object?> get salaryReversed => rows(
     'integration_salary_reversals_v1',
   ).map((r) => r['payment_id']).toSet();

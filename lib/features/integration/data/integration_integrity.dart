@@ -192,19 +192,10 @@ abstract final class IntegrationIntegrity {
     }
     for (final m in await db.query('integration_report_metadata_v1')) {
       final kind = m['kind'] as String;
-      final table = {
-        'parcel': 'land_parcels',
-        'harvest': 'trade_documents_v1',
-        'machine': 'company_catalog_entries_v1',
-        'maintenance': 'machine_expenses_v1',
-        'worker': 'company_catalog_entries_v1',
-        'payroll': 'personnel_payrolls_v1',
-      }[kind];
-      require(table != null);
-      final entity = await SqliteTradeRepository.one(
+      final entity = await IntegrationRepository.metadataEntity(
         db,
-        table!,
         m['farm_id'] as String,
+        kind,
         m['entity_id'] as String,
       );
       require(
@@ -213,6 +204,12 @@ abstract final class IntegrationIntegrity {
       );
       if ({'worker', 'machine', 'harvest', 'maintenance'}.contains(kind))
         require(entity['kind'] == kind);
+      await IntegrationRepository.validateMetadataLinks(
+        db,
+        kind,
+        entity,
+        Map<String, String>.from(IntegrationRepository.body(m['body'])),
+      );
       IntegrationRepository.validateMetadata(
         kind,
         Map<String, String>.from(IntegrationRepository.body(m['body'])),

@@ -87,6 +87,7 @@ class ProductionCostSummary {
         .where(
           (d) =>
               !d.isSettlement &&
+              !d.isFinancing &&
               d.amountScale == 0 &&
               !d.category.startsWith('INTEGRATED_'),
         )

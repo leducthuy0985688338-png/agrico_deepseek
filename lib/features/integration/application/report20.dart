@@ -125,7 +125,7 @@ class Report20 {
         item['unit'],
         item['unit_price_text'] ?? '',
         item['supplier'],
-        '',
+        s.metadata('stock', item['id'])['minimumQuantity'] ?? '',
         c['active'] == 1 ? 'Đang dùng' : 'Ngừng',
       ], state: value(c['id']));
     }
@@ -192,14 +192,25 @@ class Report20 {
       final opening = units(true, true) - units(false, true),
           incoming = units(true, false),
           outgoing = units(false, false);
+      final minimum = value(s.metadata('stock', item['id'])['minimumQuantity']);
+      final below =
+          minimum.isNotEmpty &&
+          ExactDecimal.parse(
+                qty(opening + incoming - outgoing),
+              ).compareTo(ExactDecimal.parse(minimum)) <
+              0;
       add('TH KHO VA TAI CHINH', [
         item['code'],
         item['name'],
         qty(incoming),
         qty(outgoing),
         qty(opening + incoming - outgoing),
-        '',
-        'Chưa khai báo tồn tối thiểu',
+        minimum,
+        minimum.isEmpty
+            ? 'Chưa khai báo tồn tối thiểu'
+            : below
+            ? 'Dưới tồn tối thiểu'
+            : 'Đủ tồn',
         '',
         '',
         '',
@@ -279,7 +290,7 @@ class Report20 {
           party == null ? '' : code(party),
           partyName,
           f['description'],
-          '',
+          s.capitalAmount(f),
           receipt ? amount : '0',
           receipt ? '0' : amount,
           balances[currency],
@@ -584,6 +595,7 @@ class Report20 {
     }
     for (final r in runs.values.where((r) => included(r['day']))) {
       final b = json(r['body']);
+      final detail = s.metadata('run', r['id']);
       final allocations = b['allocations'] as List;
       final minutes =
           DateTime.parse(
@@ -607,11 +619,14 @@ class Report20 {
           b['outputUnit'] == 'm2' ? b['outputQuantity'] ?? '' : '',
           pc(first?['parcel_id']),
           pn(first?['parcel_id']),
-          '',
-          '',
-          '',
-          '',
-          '',
+          allocations
+              .map((a) => s.index('farm_tasks_v2')[a['taskId']]?['title'] ?? '')
+              .where((v) => value(v).isNotEmpty)
+              .join('; '),
+          detail['fuelConsumedLitres'] ?? '',
+          detail['conditionBefore'] ?? '',
+          detail['conditionAfter'] ?? '',
+          detail['incident'] ?? '',
           b['note'],
           allocations
               .map((a) => '${s.planCode(a['planId'])}: ${a['minutes']} phút')
@@ -894,6 +909,52 @@ class Report20 {
       minus(s.sales(null, 'VND'), s.sales(null, 'VND', cogs: true)),
       minus(s.sales(null, 'LAK'), s.sales(null, 'LAK', cogs: true)),
       'Không phải lợi nhuận toàn công ty',
+    ]);
+    add('DASHBOARD', [
+      'Vốn góp ròng đã phân loại đầu kỳ',
+      s.capitalTotal('VND', before: true),
+      s.capitalTotal('LAK', before: true),
+      'Chỉ lấy phiếu thu/chi Admin đã phân loại; không suy đoán vốn vay hoặc lợi nhuận.',
+    ]);
+    add('DASHBOARD', [
+      'Góp vốn − hoàn vốn trong kỳ',
+      s.capitalTotal('VND'),
+      s.capitalTotal('LAK'),
+      'Góp vốn dương, hoàn vốn âm; vẫn nằm trong dòng tiền, không cộng thu/chi lần nữa.',
+    ]);
+    add('DASHBOARD', [
+      'Vốn góp ròng đã phân loại cuối kỳ',
+      sum([s.capitalTotal('VND', before: true), s.capitalTotal('VND')]),
+      sum([s.capitalTotal('LAK', before: true), s.capitalTotal('LAK')]),
+      'Không phải số dư tiền mặt hay lợi nhuận.',
+    ]);
+    final approvedRuns = runs.values
+        .where((r) => r['status'] == 'approved' && included(r['day']))
+        .toList();
+    final measured = approvedRuns
+        .where(
+          (r) => value(
+            s.metadata('run', r['id'])['fuelConsumedLitres'],
+          ).isNotEmpty,
+        )
+        .toList();
+    add('DASHBOARD', [
+      'Nhiên liệu tiêu thụ đã đo (lít)',
+      measured.isEmpty
+          ? ''
+          : sum(
+              measured.map(
+                (r) => value(s.metadata('run', r['id'])['fuelConsumedLitres']),
+              ),
+            ),
+      '',
+      '${measured.length}/${approvedRuns.length} ca đã nhập số đo. Không coi lít đã cấp là lít tiêu thụ; không tăng chi phí trọn gói.',
+    ]);
+    add('DASHBOARD', [
+      'Ngưỡng tồn tối thiểu',
+      '',
+      '',
+      'Ngưỡng hiện tại lúc xuất; cảnh báo so với tồn cuối kỳ báo cáo. Ô trống là chưa khai báo; số 0 là ngưỡng được nhập rõ.',
     ]);
     add('DASHBOARD', [
       'Thu tiền',

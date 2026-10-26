@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import '../../../core/identity/data/sqlite_monthly_document_sequence.dart';
 import '../../../core/identity/domain/business_reference_code.dart';
@@ -157,6 +158,19 @@ abstract final class IntegrationCash {
         receipt: false,
       );
     } else {
+      final classifications = await tx.query(
+        'integration_report_metadata_v1',
+        where: "farm_id=? AND kind='capital' AND entity_id=?",
+        whereArgs: [farm, finance],
+      );
+      if (classifications.any(
+        (r) =>
+            ((jsonDecode(r['body'] as String) as Map)['capitalKind'] ?? '') !=
+            '',
+      ))
+        throw StateError(
+          'Owner capital cash cannot become payroll settlement.',
+        );
       final rows = await tx.query(
         'finance_documents_v2',
         where: 'id=? AND organization_id=?',

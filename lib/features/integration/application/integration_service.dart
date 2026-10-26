@@ -167,7 +167,13 @@ class IntegrationService {
     Map<String, String> values,
   ) {
     require(
-      kind == 'worker'
+      kind == 'stock'
+          ? PermissionCodes.inventoryManage
+          : kind == 'capital'
+          ? PermissionCodes.financeCorrect
+          : kind == 'run'
+          ? PermissionCodes.machineVerify
+          : kind == 'worker'
           ? PermissionCodes.employeeEdit
           : kind == 'machine' || kind == 'maintenance'
           ? PermissionCodes.machineMaintain

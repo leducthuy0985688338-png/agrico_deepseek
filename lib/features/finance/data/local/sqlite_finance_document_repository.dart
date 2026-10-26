@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 
 import '../../../../core/identity/data/sqlite_monthly_document_sequence.dart';
@@ -135,6 +136,18 @@ class SqliteFinanceDocumentRepository implements FinanceDocumentStore {
           )).map((r) => r['finance_id']),
         );
     }
+    final capitalIds = <Object?>{};
+    if (available.contains('integration_report_metadata_v1')) {
+      for (final row in await database.query(
+        'integration_report_metadata_v1',
+        where: "farm_id=? AND kind='capital'",
+        whereArgs: [organizationId],
+      )) {
+        final tag = (jsonDecode(row['body'] as String) as Map)['capitalKind'];
+        if (tag == 'contribution' || tag == 'return')
+          capitalIds.add(row['entity_id']);
+      }
+    }
     return rows
         .map(
           (row) => FinanceDocument(
@@ -146,6 +159,7 @@ class SqliteFinanceDocumentRepository implements FinanceDocumentStore {
             amountMinor: row['amount_minor']! as int,
             amountScale: (row['amount_scale'] as int?) ?? 0,
             isSettlement: settlementIds.contains(row['id']),
+            isFinancing: capitalIds.contains(row['id']),
             currency: row['currency']! as String,
             category: row['category']! as String,
             parcelId: row['parcel_id'] as String?,

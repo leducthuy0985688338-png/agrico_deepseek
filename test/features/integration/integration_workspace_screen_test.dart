@@ -10,7 +10,21 @@ import 'package:agrico_deepseek/features/integration/presentation/integration_wo
 
 class MemoryIntegration implements IntegrationStore {
   int reads = 0, links = 0;
-  String? adopted;
+  String? adopted, detailKind;
+  Map<String, String>? details;
+  @override
+  Future<void> metadata(
+    String farm,
+    String kind,
+    String id,
+    int revision,
+    Map<String, String> values,
+    String actorId,
+  ) async {
+    detailKind = kind;
+    details = values;
+  }
+
   @override
   Future<IntegrationSnapshot> snapshot(String farm, String period) async {
     reads++;
@@ -18,6 +32,9 @@ class MemoryIntegration implements IntegrationStore {
       farm: farm,
       period: period,
       tables: {
+        'inventory_items_v2': [
+          {'id': 'diesel', 'code': 'VT001', 'name': 'Diesel', 'unit': 'Lít'},
+        ],
         'personnel_payments_v1': [
           {
             'id': 'old',
@@ -63,6 +80,7 @@ void main() {
     MemoryIntegration repository, {
     bool full = true,
     bool export = false,
+    bool editDetails = false,
   }) async {
     final user = AuthorizationSubject(
       userId: 'a',
@@ -74,6 +92,8 @@ void main() {
               PermissionCodes.payrollApprove,
               PermissionCodes.cashRecord,
               if (export) PermissionCodes.dataExport,
+              if (editDetails) PermissionCodes.inventoryManage,
+              if (editDetails) PermissionCodes.financeCorrect,
             }
           : const {PermissionCodes.financeView},
       dataScopes: const {DataScope.allFarm},
@@ -140,6 +160,71 @@ void main() {
       await tester.pumpAndSettle();
       expect(repo.links, 1);
       expect(repo.adopted, 'cash');
+    },
+  );
+
+  testWidgets(
+    'minimum stock editor saves the selected item threshold only after confirmation',
+    (tester) async {
+      final repo = MemoryIntegration();
+      await open(tester, repo, editDetails: true);
+      final detailsTab = find.widgetWithText(Tab, 'Thông tin báo cáo');
+      await tester.ensureVisible(detailsTab);
+      await tester.pumpAndSettle();
+      await tester.tap(detailsTab);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Tồn tối thiểu'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('VT001 Diesel Lít'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Tồn tối thiểu (đơn vị vật tư)'),
+        '8',
+      );
+      expect(repo.details, isNull);
+      await tester.tap(find.text('Xác nhận'));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      expect(repo.detailKind, 'stock');
+      expect(repo.details, {'minimumQuantity': '8'});
+    },
+  );
+  testWidgets(
+    'owner capital classification requires a reason and uses the cash direction',
+    (tester) async {
+      final repo = MemoryIntegration();
+      await open(tester, repo, editDetails: true);
+      final detailsTab = find.widgetWithText(Tab, 'Thông tin báo cáo');
+      await tester.ensureVisible(detailsTab);
+      await tester.pumpAndSettle();
+      await tester.tap(detailsTab);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Vốn chủ sở hữu'));
+      await tester.pumpAndSettle();
+      final cash = find.textContaining('CHI-202610-001');
+      await tester.ensureVisible(cash);
+      await tester.tap(cash);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(DropdownButtonFormField<String>));
+      await tester.pumpAndSettle();
+      expect(find.text('Góp vốn chủ sở hữu'), findsNothing);
+      await tester.tap(find.text('Hoàn vốn chủ sở hữu').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Xác nhận'));
+      await tester.pumpAndSettle();
+      expect(find.text('Bắt buộc'), findsOneWidget);
+      expect(repo.details, isNull);
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Lý do phân loại vốn'),
+        'Hoàn vốn đã xác nhận',
+      );
+      await tester.tap(find.text('Xác nhận'));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      expect(repo.detailKind, 'capital');
+      expect(repo.details?['capitalKind'], 'return');
     },
   );
 }

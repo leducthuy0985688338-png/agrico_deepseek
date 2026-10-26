@@ -13,6 +13,7 @@ class FinanceDocument {
     required this.currency,
     this.amountScale = 0,
     this.isSettlement = false,
+    this.isFinancing = false,
     required this.category,
     this.parcelId,
     this.description,
@@ -26,6 +27,7 @@ class FinanceDocument {
   final int amountMinor;
   final int amountScale;
   final bool isSettlement;
+  final bool isFinancing;
   String get amountText {
     if (amountScale < 0 || amountScale > 6)
       throw const FormatException('Invalid money scale.');

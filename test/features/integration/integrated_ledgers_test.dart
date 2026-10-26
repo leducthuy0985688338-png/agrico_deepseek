@@ -3,7 +3,7 @@ import 'package:agrico_deepseek/features/trade/domain/trade.dart'
 import 'package:archive/archive.dart';
 import 'package:xml/xml.dart';
 import 'package:agrico_deepseek/features/machines/domain/machines.dart'
-    show MachineExpense;
+    show MachineExpense, MachineRate, MachineRun, MachineAllocation;
 import 'package:agrico_deepseek/features/inventory/domain/entities/inventory_item.dart';
 import 'package:agrico_deepseek/core/identity/domain/business_reference_code.dart';
 import 'package:agrico_deepseek/features/integration/data/integration_repository.dart';
@@ -836,6 +836,547 @@ void main() {
       report = Report20(snapshot).workbook();
       expect(snapshot.sales('plan', 'VND'), '0');
       expect(report['THU HOACH'].rows[1][8]!.value, IntCellValue(0));
+    },
+  );
+
+  Future<void> cash(
+    String id,
+    int amount, {
+    bool receipt = true,
+    String currency = 'VND',
+    String day = '2026-10-24',
+  }) async {
+    await SqliteFinanceDocumentRepository(db).create(
+      id: id,
+      organizationId: 'f',
+      kind: receipt
+          ? BusinessDocumentKind.receipt
+          : BusinessDocumentKind.payment,
+      occurredAt: DateTime.parse(day),
+      amountMinor: amount,
+      currency: currency,
+      category: 'Standalone',
+      description: id,
+    );
+  }
+
+  Future<void> measuredRun() async {
+    final c = CompanyCatalogService(
+      repository: SqliteCompanyCatalog(db),
+      subject: admin,
+    );
+    await c.create(
+      const CatalogEntry(
+        id: 'driver',
+        farmId: 'f',
+        kind: CatalogKind.worker,
+        code: '',
+        name: 'Driver',
+      ),
+      reason: 'test',
+    );
+    final machines = SqliteMachineRepository(db);
+    await machines.addRate(
+      'f',
+      const MachineRate(
+        id: 'machine-rate',
+        machineId: 'machine',
+        effectiveOn: '2026-10-01',
+        amount: '80',
+        currency: 'VND',
+        shiftMinutes: 480,
+        scale: 0,
+        rounding: MoneyRounding.halfUp,
+      ),
+      'admin',
+    );
+    await machines.addRun(
+      'f',
+      MachineRun(
+        id: 'run',
+        machineId: 'machine',
+        operatorId: 'driver',
+        startsAt: DateTime.utc(2026, 10, 26, 1),
+        endsAt: DateTime.utc(2026, 10, 26, 9),
+        idleMinutes: 0,
+        meterStart: '100',
+        meterEnd: '108',
+        allocations: const [MachineAllocation('plan', 480)],
+        outputQuantity: '100',
+        outputUnit: 'm2',
+      ),
+      'admin',
+    );
+    await machines.approveRun('f', 'run', 0, 'admin');
+  }
+
+  test(
+    'minimum stock uses exact item units, zero differs from missing, and edits never move stock',
+    () async {
+      await fuelStock();
+      final movements = await db.query('inventory_movements_v2');
+      await bridge().metadata('f', 'stock', 'diesel', 0, {
+        'minimumQuantity': '10.000001',
+      }, 'admin');
+      final report = Report20(
+        await bridge().snapshot('f', '2026-10'),
+      ).workbook();
+      expect(
+        report['TH KHO VA TAI CHINH'].rows[1][5]!.value,
+        DoubleCellValue(10.000001),
+      );
+      expect(
+        report['TH KHO VA TAI CHINH'].rows
+            .skip(1)
+            .firstWhere((row) => row[1]?.value.toString() == 'Diesel')[6]!
+            .value,
+        TextCellValue('Dưới tồn tối thiểu'),
+      );
+      expect(await db.query('inventory_movements_v2'), movements);
+      await expectLater(
+        bridge().metadata('f', 'stock', 'diesel', 0, {
+          'minimumQuantity': '0',
+        }, 'admin'),
+        throwsStateError,
+      );
+      for (final value in ['-1', '0.0000001', '9007199254.740992']) {
+        await expectLater(
+          bridge().metadata('f', 'stock', 'diesel', 1, {
+            'minimumQuantity': value,
+          }, 'admin'),
+          throwsA(isA<FormatException>()),
+        );
+      }
+      await bridge().metadata('f', 'stock', 'diesel', 1, {
+        'minimumQuantity': '0',
+      }, 'admin');
+      expect(
+        (await bridge().snapshot(
+          'f',
+          '2026-10',
+        )).metadata('stock', 'diesel')['minimumQuantity'],
+        '0',
+      );
+      await expectLater(
+        bridge().metadata('other', 'stock', 'diesel', 2, {
+          'minimumQuantity': '1',
+        }, 'admin'),
+        throwsStateError,
+      );
+    },
+  );
+  test(
+    'owner contributions and returns classify existing cash once, separate currencies and period opening',
+    () async {
+      await cash('opening-capital', 1000, day: '2026-09-30');
+      await cash('in', 100);
+      await cash('out', 20, receipt: false);
+      await cash('lak', 500, currency: 'LAK');
+      await cash('ordinary', 99);
+      for (final id in ['opening-capital', 'in', 'lak'])
+        await bridge().metadata('f', 'capital', id, 0, {
+          'capitalKind': 'contribution',
+          'reason': 'Owner contribution',
+        }, 'admin');
+      await bridge().metadata('f', 'capital', 'out', 0, {
+        'capitalKind': 'return',
+        'reason': 'Owner return',
+      }, 'admin');
+      final snapshot = await bridge().snapshot('f', '2026-10');
+      expect(snapshot.capitalTotal('VND', before: true), '1000');
+      expect(snapshot.capitalTotal('VND'), '80');
+      expect(snapshot.capitalTotal('LAK'), '500');
+      expect(await db.query('finance_documents_v2'), hasLength(5));
+      final documents = await SqliteFinanceDocumentRepository(
+        db,
+      ).listByOrganization('f');
+      expect(documents.singleWhere((d) => d.id == 'out').isFinancing, isTrue);
+      expect(
+        documents.singleWhere((d) => d.id == 'ordinary').isFinancing,
+        isFalse,
+      );
+      final report = Report20(snapshot).workbook();
+      final capital = report['THU CHI'].rows
+          .skip(1)
+          .map((r) => r[5]?.value.toString())
+          .toList();
+      expect(capital, containsAll(['100', '-20', '500']));
+      await IntegrationIntegrity.validate(db);
+    },
+  );
+  test(
+    'capital classification rejects wrong direction, missing reason and controlled salary cash',
+    () async {
+      await cash('in', 10);
+      await expectLater(
+        bridge().metadata('f', 'capital', 'in', 0, {
+          'capitalKind': 'return',
+          'reason': 'wrong direction',
+        }, 'admin'),
+        throwsStateError,
+      );
+      await expectLater(
+        bridge().metadata('f', 'capital', 'in', 0, {
+          'capitalKind': 'contribution',
+        }, 'admin'),
+        throwsStateError,
+      );
+      await expectLater(
+        bridge().metadata('other', 'capital', 'in', 0, {
+          'capitalKind': 'contribution',
+          'reason': 'foreign',
+        }, 'admin'),
+        throwsStateError,
+      );
+      await salaryReady();
+      await pay();
+      final id =
+          (await db.query('integration_cash_links_v1')).single['finance_id']
+              as String;
+      await expectLater(
+        bridge().metadata('f', 'capital', id, 0, {
+          'capitalKind': 'return',
+          'reason': 'Misclassification',
+        }, 'admin'),
+        throwsStateError,
+      );
+      expect(await db.query('integration_report_metadata_v1'), isEmpty);
+    },
+  );
+  test(
+    'capital payment cannot become payroll cash until its classification is explicitly cleared',
+    () async {
+      await salaryReady();
+      await cash('cash', 1, receipt: false, day: '2026-10-25');
+      await db.insert('personnel_payments_v1', {
+        'id': 'historic',
+        'farm_id': 'f',
+        'payroll_id': 'salary',
+        'amount': '1',
+        'currency': 'VND',
+        'business_day': '2026-10-25',
+        'note': 'Original payment',
+      });
+      await bridge().metadata('f', 'capital', 'cash', 0, {
+        'capitalKind': 'return',
+        'reason': 'Owner',
+      }, 'admin');
+      await expectLater(
+        bridge().linkSalary(
+          'f',
+          'historic',
+          'admin',
+          existingFinanceId: 'cash',
+        ),
+        throwsStateError,
+      );
+      await bridge().metadata('f', 'capital', 'cash', 1, {
+        'capitalKind': '',
+        'reason': 'Correct classification',
+      }, 'admin');
+      await bridge().linkSalary(
+        'f',
+        'historic',
+        'admin',
+        existingFinanceId: 'cash',
+      );
+      await IntegrationIntegrity.validate(db);
+    },
+  );
+  test(
+    'new detail kinds enforce current permissions before repository writes',
+    () async {
+      final user = AuthorizationSubject(
+        userId: 'admin',
+        membershipId: 'm',
+        farmId: 'f',
+        permissionCodes: IntegrationService.readPermissions,
+        dataScopes: const {DataScope.allFarm},
+      );
+      final api = IntegrationService(
+        repository: bridge(),
+        subject: user,
+        currentSubject: () => user,
+      );
+      for (final kind in ['stock', 'capital', 'run'])
+        await expectLater(
+          Future.sync(() => api.metadata(kind, 'missing', 0, {})),
+          throwsStateError,
+        );
+      expect(await db.query('integration_report_metadata_v1'), isEmpty);
+    },
+  );
+  test(
+    'measured fuel accepts explicit zero, rejects invalid precision, and stays independent of stock and cost',
+    () async {
+      await fuelStock();
+      await machineSource();
+      await measuredRun();
+      final stock = await db.query('inventory_items_v2');
+      final cost = await db.query('machine_costs_v1');
+      var report = Report20(await bridge().snapshot('f', '2026-10')).workbook();
+      expect(report['NHAT KY VAN HANH'].rows[1][12]!.value, TextCellValue(''));
+      await bridge().metadata('f', 'run', 'run', 0, {
+        'fuelConsumedLitres': '0',
+        'conditionBefore': 'Bình thường',
+        'conditionAfter': 'Đã kiểm tra',
+        'incident': 'Không có',
+      }, 'admin');
+      report = Report20(await bridge().snapshot('f', '2026-10')).workbook();
+      expect(report['NHAT KY VAN HANH'].rows[1][12]!.value, IntCellValue(0));
+      expect(
+        report['NHAT KY VAN HANH'].rows[1][13]!.value,
+        TextCellValue('Bình thường'),
+      );
+      for (final quantity in ['-0.1', '1.0000001'])
+        await expectLater(
+          bridge().metadata('f', 'run', 'run', 1, {
+            'fuelConsumedLitres': quantity,
+          }, 'admin'),
+          throwsA(isA<FormatException>()),
+        );
+      expect(await db.query('inventory_items_v2'), stock);
+      expect(await db.query('machine_costs_v1'), cost);
+    },
+  );
+  test(
+    'one production cycle reconciles capital stock labor machine trade cash and backup without duplicate costs',
+    () async {
+      await fuelStock();
+      await machineSource();
+      await measuredRun();
+      await salaryReady();
+      await pay();
+      await bridge().metadata('f', 'stock', 'diesel', 0, {
+        'minimumQuantity': '8',
+      }, 'admin');
+      await bridge().metadata('f', 'run', 'run', 0, {
+        'fuelConsumedLitres': '1.25',
+        'conditionBefore': 'Đủ điều kiện',
+        'conditionAfter': 'Đã vệ sinh',
+        'incident': 'Không',
+      }, 'admin');
+      await inventory.recordProductionIssue(
+        InventoryMovement(
+          id: 'production-material',
+          farmId: 'f',
+          itemId: 'diesel',
+          kind: InventoryMovementKind.issue,
+          quantity: 1,
+          occurredAt: DateTime.utc(2026, 10, 25, 5),
+          unitPriceText: '10',
+          currency: 'VND',
+          pricedBy: 'admin',
+        ),
+        parcelId: 'p',
+        seasonId: 's',
+        planId: 'plan',
+      );
+      await bridge().fuelIssue('f', 'fuel', 'diesel', '10', false, 'admin');
+      await supplier();
+      final machines = SqliteMachineRepository(db);
+      await machines.addExpense(
+        'f',
+        const MachineExpense(
+          id: 'maintenance',
+          machineId: 'machine',
+          kind: 'maintenance',
+          day: '2026-10-25',
+          amount: '25.5',
+          currency: 'VND',
+          reference: 'maintenance',
+          note: 'Included component',
+        ),
+        'admin',
+      );
+      await machines.approveExpense('f', 'maintenance', 0, 'admin');
+      await bridge().machinePayable(
+        'f',
+        'maintenance',
+        'supplier',
+        'invoice',
+        MoneyRounding.halfUp,
+        'admin',
+      );
+      final trade = SqliteTradeRepository(db);
+      await trade.settle(
+        'f',
+        'machine-payment',
+        'machine-payable:maintenance',
+        '10',
+        'VND',
+        '2026-10-26',
+        'Bank transfer',
+        'admin',
+      );
+      await cash('capital', 1000);
+      await cash('return', 50, receipt: false);
+      await bridge().metadata('f', 'capital', 'capital', 0, {
+        'capitalKind': 'contribution',
+        'reason': 'Initial capital',
+      }, 'admin');
+      await bridge().metadata('f', 'capital', 'return', 0, {
+        'capitalKind': 'return',
+        'reason': 'Owner reimbursement',
+      }, 'admin');
+      final c = CompanyCatalogService(
+        repository: SqliteCompanyCatalog(db),
+        subject: admin,
+      );
+      await c.create(
+        const CatalogEntry(
+          id: 'kg',
+          farmId: 'f',
+          kind: CatalogKind.unit,
+          code: '',
+          name: 'kg',
+        ),
+        reason: 'test',
+      );
+      await c.create(
+        const CatalogEntry(
+          id: 'product',
+          farmId: 'f',
+          kind: CatalogKind.product,
+          code: '',
+          name: 'Lạc',
+          unitId: 'kg',
+        ),
+        reason: 'test',
+      );
+      await c.create(
+        const CatalogEntry(
+          id: 'buyer',
+          farmId: 'f',
+          kind: CatalogKind.customer,
+          code: '',
+          name: 'Buyer',
+        ),
+        reason: 'test',
+      );
+      await trade.create(
+        'f',
+        const TradeDraft(
+          id: 'crop',
+          kind: TradeKind.harvest,
+          day: '2026-10-25',
+          currency: 'VND',
+          rounding: MoneyRounding.halfUp,
+          planId: 'plan',
+          lines: [TradeLine(ref: 'product', quantity: '10', price: '5')],
+        ),
+        'admin',
+      );
+      await trade.post('f', 'crop', 0, 'admin');
+      await trade.create(
+        'f',
+        const TradeDraft(
+          id: 'sold',
+          kind: TradeKind.sale,
+          day: '2026-10-26',
+          currency: 'VND',
+          rounding: MoneyRounding.halfUp,
+          partyId: 'buyer',
+          dueOn: '2026-10-26',
+          lines: [
+            TradeLine(
+              ref: 'crop:0',
+              quantity: '4',
+              price: '10',
+              issuePrice: '5',
+            ),
+          ],
+        ),
+        'admin',
+      );
+      await trade.post('f', 'sold', 0, 'admin');
+      await trade.settle(
+        'f',
+        'buyer-payment',
+        'sold',
+        '20',
+        'VND',
+        '2026-10-26',
+        'Buyer transfer',
+        'admin',
+      );
+      final snapshot = await bridge().snapshot('f', '2026-10');
+      expect(snapshot.materialCost('plan', 'VND'), '10');
+      expect(snapshot.laborCost('plan', 'VND'), '1');
+      expect(snapshot.machineCost('plan', 'VND'), '80');
+      expect(snapshot.capitalTotal('VND'), '950');
+      expect(snapshot.cashTotal('VND', 'THU'), '1020');
+      expect(snapshot.cashTotal('VND', 'CHI'), '60.25');
+      expect(snapshot.sales('plan', 'VND'), '40');
+      expect(snapshot.tradePaid('sold'), '20');
+      expect(snapshot.tradePaid('machine-payable:maintenance'), '10');
+      expect(
+        (await db.query(
+          'inventory_items_v2',
+          where: 'id=?',
+          whereArgs: ['diesel'],
+        )).single['stock_units'],
+        6500000,
+      );
+      final report = Excel.decodeBytes(Report20(snapshot).bytes());
+      expect(report.tables, hasLength(20));
+      expect(
+        report['TH KHO VA TAI CHINH'].rows
+            .skip(1)
+            .firstWhere((row) => row[1]?.value.toString() == 'Diesel')[6]!
+            .value,
+        TextCellValue('Dưới tồn tối thiểu'),
+      );
+      expect(
+        report['NHAT KY VAN HANH'].rows[1][12]!.value,
+        DoubleCellValue(1.25),
+      );
+      expect(await bridge().reconcile('f'), isEmpty);
+      final dir = await Directory.systemTemp.createTemp(
+        'agrico-complete-cycle-',
+      );
+      final costs = await databaseFactoryFfi.openDatabase(
+        '${dir.path}/costs.db',
+      );
+      try {
+        await costs.execute(
+          'CREATE TABLE production_costs(id TEXT PRIMARY KEY)',
+        );
+        final bytes = await LocalDatabaseSnapshot.create(
+          db,
+          costsDatabase: costs,
+        );
+        await LocalRestorePreflight.validate(
+          bytes: bytes,
+          primary: db,
+          costs: costs,
+          factory: databaseFactoryFfi,
+          temporaryDirectory: dir.path,
+        );
+        await db.update('integration_report_metadata_v1', {
+          'body': jsonEncode({
+            'capitalKind': 'return',
+            'reason': 'tampered direction',
+          }),
+        }, where: "kind='capital' AND entity_id='capital'");
+        final bad = await LocalDatabaseSnapshot.create(
+          db,
+          costsDatabase: costs,
+        );
+        await expectLater(
+          LocalRestorePreflight.validate(
+            bytes: bad,
+            primary: db,
+            costs: costs,
+            factory: databaseFactoryFfi,
+            temporaryDirectory: dir.path,
+          ),
+          throwsA(isA<RestorePreflightException>()),
+        );
+      } finally {
+        await costs.close();
+        await dir.delete(recursive: true);
+      }
     },
   );
 }

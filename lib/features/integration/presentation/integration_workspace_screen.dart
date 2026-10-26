@@ -120,7 +120,17 @@ class _IntegrationState extends State<IntegrationWorkspaceScreen> {
                                 DropdownMenuItem(
                                   value: '',
                                   child: Text(
-                                    tr('Tạo mới', 'Create new', 'ສ້າງໃໝ່'),
+                                    e.key == 'capitalKind'
+                                        ? tr(
+                                            'Không phân loại vốn',
+                                            'Not owner capital',
+                                            'ບໍ່ຈັດເປັນທຶນ',
+                                          )
+                                        : tr(
+                                            'Tạo mới',
+                                            'Create new',
+                                            'ສ້າງໃໝ່',
+                                          ),
                                   ),
                                 ),
                               for (final option in choices[e.key]!.entries)
@@ -143,7 +153,14 @@ class _IntegrationState extends State<IntegrationWorkspaceScreen> {
                             controller: controllers[e.key],
                             decoration: InputDecoration(labelText: e.value),
                             validator: (v) =>
-                                !optional.contains(e.key) &&
+                                (!optional.contains(e.key) ||
+                                        (e.key == 'reason' &&
+                                            choices.containsKey(
+                                              'capitalKind',
+                                            ) &&
+                                            controllers['capitalKind']!
+                                                .text
+                                                .isNotEmpty)) &&
                                     (v ?? '').trim().isEmpty
                                 ? tr('Bắt buộc', 'Required', 'ຈຳເປັນ')
                                 : null,
@@ -424,6 +441,48 @@ class _IntegrationState extends State<IntegrationWorkspaceScreen> {
   }
 
   static const fields = {
+    'stock': {
+      'minimumQuantity': [
+        'Tồn tối thiểu (đơn vị vật tư)',
+        'Minimum stock (item unit)',
+        'ສະຕັອກຕ່ຳສຸດ (ຫົວໜ່ວຍວັດສະດຸ)',
+      ],
+    },
+    'capital': {
+      'capitalKind': [
+        'Phân loại vốn chủ sở hữu',
+        'Owner capital classification',
+        'ປະເພດທຶນເຈົ້າຂອງ',
+      ],
+      'reason': [
+        'Lý do phân loại vốn',
+        'Capital classification reason',
+        'ເຫດຜົນຈັດປະເພດທຶນ',
+      ],
+    },
+    'run': {
+      'conditionBefore': [
+        'Tình trạng máy trước ca',
+        'Machine condition before shift',
+        'ສະພາບເຄື່ອງຈັກກ່ອນກະ',
+      ],
+      'conditionAfter': [
+        'Tình trạng máy sau ca',
+        'Machine condition after shift',
+        'ສະພາບເຄື່ອງຈັກຫຼັງກະ',
+      ],
+      'fuelConsumedLitres': [
+        'Nhiên liệu tiêu thụ đo thực tế (lít)',
+        'Measured fuel consumption (litres)',
+        'ນ້ຳມັນໃຊ້ຈິງທີ່ວັດແທກ (ລິດ)',
+      ],
+      'incident': [
+        'Sự cố / bảo dưỡng trong ca',
+        'Incident / maintenance during shift',
+        'ບັນຫາ / ບຳລຸງໃນກະ',
+      ],
+    },
+
     'parcel': {
       'soilType': ['Loại đất', 'Soil type', 'ຊະນິດດິນ'],
       'pH': ['pH', 'pH', 'pH'],
@@ -490,6 +549,24 @@ class _IntegrationState extends State<IntegrationWorkspaceScreen> {
       labels,
       initial: {for (final e in old.entries) e.key: '${e.value}'},
       optional: labels.keys.toSet(),
+      choices: kind == 'capital'
+          ? {
+              'capitalKind': {
+                if (entity['kind'] == 'THU')
+                  'contribution': tr(
+                    'Góp vốn chủ sở hữu',
+                    'Owner capital contribution',
+                    'ເຈົ້າຂອງປະກອບທຶນ',
+                  ),
+                if (entity['kind'] == 'CHI')
+                  'return': tr(
+                    'Hoàn vốn chủ sở hữu',
+                    'Owner capital returned',
+                    'ຄືນທຶນເຈົ້າຂອງ',
+                  ),
+              },
+            }
+          : const {},
     );
     if (v != null)
       await run(
@@ -785,6 +862,9 @@ class _IntegrationState extends State<IntegrationWorkspaceScreen> {
                               title: Text(
                                 tr(
                                   {
+                                    'stock': 'Tồn tối thiểu',
+                                    'capital': 'Vốn chủ sở hữu',
+                                    'run': 'Tình trạng / tiêu thụ ca máy',
                                     'parcel': 'Thửa',
                                     'harvest': 'Thu hoạch',
                                     'machine': 'Máy',
@@ -793,6 +873,9 @@ class _IntegrationState extends State<IntegrationWorkspaceScreen> {
                                     'payroll': 'Bảng lương',
                                   }[kind]!,
                                   {
+                                    'stock': 'Minimum stock',
+                                    'capital': 'Owner capital',
+                                    'run': 'Shift condition / consumption',
                                     'parcel': 'Parcels',
                                     'harvest': 'Harvest',
                                     'machine': 'Machines',
@@ -801,6 +884,9 @@ class _IntegrationState extends State<IntegrationWorkspaceScreen> {
                                     'payroll': 'Payroll',
                                   }[kind]!,
                                   {
+                                    'stock': 'ສະຕັອກຕ່ຳສຸດ',
+                                    'capital': 'ທຶນເຈົ້າຂອງ',
+                                    'run': 'ສະພາບ / ນ້ຳມັນໃນກະ',
                                     'parcel': 'ຕອນດິນ',
                                     'harvest': 'ເກັບກ່ຽວ',
                                     'machine': 'ເຄື່ອງຈັກ',
@@ -815,6 +901,9 @@ class _IntegrationState extends State<IntegrationWorkspaceScreen> {
                                     in s
                                         .rows(
                                           {
+                                            'stock': 'inventory_items_v2',
+                                            'capital': 'finance_documents_v2',
+                                            'run': 'machine_runs_v1',
                                             'parcel': 'land_parcels',
                                             'harvest': 'trade_documents_v1',
                                             'machine':
@@ -834,11 +923,19 @@ class _IntegrationState extends State<IntegrationWorkspaceScreen> {
                                               : kind == 'harvest' ||
                                                     kind == 'maintenance'
                                               ? r['kind'] == kind
+                                              : kind == 'capital'
+                                              ? !s.controlledCash(r['id'])
                                               : true,
                                         ))
                                   ListTile(
                                     title: Text(
-                                      '${entity['code'] ?? entity['parcel_code'] ?? entity['id']} ${entity['name'] ?? ''}',
+                                      '${entity['code'] ?? entity['parcel_code'] ?? (kind == 'run' ? s.name(entity['machine_id']) : entity['id'])} ${entity['name'] ?? ''} ${kind == 'stock'
+                                          ? entity['unit'] ?? ''
+                                          : kind == 'run'
+                                          ? entity['day'] ?? ''
+                                          : kind == 'capital'
+                                          ? '${IntegrationSnapshot.cashAmount(entity)} ${entity['currency']}'
+                                          : ''}',
                                     ),
                                     onTap: busy
                                         ? null
