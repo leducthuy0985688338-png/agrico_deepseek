@@ -2,6 +2,13 @@ import 'package:flutter/services.dart';
 
 /// Groups integer amounts for display without changing the stored value.
 class FinanceAmountFormatter extends TextInputFormatter {
+  static String groupExact(String text) {
+    final parts = text.split('.');
+    return parts.length == 1
+        ? group(parts.first)
+        : '${group(parts.first)},${parts[1]}';
+  }
+
   static String digits(String text) => text.replaceAll('.', '');
 
   static String group(String value) => value.replaceAllMapped(

@@ -245,13 +245,13 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
                                 children: [
                                   Text(total.currency),
                                   Text(
-                                    '${l10n.text('finance.receipt')}: ${FinanceAmountFormatter.group(total.receiptsMinor.toString())}',
+                                    '${l10n.text('finance.receipt')}: ${FinanceAmountFormatter.groupExact(total.receiptsText)}',
                                   ),
                                   Text(
-                                    '${l10n.text('finance.payment')}: ${FinanceAmountFormatter.group(total.paymentsMinor.toString())}',
+                                    '${l10n.text('finance.payment')}: ${FinanceAmountFormatter.groupExact(total.paymentsText)}',
                                   ),
                                   Text(
-                                    '${l10n.text('finance.balance')}: ${FinanceAmountFormatter.group(total.balanceMinor.toString())}',
+                                    '${l10n.text('finance.balance')}: ${FinanceAmountFormatter.groupExact(total.balanceText)}',
                                   ),
                                 ],
                               ),
@@ -609,13 +609,13 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
                                   '${l10n.text('finance.summary')} · ${total.currency}',
                                 ),
                                 Text(
-                                  '${l10n.text('finance.receipt')}: ${FinanceAmountFormatter.group(total.receiptsMinor.toString())}',
+                                  '${l10n.text('finance.receipt')}: ${FinanceAmountFormatter.groupExact(total.receiptsText)}',
                                 ),
                                 Text(
-                                  '${l10n.text('finance.payment')}: ${FinanceAmountFormatter.group(total.paymentsMinor.toString())}',
+                                  '${l10n.text('finance.payment')}: ${FinanceAmountFormatter.groupExact(total.paymentsText)}',
                                 ),
                                 Text(
-                                  '${l10n.text('finance.balance')}: ${FinanceAmountFormatter.group(total.balanceMinor.toString())}',
+                                  '${l10n.text('finance.balance')}: ${FinanceAmountFormatter.groupExact(total.balanceText)}',
                                 ),
                               ],
                             ),
@@ -653,7 +653,7 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
                                 '${document.parcelId == null ? '' : '\n${l10n.text('task.parcel')}: ${parcelLabels[document.parcelId] ?? l10n.text('finance.linkedParcel')}'}',
                               ),
                               trailing: Text(
-                                '${FinanceAmountFormatter.group(document.amountMinor.toString())} $unit',
+                                '${FinanceAmountFormatter.groupExact(document.amountText)} $unit',
                               ),
                             );
                           },

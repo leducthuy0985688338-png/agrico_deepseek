@@ -900,7 +900,11 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
                                         (v) => v.payrollId == p.id,
                                       ))
                                         Text(
-                                          '${payment.day} · ${payment.amount} ${payment.currency} · ${payment.note}',
+                                          '${payment.reversed ? (l.locale.languageCode == 'vi'
+                                                    ? 'ĐÃ ĐẢO · '
+                                                    : l.locale.languageCode == 'lo'
+                                                    ? 'ກັບລາຍການ · '
+                                                    : 'REVERSED · ') : ''}${payment.day} · ${payment.amount} ${payment.currency} · ${payment.note}',
                                         ),
                                     ],
                                   ),

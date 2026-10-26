@@ -1,3 +1,4 @@
+import '../../inventory/domain/entities/exact_decimal.dart';
 import '../../../core/identity/domain/business_reference_code.dart';
 
 /// A persisted finance document; ID and human-readable code are distinct.
@@ -10,6 +11,8 @@ class FinanceDocument {
     required this.occurredAt,
     required this.amountMinor,
     required this.currency,
+    this.amountScale = 0,
+    this.isSettlement = false,
     required this.category,
     this.parcelId,
     this.description,
@@ -21,6 +24,20 @@ class FinanceDocument {
   final BusinessDocumentKind kind;
   final DateTime occurredAt;
   final int amountMinor;
+  final int amountScale;
+  final bool isSettlement;
+  String get amountText {
+    if (amountScale < 0 || amountScale > 6)
+      throw const FormatException('Invalid money scale.');
+    var digits = amountMinor.abs().toString().padLeft(amountScale + 1, '0');
+    if (amountScale > 0)
+      digits =
+          '${digits.substring(0, digits.length - amountScale)}.${digits.substring(digits.length - amountScale)}';
+    return ExactDecimal.parse(
+      '${amountMinor < 0 ? '-' : ''}$digits',
+    ).toString();
+  }
+
   final String currency;
   final String category;
   final String? parcelId;

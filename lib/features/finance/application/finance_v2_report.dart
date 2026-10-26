@@ -5,7 +5,7 @@ import 'package:agrico_deepseek/core/identity/domain/business_reference_code.dar
 import '../domain/finance_document.dart';
 import 'finance_document_summary.dart';
 
-/// A report of persisted documents only. Amounts remain integers and each
+/// A report of persisted documents only. Amounts preserve their exact decimal scale and each
 /// currency has its own subtotal; no exchange rate is assumed.
 class FinanceV2Report {
   const FinanceV2Report(this.store);
@@ -28,6 +28,12 @@ class FinanceV2Report {
       documents,
       organizationId,
     );
+    CellValue number(String text) =>
+        text.replaceAll(RegExp(r'[-.]'), '').length > 15
+        ? TextCellValue(text)
+        : text.contains('.')
+        ? DoubleCellValue(double.parse(text))
+        : IntCellValue(int.parse(text));
     final excel = Excel.createExcel();
     final scope = excel['Filter V2'];
     scope.appendRow([TextCellValue('Field'), TextCellValue('Value')]);
@@ -66,7 +72,7 @@ class FinanceV2Report {
         TextCellValue(document.occurredAt.toIso8601String()),
         TextCellValue(document.kind.prefix),
         TextCellValue(document.currency),
-        IntCellValue(document.amountMinor),
+        number(document.amountText),
         TextCellValue(document.category),
         TextCellValue(document.parcelId ?? ''),
         TextCellValue(document.description ?? ''),
@@ -82,9 +88,9 @@ class FinanceV2Report {
     for (final total in totals) {
       subtotal.appendRow([
         TextCellValue(total.currency),
-        IntCellValue(total.receiptsMinor),
-        IntCellValue(total.paymentsMinor),
-        IntCellValue(total.balanceMinor),
+        number(total.receiptsText),
+        number(total.paymentsText),
+        number(total.balanceText),
       ]);
     }
     return excel;

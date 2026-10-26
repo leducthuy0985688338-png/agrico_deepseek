@@ -1,3 +1,6 @@
+import '../features/integration/data/integration_repository.dart';
+import '../features/integration/application/integration_service.dart';
+import '../features/integration/presentation/integration_workspace_screen.dart';
 import '../features/trade/data/sqlite_trade_repository.dart';
 import '../features/trade/application/trade_service.dart';
 import '../features/trade/presentation/trade_workspace_screen.dart';
@@ -150,6 +153,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     await SqliteParcelNumberSequence.reconcileExistingHouseholds(database);
     await SqliteFinanceDocumentRepository.createSchema(database);
     await SqliteTradeRepository.createSchema(database);
+    await IntegrationRepository.createSchema(database);
     await SqliteAdministrativeCatalog.createSchema(database);
     final administrativeCatalog = SqliteAdministrativeCatalog(database);
     await administrativeCatalog.seedInitialLocation();
@@ -603,12 +607,22 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
           }
         };
       }
+      final integrated = IntegrationService(
+        repository: IntegrationRepository(deps.database),
+        subject: deps.subject,
+        currentSubject: () => mounted ? widget.subject : null,
+      );
       if (financeService.canView) {
         legacy['finance'] = () {
           if (financeService.canView) {
             push(
               deps.subject.dataScopes.contains(DataScope.allFarm)
                   ? TradeWorkspaceScreen(
+                      openReports: integrated.canView
+                          ? () => push(
+                              IntegrationWorkspaceScreen(service: integrated),
+                            )
+                          : null,
                       service: TradeService(
                         SqliteTradeRepository(deps.database),
                         subject: deps.subject,

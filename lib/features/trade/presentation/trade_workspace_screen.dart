@@ -12,9 +12,11 @@ class TradeWorkspaceScreen extends StatefulWidget {
     required this.service,
     required this.openCatalog,
     required this.openCash,
+    this.openReports,
   });
   final TradeService service;
   final VoidCallback openCatalog, openCash;
+  final VoidCallback? openReports;
   @override
   State<TradeWorkspaceScreen> createState() => _TradeWorkspaceState();
 }
@@ -345,6 +347,17 @@ class _TradeWorkspaceState extends State<TradeWorkspaceScreen> {
         appBar: AppBar(
           title: Text(t('title')),
           actions: [
+            if (widget.openReports != null)
+              IconButton(
+                tooltip:
+                    AppLocalizations.of(context).locale.languageCode == 'vi'
+                    ? 'Báo cáo tổng hợp / liên kết sổ'
+                    : AppLocalizations.of(context).locale.languageCode == 'lo'
+                    ? 'ລາຍງານລວມ / ເຊື່ອມບັນຊີ'
+                    : 'Integrated reports / ledgers',
+                onPressed: widget.openReports,
+                icon: const Icon(Icons.table_chart),
+              ),
             IconButton(
               tooltip: t('catalog'),
               onPressed: widget.openCatalog,
@@ -489,7 +502,7 @@ class _TradeWorkspaceState extends State<TradeWorkspaceScreen> {
                             card([
                               Text('${f['code']} · ${f['occurred_at']}'),
                               Text(
-                                '${f['amount_minor']} ${f['currency']} · ${f['description'] ?? ''}',
+                                '${f['amount_text'] ?? f['amount_minor']} ${f['currency']} · ${f['description'] ?? ''}',
                               ),
                             ]),
                         ]),

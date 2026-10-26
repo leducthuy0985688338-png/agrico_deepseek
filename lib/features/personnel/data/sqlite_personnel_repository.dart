@@ -1,3 +1,4 @@
+import '../../integration/data/integration_cash.dart';
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import '../domain/personnel.dart';
@@ -762,11 +763,7 @@ class SqlitePersonnelRepository
       'SELECT p.*,c.name FROM personnel_payrolls_v1 p JOIN company_catalog_entries_v1 c ON c.id=p.worker_id AND c.farm_id=p.farm_id WHERE p.farm_id=? ORDER BY p.period DESC,p.code',
       [farmId],
     );
-    final payments = await database.query(
-      'personnel_payments_v1',
-      where: 'farm_id=?',
-      whereArgs: [farmId],
-    );
+    final payments = await IntegrationCash.activePayments(database, farmId);
     return rows
         .map(
           (r) => PayrollRecordV2(
@@ -988,10 +985,10 @@ class SqlitePersonnelRepository
       if (payroll.length != 1) {
         throw StateError('Approved payroll with matching currency required.');
       }
-      final previous = await tx.query(
-        'personnel_payments_v1',
-        where: 'payroll_id=?',
-        whereArgs: [payrollId],
+      final previous = await IntegrationCash.activePayments(
+        tx,
+        farmId,
+        payroll: payrollId,
       );
       final paid = LaborMoney.sum([
         ...previous.map((p) => p['amount']! as String),
@@ -1012,6 +1009,15 @@ class SqlitePersonnelRepository
         'business_day': day,
         'note': note,
       });
+      await IntegrationCash.salary(tx, {
+        'id': id,
+        'farm_id': farmId,
+        'payroll_id': payrollId,
+        'amount': amount,
+        'currency': currency,
+        'business_day': day,
+        'note': note,
+      }, actorId);
       await _audit(tx, farmId, id, 'payroll.payment', actorId, note);
     });
   }
@@ -1054,22 +1060,26 @@ class SqlitePersonnelRepository
   }
 
   @override
-  Future<List<SalaryPayment>> payments(String farmId) async =>
-      (await database.query(
-            'personnel_payments_v1',
-            where: 'farm_id=?',
-            whereArgs: [farmId],
-            orderBy: 'business_day,id',
-          ))
-          .map(
-            (r) => SalaryPayment(
-              id: r['id']! as String,
-              payrollId: r['payroll_id']! as String,
-              amount: r['amount']! as String,
-              currency: r['currency']! as String,
-              day: r['business_day']! as String,
-              note: r['note']! as String,
-            ),
-          )
-          .toList(growable: false);
+  Future<List<SalaryPayment>> payments(String farmId) async {
+    final reversed = await IntegrationCash.reversed(database);
+    final rows = await database.query(
+      'personnel_payments_v1',
+      where: 'farm_id=?',
+      whereArgs: [farmId],
+      orderBy: 'business_day,id',
+    );
+    return rows
+        .map(
+          (r) => SalaryPayment(
+            id: r['id'] as String,
+            payrollId: r['payroll_id'] as String,
+            amount: r['amount'] as String,
+            currency: r['currency'] as String,
+            day: r['business_day'] as String,
+            note: r['note'] as String,
+            reversed: reversed.contains(r['id']),
+          ),
+        )
+        .toList();
+  }
 }

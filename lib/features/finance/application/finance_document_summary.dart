@@ -1,72 +1,57 @@
 import '../../../../core/identity/domain/business_reference_code.dart';
 import '../domain/finance_document.dart';
+import '../../inventory/domain/entities/exact_decimal.dart';
 
-/// Totals for persisted v2 documents, kept separate for each currency.
 class FinanceCurrencyTotal {
   const FinanceCurrencyTotal({
     required this.currency,
-    required this.receiptsMinor,
-    required this.paymentsMinor,
+    required this.receiptsText,
+    required this.paymentsText,
   });
-
-  final String currency;
-  final int receiptsMinor;
-  final int paymentsMinor;
-  int get balanceMinor => receiptsMinor - paymentsMinor;
+  final String currency, receiptsText, paymentsText;
+  String get balanceText =>
+      (ExactDecimal.parse(receiptsText) - ExactDecimal.parse(paymentsText))
+          .toString();
+  int get receiptsMinor => int.parse(receiptsText);
+  int get paymentsMinor => int.parse(paymentsText);
+  int get balanceMinor => int.parse(balanceText);
 }
 
 class FinanceDocumentSummary {
   const FinanceDocumentSummary(this.store);
-
   final FinanceDocumentStore store;
-
-  Future<List<FinanceCurrencyTotal>> byOrganization(
-    String organizationId,
-  ) async {
-    if (organizationId.trim().isEmpty) {
-      throw const FormatException('Organization is required.');
-    }
-    final documents = await store.listByOrganization(organizationId);
-    return fromDocuments(documents, organizationId);
+  Future<List<FinanceCurrencyTotal>> byOrganization(String id) async {
+    if (id.trim().isEmpty)
+      throw const FormatException('Organization required.');
+    return fromDocuments(await store.listByOrganization(id), id);
   }
 
   static List<FinanceCurrencyTotal> fromDocuments(
     Iterable<FinanceDocument> documents,
-    String organizationId,
+    String id,
   ) {
-    if (organizationId.trim().isEmpty) {
-      throw const FormatException('Organization is required.');
-    }
-    final receipts = <String, int>{};
-    final payments = <String, int>{};
-    for (final document in documents) {
-      if (document.organizationId != organizationId) {
-        throw StateError('Finance document is outside the organization.');
-      }
-      if (document.kind == BusinessDocumentKind.receipt) {
-        receipts.update(
-          document.currency,
-          (value) => value + document.amountMinor,
-          ifAbsent: () => document.amountMinor,
-        );
-      } else if (document.kind == BusinessDocumentKind.payment) {
-        payments.update(
-          document.currency,
-          (value) => value + document.amountMinor,
-          ifAbsent: () => document.amountMinor,
-        );
-      } else {
+    if (id.trim().isEmpty)
+      throw const FormatException('Organization required.');
+    final receipts = <String, ExactDecimal>{},
+        payments = <String, ExactDecimal>{};
+    for (final d in documents) {
+      if (d.organizationId != id) throw StateError('Wrong organization.');
+      if (d.kind != BusinessDocumentKind.receipt &&
+          d.kind != BusinessDocumentKind.payment)
         throw StateError('Unsupported finance document kind.');
-      }
+      final map = d.kind == BusinessDocumentKind.receipt ? receipts : payments;
+      map[d.currency] =
+          (map[d.currency] ?? ExactDecimal.parse('0')) +
+          ExactDecimal.parse(d.amountText);
     }
     final currencies = {...receipts.keys, ...payments.keys}.toList()..sort();
-    return List.unmodifiable([
-      for (final currency in currencies)
+    return [
+      for (final c in currencies)
         FinanceCurrencyTotal(
-          currency: currency,
-          receiptsMinor: receipts[currency] ?? 0,
-          paymentsMinor: payments[currency] ?? 0,
+          currency: c,
+          receiptsText: (receipts[c] ?? ExactDecimal.parse('0')).toString(),
+          paymentsText: (payments[c] ?? ExactDecimal.parse('0')).toString(),
         ),
-    ]);
+    ];
   }
 }

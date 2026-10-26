@@ -223,7 +223,7 @@ class AppLocalizations {
     'hr.rateNotice':
         'Mức lương theo ngày hiệu lực; một công mặc định 480 phút. Chọn cách làm tròn; không tự đặt hệ số tăng ca. Khai báo lại cùng ngày tạo phiên bản mới, không đổi công đã duyệt.',
     'hr.payrollNotice':
-        'Lấy công đã duyệt đúng kỳ và tiền tệ. Ghi nhận trả lương đã thực hiện; chưa tự tạo phiếu chi hay chuyển tiền ngân hàng.',
+        'Lấy công đã duyệt đúng kỳ và tiền tệ. Ghi nhận trả lương đồng thời tạo một phiếu chi trong sổ tiền; không chuyển tiền ngân hàng.',
     'hr.regular': 'Giờ thường',
     'hr.overtime': 'Tăng ca',
     'hr.piece': 'Công khoán',
@@ -1112,7 +1112,7 @@ class AppLocalizations {
     'hr.rateNotice':
         'ອັດຕາຕາມວັນເລີ່ມໃຊ້ ມື້ມາດຕະຖານ 480 ນາທີ ຕ້ອງເລືອກການປັດເງິນ',
     'hr.payrollNotice':
-        'ໃຊ້ວຽກທີ່ອະນຸມັດຕາມເດືອນ/ສະກຸນເງິນ ບັນທຶກການຈ່າຍ ບໍ່ໂອນເງິນອັດຕະໂນມັດ',
+        'ໃຊ້ວຽກທີ່ອະນຸມັດຕາມເດືອນ/ສະກຸນເງິນ. ບັນທຶກຈ່າຍເງິນເດືອນພ້ອມໃບຈ່າຍໜຶ່ງໃບໃນບັນຊີ; ບໍ່ໂອນເງິນທະນາຄານ.',
     'hr.regular': 'ເວລາປົກກະຕິ',
     'hr.overtime': 'ລ່ວງເວລາ',
     'hr.piece': 'ວຽກຕາມປະລິມານ',
@@ -1972,7 +1972,7 @@ class AppLocalizations {
     'hr.rateNotice':
         'Effective-dated rates; a default day is 480 minutes. Select rounding explicitly; no assumed overtime premium. Re-enter the same effective date to create a revision; approved earnings stay unchanged.',
     'hr.payrollNotice':
-        'Uses approved work by month/currency. Record completed payments; this does not create cash vouchers or send bank transfers.',
+        'Uses approved work by month/currency. Record completed payments together with one cash voucher; no bank transfer is sent.',
     'hr.regular': 'Regular work',
     'hr.overtime': 'Overtime',
     'hr.piece': 'Piece work',

@@ -248,6 +248,7 @@ abstract final class TradeIntegrity {
             f['kind'] == (d['kind'] == 'sale' ? 'THU' : 'CHI') &&
             f['currency'] == p['currency'] &&
             f['amount_minor'] == int.parse(p['amount'] as String) &&
+            ((f['amount_scale'] as int?) ?? 0) == 0 &&
             f['occurred_at'] ==
                 DateTime.parse(p['day'] as String).toIso8601String(),
       );
@@ -273,6 +274,7 @@ abstract final class TradeIntegrity {
             f['kind'] != (original['kind']) &&
             f['currency'] == p['currency'] &&
             f['amount_minor'] == original['amount_minor'] &&
+            ((f['amount_scale'] as int?) ?? 0) == 0 &&
             f['occurred_at'] ==
                 DateTime.parse(r['day'] as String).toIso8601String(),
       );

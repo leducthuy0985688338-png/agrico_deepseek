@@ -266,7 +266,7 @@ class PersonnelReport {
           salaryById[p.payrollId]!.workerName,
           p.currency,
           p.amount,
-          p.note,
+          p.reversed ? 'REVERSED · ${p.note}' : p.note,
           salaryById[p.payrollId]!.code,
         ],
         numbers: {5},

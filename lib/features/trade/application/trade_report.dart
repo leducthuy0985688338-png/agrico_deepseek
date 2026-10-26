@@ -191,7 +191,7 @@ class TradeReport {
           f['code'] as String,
           (f['occurred_at'] as String).substring(0, 10),
           f['kind'] as String,
-          '${f['amount_minor']}',
+          f['amount_text'] as String? ?? '${f['amount_minor']}',
           f['currency'] as String,
           f['category'] as String,
           f['description'] as String? ?? '',
@@ -353,7 +353,7 @@ class TradeReport {
                   f['kind'] == kind &&
                   inPeriod((f['occurred_at'] as String).substring(0, 10)),
             )
-            .map((f) => '${f['amount_minor']}'),
+            .map((f) => f['amount_text'] as String? ?? '${f['amount_minor']}'),
       );
       final thu = cashTotal('THU'), chi = cashTotal('CHI');
       row(

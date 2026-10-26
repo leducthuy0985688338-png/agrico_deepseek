@@ -498,8 +498,10 @@ class SalaryPayment {
     required this.currency,
     required this.day,
     required this.note,
+    this.reversed = false,
   });
   final String id, payrollId, amount, currency, day, note;
+  final bool reversed;
 }
 
 abstract interface class PersonnelRepository {

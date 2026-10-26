@@ -1,3 +1,5 @@
+import '../../features/integration/data/integration_repository.dart';
+import '../../features/integration/data/integration_integrity.dart';
 import '../../features/trade/data/sqlite_trade_repository.dart';
 import '../../features/trade/data/trade_integrity.dart';
 import '../../features/machines/data/sqlite_machine_repository.dart';
@@ -119,6 +121,7 @@ class LocalRestorePreflight {
               ...SqlitePersonnelRepository.tables,
               ...SqliteMachineRepository.tables,
               ...SqliteTradeRepository.tables,
+              ...IntegrationRepository.tables,
               'production_plans_v1',
               'production_plan_tasks_v1',
               'production_plan_sequences_v1',
@@ -209,6 +212,17 @@ class LocalRestorePreflight {
           'tables',
           database: databaseName,
           step: 'trade tables',
+        );
+      }
+      if (databaseName == 'agrico.db' &&
+          IntegrationRepository.tables.any(
+            (t) => (saved[t] as List? ?? const []).isNotEmpty,
+          ) &&
+          missing.intersection(IntegrationRepository.tables).isNotEmpty) {
+        throw RestorePreflightException(
+          'tables',
+          database: databaseName,
+          step: 'integration tables',
         );
       }
       final productionCode = RegExp(r'^(.+)-L([0-9]{3,})(?:-T([0-9]{3,}))?$');
@@ -540,6 +554,18 @@ class LocalRestorePreflight {
             'integrity',
             database: databaseName,
             step: 'trade integrity',
+          );
+        }
+      }
+      if (databaseName == 'agrico.db' &&
+          tables.containsAll(IntegrationRepository.tables)) {
+        try {
+          await IntegrationIntegrity.validate(staged);
+        } catch (_) {
+          throw RestorePreflightException(
+            'integrity',
+            database: databaseName,
+            step: 'integrated ledger integrity',
           );
         }
       }

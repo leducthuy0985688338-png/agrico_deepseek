@@ -80,7 +80,17 @@ class ProductionCostSummary {
     if (!canView) {
       throw StateError('Production cost access denied.');
     }
-    final documents = await finance.listByOrganization(finance.organizationId);
+    final allDocuments = await finance.listByOrganization(
+      finance.organizationId,
+    );
+    final documents = allDocuments
+        .where(
+          (d) =>
+              !d.isSettlement &&
+              d.amountScale == 0 &&
+              !d.category.startsWith('INTEGRATED_'),
+        )
+        .toList();
     if (!canView) {
       throw StateError('Production cost access denied.');
     }

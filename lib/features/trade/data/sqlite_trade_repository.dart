@@ -1,3 +1,4 @@
+import '../../integration/data/integration_cash.dart';
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import '../domain/trade.dart';
@@ -174,11 +175,15 @@ class SqliteTradeRepository implements TradeRepository {
   }
 
   @override
-  Future<void> create(
+  Future<void> create(String farm, TradeDraft d, String actor) =>
+      database.transaction((tx) => createInTransaction(tx, farm, d, actor));
+
+  Future<void> createInTransaction(
+    Transaction tx,
     String farm,
     TradeDraft d,
     String actor,
-  ) => database.transaction((tx) async {
+  ) async {
     final old = await tx.query(
       'trade_documents_v1',
       where: 'id=?',
@@ -228,7 +233,8 @@ class SqliteTradeRepository implements TradeRepository {
       'revision': 0,
     });
     await audit(tx, farm, d.id, 'create', actor);
-  });
+  }
+
   Future<void> movement(
     Transaction tx,
     String farm,
@@ -280,12 +286,18 @@ class SqliteTradeRepository implements TradeRepository {
   }
 
   @override
-  Future<void> post(
+  Future<void> post(String farm, String id, int revision, String actor) =>
+      database.transaction(
+        (tx) => postInTransaction(tx, farm, id, revision, actor),
+      );
+
+  Future<void> postInTransaction(
+    Transaction tx,
     String farm,
     String id,
     int revision,
     String actor,
-  ) => database.transaction((tx) async {
+  ) async {
     final row = await one(tx, 'trade_documents_v1', farm, id);
     if (row['status'] != 'draft' || row['revision'] != revision) {
       throw StateError('Stale or non-draft document.');
@@ -421,7 +433,8 @@ class SqliteTradeRepository implements TradeRepository {
       whereArgs: [id, farm],
     );
     await audit(tx, farm, id, 'post', actor);
-  });
+  }
+
   @override
   Future<void> voidDocument(
     String farm,
@@ -776,12 +789,13 @@ class SqliteTradeRepository implements TradeRepository {
           )
           .toList();
   @override
-  Future<List<Map<String, Object?>>> cashBook(String farm) => database.query(
-    'finance_documents_v2',
-    where: 'organization_id=?',
-    whereArgs: [farm],
-    orderBy: 'occurred_at DESC,code DESC',
-  );
+  Future<List<Map<String, Object?>>> cashBook(String farm) async =>
+      (await database.query(
+        'finance_documents_v2',
+        where: 'organization_id=?',
+        whereArgs: [farm],
+        orderBy: 'occurred_at DESC,code DESC',
+      )).map((r) => {...r, 'amount_text': IntegrationCash.amount(r)}).toList();
   @override
   Future<List<Map<String, Object?>>> choices(String farm, String kind) async {
     if (kind == 'plan') {

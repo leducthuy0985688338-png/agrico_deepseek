@@ -44,7 +44,7 @@ Future<void> showFinanceDocumentDetails({
                           '${l10n.text('finance.date')}: ${document.occurredAt.toIso8601String().substring(0, 10)}',
                         ),
                         SelectableText(
-                          '${l10n.text('finance.amount')}: ${FinanceAmountFormatter.group(document.amountMinor.toString())} ${document.currency}',
+                          '${l10n.text('finance.amount')}: ${FinanceAmountFormatter.groupExact(document.amountText)} ${document.currency}',
                         ),
                         SelectableText(
                           '${l10n.text('finance.category')}: ${document.category}',

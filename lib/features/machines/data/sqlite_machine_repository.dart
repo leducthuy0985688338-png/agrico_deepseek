@@ -466,6 +466,26 @@ class SqliteMachineRepository implements MachineRepository {
     if (r['revision'] != revision || r['status'] == 'void') {
       throw StateError('Stale record.');
     }
+    if (table == 'machine_expenses_v1') {
+      final available = await tx.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='integration_machine_links_v1'",
+      );
+      if (available.isNotEmpty) {
+        final linked = await tx.rawQuery(
+          "SELECT d.id FROM integration_machine_links_v1 l JOIN trade_documents_v1 d ON d.id=l.document_id WHERE l.expense_id=? AND d.status<>'void'",
+          [id],
+        );
+        final fuel = await tx.query(
+          'integration_fuel_issues_v1',
+          where: 'expense_id=? AND reversal_movement_id IS NULL',
+          whereArgs: [id],
+        );
+        if (linked.isNotEmpty || fuel.isNotEmpty)
+          throw StateError(
+            'Reverse the linked payable or fuel issue before voiding its source.',
+          );
+      }
+    }
     if (table == 'machine_runs_v1') {
       final locked = await tx.rawQuery(
         "SELECT p.id FROM machine_costs_v1 c JOIN production_plans_v1 p ON p.id=c.plan_id WHERE c.source_id=? AND p.status IN ('completed','cancelled')",

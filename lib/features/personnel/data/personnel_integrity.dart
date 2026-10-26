@@ -1,3 +1,4 @@
+import '../../integration/data/integration_cash.dart';
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import '../domain/personnel.dart';
@@ -185,6 +186,7 @@ abstract final class PersonnelIntegrity {
     final lines = await db.query('personnel_payroll_lines_v1');
     final payrolls = await db.query('personnel_payrolls_v1');
     final payments = await db.query('personnel_payments_v1');
+    final reversedPayments = await IntegrationCash.reversed(db);
     for (final p in payrolls) {
       worker(p['worker_id']! as String, p['farm_id']! as String);
       if ((p['worker_name_snapshot']! as String).trim().isEmpty) {
@@ -258,7 +260,9 @@ abstract final class PersonnelIntegrity {
               BigInt.zero) {
             throw StateError('Invalid payment amount.');
           }
-          return v['amount']! as String;
+          return reversedPayments.contains(v['id'])
+              ? '0'
+              : v['amount']! as String;
         }),
       );
       if (ExactDecimal.parse(paid).compareTo(ExactDecimal.parse(net)) > 0) {
