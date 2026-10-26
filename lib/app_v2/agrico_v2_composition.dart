@@ -1,3 +1,6 @@
+import '../features/personnel/data/sqlite_personnel_repository.dart';
+import '../features/personnel/application/personnel_service.dart';
+import '../features/personnel/presentation/personnel_workspace_screen.dart';
 import '../core/migrations/production_v2_test_cleanup.dart';
 import '../services/production_cost_database.dart';
 import '../features/inventory/presentation/production_workspace_screen.dart';
@@ -134,6 +137,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     );
     await SqliteCompanyCatalog.createSchema(database);
     await SqliteCompanyCatalog(database).adoptExisting(subject.farmId);
+    await SqlitePersonnelRepository.createSchema(database);
     await SqliteParcelLandHistoryRepository.createSchema(database);
     await SqliteParcelNumberSequence.reconcileExistingHouseholds(database);
     await SqliteFinanceDocumentRepository.createSchema(database);
@@ -496,11 +500,27 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
             ),
           ),
           openWorkers: () => push(
-            WorkResourceCatalogScreen(
-              kind: WorkResourceKind.worker,
-              subject: deps.subject,
-              service: resourceService,
-            ),
+            const AuthorizationService().can(
+                      subject: deps.subject,
+                      permission: PermissionCodes.employeeView,
+                      resource: ResourceContext(farmId: deps.subject.farmId),
+                    ) &&
+                    deps.subject.dataScopes.contains(DataScope.allFarm)
+                ? PersonnelWorkspaceScreen(
+                    service: PersonnelService(
+                      SqlitePersonnelRepository(deps.database),
+                    ),
+                    subject: deps.subject,
+                    catalog: CompanyCatalogService(
+                      repository: SqliteCompanyCatalog(deps.database),
+                      subject: deps.subject,
+                    ),
+                  )
+                : WorkResourceCatalogScreen(
+                    kind: WorkResourceKind.worker,
+                    subject: deps.subject,
+                    service: resourceService,
+                  ),
           ),
           openInventory: () => push(
             InventoryCatalogScreen(

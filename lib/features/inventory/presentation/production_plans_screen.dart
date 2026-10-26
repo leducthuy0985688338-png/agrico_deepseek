@@ -1,3 +1,4 @@
+import '../../personnel/domain/personnel.dart' show ProductionLaborCost;
 import '../domain/entities/exact_decimal.dart';
 import 'dart:math';
 
@@ -31,6 +32,7 @@ class _ProductionPlansState extends State<ProductionPlansScreen> {
       List<ProductionPlan>,
       List<ProductionPlanTask>,
       List<ProductionMaterialCost>,
+      List<ProductionLaborCost>,
     )
   >
   data;
@@ -54,13 +56,15 @@ class _ProductionPlansState extends State<ProductionPlansScreen> {
       List<ProductionPlan>,
       List<ProductionPlanTask>,
       List<ProductionMaterialCost>,
+      List<ProductionLaborCost>,
     )
   >
   load() async {
     final plans = await widget.service.productionPlans(widget.subject);
     final tasks = await widget.service.productionPlanTasks(widget.subject);
     final costs = await widget.service.productionCosts(widget.subject);
-    return (plans, tasks, costs);
+    final labor = await widget.service.productionLaborCosts(widget.subject);
+    return (plans, tasks, costs, labor);
   }
 
   void reload() {
@@ -142,6 +146,7 @@ class _ProductionPlansState extends State<ProductionPlansScreen> {
               List<ProductionPlan>,
               List<ProductionPlanTask>,
               List<ProductionMaterialCost>,
+              List<ProductionLaborCost>,
             )
           >(
             future: data,
@@ -152,7 +157,7 @@ class _ProductionPlansState extends State<ProductionPlansScreen> {
               if (!snapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
-              final (plans, tasks, costs) = snapshot.data!;
+              final (plans, tasks, costs, labor) = snapshot.data!;
               final available = plans
                   .where(
                     (p) =>
@@ -165,6 +170,8 @@ class _ProductionPlansState extends State<ProductionPlansScreen> {
                 plans: plans,
                 tasks: tasks,
                 costs: costs,
+                laborCosts: labor,
+                laborActualsAvailable: true,
                 parcelId: widget.initialParcelId,
                 planId: selectedPlan,
                 from: period?.start,
@@ -279,7 +286,10 @@ class _ProductionPlansState extends State<ProductionPlansScreen> {
                             Text(
                               '${l.text('planning.variance')}: ${report.materialActual(p.id) - ExactDecimal.parse(p.materialBudget)} ${p.currency}',
                             ),
-                            Text(l.text('planning.actualPending')),
+                            Text(
+                              '${l.text('hr.laborActual')}: ${report.laborActual(p.id)} ${p.currency}',
+                            ),
+                            Text(l.text('hr.machinePending')),
                             if (manage)
                               Wrap(
                                 spacing: 8,

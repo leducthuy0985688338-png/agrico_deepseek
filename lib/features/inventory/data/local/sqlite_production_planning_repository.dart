@@ -219,6 +219,35 @@ class SqliteProductionPlanningRepository
           )).isNotEmpty) {
         throw StateError('Complete plan tasks first.');
       }
+      if (status == ProductionPlanStatus.completed ||
+          status == ProductionPlanStatus.cancelled) {
+        final tables = await tx.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='personnel_entries_v1'",
+        );
+        if (tables.isNotEmpty) {
+          final pending = await tx.rawQuery(
+            "SELECT e.id FROM personnel_entries_v1 e JOIN production_labor_costs_v1 c ON c.entry_id=e.id WHERE c.plan_id=? AND c.farm_id=? AND e.status='draft' LIMIT 1",
+            [planId, farmId],
+          );
+          final pendingPayroll = await tx.query(
+            'personnel_payrolls_v1',
+            columns: ['id'],
+            where: "adjustment_plan_id=? AND farm_id=? AND status='draft'",
+            whereArgs: [planId, farmId],
+            limit: 1,
+          );
+          if (pendingPayroll.isNotEmpty) {
+            throw StateError(
+              'Approve or cancel payroll allocations before closing the plan.',
+            );
+          }
+          if (pending.isNotEmpty) {
+            throw StateError(
+              'Approve or void draft labor entries before closing the plan.',
+            );
+          }
+        }
+      }
       await tx.update(
         plansTable,
         {'status': status.name, 'revision': revision + 1},

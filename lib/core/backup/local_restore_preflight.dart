@@ -1,3 +1,5 @@
+import '../../features/personnel/data/personnel_integrity.dart';
+import '../../features/personnel/data/sqlite_personnel_repository.dart';
 import '../../features/inventory/data/local/production_inventory_integrity.dart';
 
 import 'dart:convert';
@@ -110,6 +112,7 @@ class LocalRestorePreflight {
               'farm_task_work_links_v1',
               'agrico_production_parcel_sequences_v4',
               'agrico_production_standalone_plot_sequences_v1',
+              ...SqlitePersonnelRepository.tables,
               'production_plans_v1',
               'production_plan_tasks_v1',
               'production_plan_sequences_v1',
@@ -168,6 +171,18 @@ class LocalRestorePreflight {
         }
       }
       final missing = tables.difference(saved.keys.toSet());
+      if (databaseName == 'agrico.db' &&
+          SqlitePersonnelRepository.tables.any(
+            (t) => (saved[t] as List? ?? const []).isNotEmpty,
+          ) &&
+          missing.intersection(SqlitePersonnelRepository.tables).isNotEmpty) {
+        throw RestorePreflightException(
+          'tables',
+          database: databaseName,
+          step: 'personnel tables',
+        );
+      }
+
       final productionCode = RegExp(r'^(.+)-L([0-9]{3,})(?:-T([0-9]{3,}))?$');
       final standaloneProductionCode = RegExp(r'^(.+)-T([0-9]{3,})$');
       final productionRows = (saved['land_parcels'] as List? ?? const []).where(
@@ -462,6 +477,18 @@ class LocalRestorePreflight {
             'integrity',
             database: databaseName,
             step: step,
+          );
+        }
+      }
+      if (databaseName == 'agrico.db' &&
+          tables.contains('personnel_entries_v1')) {
+        try {
+          await PersonnelIntegrity.validate(staged);
+        } catch (_) {
+          throw RestorePreflightException(
+            'integrity',
+            database: databaseName,
+            step: 'personnel integrity',
           );
         }
       }

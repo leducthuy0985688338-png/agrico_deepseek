@@ -1,3 +1,6 @@
+import '../../../personnel/data/sqlite_personnel_repository.dart';
+import '../../../personnel/domain/personnel.dart'
+    show ProductionLaborCost, ProductionLaborCostRepository;
 import '../../domain/entities/exact_decimal.dart';
 import '../../domain/repositories/production_planning_repository.dart';
 import 'sqlite_production_planning_repository.dart';
@@ -18,7 +21,8 @@ class SqliteInventoryRepository
     implements
         InventoryRepository,
         ProductionDestinationRepository,
-        ProductionPlanningRepository {
+        ProductionPlanningRepository,
+        ProductionLaborCostRepository {
   const SqliteInventoryRepository(this.database);
 
   final Database database;
@@ -640,4 +644,7 @@ class SqliteInventoryRepository
     completed,
     actorId,
   );
+  @override
+  Future<List<ProductionLaborCost>> productionLaborCosts(String farmId) =>
+      SqlitePersonnelRepository(database).productionLaborCosts(farmId);
 }

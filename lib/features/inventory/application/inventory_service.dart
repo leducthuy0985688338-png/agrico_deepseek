@@ -1,3 +1,5 @@
+import '../../personnel/domain/personnel.dart'
+    show ProductionLaborCost, ProductionLaborCostRepository;
 import '../domain/repositories/production_planning_repository.dart';
 import '../domain/entities/exact_decimal.dart';
 import '../../../core/permissions/authorization.dart';
@@ -234,6 +236,17 @@ class InventoryService {
       task.revision,
       completed,
       subject.userId,
+    );
+  }
+
+  Future<List<ProductionLaborCost>> productionLaborCosts(
+    AuthorizationSubject subject,
+  ) {
+    _authorize(subject, PermissionCodes.financeView);
+    final store = repository;
+    if (store is! ProductionLaborCostRepository) return Future.value([]);
+    return (store as ProductionLaborCostRepository).productionLaborCosts(
+      subject.farmId,
     );
   }
 }

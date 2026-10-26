@@ -1,6 +1,5 @@
-import 'dart:convert';
-import 'package:archive/archive.dart';
-import 'package:xml/xml.dart';
+import '../../../core/reports/excel_report_layout.dart';
+import '../../personnel/domain/personnel.dart' show ProductionLaborCost;
 import 'package:excel/excel.dart';
 
 import '../domain/entities/exact_decimal.dart';
@@ -13,6 +12,8 @@ class ProductionPlanReport {
     required this.plans,
     required this.tasks,
     required this.costs,
+    this.laborCosts = const [],
+    this.laborActualsAvailable = false,
     this.parcelId,
     this.planId,
     this.from,
@@ -22,6 +23,8 @@ class ProductionPlanReport {
   final List<ProductionPlan> plans;
   final List<ProductionPlanTask> tasks;
   final List<ProductionMaterialCost> costs;
+  final List<ProductionLaborCost> laborCosts;
+  final bool laborActualsAvailable;
   final String? parcelId, planId;
   final DateTime? from, to;
   List<ProductionPlan> get selectedPlans => plans
@@ -55,6 +58,32 @@ class ProductionPlanReport {
         }
         return sum + ExactDecimal.parse(c.amountText!);
       });
+  List<ProductionLaborCost> get selectedLaborCosts {
+    final ids = selectedPlans.map((p) => p.id).toSet();
+    return laborCosts
+        .where(
+          (c) =>
+              ids.contains(c.planId) &&
+              (from == null ||
+                  c.businessDay.compareTo(
+                        from!.toIso8601String().substring(0, 10),
+                      ) >=
+                      0) &&
+              (to == null ||
+                  c.businessDay.compareTo(
+                        to!.toIso8601String().substring(0, 10),
+                      ) <=
+                      0),
+        )
+        .toList();
+  }
+
+  ExactDecimal laborActual(String id) => selectedLaborCosts
+      .where((c) => c.planId == id)
+      .fold(
+        ExactDecimal.parse('0'),
+        (sum, c) => sum + ExactDecimal.parse(c.amount),
+      );
   Excel workbook() {
     if (from != null && to != null && from!.isAfter(to!)) {
       throw const FormatException('Invalid reporting dates.');
@@ -64,6 +93,11 @@ class ProductionPlanReport {
     for (final c in selectedCosts) {
       if (c.currency != byId[c.planId]!.currency) {
         throw StateError('Cost currency mismatch.');
+      }
+    }
+    for (final c in selectedLaborCosts) {
+      if (c.currency != byId[c.planId]!.currency) {
+        throw StateError('Labor currency mismatch.');
       }
     }
     final excel = Excel.createExcel();
@@ -103,7 +137,9 @@ class ProductionPlanReport {
     ]);
     row(meta, [
       'Labor/machines',
-      'Budgets only. Actual labor/machine accounting is not connected in this release.',
+      laborActualsAvailable
+          ? 'Labor = approved allocations and allocated payroll additions; machine actuals not connected.'
+          : 'Budgets only; labor/machine actuals not connected.',
     ]);
     row(meta, [
       'Exclusions',
@@ -160,14 +196,28 @@ class ProductionPlanReport {
           p.machineShifts,
           p.machineBudget,
           p.totalBudget.toString(),
-          'Not connected',
+          laborActualsAvailable
+              ? laborActual(p.id).toString()
+              : 'Not connected',
           'Not connected',
           work.where((t) => t.completed).length.toString(),
           work.length.toString(),
           p.parcelCode ?? p.parcelId,
           p.seasonName ?? p.seasonId,
         ],
-        numbers: {10, 11, 12, 13, 14, 15, 16, 17, 20, 21},
+        numbers: {
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          if (laborActualsAvailable) 18,
+          20,
+          21,
+        },
       );
     }
     final detail = excel['VAT TU SD'];
@@ -242,6 +292,35 @@ class ProductionPlanReport {
         numbers: {5},
       );
     }
+    if (laborActualsAvailable) {
+      final labor = excel['NHAN CONG SD'];
+      row(labor, [
+        'Business day',
+        'Source ID',
+        'Plan ID',
+        'Plan code',
+        'Regular minutes',
+        'Overtime minutes',
+        'Allocated cost',
+        'Currency',
+      ]);
+      for (final c in selectedLaborCosts) {
+        row(
+          labor,
+          [
+            c.businessDay,
+            c.entryId,
+            c.planId,
+            byId[c.planId]!.code ?? '',
+            c.regularMinutes.toString(),
+            c.overtimeMinutes.toString(),
+            c.amount,
+            c.currency,
+          ],
+          numbers: {4, 5, 6},
+        );
+      }
+    }
     final totals = excel['TONG HOP'];
     row(totals, [
       'Currency',
@@ -295,74 +374,5 @@ class ProductionPlanReport {
     return excel;
   }
 
-  /// Add worksheet layout unsupported by the Excel author's public API.
-  /// Operates only on this newly generated workbook, never user files.
-  List<int> bytes() {
-    final archive = ZipDecoder().decodeBytes(workbook().encode()!);
-    XmlDocument read(String path) => XmlDocument.parse(
-      utf8.decode(archive.findFile(path)!.content as List<int>),
-    );
-    final book = read('xl/workbook.xml');
-    final rels = read('xl/_rels/workbook.xml.rels');
-    final targets = {
-      for (final r in rels.rootElement.childElements)
-        r.getAttribute('Id'): r.getAttribute('Target')!,
-    };
-    final modified = <String, List<int>>{};
-    for (final sheet in book.findAllElements('sheet')) {
-      final target = targets[sheet.getAttribute('r:id')];
-      if (target == null) continue;
-      final path = target.startsWith('/') ? target.substring(1) : 'xl/$target';
-      final document = read(path);
-      final root = document.rootElement;
-      root.children.removeWhere(
-        (n) => n is XmlElement && n.name.local == 'sheetViews',
-      );
-      final views = XmlElement(XmlName('sheetViews'), [], [
-        XmlElement(
-          XmlName('sheetView'),
-          [XmlAttribute(XmlName('workbookViewId'), '0')],
-          [
-            XmlElement(XmlName('pane'), [
-              XmlAttribute(XmlName('ySplit'), '1'),
-              XmlAttribute(XmlName('topLeftCell'), 'A2'),
-              XmlAttribute(XmlName('activePane'), 'bottomLeft'),
-              XmlAttribute(XmlName('state'), 'frozen'),
-            ]),
-          ],
-        ),
-      ]);
-      final dimension = root.childElements
-          .where((e) => e.name.local == 'dimension')
-          .firstOrNull;
-      root.children.insert(
-        dimension == null ? 0 : root.children.indexOf(dimension) + 1,
-        views,
-      );
-      if (sheet.getAttribute('name') != 'THONG TIN') {
-        final range = dimension?.getAttribute('ref');
-        if (range != null) {
-          root.children.removeWhere(
-            (n) => n is XmlElement && n.name.local == 'autoFilter',
-          );
-          final data = root.childElements.firstWhere(
-            (e) => e.name.local == 'sheetData',
-          );
-          root.children.insert(
-            root.children.indexOf(data) + 1,
-            XmlElement(XmlName('autoFilter'), [
-              XmlAttribute(XmlName('ref'), range),
-            ]),
-          );
-        }
-      }
-      modified[path] = utf8.encode(document.toXmlString());
-    }
-    final out = Archive();
-    for (final file in archive) {
-      final data = modified[file.name] ?? file.content as List<int>;
-      out.addFile(ArchiveFile(file.name, data.length, data));
-    }
-    return ZipEncoder().encode(out)!;
-  }
+  List<int> bytes() => encodeReportWorkbook(workbook());
 }
