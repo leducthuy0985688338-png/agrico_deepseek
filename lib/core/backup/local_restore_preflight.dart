@@ -1,3 +1,5 @@
+import '../../features/trade/data/sqlite_trade_repository.dart';
+import '../../features/trade/data/trade_integrity.dart';
 import '../../features/machines/data/sqlite_machine_repository.dart';
 import '../../features/machines/data/machine_integrity.dart';
 import '../../features/personnel/data/personnel_integrity.dart';
@@ -116,6 +118,7 @@ class LocalRestorePreflight {
               'agrico_production_standalone_plot_sequences_v1',
               ...SqlitePersonnelRepository.tables,
               ...SqliteMachineRepository.tables,
+              ...SqliteTradeRepository.tables,
               'production_plans_v1',
               'production_plan_tasks_v1',
               'production_plan_sequences_v1',
@@ -195,6 +198,17 @@ class LocalRestorePreflight {
           'tables',
           database: databaseName,
           step: 'machine tables',
+        );
+      }
+      if (databaseName == 'agrico.db' &&
+          SqliteTradeRepository.tables.any(
+            (t) => (saved[t] as List? ?? const []).isNotEmpty,
+          ) &&
+          missing.intersection(SqliteTradeRepository.tables).isNotEmpty) {
+        throw RestorePreflightException(
+          'tables',
+          database: databaseName,
+          step: 'trade tables',
         );
       }
       final productionCode = RegExp(r'^(.+)-L([0-9]{3,})(?:-T([0-9]{3,}))?$');
@@ -279,9 +293,9 @@ class LocalRestorePreflight {
       }
       if (missing.contains('agrico_location_parcel_sequences_v3') &&
           (saved['land_parcels'] as List? ?? const []).any(
-            (row) =>
-                RegExp(r'-L[0-9]{5}$')
-                    .hasMatch((row as Map)['parcel_code']?.toString() ?? ''),
+            (row) => RegExp(
+              r'-L[0-9]{5}$',
+            ).hasMatch((row as Map)['parcel_code']?.toString() ?? ''),
           )) {
         throw RestorePreflightException('tables', database: databaseName);
       }
@@ -432,10 +446,9 @@ class LocalRestorePreflight {
         }
       }
       step = 'integrity';
-      if ((await staged.rawQuery('PRAGMA integrity_check'))
-              .single
-              .values
-              .single !=
+      if ((await staged.rawQuery(
+            'PRAGMA integrity_check',
+          )).single.values.single !=
           'ok') {
         throw RestorePreflightException('integrity', database: databaseName);
       }
@@ -467,7 +480,7 @@ class LocalRestorePreflight {
           LEFT JOIN company_catalog_entries_v1 u ON u.id=e.unit_id
           WHERE (e.unit_id IS NOT NULL AND (u.id IS NULL OR u.kind!='unit' OR u.farm_id!=e.farm_id))
             OR (e.kind='unit' AND e.unit_id IS NOT NULL)
-            OR (e.kind IN ('crop','material') AND e.unit_id IS NULL) LIMIT 1
+            OR (e.kind IN ('crop','material','product') AND e.unit_id IS NULL) LIMIT 1
         ''');
         final invalidRequests = await staged.rawQuery('''
           SELECT r.id FROM company_catalog_requests_v1 r
@@ -515,6 +528,18 @@ class LocalRestorePreflight {
             'integrity',
             database: databaseName,
             step: 'machine integrity',
+          );
+        }
+      }
+      if (databaseName == 'agrico.db' &&
+          tables.contains('trade_documents_v1')) {
+        try {
+          await TradeIntegrity.validate(staged);
+        } catch (_) {
+          throw RestorePreflightException(
+            'integrity',
+            database: databaseName,
+            step: 'trade integrity',
           );
         }
       }

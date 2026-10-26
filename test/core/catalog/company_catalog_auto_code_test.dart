@@ -32,10 +32,8 @@ void main() {
     unitId: unit,
   );
 
-  Future<void> create(CatalogEntry entry) => admin.create(
-    entry,
-    reason: 'Approved catalog entry',
-  );
+  Future<void> create(CatalogEntry entry) =>
+      admin.create(entry, reason: 'Approved catalog entry');
 
   setUp(() async {
     db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
@@ -77,56 +75,74 @@ void main() {
     },
   );
 
-  test('unit rename updates material projection without changing stock or movements', () async {
-    await create(item('unit-1', CatalogKind.unit, 'Kilogram'));
-    await create(item('material-1', CatalogKind.material, 'Fertilizer', unit: 'unit-1'));
-    final inventory = SqliteInventoryRepository(db);
-    await inventory.register(
-      const InventoryItem(
-        id: 'material-1', farmId: 'farm', code: 'VT-000001',
-        name: 'Fertilizer', unit: 'Kilogram', unitPrice: 25,
-        supplier: 'Supplier',
-      ),
-    );
-    await inventory.record(
-      InventoryMovement(
-        id: 'receipt-1', farmId: 'farm', itemId: 'material-1',
-        kind: InventoryMovementKind.receipt, quantity: 8,
-        occurredAt: DateTime.utc(2026, 10, 18),
-      ),
-    );
-    final unit = (await admin.entries()).firstWhere((e) => e.id == 'unit-1');
-    await admin.save(
-      item('unit-1', CatalogKind.unit, 'Kilogram renamed', code: unit.code),
-      expectedRevision: unit.revision,
-      reason: 'Rename unit',
-    );
-    final rows = await inventory.listByFarm('farm');
-    expect(rows, hasLength(1));
-    expect(rows.single.unit, 'Kilogram renamed');
-    expect(rows.single.stock, 8);
-    expect(rows.single.unitPrice, 25);
-    expect(rows.single.supplier, 'Supplier');
-    expect(await inventory.movementsByFarm('farm'), hasLength(1));
-    expect((await admin.entries()).firstWhere((e) => e.id == 'material-1').unitId, 'unit-1');
-  });
+  test(
+    'unit rename updates material projection without changing stock or movements',
+    () async {
+      await create(item('unit-1', CatalogKind.unit, 'Kilogram'));
+      await create(
+        item('material-1', CatalogKind.material, 'Fertilizer', unit: 'unit-1'),
+      );
+      final inventory = SqliteInventoryRepository(db);
+      await inventory.register(
+        const InventoryItem(
+          id: 'material-1',
+          farmId: 'farm',
+          code: 'VT-000001',
+          name: 'Fertilizer',
+          unit: 'Kilogram',
+          unitPrice: 25,
+          supplier: 'Supplier',
+        ),
+      );
+      await inventory.record(
+        InventoryMovement(
+          id: 'receipt-1',
+          farmId: 'farm',
+          itemId: 'material-1',
+          kind: InventoryMovementKind.receipt,
+          quantity: 8,
+          occurredAt: DateTime.utc(2026, 10, 18),
+        ),
+      );
+      final unit = (await admin.entries()).firstWhere((e) => e.id == 'unit-1');
+      await admin.save(
+        item('unit-1', CatalogKind.unit, 'Kilogram renamed', code: unit.code),
+        expectedRevision: unit.revision,
+        reason: 'Rename unit',
+      );
+      final rows = await inventory.listByFarm('farm');
+      expect(rows, hasLength(1));
+      expect(rows.single.unit, 'Kilogram renamed');
+      expect(rows.single.stock, 8);
+      expect(rows.single.unitPrice, 25);
+      expect(rows.single.supplier, 'Supplier');
+      expect(await inventory.movementsByFarm('farm'), hasLength(1));
+      expect(
+        (await admin.entries()).firstWhere((e) => e.id == 'material-1').unitId,
+        'unit-1',
+      );
+    },
+  );
 
-  test('service create rejects caller-supplied code and allocates system code', () async {
-    expect(
-      () => admin.create(
-        item('manual', CatalogKind.unit, 'Manual unit', code: 'CUSTOM'),
+  test(
+    'service create rejects caller-supplied code and allocates system code',
+    () async {
+      expect(
+        () => admin.create(
+          item('manual', CatalogKind.unit, 'Manual unit', code: 'CUSTOM'),
+          reason: 'New unit',
+        ),
+        throwsA(isA<CatalogFailure>()),
+      );
+      expect(await admin.entries(), isEmpty);
+      await admin.create(
+        item('generated', CatalogKind.unit, 'Generated unit'),
         reason: 'New unit',
-      ),
-      throwsA(isA<CatalogFailure>()),
-    );
-    expect(await admin.entries(), isEmpty);
-    await admin.create(
-      item('generated', CatalogKind.unit, 'Generated unit'),
-      reason: 'New unit',
-    );
-    expect((await admin.entries()).single.code, 'DVT-000001');
-    expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(1));
-  });
+      );
+      expect((await admin.entries()).single.code, 'DVT-000001');
+      expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(1));
+    },
+  );
 
   test('editing preserves generated code and rejects stale revision', () async {
     await create(item('unit-1', CatalogKind.unit, 'Kilogram'));
@@ -169,10 +185,11 @@ void main() {
       create(item('unit-3', CatalogKind.unit, 'Bag')),
     ]);
     final entries = await admin.entries();
-    expect(
-      entries.map((e) => e.code).toSet(),
-      {'DVT-000001', 'DVT-000002', 'DVT-000003'},
-    );
+    expect(entries.map((e) => e.code).toSet(), {
+      'DVT-000001',
+      'DVT-000002',
+      'DVT-000003',
+    });
     expect(entries, hasLength(3));
     expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(3));
   });
@@ -193,99 +210,141 @@ void main() {
     expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(2));
   });
 
-  test('failed unit creation does not advance unit or material sequences', () async {
-    await create(item('unit-1', CatalogKind.unit, 'Kilogram'));
-    await expectLater(
-      create(item('duplicate-unit', CatalogKind.unit, 'Kilogram')),
-      throwsA(isA<CatalogFailure>()),
-    );
-    await create(item('material-1', CatalogKind.material, 'Fertilizer', unit: 'unit-1'));
-    await create(item('unit-2', CatalogKind.unit, 'Litre'));
-    final entries = await admin.entries();
-    expect(entries.firstWhere((e) => e.id == 'unit-1').code, 'DVT-000001');
-    expect(entries.firstWhere((e) => e.id == 'unit-2').code, 'DVT-000002');
-    expect(entries.firstWhere((e) => e.id == 'material-1').code, 'VT-000001');
-    expect(entries, hasLength(3));
-    expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(3));
-  });
+  test(
+    'failed unit creation does not advance unit or material sequences',
+    () async {
+      await create(item('unit-1', CatalogKind.unit, 'Kilogram'));
+      await expectLater(
+        create(item('duplicate-unit', CatalogKind.unit, 'Kilogram')),
+        throwsA(isA<CatalogFailure>()),
+      );
+      await create(
+        item('material-1', CatalogKind.material, 'Fertilizer', unit: 'unit-1'),
+      );
+      await create(item('unit-2', CatalogKind.unit, 'Litre'));
+      final entries = await admin.entries();
+      expect(entries.firstWhere((e) => e.id == 'unit-1').code, 'DVT-000001');
+      expect(entries.firstWhere((e) => e.id == 'unit-2').code, 'DVT-000002');
+      expect(entries.firstWhere((e) => e.id == 'material-1').code, 'VT-000001');
+      expect(entries, hasLength(3));
+      expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(3));
+    },
+  );
 
-  test('failed dependent material creation preserves material sequence', () async {
-    await create(item('unit-1', CatalogKind.unit, 'Kilogram'));
-    await expectLater(
-      create(item('bad-material', CatalogKind.material, 'Invalid fertilizer', unit: 'missing-unit')),
-      throwsA(isA<CatalogFailure>()),
-    );
-    expect((await admin.entries()).where((e) => e.kind == CatalogKind.material), isEmpty);
-    await create(item('material-1', CatalogKind.material, 'Fertilizer', unit: 'unit-1'));
-    final entries = await admin.entries();
-    expect(entries.firstWhere((e) => e.id == 'material-1').code, 'VT-000001');
-    expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(2));
-  });
+  test(
+    'failed dependent material creation preserves material sequence',
+    () async {
+      await create(item('unit-1', CatalogKind.unit, 'Kilogram'));
+      await expectLater(
+        create(
+          item(
+            'bad-material',
+            CatalogKind.material,
+            'Invalid fertilizer',
+            unit: 'missing-unit',
+          ),
+        ),
+        throwsA(isA<CatalogFailure>()),
+      );
+      expect(
+        (await admin.entries()).where((e) => e.kind == CatalogKind.material),
+        isEmpty,
+      );
+      await create(
+        item('material-1', CatalogKind.material, 'Fertilizer', unit: 'unit-1'),
+      );
+      final entries = await admin.entries();
+      expect(entries.firstWhere((e) => e.id == 'material-1').code, 'VT-000001');
+      expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(2));
+    },
+  );
 
-  test('historical import rejects empty code without allocating a number', () async {
-    expect(
-      () => repo.importHistoricalEntry(
-        item('missing-code', CatalogKind.unit, 'Uncoded legacy unit'),
+  test(
+    'historical import rejects empty code without allocating a number',
+    () async {
+      expect(
+        () => repo.importHistoricalEntry(
+          item('missing-code', CatalogKind.unit, 'Uncoded legacy unit'),
+          actorUid: 'migration',
+          reason: 'Import persisted catalog identity',
+          occurredAt: now,
+          authorize: () {},
+        ),
+        throwsA(isA<CatalogFailure>()),
+      );
+      expect(await admin.entries(), isEmpty);
+      await create(item('first', CatalogKind.unit, 'First new unit'));
+      expect((await admin.entries()).single.code, 'DVT-000001');
+      expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(1));
+    },
+  );
+
+  test(
+    'historical import rejects duplicate code without changing catalog',
+    () async {
+      await repo.importHistoricalEntry(
+        item('old', CatalogKind.unit, 'Legacy unit', code: 'DVT-000007'),
         actorUid: 'migration',
         reason: 'Import persisted catalog identity',
         occurredAt: now,
         authorize: () {},
-      ),
-      throwsA(isA<CatalogFailure>()),
-    );
-    expect(await admin.entries(), isEmpty);
-    await create(item('first', CatalogKind.unit, 'First new unit'));
-    expect((await admin.entries()).single.code, 'DVT-000001');
-    expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(1));
-  });
+      );
+      await expectLater(
+        repo.importHistoricalEntry(
+          item(
+            'collision',
+            CatalogKind.unit,
+            'Another legacy unit',
+            code: 'DVT-000007',
+          ),
+          actorUid: 'migration',
+          reason: 'Import persisted catalog identity',
+          occurredAt: now,
+          authorize: () {},
+        ),
+        throwsA(isA<CatalogFailure>()),
+      );
+      expect(await admin.entries(), hasLength(1));
+      await create(item('new', CatalogKind.unit, 'New unit'));
+      expect(
+        (await admin.entries()).firstWhere((e) => e.id == 'new').code,
+        'DVT-000008',
+      );
+      expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(2));
+    },
+  );
 
-  test('historical import rejects duplicate code without changing catalog', () async {
-    await repo.importHistoricalEntry(
-      item('old', CatalogKind.unit, 'Legacy unit', code: 'DVT-000007'),
-      actorUid: 'migration',
-      reason: 'Import persisted catalog identity',
-      occurredAt: now,
-      authorize: () {},
-    );
-    await expectLater(
-      repo.importHistoricalEntry(
-        item('collision', CatalogKind.unit, 'Another legacy unit', code: 'DVT-000007'),
+  test(
+    'historical import preserves code and advances automatic sequence',
+    () async {
+      await repo.importHistoricalEntry(
+        item('historical', CatalogKind.unit, 'Legacy unit', code: 'DVT-000099'),
         actorUid: 'migration',
         reason: 'Import persisted catalog identity',
         occurredAt: now,
         authorize: () {},
-      ),
-      throwsA(isA<CatalogFailure>()),
-    );
-    expect(await admin.entries(), hasLength(1));
-    await create(item('new', CatalogKind.unit, 'New unit'));
-    expect(
-      (await admin.entries()).firstWhere((e) => e.id == 'new').code,
-      'DVT-000008',
-    );
-    expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(2));
-  });
-
-  test('historical import preserves code and advances automatic sequence', () async {
-    await repo.importHistoricalEntry(
-      item('historical', CatalogKind.unit, 'Legacy unit', code: 'DVT-000099'),
-      actorUid: 'migration',
-      reason: 'Import persisted catalog identity',
-      occurredAt: now,
-      authorize: () {},
-    );
-    await create(item('new', CatalogKind.unit, 'New unit'));
-    final entries = await admin.entries();
-    expect(entries.firstWhere((e) => e.id == 'historical').code, 'DVT-000099');
-    expect(entries.firstWhere((e) => e.id == 'new').code, 'DVT-000100');
-    expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(2));
-  });
+      );
+      await create(item('new', CatalogKind.unit, 'New unit'));
+      final entries = await admin.entries();
+      expect(
+        entries.firstWhere((e) => e.id == 'historical').code,
+        'DVT-000099',
+      );
+      expect(entries.firstWhere((e) => e.id == 'new').code, 'DVT-000100');
+      expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(2));
+    },
+  );
 
   test('lower historical code never rewinds an active sequence', () async {
     await create(item('first', CatalogKind.unit, 'First unit'));
     await create(item('second', CatalogKind.unit, 'Second unit'));
     await repo.importHistoricalEntry(
-      item('historical-low', CatalogKind.unit, 'Legacy low unit', code: 'DVT-000000'),
+      item(
+        'historical-low',
+        CatalogKind.unit,
+        'Legacy low unit',
+        code: 'DVT-000000',
+      ),
       actorUid: 'migration',
       reason: 'Import earlier historical unit',
       occurredAt: now,
@@ -295,7 +354,10 @@ void main() {
     final entries = await admin.entries();
     expect(entries.firstWhere((e) => e.id == 'first').code, 'DVT-000001');
     expect(entries.firstWhere((e) => e.id == 'second').code, 'DVT-000002');
-    expect(entries.firstWhere((e) => e.id == 'historical-low').code, 'DVT-000000');
+    expect(
+      entries.firstWhere((e) => e.id == 'historical-low').code,
+      'DVT-000000',
+    );
     expect(entries.firstWhere((e) => e.id == 'third').code, 'DVT-000003');
     expect(entries, hasLength(4));
     expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(4));
@@ -304,7 +366,12 @@ void main() {
   test('higher historical code advances an already started sequence', () async {
     await create(item('first', CatalogKind.unit, 'First unit'));
     await repo.importHistoricalEntry(
-      item('historical-high', CatalogKind.unit, 'Legacy high unit', code: 'DVT-000250'),
+      item(
+        'historical-high',
+        CatalogKind.unit,
+        'Legacy high unit',
+        code: 'DVT-000250',
+      ),
       actorUid: 'migration',
       reason: 'Import later historical unit',
       occurredAt: now,
@@ -313,7 +380,10 @@ void main() {
     await create(item('after-high', CatalogKind.unit, 'Next unit'));
     final entries = await admin.entries();
     expect(entries.firstWhere((e) => e.id == 'first').code, 'DVT-000001');
-    expect(entries.firstWhere((e) => e.id == 'historical-high').code, 'DVT-000250');
+    expect(
+      entries.firstWhere((e) => e.id == 'historical-high').code,
+      'DVT-000250',
+    );
     expect(entries.firstWhere((e) => e.id == 'after-high').code, 'DVT-000251');
     expect(entries, hasLength(3));
     expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(3));
@@ -351,42 +421,60 @@ void main() {
     },
   );
 
-  test('work resource registration uses generated shared catalog identities', () async {
-    final workSubject = AuthorizationSubject(
-      userId: admin.subject.userId, membershipId: admin.subject.membershipId,
-      farmId: admin.subject.farmId, permissionCodes: admin.subject.permissionCodes,
-      dataScopes: admin.subject.dataScopes);
-    final work = ParcelWorkService(SqliteParcelWorkRepository(db), catalog: admin);
-    await work.register(
-      workSubject,
-      const WorkResource(
-        id: 'machine-one',
-        farmId: 'farm',
-        kind: WorkResourceKind.machine,
-        code: 'MANUAL',
-        name: 'Tractor',
-      ),
-    );
-    await work.register(
-      workSubject,
-      const WorkResource(
-        id: 'worker-one',
-        farmId: 'farm',
-        kind: WorkResourceKind.worker,
-        code: 'MANUAL',
-        name: 'Operator',
-      ),
-    );
-    final entries = await admin.entries();
-    expect(entries.firstWhere((e) => e.id == 'machine-one').code, 'MAY-000001');
-    expect(entries.firstWhere((e) => e.id == 'worker-one').code, 'NS-000001');
-    final resources = await work.resources(workSubject);
-    expect(resources.firstWhere((e) => e.id == 'machine-one').code, 'MAY-000001');
-    expect(resources.firstWhere((e) => e.id == 'worker-one').code, 'NS-000001');
-    expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(2));
-  });
+  test(
+    'work resource registration uses generated shared catalog identities',
+    () async {
+      final workSubject = AuthorizationSubject(
+        userId: admin.subject.userId,
+        membershipId: admin.subject.membershipId,
+        farmId: admin.subject.farmId,
+        permissionCodes: admin.subject.permissionCodes,
+        dataScopes: admin.subject.dataScopes,
+      );
+      final work = ParcelWorkService(
+        SqliteParcelWorkRepository(db),
+        catalog: admin,
+      );
+      await work.register(
+        workSubject,
+        const WorkResource(
+          id: 'machine-one',
+          farmId: 'farm',
+          kind: WorkResourceKind.machine,
+          code: 'MANUAL',
+          name: 'Tractor',
+        ),
+      );
+      await work.register(
+        workSubject,
+        const WorkResource(
+          id: 'worker-one',
+          farmId: 'farm',
+          kind: WorkResourceKind.worker,
+          code: 'MANUAL',
+          name: 'Operator',
+        ),
+      );
+      final entries = await admin.entries();
+      expect(
+        entries.firstWhere((e) => e.id == 'machine-one').code,
+        'MAY-000001',
+      );
+      expect(entries.firstWhere((e) => e.id == 'worker-one').code, 'NS-000001');
+      final resources = await work.resources(workSubject);
+      expect(
+        resources.firstWhere((e) => e.id == 'machine-one').code,
+        'MAY-000001',
+      );
+      expect(
+        resources.firstWhere((e) => e.id == 'worker-one').code,
+        'NS-000001',
+      );
+      expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(2));
+    },
+  );
 
-  test('all nine catalog kinds use independent standard prefixes', () async {
+  test('all eleven catalog kinds use independent standard prefixes', () async {
     await create(item('unit', CatalogKind.unit, 'Kilogram'));
     final kinds = <CatalogKind, String>{
       CatalogKind.crop: 'CT',
@@ -397,46 +485,64 @@ void main() {
       CatalogKind.supplier: 'NCC',
       CatalogKind.incomeCategory: 'DMTHU',
       CatalogKind.expenseCategory: 'DMCHI',
+      CatalogKind.customer: 'KH',
+      CatalogKind.product: 'TP',
     };
     for (final kind in kinds.keys) {
-      final unitId = kind == CatalogKind.crop || kind == CatalogKind.material
+      final unitId =
+          kind == CatalogKind.crop ||
+              kind == CatalogKind.material ||
+              kind == CatalogKind.product
           ? 'unit'
           : null;
-      await create(item('first-${kind.name}', kind, 'First ${kind.name}', unit: unitId));
-      await create(item('second-${kind.name}', kind, 'Second ${kind.name}', unit: unitId));
+      await create(
+        item('first-${kind.name}', kind, 'First ${kind.name}', unit: unitId),
+      );
+      await create(
+        item('second-${kind.name}', kind, 'Second ${kind.name}', unit: unitId),
+      );
     }
     final entries = await admin.entries();
     expect(entries.firstWhere((e) => e.id == 'unit').code, 'DVT-000001');
     for (final kind in kinds.keys) {
       final prefix = kinds[kind]!;
-      expect(entries.firstWhere((e) => e.id == 'first-${kind.name}').code, '${prefix}-000001');
-      expect(entries.firstWhere((e) => e.id == 'second-${kind.name}').code, '${prefix}-000002');
+      expect(
+        entries.firstWhere((e) => e.id == 'first-${kind.name}').code,
+        '${prefix}-000001',
+      );
+      expect(
+        entries.firstWhere((e) => e.id == 'second-${kind.name}').code,
+        '${prefix}-000002',
+      );
     }
-    expect(entries, hasLength(17));
-    expect(entries.map((e) => e.code).toSet(), hasLength(17));
-    expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(17));
+    expect(entries, hasLength(21));
+    expect(entries.map((e) => e.code).toSet(), hasLength(21));
+    expect(await db.query(SqliteCompanyCatalog.auditTable), hasLength(21));
   });
 
-  test('failed create validation cannot consume a code or write audit', () async {
-    await expectLater(
-      () => admin.create(
-        item('invalid', CatalogKind.unit, '  Untrimmed  '),
-        reason: 'Attempt invalid creation',
-      ),
-      throwsA(isA<CatalogFailure>()),
-    );
-    await expectLater(
-      () => admin.create(
-        item('invalid-material', CatalogKind.material, 'No unit'),
-        reason: 'Attempt invalid material',
-      ),
-      throwsA(isA<CatalogFailure>()),
-    );
-    expect(await admin.entries(), isEmpty);
-    expect(await db.query(SqliteCompanyCatalog.auditTable), isEmpty);
-    await create(item('valid', CatalogKind.unit, 'Valid unit'));
-    expect((await admin.entries()).single.code, 'DVT-000001');
-  });
+  test(
+    'failed create validation cannot consume a code or write audit',
+    () async {
+      await expectLater(
+        () => admin.create(
+          item('invalid', CatalogKind.unit, '  Untrimmed  '),
+          reason: 'Attempt invalid creation',
+        ),
+        throwsA(isA<CatalogFailure>()),
+      );
+      await expectLater(
+        () => admin.create(
+          item('invalid-material', CatalogKind.material, 'No unit'),
+          reason: 'Attempt invalid material',
+        ),
+        throwsA(isA<CatalogFailure>()),
+      );
+      expect(await admin.entries(), isEmpty);
+      expect(await db.query(SqliteCompanyCatalog.auditTable), isEmpty);
+      await create(item('valid', CatalogKind.unit, 'Valid unit'));
+      expect((await admin.entries()).single.code, 'DVT-000001');
+    },
+  );
 
   test('unauthorized service cannot allocate a code', () async {
     final staff = CompanyCatalogService(

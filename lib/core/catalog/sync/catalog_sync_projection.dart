@@ -315,11 +315,13 @@ class CatalogSyncProjection {
     if (old != null &&
         (old['code'] != p['code'] ||
             old['kind'] != p['kind'] ||
-            (p['kind'] == 'material' && old['unit_id'] != p['unit_id']))) {
+            ({'material', 'product'}.contains(p['kind']) &&
+                old['unit_id'] != p['unit_id']))) {
       throw const CatalogFailure('catalog.identityConflict');
     }
-    if (old == null && {'machine', 'worker', 'material'}.contains(p['kind'])) {
-      final legacyTable = p['kind'] == 'material'
+    if (old == null &&
+        {'machine', 'worker', 'material', 'product'}.contains(p['kind'])) {
+      final legacyTable = {'material', 'product'}.contains(p['kind'])
           ? 'inventory_items_v2'
           : 'parcel_work_resources';
       if ((await tx.query(

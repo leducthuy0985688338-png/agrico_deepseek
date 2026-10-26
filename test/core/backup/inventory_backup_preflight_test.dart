@@ -1,3 +1,8 @@
+import 'package:agrico_deepseek/features/trade/data/sqlite_trade_repository.dart';
+import 'package:agrico_deepseek/features/trade/domain/trade.dart' as trade;
+import 'package:agrico_deepseek/features/finance/data/local/sqlite_finance_document_repository.dart';
+import 'package:agrico_deepseek/core/catalog/company_catalog.dart';
+import 'package:agrico_deepseek/core/permissions/authorization.dart';
 import 'package:agrico_deepseek/features/machines/data/sqlite_machine_repository.dart';
 import 'package:agrico_deepseek/features/machines/domain/machines.dart';
 import 'package:agrico_deepseek/core/catalog/sqlite_company_catalog.dart';
@@ -94,6 +99,177 @@ void main() {
       isEmpty,
     );
   }
+
+  test(
+    'trade backup preserves lot debt cash and rejects partial or altered ledger',
+    () async {
+      await primary.execute(
+        'CREATE TABLE land_parcels(id TEXT PRIMARY KEY,farm_id TEXT,parcel_code TEXT,active INTEGER,kind TEXT)',
+      );
+      await primary.execute(
+        'CREATE TABLE parcel_work_resources(id TEXT PRIMARY KEY,farm_id TEXT,kind TEXT,code TEXT,name TEXT,active INTEGER)',
+      );
+      await SqliteCompanyCatalog.createSchema(primary);
+      await SqliteFinanceDocumentRepository.createSchema(primary);
+      await SqliteTradeRepository.createSchema(primary);
+      final subject = AuthorizationSubject(
+        userId: 'admin',
+        membershipId: 'admin',
+        farmId: 'farm-1',
+        permissionCodes: PermissionCodes.values,
+        dataScopes: const {DataScope.allFarm},
+      );
+      final catalog = CompanyCatalogService(
+        repository: SqliteCompanyCatalog(primary),
+        subject: subject,
+      );
+      for (final (id, kind, unit) in [
+        ('unit', CatalogKind.unit, null),
+        ('product', CatalogKind.product, 'unit'),
+        ('customer', CatalogKind.customer, null),
+      ]) {
+        await catalog.create(
+          CatalogEntry(
+            id: id,
+            farmId: 'farm-1',
+            kind: kind,
+            code: '',
+            name: id,
+            unitId: unit,
+          ),
+          reason: 'Test setup',
+        );
+      }
+      await primary.insert('land_parcels', {
+        'id': 'land',
+        'farm_id': 'farm-1',
+        'parcel_code': 'P001',
+        'active': 1,
+        'kind': 'fieldPlot',
+      });
+      await repository.createProductionSeason(
+        const ProductionSeason(
+          id: 'season',
+          farmId: 'farm-1',
+          parcelId: 'land',
+          name: 'Season',
+          startsOn: '2026-10-01',
+        ),
+      );
+      await repository.createProductionPlan(
+        const ProductionPlan(
+          id: 'p',
+          farmId: 'farm-1',
+          parcelId: 'land',
+          seasonId: 'season',
+          name: 'Plan',
+          crop: 'Peanut',
+          startsOn: '2026-10-01',
+          endsOn: '2026-10-31',
+          currency: 'VND',
+          materialBudget: '0',
+          laborBudget: '0',
+          machineBudget: '0',
+          laborHours: '0',
+          machineShifts: '0',
+        ),
+        'admin',
+      );
+      await repository.changeProductionPlanStatus(
+        'farm-1',
+        'p',
+        0,
+        ProductionPlanStatus.active,
+        'admin',
+      );
+      final repo = SqliteTradeRepository(primary);
+      final h = trade.TradeDraft(
+        id: 'h',
+        kind: trade.TradeKind.harvest,
+        day: '2026-10-20',
+        currency: 'VND',
+        rounding: trade.MoneyRounding.halfUp,
+        lines: const [
+          trade.TradeLine(ref: 'product', quantity: '10', price: '5'),
+        ],
+        planId: 'p',
+      );
+      final sale = trade.TradeDraft(
+        id: 'sale',
+        kind: trade.TradeKind.sale,
+        day: '2026-10-21',
+        currency: 'VND',
+        rounding: trade.MoneyRounding.halfUp,
+        lines: const [
+          trade.TradeLine(
+            ref: 'h:0',
+            quantity: '4',
+            price: '10',
+            issuePrice: '5',
+          ),
+        ],
+        partyId: 'customer',
+        dueOn: '2026-10-25',
+      );
+      await repo.create('farm-1', h, 'admin');
+      await repo.post('farm-1', 'h', 0, 'admin');
+      await repo.create('farm-1', sale, 'admin');
+      await repo.post('farm-1', 'sale', 0, 'admin');
+      await repo.settle(
+        'farm-1',
+        'pay',
+        'sale',
+        '15',
+        'VND',
+        '2026-10-22',
+        'Bank reference',
+        'admin',
+      );
+      final original = await snapshot();
+      final counts = await validate(original);
+      expect(counts['agrico.db/trade_lots_v1'], 1);
+      await expectLater(
+        validate(
+          _rewrite(original, (tables) {
+            ((tables['trade_lots_v1'] as List).single as Map)['stock_units'] =
+                1;
+          }),
+        ),
+        throwsA(isA<RestorePreflightException>()),
+      );
+      await expectLater(
+        validate(
+          _rewrite(original, (tables) {
+            ((tables['finance_documents_v2'] as List).single
+                    as Map)['amount_minor'] =
+                16;
+          }),
+        ),
+        throwsA(isA<RestorePreflightException>()),
+      );
+      await expectLater(
+        validate(
+          _rewrite(original, (tables) {
+            tables.remove('trade_settlements_v1');
+          }),
+        ),
+        throwsA(isA<RestorePreflightException>()),
+      );
+      expect((await repo.lots('farm-1')).single.quantity, '6');
+      expect(
+        (await repo.documents(
+          'farm-1',
+        )).firstWhere((d) => d.draft.id == 'sale').balance,
+        '25',
+      );
+      expect(
+        (await repository.listByFarm(
+          'farm-1',
+        )).firstWhere((i) => i.id == 'item-1').stock,
+        3,
+      );
+    },
+  );
 
   test(
     'machine backup retains snapshots and rejects tampering or partial tables',

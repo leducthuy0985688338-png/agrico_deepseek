@@ -177,6 +177,8 @@ class SqliteCompanyCatalog implements CompanyCatalogRepository {
       CatalogKind.material: 'VT',
       CatalogKind.taskType: 'CV',
       CatalogKind.supplier: 'NCC',
+      CatalogKind.customer: 'KH',
+      CatalogKind.product: 'TP',
       CatalogKind.incomeCategory: 'DMTHU',
       CatalogKind.expenseCategory: 'DMCHI',
     };
@@ -264,7 +266,8 @@ class SqliteCompanyCatalog implements CompanyCatalogRepository {
       throw const CatalogFailure('catalog.unitInUse');
     }
     if (old != null &&
-        entry.kind == CatalogKind.material &&
+        (entry.kind == CatalogKind.material ||
+            entry.kind == CatalogKind.product) &&
         old['unit_id'] != entry.unitId) {
       throw const CatalogFailure('catalog.unitImmutable');
     }
@@ -333,8 +336,8 @@ class SqliteCompanyCatalog implements CompanyCatalogRepository {
       final linkedMaterials = await tx.query(
         entriesTable,
         columns: ['id'],
-        where: 'farm_id=? AND kind=? AND unit_id=?',
-        whereArgs: [e.farmId, CatalogKind.material.name, e.id],
+        where: "farm_id=? AND kind IN ('material','product') AND unit_id=?",
+        whereArgs: [e.farmId, e.id],
       );
       for (final material in linkedMaterials) {
         await tx.update(
@@ -345,7 +348,7 @@ class SqliteCompanyCatalog implements CompanyCatalogRepository {
         );
       }
     }
-    if (e.kind == CatalogKind.material) {
+    if (e.kind == CatalogKind.material || e.kind == CatalogKind.product) {
       final unit = (await tx.query(
         entriesTable,
         where: 'id=?',
@@ -484,7 +487,11 @@ class SqliteCompanyCatalog implements CompanyCatalogRepository {
                   id: createEntry.id,
                   farmId: createEntry.farmId,
                   kind: createEntry.kind,
-                  code: await _nextCode(tx, createEntry.farmId, createEntry.kind),
+                  code: await _nextCode(
+                    tx,
+                    createEntry.farmId,
+                    createEntry.kind,
+                  ),
                   name: createEntry.name,
                   unitId: createEntry.unitId,
                   active: createEntry.active,

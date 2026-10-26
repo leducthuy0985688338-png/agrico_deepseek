@@ -10,6 +10,7 @@ class InventoryItem {
     required this.unitPrice,
     required this.supplier,
     this.stock = 0,
+    this.finishedGoods = false,
   });
 
   final String id;
@@ -20,6 +21,7 @@ class InventoryItem {
   final double unitPrice;
   final String supplier;
   final num stock;
+  final bool finishedGoods;
 
   void validate() {
     if ([id, farmId, code, name, unit].any((value) => value.trim().isEmpty) ||

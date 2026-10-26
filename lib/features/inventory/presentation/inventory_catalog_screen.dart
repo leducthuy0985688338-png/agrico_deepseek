@@ -165,7 +165,7 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
               final item = snapshot.data![index];
               return ListTile(
                 title: Text('${item.code} · ${item.name}'),
-                trailing: canManage
+                trailing: canManage && !item.finishedGoods
                     ? PopupMenuButton<InventoryMovementKind>(
                         key: Key('inventory-actions-${item.id}'),
                         onSelected: (kind) => record(item, kind),
@@ -185,7 +185,9 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
                     Text(
                       '${l10n.text('inventory.stock')}: ${item.stock} ${item.unit}',
                     ),
-                    if (canManage)
+                    if (item.finishedGoods)
+                      Text(l10n.text('trade.productWorkflow')),
+                    if (canManage && !item.finishedGoods)
                       Wrap(
                         spacing: 8,
                         children: [

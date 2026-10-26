@@ -207,6 +207,18 @@ class SqliteInventoryRepository
 
   @override
   Future<List<InventoryItem>> listByFarm(String farmId) async {
+    final productIds =
+        await SqliteCompanyCatalog.hasTable(
+          database,
+          SqliteCompanyCatalog.entriesTable,
+        )
+        ? (await database.query(
+            SqliteCompanyCatalog.entriesTable,
+            columns: ['id'],
+            where: "farm_id=? AND kind='product'",
+            whereArgs: [farmId],
+          )).map((r) => r['id']).toSet()
+        : <Object?>{};
     final rows = await database.query(
       itemsTable,
       where: 'farm_id = ?',
@@ -224,6 +236,7 @@ class SqliteInventoryRepository
           unitPrice: (row['unit_price']! as num).toDouble(),
           supplier: row['supplier']! as String,
           stock: ExactDecimal.quantityFromUnits(row['stock_units']! as int),
+          finishedGoods: productIds.contains(row['id']),
         ),
       ),
     );
@@ -263,6 +276,23 @@ class SqliteInventoryRepository
     String? parcelId,
     String? seasonId,
     String? planId,
+  }) => database.transaction(
+    (tx) => recordInTransaction(
+      tx,
+      movement,
+      parcelId: parcelId,
+      seasonId: seasonId,
+      planId: planId,
+    ),
+  );
+
+  Future<void> recordInTransaction(
+    Transaction tx,
+    InventoryMovement movement, {
+    String? parcelId,
+    String? seasonId,
+    String? planId,
+    bool finishedGoods = false,
   }) async {
     movement.validate();
     if (movement.kind == InventoryMovementKind.issue &&
@@ -283,155 +313,167 @@ class SqliteInventoryRepository
     if (movement.code != null) {
       throw const FormatException('Movement codes are assigned by SQLite.');
     }
-    await database.transaction((tx) async {
-      final prior = await tx.query(
-        movementsTable,
-        where: 'id=?',
-        whereArgs: [movement.id],
+    if (!finishedGoods &&
+        await SqliteCompanyCatalog.hasTable(
+          tx,
+          SqliteCompanyCatalog.entriesTable,
+        )) {
+      final product = await tx.query(
+        SqliteCompanyCatalog.entriesTable,
+        columns: ['id'],
+        where: "id=? AND kind='product'",
+        whereArgs: [movement.itemId],
       );
-      if (prior.isNotEmpty) {
-        final r = prior.single;
-        if (r['farm_id'] == movement.farmId &&
-            r['item_id'] == movement.itemId &&
-            r['kind'] == movement.kind.name &&
-            r['quantity_units'] == movement.quantityUnits &&
-            r['occurred_at'] == movement.occurredAt.toUtc().toIso8601String() &&
-            r['currency'] == movement.currency &&
-            r['unit_price_text'] == movement.unitPriceText &&
-            r['priced_by'] == movement.pricedBy &&
-            r['zero_price_confirmed'] ==
-                (movement.zeroPriceConfirmed ? 1 : 0) &&
-            r['plan_id'] == planId) {
-          return;
-        }
-        throw StateError('Movement identity already has different contents.');
+      if (product.isNotEmpty) {
+        throw StateError('Finished goods require harvest/sale lot workflow.');
       }
-      if (parcelId != null) {
-        final destination = await tx.rawQuery(
-          'SELECT s.id FROM $seasonsTable s '
-          'JOIN land_parcels p ON p.id=s.parcel_id AND p.farm_id=s.farm_id '
-          "WHERE p.id=? AND s.id=? AND s.farm_id=? AND p.active=1 "
-          "AND p.kind='fieldPlot' AND s.active=1 AND s.starts_on<=? LIMIT 1",
-          [
-            parcelId,
-            seasonId,
-            movement.farmId,
-            movement.occurredAt
-                .toUtc()
-                .add(const Duration(hours: 7))
-                .toIso8601String()
-                .substring(0, 10),
-          ],
-        );
-        if (destination.isEmpty) {
-          throw StateError('Invalid V2 parcel/season for this farm and date.');
-        }
+    }
+    final prior = await tx.query(
+      movementsTable,
+      where: 'id=?',
+      whereArgs: [movement.id],
+    );
+    if (prior.isNotEmpty) {
+      final r = prior.single;
+      if (r['farm_id'] == movement.farmId &&
+          r['item_id'] == movement.itemId &&
+          r['kind'] == movement.kind.name &&
+          r['quantity_units'] == movement.quantityUnits &&
+          r['occurred_at'] == movement.occurredAt.toUtc().toIso8601String() &&
+          r['currency'] == movement.currency &&
+          r['unit_price_text'] == movement.unitPriceText &&
+          r['priced_by'] == movement.pricedBy &&
+          r['zero_price_confirmed'] == (movement.zeroPriceConfirmed ? 1 : 0) &&
+          r['plan_id'] == planId) {
+        return;
       }
-      if (parcelId != null) {
-        final day = movement.occurredAt
-            .toUtc()
-            .add(const Duration(hours: 7))
-            .toIso8601String()
-            .substring(0, 10);
-        final plan = await tx.query(
-          'production_plans_v1',
-          where:
-              "id=? AND farm_id=? AND parcel_id=? AND season_id=? AND status='active' AND currency=? AND starts_on<=? AND ends_on>=?",
-          whereArgs: [
-            planId,
-            movement.farmId,
-            parcelId,
-            seasonId,
-            movement.currency,
-            day,
-            day,
-          ],
-        );
-        if (plan.length != 1) {
-          throw StateError(
-            'Active plan, matching currency and plan dates required.',
-          );
-        }
-      }
-      final delta = movement.kind == InventoryMovementKind.receipt
-          ? movement.quantityUnits
-          : -movement.quantityUnits;
-      final changed = await tx.rawUpdate(
-        'UPDATE $itemsTable SET stock = (stock_units + ?) / 1000000.0, stock_units = stock_units + ? '
-        'WHERE id = ? AND farm_id = ? AND stock_units + ? >= 0 AND stock_units + ? <= 9007199254740991',
-        [delta, delta, movement.itemId, movement.farmId, delta, delta],
+      throw StateError('Movement identity already has different contents.');
+    }
+    if (parcelId != null) {
+      final destination = await tx.rawQuery(
+        'SELECT s.id FROM $seasonsTable s '
+        'JOIN land_parcels p ON p.id=s.parcel_id AND p.farm_id=s.farm_id '
+        "WHERE p.id=? AND s.id=? AND s.farm_id=? AND p.active=1 "
+        "AND p.kind='fieldPlot' AND s.active=1 AND s.starts_on<=? LIMIT 1",
+        [
+          parcelId,
+          seasonId,
+          movement.farmId,
+          movement.occurredAt
+              .toUtc()
+              .add(const Duration(hours: 7))
+              .toIso8601String()
+              .substring(0, 10),
+        ],
       );
-      if (changed != 1) {
+      if (destination.isEmpty) {
+        throw StateError('Invalid V2 parcel/season for this farm and date.');
+      }
+    }
+    if (parcelId != null) {
+      final day = movement.occurredAt
+          .toUtc()
+          .add(const Duration(hours: 7))
+          .toIso8601String()
+          .substring(0, 10);
+      final plan = await tx.query(
+        'production_plans_v1',
+        where:
+            "id=? AND farm_id=? AND parcel_id=? AND season_id=? AND status='active' AND currency=? AND starts_on<=? AND ends_on>=?",
+        whereArgs: [
+          planId,
+          movement.farmId,
+          parcelId,
+          seasonId,
+          movement.currency,
+          day,
+          day,
+        ],
+      );
+      if (plan.length != 1) {
         throw StateError(
-          'Item is missing or stock is insufficient in this farm.',
+          'Active plan, matching currency and plan dates required.',
         );
       }
-      final costItem = parcelId == null
-          ? null
-          : (await tx.query(
-              itemsTable,
-              columns: ['name', 'unit', 'unit_price'],
-              where: 'id=? AND farm_id=?',
-              whereArgs: [movement.itemId, movement.farmId],
-              limit: 1,
-            )).single;
-      // Laos business month (UTC+7), independent of the device timezone.
-      final date = movement.occurredAt.toUtc().add(const Duration(hours: 7));
-      final kind = movement.kind == InventoryMovementKind.receipt
-          ? BusinessDocumentKind.stockIn
-          : BusinessDocumentKind.stockOut;
-      await SqliteMonthlyDocumentSequence().saveWithCode(
-        transaction: tx,
-        // Farm is the existing inventory authorization boundary. In v2,
-        // organization identity must be mapped explicitly before broadening scope.
-        organizationId: movement.farmId,
-        kind: kind,
-        documentDate: date,
-        save: (code) => tx.insert(movementsTable, {
-          'id': movement.id,
-          'code': code,
-          'farm_id': movement.farmId,
-          'item_id': movement.itemId,
-          'kind': movement.kind.name,
-          'quantity': movement.quantity,
-          'quantity_units': movement.quantityUnits,
-          'unit_price_text': movement.unitPriceText,
-          'amount_text': movement.amountText,
-          'currency': movement.currency,
-          'priced_by': movement.pricedBy,
-          'zero_price_confirmed': movement.zeroPriceConfirmed ? 1 : 0,
-          'plan_id': planId,
-          'occurred_at': movement.occurredAt.toUtc().toIso8601String(),
-        }, conflictAlgorithm: ConflictAlgorithm.abort),
+    }
+    final delta = movement.kind == InventoryMovementKind.receipt
+        ? movement.quantityUnits
+        : -movement.quantityUnits;
+    final changed = await tx.rawUpdate(
+      'UPDATE $itemsTable SET stock = (stock_units + ?) / 1000000.0, stock_units = stock_units + ? '
+      'WHERE id = ? AND farm_id = ? AND stock_units + ? >= 0 AND stock_units + ? <= 9007199254740991',
+      [delta, delta, movement.itemId, movement.farmId, delta, delta],
+    );
+    if (changed != 1) {
+      throw StateError(
+        'Item is missing or stock is insufficient in this farm.',
       );
-      if (costItem != null) {
-        final price = double.parse(movement.unitPriceText!);
-        final amount = double.parse(movement.amountText!);
-        if (!price.isFinite || price < 0 || !amount.isFinite) {
-          throw const FormatException('Invalid material cost snapshot.');
-        }
-        await tx.insert(costsTable, {
-          'movement_id': movement.id,
-          'farm_id': movement.farmId,
-          'item_id': movement.itemId,
-          'parcel_id': parcelId,
-          'season_id': seasonId,
-          'item_name': costItem['name'],
-          'unit': costItem['unit'],
-          'quantity': movement.quantity,
-          'quantity_units': movement.quantityUnits,
-          'unit_price_text': movement.unitPriceText,
-          'amount_text': movement.amountText,
-          'currency': movement.currency,
-          'priced_by': movement.pricedBy,
-          'zero_price_confirmed': movement.zeroPriceConfirmed ? 1 : 0,
-          'plan_id': planId,
-          'unit_price': price,
-          'occurred_at': movement.occurredAt.toUtc().toIso8601String(),
-          'amount': amount,
-        }, conflictAlgorithm: ConflictAlgorithm.abort);
+    }
+    final costItem = parcelId == null
+        ? null
+        : (await tx.query(
+            itemsTable,
+            columns: ['name', 'unit', 'unit_price'],
+            where: 'id=? AND farm_id=?',
+            whereArgs: [movement.itemId, movement.farmId],
+            limit: 1,
+          )).single;
+    // Laos business month (UTC+7), independent of the device timezone.
+    final date = movement.occurredAt.toUtc().add(const Duration(hours: 7));
+    final kind = movement.kind == InventoryMovementKind.receipt
+        ? BusinessDocumentKind.stockIn
+        : BusinessDocumentKind.stockOut;
+    await SqliteMonthlyDocumentSequence().saveWithCode(
+      transaction: tx,
+      // Farm is the existing inventory authorization boundary. In v2,
+      // organization identity must be mapped explicitly before broadening scope.
+      organizationId: movement.farmId,
+      kind: kind,
+      documentDate: date,
+      save: (code) => tx.insert(movementsTable, {
+        'id': movement.id,
+        'code': code,
+        'farm_id': movement.farmId,
+        'item_id': movement.itemId,
+        'kind': movement.kind.name,
+        'quantity': movement.quantity,
+        'quantity_units': movement.quantityUnits,
+        'unit_price_text': movement.unitPriceText,
+        'amount_text': movement.amountText,
+        'currency': movement.currency,
+        'priced_by': movement.pricedBy,
+        'zero_price_confirmed': movement.zeroPriceConfirmed ? 1 : 0,
+        'plan_id': planId,
+        'occurred_at': movement.occurredAt.toUtc().toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.abort),
+    );
+    if (costItem != null) {
+      final price = double.parse(movement.unitPriceText!);
+      final amount = double.parse(movement.amountText!);
+      if (!price.isFinite || price < 0 || !amount.isFinite) {
+        throw const FormatException('Invalid material cost snapshot.');
       }
-    });
+      await tx.insert(costsTable, {
+        'movement_id': movement.id,
+        'farm_id': movement.farmId,
+        'item_id': movement.itemId,
+        'parcel_id': parcelId,
+        'season_id': seasonId,
+        'item_name': costItem['name'],
+        'unit': costItem['unit'],
+        'quantity': movement.quantity,
+        'quantity_units': movement.quantityUnits,
+        'unit_price_text': movement.unitPriceText,
+        'amount_text': movement.amountText,
+        'currency': movement.currency,
+        'priced_by': movement.pricedBy,
+        'zero_price_confirmed': movement.zeroPriceConfirmed ? 1 : 0,
+        'plan_id': planId,
+        'unit_price': price,
+        'occurred_at': movement.occurredAt.toUtc().toIso8601String(),
+        'amount': amount,
+      }, conflictAlgorithm: ConflictAlgorithm.abort);
+    }
   }
 
   @override

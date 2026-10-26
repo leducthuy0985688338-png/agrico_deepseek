@@ -461,4 +461,44 @@ void main() {
       );
     },
   );
+  test(
+    'customer and product sync preserve warehouse projection and immutable unit',
+    () async {
+      await stage(payload('kg'));
+      await stage(
+        payload('product', kind: 'product', unit: 'kg', name: 'Peanut'),
+      );
+      await stage(payload('customer', kind: 'customer', name: 'Buyer'));
+      expect((await projection.apply()).applied, 3);
+      expect((await local('customer'))['kind'], 'customer');
+      await db.update('inventory_items_v2', {
+        'stock': 7,
+      }, where: "id='product'");
+      await stage(
+        payload('product', kind: 'product', unit: 'kg', name: 'Peanut renamed'),
+        version: 2,
+      );
+      expect((await projection.apply()).applied, 1);
+      final product = (await db.query(
+        'inventory_items_v2',
+        where: "id='product'",
+      )).single;
+      expect(product['unit'], 'Kilogram');
+      expect(product['name'], 'Peanut renamed');
+      expect(product['stock'], 7);
+      await stage(payload('other', name: 'Hectare'));
+      await projection.apply();
+      await stage(
+        payload(
+          'product',
+          kind: 'product',
+          unit: 'other',
+          name: 'Peanut renamed',
+        ),
+        version: 3,
+      );
+      expect((await projection.apply()).conflicts, 1);
+      expect((await local('product'))['unit_id'], 'kg');
+    },
+  );
 }

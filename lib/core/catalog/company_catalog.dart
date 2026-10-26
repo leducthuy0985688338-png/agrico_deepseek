@@ -10,6 +10,8 @@ enum CatalogKind {
   supplier,
   incomeCategory,
   expenseCategory,
+  product,
+  customer,
 }
 
 class CatalogFailure implements Exception {
@@ -42,7 +44,9 @@ class CatalogEntry {
         name.length > 100 ||
         revision < 0 ||
         (kind == CatalogKind.unit && unitId != null) ||
-        ((kind == CatalogKind.crop || kind == CatalogKind.material) &&
+        ((kind == CatalogKind.crop ||
+                (kind == CatalogKind.material ||
+                    kind == CatalogKind.product)) &&
             unitId == null)) {
       throw const CatalogFailure('catalog.invalid');
     }
@@ -156,7 +160,8 @@ class CompanyCatalogService {
         entry.name.length > 100 ||
         (entry.kind == CatalogKind.unit && entry.unitId != null) ||
         ((entry.kind == CatalogKind.crop ||
-                entry.kind == CatalogKind.material) &&
+                (entry.kind == CatalogKind.material ||
+                    entry.kind == CatalogKind.product)) &&
             entry.unitId == null)) {
       throw const CatalogFailure('catalog.invalid');
     }
@@ -174,10 +179,7 @@ class CompanyCatalogService {
   ///
   /// Historical imports use a separate repository operation; user-facing
   /// creation must never accept a caller-supplied code.
-  Future<void> create(
-    CatalogEntry entry, {
-    required String reason,
-  }) {
+  Future<void> create(CatalogEntry entry, {required String reason}) {
     if (entry.code.isNotEmpty) {
       throw const CatalogFailure('catalog.invalid');
     }

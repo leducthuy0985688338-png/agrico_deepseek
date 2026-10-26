@@ -40,6 +40,8 @@ class _Repo implements CompanyCatalogRepository {
       CatalogKind.supplier => 'NCC',
       CatalogKind.incomeCategory => 'DMTHU',
       CatalogKind.expenseCategory => 'DMCHI',
+      CatalogKind.product => 'TP',
+      CatalogKind.customer => 'KH',
     };
     values.add(
       entry.code.isEmpty
@@ -207,7 +209,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('catalog-approval-code')), findsNothing);
     expect(find.byKey(const Key('catalog-approval-name')), findsOneWidget);
-    expect(find.textContaining('Mã danh mục mới sẽ được hệ thống cấp tự động'), findsOneWidget);
+    expect(
+      find.textContaining('Mã danh mục mới sẽ được hệ thống cấp tự động'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('long adopted unit fits a phone dialog', (tester) async {

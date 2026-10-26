@@ -221,6 +221,18 @@ class SqliteProductionPlanningRepository
       }
       if (status == ProductionPlanStatus.completed ||
           status == ProductionPlanStatus.cancelled) {
+        final tradeTables = await tx.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='trade_documents_v1'",
+        );
+        if (tradeTables.isNotEmpty &&
+            (await tx.rawQuery(
+              "SELECT id FROM trade_documents_v1 WHERE farm_id=? AND plan_id=? AND (status='draft' OR (?='cancelled' AND status='posted')) LIMIT 1",
+              [farmId, planId, status.name],
+            )).isNotEmpty) {
+          throw StateError(
+            'Resolve harvest drafts; plans with posted harvests cannot be cancelled.',
+          );
+        }
         final machineTables = await tx.rawQuery(
           "SELECT name FROM sqlite_master WHERE type='table' AND name='machine_runs_v1'",
         );

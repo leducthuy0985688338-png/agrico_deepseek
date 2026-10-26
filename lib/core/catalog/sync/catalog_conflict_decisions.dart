@@ -208,7 +208,7 @@ class CatalogConflictDecisions {
             review.entity == 'entry' &&
             (local['kind'] != p['kind'] ||
                 local['code'] != p['code'] ||
-                (p['kind'] == 'material' &&
+                ({'material', 'product'}.contains(p['kind']) &&
                     local['unit_id'] != p['unit_id']))) {
           throw const CatalogFailure('catalog.identityConflict');
         }

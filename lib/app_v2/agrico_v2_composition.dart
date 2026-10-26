@@ -1,3 +1,6 @@
+import '../features/trade/data/sqlite_trade_repository.dart';
+import '../features/trade/application/trade_service.dart';
+import '../features/trade/presentation/trade_workspace_screen.dart';
 import '../features/machines/data/sqlite_machine_repository.dart';
 import '../features/machines/application/machine_service.dart';
 import '../features/machines/presentation/machine_workspace_screen.dart';
@@ -146,6 +149,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     await SqliteParcelLandHistoryRepository.createSchema(database);
     await SqliteParcelNumberSequence.reconcileExistingHouseholds(database);
     await SqliteFinanceDocumentRepository.createSchema(database);
+    await SqliteTradeRepository.createSchema(database);
     await SqliteAdministrativeCatalog.createSchema(database);
     final administrativeCatalog = SqliteAdministrativeCatalog(database);
     await administrativeCatalog.seedInitialLocation();
@@ -602,7 +606,28 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       if (financeService.canView) {
         legacy['finance'] = () {
           if (financeService.canView) {
-            push(FinanceDocumentsScreen(service: financeService));
+            push(
+              deps.subject.dataScopes.contains(DataScope.allFarm)
+                  ? TradeWorkspaceScreen(
+                      service: TradeService(
+                        SqliteTradeRepository(deps.database),
+                        subject: deps.subject,
+                        currentSubject: () => mounted ? widget.subject : null,
+                      ),
+                      openCatalog: () => push(
+                        CompanyCatalogScreen(
+                          service: CompanyCatalogService(
+                            repository: SqliteCompanyCatalog(deps.database),
+                            subject: deps.subject,
+                          ),
+                          initialKind: CatalogKind.product,
+                        ),
+                      ),
+                      openCash: () =>
+                          push(FinanceDocumentsScreen(service: financeService)),
+                    )
+                  : FinanceDocumentsScreen(service: financeService),
+            );
           }
         };
       }
