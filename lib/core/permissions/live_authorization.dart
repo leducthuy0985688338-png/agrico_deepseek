@@ -64,7 +64,12 @@ class LiveAuthorization {
 
   String stamp(AuthorizationSubject opened) => _fingerprint(opened);
   void requireStamp(AuthorizationSubject opened, String expected) {
-    if (_fingerprint(opened) != expected)
+    final live = currentSubject();
+    if (live == null ||
+        !live.active ||
+        (live.validUntil != null &&
+            !DateTime.now().isBefore(live.validUntil!)) ||
+        _fingerprint(opened) != expected)
       throw StateError('Session or scope changed.');
   }
 

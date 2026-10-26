@@ -158,6 +158,16 @@ abstract final class IntegrationCash {
         receipt: false,
       );
     } else {
+      final refundSchema = await tx.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='personnel_payroll_refunds_v1'",
+      );
+      if (refundSchema.isNotEmpty &&
+          (await tx.query(
+            'personnel_payroll_refunds_v1',
+            where: 'finance_id=?',
+            whereArgs: [finance],
+          )).isNotEmpty)
+        throw StateError('Cash already belongs to a payroll refund.');
       final classifications = await tx.query(
         'integration_report_metadata_v1',
         where: "farm_id=? AND kind='capital' AND entity_id=?",

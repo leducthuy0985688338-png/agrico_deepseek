@@ -1,3 +1,4 @@
+export 'payroll_adjustment.dart';
 import '../../inventory/domain/entities/exact_decimal.dart';
 import '../../inventory/domain/entities/production_plan.dart';
 export '../../inventory/domain/entities/exact_decimal.dart';
@@ -440,7 +441,18 @@ class PayrollRecordV2 {
     required this.note,
     this.adjustmentPlanId,
     this.code = '',
+    this.adjustmentTotal = '0',
+    this.adjustmentRevision = 0,
+    this.refunded = '0',
   });
+  final String adjustmentTotal, refunded;
+  final int adjustmentRevision;
+  String get effectiveNet => LaborMoney.sum([net, adjustmentTotal]);
+  String get overpaid => ExactDecimal.parse(remaining).isNegative
+      ? LaborMoney.minus('0', remaining)
+      : '0';
+  String get payable =>
+      ExactDecimal.parse(remaining).isNegative ? '0' : remaining;
   final String code;
   final String id,
       workerId,
@@ -460,7 +472,7 @@ class PayrollRecordV2 {
       note;
   final String? adjustmentPlanId;
   String get remaining =>
-      status == 'cancelled' ? '0' : LaborMoney.minus(net, paid);
+      status == 'cancelled' ? '0' : LaborMoney.minus(effectiveNet, paid);
 }
 
 class ProductionLaborCost {

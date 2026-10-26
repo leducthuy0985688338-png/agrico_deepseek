@@ -69,6 +69,7 @@ class IntegrationSnapshot {
   bool controlledCash(Object? id) => [
     'integration_cash_links_v1',
     'integration_salary_reversals_v1',
+    'personnel_payroll_refunds_v1',
     'trade_settlements_v1',
     'trade_reversals_v1',
   ].any((table) => rows(table).any((r) => r['finance_id'] == id));
@@ -99,13 +100,40 @@ class IntegrationSnapshot {
   Set<Object?> get salaryReversed => rows(
     'integration_salary_reversals_v1',
   ).map((r) => r['payment_id']).toSet();
-  String salaryPaid(Object? payroll) => sum(
-    rows('personnel_payments_v1')
+  String salaryAdjustment(Object? payroll, {String? through}) => sum(
+    rows('personnel_payroll_adjustments_v1')
         .where(
-          (p) =>
-              p['payroll_id'] == payroll && !salaryReversed.contains(p['id']),
+          (r) =>
+              r['payroll_id'] == payroll &&
+              r['status'] == 'approved' &&
+              (through == null ||
+                  (r['day']! as String).compareTo(through) <= 0),
         )
-        .map((p) => p['amount'] as String),
+        .map((r) => r['delta']! as String),
+  );
+  String salaryNet(Object? payroll, {String? through}) => sum([
+    index('personnel_payrolls_v1')[payroll]?['net'] as String? ?? '0',
+    salaryAdjustment(payroll, through: through),
+  ]);
+  String salaryRefunded(Object? payroll) => sum(
+    rows('personnel_payroll_refunds_v1')
+        .where((r) => r['payroll_id'] == payroll)
+        .map(
+          (r) => r['reverses_id'] == null
+              ? r['amount']! as String
+              : LaborMoney.minus('0', r['amount']! as String),
+        ),
+  );
+  String salaryPaid(Object? payroll) => LaborMoney.minus(
+    sum(
+      rows('personnel_payments_v1')
+          .where(
+            (p) =>
+                p['payroll_id'] == payroll && !salaryReversed.contains(p['id']),
+          )
+          .map((p) => p['amount']! as String),
+    ),
+    salaryRefunded(payroll),
   );
   String tradePaid(Object? doc) {
     final reversed = rows(
@@ -192,7 +220,17 @@ class IntegrationSnapshot {
                       ExactDecimal.parse(r['bonus'] as String))
                   .toString(),
         );
-    return sum([...parts, ...additions]);
+    final adjustmentIndex = index('personnel_payroll_adjustments_v1');
+    final corrections = rows('personnel_payroll_adjustment_costs_v1')
+        .where(
+          (c) =>
+              c['plan_id'] == plan &&
+              adjustmentIndex[c['adjustment_id']]?['status'] == 'approved' &&
+              adjustmentIndex[c['adjustment_id']]?['currency'] == currency &&
+              inPeriod(adjustmentIndex[c['adjustment_id']]!['day']! as String),
+        )
+        .map((c) => c['amount']! as String);
+    return sum([...parts, ...additions, ...corrections]);
   }
 
   String machineCost(Object? plan, String currency) {

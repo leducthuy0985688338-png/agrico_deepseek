@@ -12,6 +12,8 @@ class PersonnelReport {
     required this.payments,
     required this.laborCosts,
     this.workerId,
+    this.adjustments = const [],
+    this.refunds = const [],
   });
   final String farmId, period;
   final String? workerId;
@@ -19,6 +21,8 @@ class PersonnelReport {
   final List<LaborEntryRecord> entries;
   final List<PayrollRecordV2> payrolls;
   final List<SalaryPayment> payments;
+  final List<PayrollAdjustmentRecord> adjustments;
+  final List<PayrollRefund> refunds;
   final List<ProductionLaborCost> laborCosts;
   List<LaborEntryRecord> get selectedEntries => entries
       .where(
@@ -214,6 +218,10 @@ class PersonnelReport {
       'Kế hoạch nhận phụ cấp/thưởng',
       'Lý do điều chỉnh',
       'Mã bảng lương',
+      'Điều chỉnh đã duyệt',
+      'Thực lĩnh hiệu lực',
+      'Đã thu hoàn ròng',
+      'Nhân viên phải hoàn',
     ]);
     for (final p in selectedPayrolls) {
       row(
@@ -234,12 +242,98 @@ class PersonnelReport {
           p.deduction,
           p.net,
           p.paid,
-          p.remaining,
+          p.payable,
           p.adjustmentPlanId ?? 'Unallocated',
           p.note,
           p.code,
+          p.adjustmentTotal,
+          p.effectiveNet,
+          p.refunded,
+          p.overpaid,
         ],
-        numbers: {6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+        numbers: {6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 19, 20, 21, 22},
+      );
+    }
+    final sourcePayroll = {for (final p in payrolls) p.id: p};
+    final adjustmentSheet = excel['DIEU CHINH LUONG'];
+    row(adjustmentSheet, [
+      'Mã điều chỉnh',
+      'Bảng lương gốc',
+      'Nhân viên',
+      'Ngày hạch toán',
+      'Tiền tệ',
+      'Loại',
+      'Tăng/giảm',
+      'Trạng thái',
+      'Lý do',
+      'Người lập',
+      'Người duyệt',
+      'Chi phí phân bổ',
+    ]);
+    final selectedAdjustments = adjustments
+        .where(
+          (a) =>
+              a.draft.day.startsWith('$period-') &&
+              (workerId == null ||
+                  sourcePayroll[a.draft.payrollId]?.workerId == workerId),
+        )
+        .toList();
+    for (final a in selectedAdjustments) {
+      row(
+        adjustmentSheet,
+        [
+          a.code,
+          sourcePayroll[a.draft.payrollId]?.code ?? a.draft.payrollId,
+          sourcePayroll[a.draft.payrollId]?.workerName ?? '',
+          a.draft.day,
+          a.draft.currency,
+          a.draft.kind.name,
+          a.draft.delta,
+          a.status,
+          a.draft.reason,
+          a.creator,
+          a.approver ?? '',
+          a.draft.costDelta,
+        ],
+        numbers: {6, 11},
+      );
+    }
+    final refundSheet = excel['THU HOAN LUONG'];
+    row(refundSheet, [
+      'Ngày',
+      'ID',
+      'Bảng lương gốc',
+      'Nhân viên',
+      'Tiền tệ',
+      'Số tiền',
+      'Loại',
+      'Đảo nguồn',
+      'Lý do',
+      'Người ghi',
+      'Phiếu tiền',
+    ]);
+    for (final r in refunds.where(
+      (r) =>
+          r.day.startsWith('$period-') &&
+          (workerId == null ||
+              sourcePayroll[r.payrollId]?.workerId == workerId),
+    )) {
+      row(
+        refundSheet,
+        [
+          r.day,
+          r.id,
+          sourcePayroll[r.payrollId]?.code ?? r.payrollId,
+          sourcePayroll[r.payrollId]?.workerName ?? '',
+          r.currency,
+          r.amount,
+          r.reversesId == null ? 'THU' : 'ĐẢO THU',
+          r.reversesId ?? '',
+          r.reason,
+          r.actor,
+          r.financeId,
+        ],
+        numbers: {5},
       );
     }
     final payment = excel['CHI TRA LUONG'];
@@ -321,8 +415,16 @@ class PersonnelReport {
     ]);
     final entryIds = selectedEntries.map((e) => e.id).toSet();
     final payrollIds = selectedPayrolls.map((p) => 'payroll:${p.id}').toSet();
+    final correctionCostIds = {
+      for (final a in selectedAdjustments)
+        for (final c in a.draft.allocations)
+          'payroll-adjustment:${a.draft.id}:${c.planId}',
+    };
     for (final c in laborCosts.where(
-      (c) => entryIds.contains(c.entryId) || payrollIds.contains(c.entryId),
+      (c) =>
+          entryIds.contains(c.entryId) ||
+          payrollIds.contains(c.entryId) ||
+          correctionCostIds.contains(c.entryId),
     )) {
       row(
         costs,
@@ -345,6 +447,7 @@ class PersonnelReport {
       'Đã trả',
       'Còn phải trả',
       'Chi phí đã phân bổ vào kế hoạch',
+      'Nhân viên phải hoàn',
     ]);
     for (final currency in ['VND', 'LAK']) {
       final payroll = selectedPayrolls.where(
@@ -354,21 +457,23 @@ class PersonnelReport {
         totals,
         [
           currency,
-          LaborMoney.sum(payroll.map((p) => p.net)),
+          LaborMoney.sum(payroll.map((p) => p.effectiveNet)),
           LaborMoney.sum(payroll.map((p) => p.paid)),
-          LaborMoney.sum(payroll.map((p) => p.remaining)),
+          LaborMoney.sum(payroll.map((p) => p.payable)),
           LaborMoney.sum(
             laborCosts
                 .where(
                   (c) =>
                       c.currency == currency &&
                       (entryIds.contains(c.entryId) ||
-                          payrollIds.contains(c.entryId)),
+                          payrollIds.contains(c.entryId) ||
+                          correctionCostIds.contains(c.entryId)),
                 )
                 .map((c) => c.amount),
           ),
+          LaborMoney.sum(payroll.map((p) => p.overpaid)),
         ],
-        numbers: {1, 2, 3, 4},
+        numbers: {1, 2, 3, 4, 5},
       );
     }
     if (excel.getDefaultSheet() == 'Sheet1') excel.delete('Sheet1');

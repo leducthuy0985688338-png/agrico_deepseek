@@ -279,6 +279,16 @@ class Report20 {
         party = s.index('personnel_payrolls_v1')[p['payroll_id']]!['worker_id'];
         partyName = name(party);
       }
+      final refunds = s
+          .rows('personnel_payroll_refunds_v1')
+          .where((r) => r['finance_id'] == f['id']);
+      if (refunds.isNotEmpty) {
+        final p = s.index(
+          'personnel_payrolls_v1',
+        )[refunds.single['payroll_id']]!;
+        party = p['worker_id'];
+        partyName = p['worker_name_snapshot']! as String;
+      }
       if (trade.isNotEmpty) {
         final d = s.index('trade_documents_v1')[trade.single['document_id']]!;
         party = d['party_id'];
@@ -762,7 +772,31 @@ class Report20 {
         ],
         currency: value(p['currency']),
         state:
-            '${p['code']}; ${p['status']}; khấu trừ ${p['deduction']}; đã trả ${s.salaryPaid(p['id'])}; còn ${minus(p['net'] as String, s.salaryPaid(p['id']))}',
+            '${p['code']}; ${p['status']}; khấu trừ ${p['deduction']}; đã trả ${s.salaryPaid(p['id'])}; còn ${minus(s.salaryNet(p['id']), s.salaryPaid(p['id']))}; điều chỉnh ${s.salaryAdjustment(p['id'])}; lương hiệu lực ${s.salaryNet(p['id'])}',
+      );
+    }
+    for (final a
+        in s
+            .rows('personnel_payroll_adjustments_v1')
+            .where((r) => included(r['day']))) {
+      final p = s.index('personnel_payrolls_v1')[a['payroll_id']]!;
+      add(
+        'BANG LUONG',
+        [
+          a['day'],
+          code(p['worker_id']),
+          p['worker_name_snapshot'],
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          a['status'] == 'approved' ? a['delta'] : '',
+        ],
+        currency: value(a['currency']),
+        state:
+            '${a['code']} · ${a['status']} · nguồn ${p['code']} · ${a['reason']} · lập ${a['creator']} · duyệt ${a['approver'] ?? ''}',
       );
     }
     for (final w in catalog.values.where((c) => c['kind'] == 'worker')) {
@@ -996,17 +1030,29 @@ class Report20 {
         'Theo chứng từ, không bù trừ khác tiền tệ',
       ]);
     }
-    String salaryDebt(String currency) => sum(
+    String salaryBalance(String currency, {bool receivable = false}) => sum(
       s
           .rows('personnel_payrolls_v1')
           .where((p) => p['status'] == 'approved' && p['currency'] == currency)
-          .map((p) => minus(p['net'] as String, s.salaryPaid(p['id']))),
+          .map((p) {
+            final value = minus(s.salaryNet(p['id']), s.salaryPaid(p['id']));
+            final negative = ExactDecimal.parse(value).isNegative;
+            return receivable
+                ? (negative ? minus('0', value) : '0')
+                : (negative ? '0' : value);
+          }),
     );
     add('DASHBOARD', [
       'Lương phải trả hiện tại',
-      salaryDebt('VND'),
-      salaryDebt('LAK'),
-      'Độc lập nợ nhà cung cấp, không tạo thêm CP',
+      salaryBalance('VND'),
+      salaryBalance('LAK'),
+      'Sau điều chỉnh, không bù trừ khoản phải thu nhân viên khác',
+    ]);
+    add('DASHBOARD', [
+      'Nhân viên phải hoàn hiện tại',
+      salaryBalance('VND', receivable: true),
+      salaryBalance('LAK', receivable: true),
+      'Thu hoàn mới tạo THU; duyệt điều chỉnh không tạo dòng tiền',
     ]);
     add('DASHBOARD', [
       'Chưa nối nguồn',

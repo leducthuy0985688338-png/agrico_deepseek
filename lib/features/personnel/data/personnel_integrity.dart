@@ -1,3 +1,4 @@
+import 'sqlite_payroll_adjustments.dart';
 import '../../integration/data/integration_cash.dart';
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
@@ -22,6 +23,7 @@ abstract final class PersonnelIntegrity {
           (seq.single['last_value']! as int) < int.parse(match.group(1)!))
         throw StateError('Invalid department sequence.');
     }
+    await SqlitePayrollAdjustments.validate(db);
     final workers = {
       for (final c in await db.query('company_catalog_entries_v1')) c['id']: c,
     };
@@ -289,7 +291,19 @@ abstract final class PersonnelIntegrity {
               : v['amount']! as String;
         }),
       );
-      if (ExactDecimal.parse(paid).compareTo(ExactDecimal.parse(net)) > 0) {
+      final netPaid = LaborMoney.minus(
+        paid,
+        SqlitePayrollAdjustments.refundTotal(
+          await SqlitePayrollAdjustments.refundRows(db, p['id']! as String),
+        ),
+      );
+      if (ExactDecimal.parse(netPaid).isNegative ||
+          ExactDecimal.parse(netPaid).compareTo(
+                ExactDecimal.parse(
+                  await SqlitePayrollAdjustments.maximumNet(db, p),
+                ),
+              ) >
+              0) {
         throw StateError('Salary overpayment.');
       }
       LaborMoney.date(p['extra_cost_day']! as String);

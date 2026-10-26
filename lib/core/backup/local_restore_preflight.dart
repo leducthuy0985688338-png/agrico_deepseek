@@ -1,3 +1,4 @@
+import '../../features/personnel/data/sqlite_payroll_adjustments.dart';
 import '../../features/inventory/data/local/sqlite_warehouse_stock.dart';
 import '../../features/integration/data/integration_repository.dart';
 import '../../features/integration/data/integration_integrity.dart';
@@ -186,7 +187,19 @@ class LocalRestorePreflight {
           SqlitePersonnelRepository.tables.any(
             (t) => (saved[t] as List? ?? const []).isNotEmpty,
           ) &&
-          missing.intersection(SqlitePersonnelRepository.tables).isNotEmpty) {
+          (missing
+                  .intersection(
+                    SqlitePersonnelRepository.tables.difference(
+                      SqlitePayrollAdjustments.tables,
+                    ),
+                  )
+                  .isNotEmpty ||
+              (SqlitePayrollAdjustments.tables.any(
+                    (t) => (saved[t] as List? ?? const []).isNotEmpty,
+                  ) &&
+                  missing
+                      .intersection(SqlitePayrollAdjustments.tables)
+                      .isNotEmpty))) {
         throw RestorePreflightException(
           'tables',
           database: databaseName,

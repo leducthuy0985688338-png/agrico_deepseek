@@ -224,4 +224,15 @@ void main() {
       service.exportPermission(opened);
     },
   );
+  test('an unchanged stamp never permits an inactive or expired session', () {
+    final opened = user();
+    for (final ended in [
+      user(active: false),
+      user(expiry: DateTime.utc(2000)),
+    ]) {
+      final guard = LiveAuthorization(() => ended);
+      final stamp = guard.stamp(opened);
+      expect(() => guard.requireStamp(opened, stamp), throwsStateError);
+    }
+  });
 }

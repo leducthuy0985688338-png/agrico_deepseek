@@ -1,3 +1,4 @@
+import '../../personnel/data/sqlite_payroll_adjustments.dart';
 import '../../personnel/domain/personnel.dart' show LaborMoney;
 import 'package:sqflite/sqflite.dart';
 import 'integration_cash.dart';
@@ -11,6 +12,12 @@ abstract final class IntegrationIntegrity {
       if (!value) throw StateError('Integrated ledger does not reconcile.');
     }
 
+    await SqlitePayrollAdjustments.validate(db);
+    final refundCash = await SqlitePayrollAdjustments.enabled(db)
+        ? (await db.query(
+            SqlitePayrollAdjustments.refunds,
+          )).map((r) => r['finance_id']).toSet()
+        : <Object?>{};
     final links = await db.query('integration_cash_links_v1');
     final reversals = await db.query('integration_salary_reversals_v1');
     for (final link in links) {
@@ -217,6 +224,7 @@ abstract final class IntegrationIntegrity {
       );
     }
     final linkedCash = {
+      ...refundCash,
       ...links.map((l) => l['finance_id']),
       ...reversals.map((r) => r['finance_id']),
     };

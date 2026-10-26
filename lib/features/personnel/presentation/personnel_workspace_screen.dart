@@ -39,6 +39,8 @@ class _PersonnelData {
     this.workTypes,
     this.units,
     this.departments,
+    this.adjustments,
+    this.refunds,
   );
   final List<EmployeeCard> employees;
   final List<LaborEntryRecord> entries;
@@ -50,6 +52,8 @@ class _PersonnelData {
   final List<PersonnelTaskChoice> tasks;
   final List<CatalogEntry> machines, workTypes, units;
   final List<PersonnelDepartment> departments;
+  final List<PayrollAdjustmentRecord> adjustments;
+  final List<PayrollRefund> refunds;
 }
 
 class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
@@ -108,6 +112,12 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
         .where((c) => c.kind == CatalogKind.taskType && c.active)
         .toList();
     final departments = await service.departments(widget.subject);
+    final adjustments = salary
+        ? await service.payrollAdjustments(widget.subject)
+        : <PayrollAdjustmentRecord>[];
+    final refunds = salary
+        ? await service.payrollRefunds(widget.subject)
+        : <PayrollRefund>[];
     widget.service.access.requireStamp(widget.subject, stamp);
     return _PersonnelData(
       people,
@@ -122,6 +132,8 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
       workTypes,
       catalog.where((c) => c.kind == CatalogKind.unit && c.active).toList(),
       departments,
+      adjustments,
+      refunds,
     );
   }
 
@@ -593,6 +605,174 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
     );
   }
 
+  Future<void> adjustment(PayrollRecordV2 p) async {
+    try {
+      final choices = await widget.service.payrollAdjustmentPlans(
+        widget.subject,
+        p.id,
+      );
+      if (!mounted) return;
+      final adjustmentId = _id('payroll-adjustment');
+      await form(
+        'hr.adjustment.create',
+        (v) => [
+          _Field(
+            'kind',
+            'hr.adjustment.kind',
+            choices: {
+              'earnings': AppLocalizations.of(
+                context,
+              ).text('hr.adjustment.earnings'),
+              'deduction': AppLocalizations.of(
+                context,
+              ).text('hr.adjustment.deduction'),
+            },
+          ),
+          const _Field(
+            'delta',
+            'hr.adjustment.delta',
+            number: true,
+            signed: true,
+          ),
+          const _Field('day', 'hr.adjustment.day'),
+          const _Field('reason', 'hr.reason'),
+          if ((v['kind'] ?? 'earnings') == 'earnings') ...[
+            _Field(
+              'allocation',
+              'hr.adjustment.treatment',
+              choices: {
+                'unallocated': AppLocalizations.of(
+                  context,
+                ).text('hr.unallocated'),
+                'plans': AppLocalizations.of(
+                  context,
+                ).text('hr.adjustment.allocate'),
+              },
+            ),
+            if (v['allocation'] == 'plans')
+              for (final plan in choices)
+                _Field(
+                  'cost:${plan.id}',
+                  plan.label,
+                  number: true,
+                  signed: true,
+                  literalLabel: true,
+                ),
+          ],
+        ],
+        (v) => widget.service.createPayrollAdjustment(
+          widget.subject,
+          PayrollAdjustmentDraft(
+            id: adjustmentId,
+            farmId: widget.subject.farmId,
+            payrollId: p.id,
+            currency: p.currency,
+            day: v['day'] ?? '',
+            delta: v['delta'] ?? '',
+            reason: v['reason'] ?? '',
+            expectedRevision: p.adjustmentRevision,
+            kind: PayrollAdjustmentKind.values.byName(v['kind'] ?? 'earnings'),
+            allocations: [
+              if (v['kind'] == 'earnings' && v['allocation'] == 'plans')
+                for (final plan in choices)
+                  if ((v['cost:${plan.id}'] ?? '').isNotEmpty &&
+                      ExactDecimal.parse(v['cost:${plan.id}']!).coefficient !=
+                          BigInt.zero)
+                    PayrollCostAdjustment(plan.id, v['cost:${plan.id}']!),
+            ],
+          ),
+        ),
+        initial: {
+          'kind': 'earnings',
+          'allocation': 'unallocated',
+          'day': LaborMoney.day(DateTime.now()),
+        },
+      );
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(_failure(context, e))));
+    }
+  }
+
+  Future<void> approveAdjustment(PayrollAdjustmentRecord old) => run(() async {
+    final fresh = (await widget.service.payrollAdjustments(
+      widget.subject,
+    )).singleWhere((a) => a.draft.id == old.draft.id);
+    final p = (await widget.service.payrolls(
+      widget.subject,
+    )).singleWhere((p) => p.id == fresh.draft.payrollId);
+    if (p.adjustmentRevision != fresh.draft.expectedRevision)
+      throw StateError('Stale adjustment.');
+    if (!mounted) return;
+    final l = AppLocalizations.of(context);
+    final after = LaborMoney.sum([p.effectiveNet, fresh.draft.delta]);
+    final over = ExactDecimal.parse(LaborMoney.minus(p.paid, after));
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(l.text('hr.adjustment.approve')),
+        content: SingleChildScrollView(
+          child: Text(
+            '${p.code} · ${p.workerName}\n${l.text('hr.adjustment.before')}: ${p.effectiveNet} ${p.currency}\n${l.text('hr.adjustment.delta')}: ${fresh.draft.delta}\n${l.text('hr.adjustment.after')}: $after\n${l.text('hr.paid')}: ${p.paid}\n${l.text('hr.adjustment.overpaid')}: ${over.isNegative ? '0' : over}\n${l.text('hr.adjustment.cost')}: ${fresh.draft.costDelta}\n${fresh.draft.reason}',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: Text(l.text('common.cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(l.text('hr.approve')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true)
+      await widget.service.approvePayrollAdjustment(
+        widget.subject,
+        fresh.draft.id,
+      );
+  });
+  void refund(PayrollRecordV2 p, {PayrollRefund? source}) {
+    final id = _id(
+      source == null ? 'payroll-refund' : 'payroll-refund-reversal',
+    );
+    form(
+      source == null ? 'hr.adjustment.refund' : 'hr.adjustment.reverseRefund',
+      (_) => [
+        if (source == null) const _Field('amount', 'hr.amount', number: true),
+        if (source != null)
+          _Field(
+            'source',
+            'hr.adjustment.source',
+            choices: {
+              source.id: '${source.amount} ${source.currency} · ${source.day}',
+            },
+          ),
+        const _Field('day', 'hr.adjustment.day'),
+        const _Field('reason', 'hr.reason'),
+      ],
+      (v) => widget.service.refundPayroll(
+        widget.subject,
+        id: id,
+        payrollId: p.id,
+        amount: source?.amount ?? v['amount'] ?? '',
+        currency: p.currency,
+        day: v['day'] ?? '',
+        reason: v['reason'] ?? '',
+        reversesId: source?.id,
+      ),
+      initial: {
+        'amount': p.overpaid,
+        'day': LaborMoney.day(DateTime.now()),
+        if (source != null) 'source': source.id,
+      },
+    );
+  }
+
   void pay(PayrollRecordV2 p) {
     final id = _id('salary-payment');
     form(
@@ -791,6 +971,8 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
                               payrolls: fresh.payrolls,
                               payments: fresh.payments,
                               laborCosts: fresh.costs,
+                              adjustments: fresh.adjustments,
+                              refunds: fresh.refunds,
                             );
                             await saveExcelBytes(
                               report.bytes(),
@@ -980,7 +1162,7 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
                                         '${p.code} · ${p.workerName} · ${p.period} · ${l.text('hr.status.${p.status}')}',
                                       ),
                                       Text(
-                                        '${l.text('hr.net')}: ${p.net} ${p.currency} · ${l.text('hr.paid')}: ${p.paid} · ${l.text('hr.remaining')}: ${p.remaining}',
+                                        '${l.text('hr.adjustment.original')}: ${p.net} ${p.currency} · ${l.text('hr.adjustment.total')}: ${p.adjustmentTotal} · ${l.text('hr.net')}: ${p.effectiveNet} · ${l.text('hr.paid')}: ${p.paid} · ${l.text('hr.remaining')}: ${p.payable} · ${l.text('hr.adjustment.overpaid')}: ${p.overpaid}',
                                       ),
                                       if (p.adjustmentPlanId == null &&
                                           ExactDecimal.parse(
@@ -1049,6 +1231,174 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
                                             ),
                                         ],
                                       ),
+                                      if (p.status == 'approved' &&
+                                          employeeAccess(
+                                            d,
+                                            p.workerId,
+                                            PermissionCodes.payrollManage,
+                                          ))
+                                        TextButton(
+                                          key: Key(
+                                            'hr-adjustment-create-${p.id}',
+                                          ),
+                                          onPressed: busy
+                                              ? null
+                                              : () => adjustment(p),
+                                          child: Text(
+                                            l.text('hr.adjustment.create'),
+                                          ),
+                                        ),
+                                      for (final a in d.adjustments.where(
+                                        (a) => a.draft.payrollId == p.id,
+                                      ))
+                                        Card(
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(8),
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  '${a.code} · ${a.draft.day} · ${a.draft.delta} ${a.draft.currency} · ${l.text('hr.status.${a.status}')}',
+                                                ),
+                                                Text(a.draft.reason),
+                                                Text(
+                                                  '${l.text('hr.adjustment.creator')}: ${a.creator} · ${l.text('hr.adjustment.approver')}: ${a.approver ?? ''}',
+                                                ),
+                                                Text(
+                                                  '${l.text('hr.adjustment.cost')}: ${a.draft.costDelta}',
+                                                ),
+                                                if (a.draft.kind ==
+                                                        PayrollAdjustmentKind
+                                                            .earnings &&
+                                                    a.draft.delta !=
+                                                        a.draft.costDelta)
+                                                  Text(
+                                                    l.text(
+                                                      'hr.adjustment.unallocated',
+                                                    ),
+                                                  ),
+                                                if (a.status == 'draft')
+                                                  Wrap(
+                                                    children: [
+                                                      if (employeeAccess(
+                                                        d,
+                                                        p.workerId,
+                                                        PermissionCodes
+                                                            .payrollApprove,
+                                                      ))
+                                                        TextButton(
+                                                          key: Key(
+                                                            'hr-adjustment-approve-${a.draft.id}',
+                                                          ),
+                                                          onPressed: busy
+                                                              ? null
+                                                              : () =>
+                                                                    approveAdjustment(
+                                                                      a,
+                                                                    ),
+                                                          child: Text(
+                                                            l.text(
+                                                              'hr.adjustment.approve',
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      if (employeeAccess(
+                                                        d,
+                                                        p.workerId,
+                                                        PermissionCodes
+                                                            .payrollManage,
+                                                      ))
+                                                        TextButton(
+                                                          onPressed: busy
+                                                              ? null
+                                                              : () => run(
+                                                                  () => widget
+                                                                      .service
+                                                                      .cancelPayrollAdjustment(
+                                                                        widget
+                                                                            .subject,
+                                                                        a
+                                                                            .draft
+                                                                            .id,
+                                                                      ),
+                                                                ),
+                                                          child: Text(
+                                                            l.text(
+                                                              'common.cancel',
+                                                            ),
+                                                          ),
+                                                        ),
+                                                    ],
+                                                  ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      if (ExactDecimal.parse(
+                                                p.overpaid,
+                                              ).coefficient >
+                                              BigInt.zero &&
+                                          employeeAccess(
+                                            d,
+                                            p.workerId,
+                                            PermissionCodes.payrollApprove,
+                                          ) &&
+                                          employeeAccess(
+                                            d,
+                                            p.workerId,
+                                            PermissionCodes.cashRecord,
+                                          ))
+                                        TextButton(
+                                          key: Key('hr-payroll-refund-${p.id}'),
+                                          onPressed: busy
+                                              ? null
+                                              : () => refund(p),
+                                          child: Text(
+                                            l.text('hr.adjustment.refund'),
+                                          ),
+                                        ),
+                                      for (final r in d.refunds.where(
+                                        (r) => r.payrollId == p.id,
+                                      ))
+                                        ListTile(
+                                          title: Text(
+                                            '${l.text(r.reversesId == null ? 'hr.adjustment.refund' : 'hr.adjustment.reverseRefund')}: ${r.amount} ${r.currency} · ${r.day}',
+                                          ),
+                                          subtitle: Text(
+                                            '${r.reason} · ${r.actor}',
+                                          ),
+                                          trailing:
+                                              r.reversesId == null &&
+                                                  !d.refunds.any(
+                                                    (s) => s.reversesId == r.id,
+                                                  ) &&
+                                                  employeeAccess(
+                                                    d,
+                                                    p.workerId,
+                                                    PermissionCodes
+                                                        .payrollApprove,
+                                                  ) &&
+                                                  employeeAccess(
+                                                    d,
+                                                    p.workerId,
+                                                    PermissionCodes.cashRecord,
+                                                  )
+                                              ? TextButton(
+                                                  onPressed: busy
+                                                      ? null
+                                                      : () => refund(
+                                                          p,
+                                                          source: r,
+                                                        ),
+                                                  child: Text(
+                                                    l.text(
+                                                      'hr.adjustment.reverseRefund',
+                                                    ),
+                                                  ),
+                                                )
+                                              : null,
+                                        ),
                                       for (final payment in d.payments.where(
                                         (v) => v.payrollId == p.id,
                                       ))
@@ -1078,10 +1428,17 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
 }
 
 class _Field {
-  const _Field(this.id, this.label, {this.choices, this.number = false});
+  const _Field(
+    this.id,
+    this.label, {
+    this.choices,
+    this.number = false,
+    this.signed = false,
+    this.literalLabel = false,
+  });
   final String id, label;
   final Map<String, String>? choices;
-  final bool number;
+  final bool number, signed, literalLabel;
 }
 
 class _PersonnelForm extends StatefulWidget {
@@ -1163,7 +1520,9 @@ class _PersonnelFormState extends State<_PersonnelForm> {
                           ? values[f.id]
                           : null,
                       isExpanded: true,
-                      decoration: InputDecoration(labelText: l.text(f.label)),
+                      decoration: InputDecoration(
+                        labelText: f.literalLabel ? f.label : l.text(f.label),
+                      ),
                       items: [
                         for (final e in f.choices!.entries)
                           DropdownMenuItem(value: e.key, child: Text(e.value)),
@@ -1191,9 +1550,14 @@ class _PersonnelFormState extends State<_PersonnelForm> {
                       ),
                       enabled: !saving,
                       keyboardType: f.number
-                          ? const TextInputType.numberWithOptions(decimal: true)
+                          ? TextInputType.numberWithOptions(
+                              decimal: true,
+                              signed: f.signed,
+                            )
                           : TextInputType.text,
-                      decoration: InputDecoration(labelText: l.text(f.label)),
+                      decoration: InputDecoration(
+                        labelText: f.literalLabel ? f.label : l.text(f.label),
+                      ),
                       onChanged: (v) {
                         values[f.id] = f.number
                             ? v.trim().replaceAll(',', '.')
@@ -1226,6 +1590,31 @@ class _PersonnelFormState extends State<_PersonnelForm> {
 String _failure(BuildContext context, Object error) {
   final text = error.toString();
   final l = AppLocalizations.of(context);
+  if (text.contains('Link original salary'))
+    return l.text('hr.adjustment.errorCashLink');
+  if (text.contains('Reverse dependent') ||
+      text.contains('Original refund cannot'))
+    return l.text('hr.adjustment.errorDependency');
+  if (text.contains('Approved corrections'))
+    return l.text('hr.adjustment.errorImmutable');
+  if (text.toLowerCase().contains('stale payroll') ||
+      text.toLowerCase().contains('stale adjustment'))
+    return l.text('hr.adjustment.errorStale');
+  if (text.contains('Refund exceeds') || text.contains('overpayment'))
+    return l.text('hr.adjustment.errorRefund');
+  if (text.contains('Allocation') ||
+      text.contains('allocation') ||
+      text.contains('attributed production') ||
+      text.contains('original payroll plan'))
+    return l.text('hr.adjustment.errorAllocation');
+  if (text.contains('salary components') ||
+      text.contains('cannot be negative') ||
+      text.contains('Negative payroll'))
+    return l.text('hr.adjustment.errorNet');
+  if (text.contains('posting date') ||
+      text.contains('Future posting') ||
+      text.contains('date precedes'))
+    return l.text('hr.adjustment.errorDate');
   if (text.contains('Overtime rate')) return l.text('hr.errorOvertime');
   if (text.contains('No effective pay rate')) return l.text('hr.errorRate');
   if (text.contains('overlap')) return l.text('hr.errorOverlap');

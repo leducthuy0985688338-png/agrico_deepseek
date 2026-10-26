@@ -229,4 +229,120 @@ class PersonnelService {
       () => (r as ProductionLaborCostRepository).productionLaborCosts(s.farmId),
     );
   }
+
+  Future<List<PersonnelPlanChoice>> payrollAdjustmentPlans(
+    AuthorizationSubject s,
+    String payrollId,
+  ) {
+    authorize(s, PermissionCodes.payrollView);
+    return access.readScoped(
+      s,
+      [PermissionCodes.payrollView],
+      () => adjustmentsStore(s, [
+        PermissionCodes.payrollView,
+      ]).payrollAdjustmentPlans(s.farmId, payrollId),
+    );
+  }
+
+  PayrollAdjustmentRepository adjustmentsStore(
+    AuthorizationSubject s,
+    List<String> permissions,
+  ) {
+    final r = store(s, permissions);
+    if (r is! PayrollAdjustmentRepository)
+      throw StateError('Payroll adjustments unavailable.');
+    return r as PayrollAdjustmentRepository;
+  }
+
+  Future<List<PayrollAdjustmentRecord>> payrollAdjustments(
+    AuthorizationSubject s,
+  ) {
+    authorize(s, PermissionCodes.payrollView);
+    if (repository is! PayrollAdjustmentRepository) return Future.value([]);
+    return access.readScoped(
+      s,
+      [PermissionCodes.payrollView],
+      () => adjustmentsStore(s, [
+        PermissionCodes.payrollView,
+      ]).payrollAdjustments(s.farmId),
+    );
+  }
+
+  Future<List<PayrollRefund>> payrollRefunds(AuthorizationSubject s) {
+    authorize(s, PermissionCodes.payrollView);
+    if (repository is! PayrollAdjustmentRepository) return Future.value([]);
+    return access.readScoped(
+      s,
+      [PermissionCodes.payrollView],
+      () => adjustmentsStore(s, [
+        PermissionCodes.payrollView,
+      ]).payrollRefunds(s.farmId),
+    );
+  }
+
+  Future<void> createPayrollAdjustment(
+    AuthorizationSubject s,
+    PayrollAdjustmentDraft d,
+  ) {
+    authorize(s, PermissionCodes.payrollManage);
+    authorize(s, PermissionCodes.payrollView);
+    if (d.farmId != s.farmId) throw StateError('Wrong farm.');
+    d.validate();
+    return adjustmentsStore(s, [
+      PermissionCodes.payrollManage,
+      PermissionCodes.payrollView,
+    ]).createPayrollAdjustment(d, s.userId);
+  }
+
+  Future<void> approvePayrollAdjustment(AuthorizationSubject s, String id) {
+    authorize(s, PermissionCodes.payrollApprove);
+    authorize(s, PermissionCodes.payrollView);
+    return adjustmentsStore(s, [
+      PermissionCodes.payrollApprove,
+      PermissionCodes.payrollView,
+    ]).approvePayrollAdjustment(s.farmId, id, s.userId);
+  }
+
+  Future<void> cancelPayrollAdjustment(AuthorizationSubject s, String id) {
+    authorize(s, PermissionCodes.payrollManage);
+    authorize(s, PermissionCodes.payrollView);
+    return adjustmentsStore(s, [
+      PermissionCodes.payrollManage,
+      PermissionCodes.payrollView,
+    ]).cancelPayrollAdjustment(s.farmId, id, s.userId);
+  }
+
+  Future<void> refundPayroll(
+    AuthorizationSubject s, {
+    required String id,
+    required String payrollId,
+    required String amount,
+    required String currency,
+    required String day,
+    required String reason,
+    String? reversesId,
+  }) {
+    for (final p in [
+      PermissionCodes.payrollView,
+      PermissionCodes.payrollApprove,
+      PermissionCodes.cashRecord,
+    ]) {
+      authorize(s, p);
+    }
+    return adjustmentsStore(s, [
+      PermissionCodes.payrollView,
+      PermissionCodes.payrollApprove,
+      PermissionCodes.cashRecord,
+    ]).refundPayroll(
+      s.farmId,
+      id,
+      payrollId,
+      amount,
+      currency,
+      day,
+      reason,
+      s.userId,
+      reversesId: reversesId,
+    );
+  }
 }

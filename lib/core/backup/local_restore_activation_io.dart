@@ -163,6 +163,10 @@ class LocalRestoreActivation {
               'inventory_transfers_v1',
               'personnel_departments_v1',
               'personnel_department_sequences_v1',
+              'personnel_payroll_adjustments_v1',
+              'personnel_payroll_adjustment_costs_v1',
+              'personnel_payroll_adjustment_sequences_v1',
+              'personnel_payroll_refunds_v1',
             ]) {
               if (!tables.containsKey(table)) {
                 final installed = await tx.rawQuery(

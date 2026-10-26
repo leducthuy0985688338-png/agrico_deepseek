@@ -1,3 +1,4 @@
+import '../../personnel/data/sqlite_payroll_adjustments.dart';
 import 'dart:convert';
 import '../domain/integration_store.dart';
 import '../domain/integration_snapshot.dart';
@@ -42,6 +43,7 @@ class IntegrationRepository implements IntegrationStore {
     'production_plan_tasks_v1',
     'production_material_costs_v2',
     'farm_tasks_v2',
+    ...SqlitePayrollAdjustments.tables,
     'personnel_profiles_v1',
     'personnel_pay_rates_v1',
     'personnel_entries_v1',
@@ -188,6 +190,39 @@ class IntegrationRepository implements IntegrationStore {
     );
     if (link.length != 1)
       throw StateError('Link the original payment to cash first.');
+    final sourcePayroll = (await tx.query(
+      'personnel_payrolls_v1',
+      where: 'id=? AND farm_id=?',
+      whereArgs: [p['payroll_id'], farm],
+    )).single;
+    final refunded = SqlitePayrollAdjustments.refundTotal(
+      await SqlitePayrollAdjustments.refundRows(tx, p['payroll_id']! as String),
+    );
+    if (ExactDecimal.parse(
+      LaborMoney.minus(
+        await SqlitePayrollAdjustments.paid(
+          tx,
+          farm,
+          p['payroll_id']! as String,
+        ),
+        p['amount']! as String,
+      ),
+    ).isNegative)
+      throw StateError('Reverse dependent payroll refunds first.');
+    if ((ExactDecimal.parse(refunded).coefficient != BigInt.zero ||
+            (await SqlitePayrollAdjustments.approved(
+              tx,
+              p['payroll_id']! as String,
+            )).isNotEmpty ||
+            (await SqlitePayrollAdjustments.refundRows(
+              tx,
+              p['payroll_id']! as String,
+            )).isNotEmpty) &&
+        day.compareTo(
+              await SqlitePayrollAdjustments.latestDay(tx, sourcePayroll),
+            ) <
+            0)
+      throw StateError('Reversal precedes the corrected payroll ledger.');
     final finance = 'integrated:salary-reversal:$id';
     await IntegrationCash.write(
       tx,
@@ -529,6 +564,8 @@ class IntegrationRepository implements IntegrationStore {
     for (final link in [
       'integration_cash_links_v1',
       'integration_salary_reversals_v1',
+      if (await SqlitePayrollAdjustments.enabled(db))
+        SqlitePayrollAdjustments.refunds,
       'trade_settlements_v1',
       'trade_reversals_v1',
     ]) {

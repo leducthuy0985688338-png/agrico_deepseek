@@ -1,3 +1,4 @@
+import 'sqlite_payroll_adjustments.dart';
 import '../../../core/permissions/operation_scope.dart';
 import '../../../core/permissions/authorization.dart';
 import '../../integration/data/integration_cash.dart';
@@ -8,6 +9,7 @@ import '../domain/personnel.dart';
 class SqlitePersonnelRepository
     implements
         PersonnelRepository,
+        PayrollAdjustmentRepository,
         ProductionLaborCostRepository,
         PersonnelOrganizationRepository,
         ScopedOperationRepository<PersonnelRepository> {
@@ -120,6 +122,7 @@ class SqlitePersonnelRepository
   });
   final Database database;
   static const tables = {
+    ...SqlitePayrollAdjustments.tables,
     'personnel_departments_v1',
     'personnel_department_sequences_v1',
     'personnel_profiles_v1',
@@ -214,6 +217,7 @@ class SqlitePersonnelRepository
       '''CREATE TABLE IF NOT EXISTS personnel_payroll_sequences_v1 (
       farm_id TEXT NOT NULL,period TEXT NOT NULL,last_value INTEGER NOT NULL CHECK(last_value>0),PRIMARY KEY(farm_id,period))''',
     );
+    await SqlitePayrollAdjustments.createSchema(db);
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_personnel_entries_period ON personnel_entries_v1(farm_id,worker_id,business_day,status)',
     );
@@ -956,6 +960,7 @@ class SqlitePersonnelRepository
       whereArgs: [farmId],
     );
     return [
+      ...await _adjustments.payrollAdjustmentCosts(farmId),
       ...rows.map(
         (r) => ProductionLaborCost(
           entryId: r['entry_id']! as String,
@@ -990,6 +995,16 @@ class SqlitePersonnelRepository
       [farmId],
     );
     final payments = await IntegrationCash.activePayments(database, farmId);
+    final correctionRows = await database.query(
+      SqlitePayrollAdjustments.adjustments,
+      where: "farm_id=? AND status='approved'",
+      whereArgs: [farmId],
+    );
+    final refunds = await database.query(
+      SqlitePayrollAdjustments.refunds,
+      where: 'farm_id=?',
+      whereArgs: [farmId],
+    );
     return rows
         .map(
           (r) => PayrollRecordV2(
@@ -1008,11 +1023,27 @@ class SqlitePersonnelRepository
             advance: r['advance']! as String,
             deduction: r['deduction']! as String,
             net: r['net']! as String,
+            adjustmentTotal: LaborMoney.sum(
+              correctionRows
+                  .where((a) => a['payroll_id'] == r['id'])
+                  .map((a) => a['delta']! as String),
+            ),
+            adjustmentRevision: correctionRows
+                .where((a) => a['payroll_id'] == r['id'])
+                .length,
+            refunded: SqlitePayrollAdjustments.refundTotal(
+              refunds.where((a) => a['payroll_id'] == r['id']),
+            ),
             adjustmentPlanId: r['adjustment_plan_id'] as String?,
-            paid: LaborMoney.sum(
-              payments
-                  .where((p) => p['payroll_id'] == r['id'])
-                  .map((p) => p['amount']! as String),
+            paid: LaborMoney.minus(
+              LaborMoney.sum(
+                payments
+                    .where((p) => p['payroll_id'] == r['id'])
+                    .map((p) => p['amount']! as String),
+              ),
+              SqlitePayrollAdjustments.refundTotal(
+                refunds.where((a) => a['payroll_id'] == r['id']),
+              ),
             ),
             note: r['note']! as String,
           ),
@@ -1222,21 +1253,22 @@ class SqlitePersonnelRepository
       if (payroll.length != 1) {
         throw StateError('Approved payroll with matching currency required.');
       }
-      final previous = await IntegrationCash.activePayments(
+      final effective = await SqlitePayrollAdjustments.effectiveNet(
         tx,
-        farmId,
-        payroll: payrollId,
+        payroll.single,
       );
+      if ((await SqlitePayrollAdjustments.approved(tx, payrollId)).isNotEmpty &&
+          day.compareTo(
+                await SqlitePayrollAdjustments.latestDay(tx, payroll.single),
+              ) <
+              0)
+        throw StateError('Payment date precedes the corrected payroll ledger.');
       final paid = LaborMoney.sum([
-        ...previous.map((p) => p['amount']! as String),
+        await SqlitePayrollAdjustments.paid(tx, farmId, payrollId),
         amount,
       ]);
-      if (ExactDecimal.parse(
-            paid,
-          ).compareTo(ExactDecimal.parse(payroll.single['net']! as String)) >
-          0) {
-        throw StateError('Payment exceeds outstanding salary.');
-      }
+      if (ExactDecimal.parse(paid).compareTo(ExactDecimal.parse(effective)) > 0)
+        throw StateError('Payment exceeds outstanding corrected salary.');
       await tx.insert('personnel_payments_v1', {
         'id': id,
         'farm_id': farmId,
@@ -1321,4 +1353,60 @@ class SqlitePersonnelRepository
         )
         .toList();
   }
+
+  @override
+  Future<List<PersonnelPlanChoice>> payrollAdjustmentPlans(
+    String farmId,
+    String payrollId,
+  ) => _adjustments.payrollAdjustmentPlans(farmId, payrollId);
+  SqlitePayrollAdjustments get _adjustments =>
+      SqlitePayrollAdjustments(database, scope: scope);
+  @override
+  Future<List<PayrollAdjustmentRecord>> payrollAdjustments(String farmId) =>
+      _adjustments.payrollAdjustments(farmId);
+  @override
+  Future<void> createPayrollAdjustment(
+    PayrollAdjustmentDraft d,
+    String actor,
+  ) => _adjustments.createPayrollAdjustment(d, actor);
+  @override
+  Future<void> approvePayrollAdjustment(
+    String farmId,
+    String id,
+    String actor,
+  ) => _adjustments.approvePayrollAdjustment(farmId, id, actor);
+  @override
+  Future<void> cancelPayrollAdjustment(
+    String farmId,
+    String id,
+    String actor,
+  ) => _adjustments.cancelPayrollAdjustment(farmId, id, actor);
+  @override
+  Future<List<PayrollRefund>> payrollRefunds(String farmId) =>
+      _adjustments.payrollRefunds(farmId);
+  @override
+  Future<void> refundPayroll(
+    String farmId,
+    String id,
+    String payrollId,
+    String amount,
+    String currency,
+    String day,
+    String reason,
+    String actor, {
+    String? reversesId,
+  }) => _adjustments.refundPayroll(
+    farmId,
+    id,
+    payrollId,
+    amount,
+    currency,
+    day,
+    reason,
+    actor,
+    reversesId: reversesId,
+  );
+  @override
+  Future<List<ProductionLaborCost>> payrollAdjustmentCosts(String farmId) =>
+      _adjustments.payrollAdjustmentCosts(farmId);
 }
