@@ -49,11 +49,15 @@ class InventoryMovement {
     this.currency,
     this.pricedBy,
     this.zeroPriceConfirmed = false,
+    this.warehouseId,
+    this.transferId,
   });
 
   final String id;
   final String farmId;
   final String itemId;
+  final String? warehouseId;
+  final String? transferId;
   final InventoryMovementKind kind;
   final num quantity;
   final String? unitPriceText;
@@ -70,6 +74,8 @@ class InventoryMovement {
     id: id,
     farmId: farmId,
     itemId: itemId,
+    warehouseId: warehouseId,
+    transferId: transferId,
     kind: kind,
     quantity: quantity,
     occurredAt: occurredAt,

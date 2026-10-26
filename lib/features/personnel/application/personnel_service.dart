@@ -1,3 +1,4 @@
+import '../../../core/permissions/operation_scope.dart';
 import '../../../core/permissions/live_authorization.dart';
 import '../../../core/permissions/authorization.dart';
 import '../domain/personnel.dart';
@@ -8,61 +9,126 @@ class PersonnelService {
   final AuthorizationSubject? Function() currentSubject;
   LiveAuthorization get access => LiveAuthorization(currentSubject);
   final PersonnelRepository repository;
-  bool can(AuthorizationSubject s, String p) => access.can(s, p);
+  PersonnelRepository store(AuthorizationSubject s, List<String> permissions) {
+    final scope = OperationScope(s, access, permissions);
+    final r = repository;
+    if (r is ScopedOperationRepository<PersonnelRepository>)
+      return (r as ScopedOperationRepository<PersonnelRepository>).scoped(
+        scope,
+      );
+    if (!scope.farmWide)
+      throw StateError('Scoped personnel repository required.');
+    return r;
+  }
+
+  Future<List<PersonnelDepartment>> departments(AuthorizationSubject s) {
+    authorize(s, PermissionCodes.employeeView);
+    final r = store(s, [PermissionCodes.employeeView]);
+    if (r is! PersonnelOrganizationRepository) return Future.value([]);
+    return access.readScoped(s, [
+      PermissionCodes.employeeView,
+    ], () => (r as PersonnelOrganizationRepository).departments(s.farmId));
+  }
+
+  Future<void> createDepartment(AuthorizationSubject s, PersonnelDepartment d) {
+    access.require(s, PermissionCodes.employeeEdit);
+    return (repository as PersonnelOrganizationRepository).createDepartment(
+      s.farmId,
+      d,
+      s.userId,
+    );
+  }
+
+  PersonnelService exporting(AuthorizationSubject s) => PersonnelService(
+    store(s, [
+      PermissionCodes.employeeView,
+      PermissionCodes.payrollView,
+      PermissionCodes.reportPersonnel,
+      PermissionCodes.dataExport,
+    ]),
+    currentSubject: currentSubject,
+  );
+  bool can(AuthorizationSubject s, String p) => access.canEnter(s, p);
   void authorize(AuthorizationSubject s, String p) {
     if (!can(s, p)) throw StateError('Personnel permission denied.');
   }
 
   Future<List<EmployeeCard>> employees(AuthorizationSubject s) {
     authorize(s, PermissionCodes.employeeView);
-    final sensitive = can(s, PermissionCodes.employeeEdit);
-    return access.read(s, [
-      PermissionCodes.employeeView,
-      if (sensitive) PermissionCodes.employeeEdit,
-    ], () => repository.employees(s.farmId, sensitive: sensitive));
+    final sensitive = can(s, PermissionCodes.employeeSensitiveView);
+    return access.readScoped(
+      s,
+      [
+        PermissionCodes.employeeView,
+        if (sensitive) PermissionCodes.employeeSensitiveView,
+      ],
+      () => store(s, [
+        PermissionCodes.employeeView,
+      ]).employees(s.farmId, sensitive: sensitive),
+    );
   }
 
   Future<void> saveProfile(AuthorizationSubject s, EmployeeProfile profile) {
     authorize(s, PermissionCodes.employeeEdit);
     if (profile.farmId != s.farmId) throw StateError('Wrong farm.');
     profile.validate();
-    return repository.saveProfile(profile, s.userId);
+    if (profile.details.keys.any(EmployeeProfile.sensitiveFields.contains) &&
+        !access.can(
+          s,
+          PermissionCodes.employeeSensitiveView,
+          resource: ResourceContext(
+            farmId: s.farmId,
+            departmentId: profile.departmentId,
+          ),
+        ))
+      throw StateError('Private fields require explicit access.');
+    return store(s, [
+      PermissionCodes.employeeEdit,
+    ]).saveProfile(profile, s.userId);
   }
 
   Future<List<PayRate>> rates(AuthorizationSubject s) {
     authorize(s, PermissionCodes.payrollView);
-    return access.read(s, [
+    return access.readScoped(s, [
       PermissionCodes.payrollView,
-    ], () => repository.rates(s.farmId));
+    ], () => store(s, [PermissionCodes.payrollView]).rates(s.farmId));
   }
 
   Future<void> createRate(AuthorizationSubject s, PayRate rate) {
     authorize(s, PermissionCodes.payrollManage);
     if (rate.farmId != s.farmId) throw StateError('Wrong farm.');
     rate.validate();
-    return repository.createRate(rate, s.userId);
+    return store(s, [PermissionCodes.payrollManage]).createRate(rate, s.userId);
   }
 
   Future<List<LaborEntryRecord>> entries(AuthorizationSubject s) {
     authorize(s, PermissionCodes.employeeView);
     final money = can(s, PermissionCodes.payrollView);
-    return access.read(s, [
-      PermissionCodes.employeeView,
-      if (money) PermissionCodes.payrollView,
-    ], () => repository.entries(s.farmId, money: money));
+    return access.readScoped(
+      s,
+      [PermissionCodes.employeeView, if (money) PermissionCodes.payrollView],
+      () => store(s, [
+        PermissionCodes.employeeView,
+      ]).entries(s.farmId, money: money),
+    );
   }
 
   Future<void> createEntry(AuthorizationSubject s, LaborEntryDraft draft) {
     authorize(s, PermissionCodes.attendanceRecord);
     if (draft.farmId != s.farmId) throw StateError('Wrong farm.');
     draft.validate();
-    return repository.createEntry(draft, s.userId);
+    return store(s, [
+      PermissionCodes.attendanceRecord,
+    ]).createEntry(draft, s.userId);
   }
 
   Future<void> approveEntry(AuthorizationSubject s, LaborEntryRecord e) {
     authorize(s, PermissionCodes.attendanceVerify);
     authorize(s, PermissionCodes.payrollView);
-    return repository.approveEntry(s.farmId, e.id, e.revision, s.userId);
+    return store(s, [
+      PermissionCodes.attendanceVerify,
+      PermissionCodes.payrollView,
+    ]).approveEntry(s.farmId, e.id, e.revision, s.userId);
   }
 
   Future<void> voidEntry(
@@ -71,31 +137,37 @@ class PersonnelService {
     String reason,
   ) {
     authorize(s, PermissionCodes.attendanceVerify);
-    return repository.voidEntry(s.farmId, e.id, e.revision, reason, s.userId);
+    return store(s, [
+      PermissionCodes.attendanceVerify,
+    ]).voidEntry(s.farmId, e.id, e.revision, reason, s.userId);
   }
 
   Future<List<PayrollRecordV2>> payrolls(AuthorizationSubject s) {
     authorize(s, PermissionCodes.payrollView);
-    return access.read(s, [
+    return access.readScoped(s, [
       PermissionCodes.payrollView,
-    ], () => repository.payrolls(s.farmId));
+    ], () => store(s, [PermissionCodes.payrollView]).payrolls(s.farmId));
   }
 
   Future<void> createPayroll(AuthorizationSubject s, PayrollDraft d) {
     authorize(s, PermissionCodes.payrollManage);
     if (d.farmId != s.farmId) throw StateError('Wrong farm.');
     d.validate();
-    return repository.createPayroll(d, s.userId);
+    return store(s, [PermissionCodes.payrollManage]).createPayroll(d, s.userId);
   }
 
   Future<void> approvePayroll(AuthorizationSubject s, String id) {
     authorize(s, PermissionCodes.payrollApprove);
-    return repository.approvePayroll(s.farmId, id, s.userId);
+    return store(s, [
+      PermissionCodes.payrollApprove,
+    ]).approvePayroll(s.farmId, id, s.userId);
   }
 
   Future<void> cancelPayroll(AuthorizationSubject s, String id, String reason) {
     authorize(s, PermissionCodes.payrollManage);
-    return repository.cancelPayroll(s.farmId, id, reason, s.userId);
+    return store(s, [
+      PermissionCodes.payrollManage,
+    ]).cancelPayroll(s.farmId, id, reason, s.userId);
   }
 
   Future<void> recordPayment(
@@ -109,7 +181,10 @@ class PersonnelService {
   }) {
     authorize(s, PermissionCodes.payrollApprove);
     authorize(s, PermissionCodes.cashRecord);
-    return repository.recordPayment(
+    return store(s, [
+      PermissionCodes.payrollApprove,
+      PermissionCodes.cashRecord,
+    ]).recordPayment(
       s.farmId,
       id,
       payrollId,
@@ -123,32 +198,32 @@ class PersonnelService {
 
   Future<List<PersonnelPlanChoice>> planChoices(AuthorizationSubject s) {
     authorize(s, PermissionCodes.employeeView);
-    return access.read(s, [
+    return access.readScoped(s, [
       PermissionCodes.employeeView,
-    ], () => repository.planChoices(s.farmId));
+    ], () => store(s, [PermissionCodes.employeeView]).planChoices(s.farmId));
   }
 
   Future<List<PersonnelTaskChoice>> taskChoices(AuthorizationSubject s) {
     authorize(s, PermissionCodes.employeeView);
-    return access.read(s, [
+    return access.readScoped(s, [
       PermissionCodes.employeeView,
-    ], () => repository.taskChoices(s.farmId));
+    ], () => store(s, [PermissionCodes.employeeView]).taskChoices(s.farmId));
   }
 
   Future<List<SalaryPayment>> payments(AuthorizationSubject s) {
     authorize(s, PermissionCodes.payrollView);
-    return access.read(s, [
+    return access.readScoped(s, [
       PermissionCodes.payrollView,
-    ], () => repository.payments(s.farmId));
+    ], () => store(s, [PermissionCodes.payrollView]).payments(s.farmId));
   }
 
   Future<List<ProductionLaborCost>> laborCosts(AuthorizationSubject s) {
     authorize(s, PermissionCodes.payrollView);
-    final r = repository;
+    final r = store(s, [PermissionCodes.payrollView]);
     if (r is! ProductionLaborCostRepository) {
       throw StateError('Labor projection unavailable.');
     }
-    return access.read(
+    return access.readScoped(
       s,
       [PermissionCodes.payrollView],
       () => (r as ProductionLaborCostRepository).productionLaborCosts(s.farmId),

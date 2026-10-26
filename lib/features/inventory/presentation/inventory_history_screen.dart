@@ -15,8 +15,10 @@ class InventoryHistoryScreen extends StatefulWidget {
     required this.subject,
     required this.service,
     this.saveReport,
+    this.warehouseId,
   });
   final AuthorizationSubject subject;
+  final String? warehouseId;
   final InventoryService service;
   final Future<void> Function(Excel, String)? saveReport;
 
@@ -42,17 +44,31 @@ class _InventoryHistoryScreenState extends State<InventoryHistoryScreen> {
     if (exporting) return;
     setState(() => exporting = true);
     try {
-      widget.service.exportPermission(widget.subject);
-      final workbook = report.workbook(
-        query: search.text,
-        itemId: itemFilter == 'all' ? null : itemFilter,
-        kind: kindFilter == 'all'
-            ? null
-            : InventoryMovementKind.values.byName(kindFilter),
-        from: period?.start,
-        to: period?.end,
+      widget.service.exportPermission(
+        widget.subject,
+        warehouseId: widget.warehouseId,
       );
-      widget.service.exportPermission(widget.subject);
+      final stamp = widget.service.access.stamp(widget.subject);
+      final (items, movements) = await load();
+      widget.service.access.requireStamp(widget.subject, stamp);
+      final workbook =
+          InventoryReport(
+            items: items,
+            movements: movements,
+            warehouseId: widget.warehouseId,
+          ).workbook(
+            query: search.text,
+            itemId: itemFilter == 'all' ? null : itemFilter,
+            kind: kindFilter == 'all'
+                ? null
+                : InventoryMovementKind.values.byName(kindFilter),
+            from: period?.start,
+            to: period?.end,
+          );
+      widget.service.exportPermission(
+        widget.subject,
+        warehouseId: widget.warehouseId,
+      );
       await (widget.saveReport ?? saveExcelFile)(
         workbook,
         'AGRICO-Inventory-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}.xlsx',
@@ -73,13 +89,21 @@ class _InventoryHistoryScreenState extends State<InventoryHistoryScreen> {
   }
 
   Future<(List<InventoryItem>, List<InventoryMovement>)> load() async {
-    final items = await widget.service.list(widget.subject);
-    final movements = await widget.service.movements(widget.subject);
+    final stamp = widget.service.access.stamp(widget.subject);
+    final items = await widget.service.list(
+      widget.subject,
+      warehouseId: widget.warehouseId,
+    );
+    final movements = await widget.service.movements(
+      widget.subject,
+      warehouseId: widget.warehouseId,
+    );
     final sorted = [...movements]
       ..sort((a, b) {
         final date = b.occurredAt.compareTo(a.occurredAt);
         return date != 0 ? date : b.id.compareTo(a.id);
       });
+    widget.service.access.requireStamp(widget.subject, stamp);
     return (items, sorted);
   }
 
@@ -120,7 +144,11 @@ class _InventoryHistoryScreenState extends State<InventoryHistoryScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           final (items, movements) = snapshot.data!;
-          final report = InventoryReport(items: items, movements: movements);
+          final report = InventoryReport(
+            items: items,
+            movements: movements,
+            warehouseId: widget.warehouseId,
+          );
           final filtered = report.filter(
             query: search.text,
             itemId: itemFilter == 'all' ? null : itemFilter,
@@ -217,18 +245,19 @@ class _InventoryHistoryScreenState extends State<InventoryHistoryScreen> {
                     }),
                     child: Text(l10n.text('inventory.clearFilters')),
                   ),
-                  if (widget.service.can(
-                        widget.subject,
-                        PermissionCodes.inventoryView,
-                      ) &&
-                      widget.service.can(
-                        widget.subject,
-                        PermissionCodes.reportOperations,
-                      ) &&
-                      widget.service.can(
-                        widget.subject,
-                        PermissionCodes.dataExport,
-                      ))
+                  if ([
+                    PermissionCodes.inventoryView,
+                    PermissionCodes.reportOperations,
+                    PermissionCodes.dataExport,
+                  ].every(
+                    (p) => widget.warehouseId == null
+                        ? widget.service.can(widget.subject, p)
+                        : widget.service.canAtWarehouse(
+                            widget.subject,
+                            p,
+                            widget.warehouseId!,
+                          ),
+                  ))
                     TextButton(
                       key: const Key('inventory-history-export'),
                       onPressed: exporting ? null : () => export(report),

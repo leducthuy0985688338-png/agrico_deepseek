@@ -171,6 +171,7 @@ abstract final class CompanyRolePolicy {
       CompanyRole.hrOfficer => const {
         PermissionCodes.employeeView,
         PermissionCodes.employeeEdit,
+        PermissionCodes.employeeSensitiveView,
         PermissionCodes.attendanceRecord,
         PermissionCodes.attendanceVerify,
         PermissionCodes.reportPersonnel,

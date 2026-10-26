@@ -1,13 +1,127 @@
+import '../../../core/permissions/operation_scope.dart';
+import '../../../core/permissions/authorization.dart';
 import '../../integration/data/integration_cash.dart';
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import '../domain/personnel.dart';
 
 class SqlitePersonnelRepository
-    implements PersonnelRepository, ProductionLaborCostRepository {
-  const SqlitePersonnelRepository(this.database);
+    implements
+        PersonnelRepository,
+        ProductionLaborCostRepository,
+        PersonnelOrganizationRepository,
+        ScopedOperationRepository<PersonnelRepository> {
+  const SqlitePersonnelRepository(this.database, {this.scope});
+  final OperationScope? scope;
+  @override
+  PersonnelRepository scoped(OperationScope scope) => SqlitePersonnelRepository(
+    database,
+    scope: this.scope == null
+        ? scope
+        : OperationScope(
+            scope.opened,
+            scope.live,
+            {...this.scope!.permissions, ...scope.permissions}.toList(),
+          ),
+  );
+  String visible(String worker) {
+    if (scope == null || scope!.farmWide) return '1';
+    return '$worker IN (SELECT worker_id FROM personnel_profiles_v1 WHERE farm_id=${OperationScope.quote(scope!.subject.farmId)} AND ${scope!.sql(department: 'department_id')})';
+  }
+
+  bool permitted(String permission, String farm, String? department) =>
+      scope == null ||
+      scope!.live.can(
+        scope!.opened,
+        permission,
+        resource: ResourceContext(farmId: farm, departmentId: department),
+      );
+  Future<void> checkWorker(
+    DatabaseExecutor tx,
+    String farm,
+    String worker,
+  ) async {
+    if (scope == null) return;
+    final rows = await tx.query(
+      'personnel_profiles_v1',
+      columns: ['department_id'],
+      where: 'farm_id=? AND worker_id=?',
+      whereArgs: [farm, worker],
+    );
+    scope!.require(
+      ResourceContext(
+        farmId: farm,
+        departmentId: rows.isEmpty
+            ? null
+            : rows.single['department_id'] as String?,
+      ),
+    );
+  }
+
+  Future<void> checkRecord(
+    DatabaseExecutor tx,
+    String farm,
+    String table,
+    String id,
+  ) async {
+    final rows = await tx.query(
+      table,
+      columns: ['worker_id'],
+      where: 'farm_id=? AND id=?',
+      whereArgs: [farm, id],
+    );
+    if (rows.length != 1) throw StateError('Record not found.');
+    await checkWorker(tx, farm, rows.single['worker_id']! as String);
+  }
+
+  @override
+  Future<List<PersonnelDepartment>> departments(String farmId) async =>
+      (await database.query(
+            'personnel_departments_v1',
+            where: 'farm_id=? AND ${scope?.sql(department: 'id') ?? '1'}',
+            whereArgs: [farmId],
+            orderBy: 'name,id',
+          ))
+          .map(
+            (r) => PersonnelDepartment(
+              r['id']! as String,
+              r['name']! as String,
+              code: r['code']! as String,
+            ),
+          )
+          .toList();
+  @override
+  Future<void> createDepartment(
+    String farmId,
+    PersonnelDepartment d,
+    String actorId,
+  ) => database.transaction((tx) async {
+    if (d.id.trim().isEmpty || d.name.trim().isEmpty || d.name.length > 200)
+      throw const FormatException('Invalid department.');
+    final previous = await tx.query(
+      'personnel_department_sequences_v1',
+      where: 'farm_id=?',
+      whereArgs: [farmId],
+    );
+    final next = previous.isEmpty
+        ? 1
+        : (previous.single['last_value']! as int) + 1;
+    await tx.insert('personnel_department_sequences_v1', {
+      'farm_id': farmId,
+      'last_value': next,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await tx.insert('personnel_departments_v1', {
+      'id': d.id,
+      'farm_id': farmId,
+      'name': d.name.trim(),
+      'code': 'BP-${next.toString().padLeft(3, '0')}',
+    });
+    await _audit(tx, farmId, d.id, 'department.create', actorId);
+  });
   final Database database;
   static const tables = {
+    'personnel_departments_v1',
+    'personnel_department_sequences_v1',
     'personnel_profiles_v1',
     'personnel_pay_rates_v1',
     'personnel_entries_v1',
@@ -20,10 +134,23 @@ class SqlitePersonnelRepository
   };
   static Future<void> createSchema(DatabaseExecutor db) async {
     await db.execute(
+      'CREATE TABLE IF NOT EXISTS personnel_departments_v1(id TEXT PRIMARY KEY,farm_id TEXT NOT NULL,code TEXT NOT NULL,name TEXT NOT NULL,UNIQUE(farm_id,name),UNIQUE(farm_id,code))',
+    );
+    await db.execute(
+      'CREATE TABLE IF NOT EXISTS personnel_department_sequences_v1(farm_id TEXT PRIMARY KEY,last_value INTEGER NOT NULL CHECK(last_value>0))',
+    );
+    await db.execute(
       '''CREATE TABLE IF NOT EXISTS personnel_profiles_v1 (
       worker_id TEXT PRIMARY KEY REFERENCES company_catalog_entries_v1(id) ON DELETE RESTRICT,
       farm_id TEXT NOT NULL, profile_json TEXT NOT NULL, revision INTEGER NOT NULL CHECK(revision>=0))''',
     );
+    final profileColumns = await db.rawQuery(
+      'PRAGMA table_info(personnel_profiles_v1)',
+    );
+    if (!profileColumns.any((c) => c['name'] == 'department_id'))
+      await db.execute(
+        'ALTER TABLE personnel_profiles_v1 ADD COLUMN department_id TEXT REFERENCES personnel_departments_v1(id)',
+      );
     await db.execute(
       '''CREATE TABLE IF NOT EXISTS personnel_pay_rates_v1 (
       id TEXT PRIMARY KEY, farm_id TEXT NOT NULL, worker_id TEXT NOT NULL REFERENCES company_catalog_entries_v1(id),
@@ -168,8 +295,8 @@ class SqlitePersonnelRepository
     required bool sensitive,
   }) async {
     final rows = await database.rawQuery(
-      "SELECT c.*, p.profile_json, p.revision AS profile_revision FROM company_catalog_entries_v1 c "
-      "LEFT JOIN personnel_profiles_v1 p ON p.worker_id=c.id AND p.farm_id=c.farm_id WHERE c.farm_id=? AND c.kind='worker' ORDER BY c.code",
+      "SELECT c.*, p.profile_json, p.department_id, p.revision AS profile_revision FROM company_catalog_entries_v1 c "
+      "LEFT JOIN personnel_profiles_v1 p ON p.worker_id=c.id AND p.farm_id=c.farm_id WHERE c.farm_id=? AND c.kind='worker' AND ${visible('c.id')} ORDER BY c.code",
       [farmId],
     );
     return rows
@@ -179,13 +306,14 @@ class SqlitePersonnelRepository
               : Map<String, String>.from(
                   jsonDecode(r['profile_json']! as String) as Map,
                 );
-          if (!sensitive && details != null) {
-            for (final k in [
-              'identityNo',
-              'birthOn',
-              'bankName',
-              'bankAccount',
-            ]) {
+          if ((!sensitive ||
+                  !permitted(
+                    PermissionCodes.employeeSensitiveView,
+                    farmId,
+                    r['department_id'] as String?,
+                  )) &&
+              details != null) {
+            for (final k in EmployeeProfile.sensitiveFields) {
               details.remove(k);
             }
           }
@@ -200,6 +328,7 @@ class SqlitePersonnelRepository
                     workerId: r['id']! as String,
                     farmId: farmId,
                     details: details,
+                    departmentId: r['department_id'] as String?,
                     revision: r['profile_revision']! as int,
                   ),
           );
@@ -211,29 +340,74 @@ class SqlitePersonnelRepository
   Future<void> saveProfile(EmployeeProfile p, String actorId) async {
     p.validate();
     await database.transaction((tx) async {
+      final stamp = scope?.live.stamp(scope!.opened);
       await _worker(tx, p.farmId, p.workerId, active: false);
+      await checkWorker(tx, p.farmId, p.workerId);
       final rows = await tx.query(
         'personnel_profiles_v1',
         where: 'worker_id=? AND farm_id=?',
         whereArgs: [p.workerId, p.farmId],
       );
+      String? departmentName;
+      if (p.departmentId != null) {
+        final d = await tx.query(
+          'personnel_departments_v1',
+          where: 'id=? AND farm_id=?',
+          whereArgs: [p.departmentId, p.farmId],
+        );
+        if (d.length != 1) throw StateError('Department outside farm.');
+        departmentName = d.single['name']! as String;
+      }
+      final oldDepartment = rows.isEmpty ? null : rows.single['department_id'];
+      if (p.departmentId != oldDepartment && scope != null && !scope!.farmWide)
+        throw StateError('Only farm-wide editors can reassign departments.');
+      final privateAccess =
+          scope == null ||
+          scope!.live.can(
+            scope!.opened,
+            PermissionCodes.employeeSensitiveView,
+            resource: ResourceContext(
+              farmId: p.farmId,
+              departmentId: oldDepartment as String?,
+            ),
+          );
+      final values = Map<String, String>.from(p.details);
+      if (departmentName != null) values['department'] = departmentName;
+      if (!privateAccess) {
+        if (values.keys.any(EmployeeProfile.sensitiveFields.contains))
+          throw StateError('Private fields require explicit access.');
+        if (rows.isNotEmpty) {
+          final old = Map<String, String>.from(
+            jsonDecode(rows.single['profile_json']! as String) as Map,
+          );
+          for (final key in EmployeeProfile.sensitiveFields) {
+            if (old.containsKey(key)) values[key] = old[key]!;
+          }
+        }
+      }
       if (rows.isEmpty) {
         if (p.revision != 0) throw StateError('Stale profile.');
         await tx.insert('personnel_profiles_v1', {
           'worker_id': p.workerId,
           'farm_id': p.farmId,
-          'profile_json': jsonEncode(p.details),
+          'profile_json': jsonEncode(values),
+          'department_id': p.departmentId,
           'revision': 1,
         });
       } else {
         final n = await tx.update(
           'personnel_profiles_v1',
-          {'profile_json': jsonEncode(p.details), 'revision': p.revision + 1},
+          {
+            'profile_json': jsonEncode(values),
+            'department_id': p.departmentId,
+            'revision': p.revision + 1,
+          },
           where: 'worker_id=? AND farm_id=? AND revision=?',
           whereArgs: [p.workerId, p.farmId, p.revision],
         );
         if (n != 1) throw StateError('Stale profile.');
       }
+      if (stamp != null) scope!.live.requireStamp(scope!.opened, stamp);
       await _audit(tx, p.farmId, p.workerId, 'profile.save', actorId);
     });
   }
@@ -257,7 +431,7 @@ class SqlitePersonnelRepository
   @override
   Future<List<PayRate>> rates(String farmId) async => (await database.query(
     'personnel_pay_rates_v1',
-    where: 'farm_id=?',
+    where: 'farm_id=? AND ${visible('worker_id')}',
     whereArgs: [farmId],
     orderBy: 'worker_id,effective_on DESC,revision DESC',
   )).map(rateFromRow).toList(growable: false);
@@ -265,6 +439,8 @@ class SqlitePersonnelRepository
   Future<void> createRate(PayRate r, String actorId) async {
     r.validate();
     await database.transaction((tx) async {
+      final stamp = scope?.live.stamp(scope!.opened);
+      await checkWorker(tx, r.farmId, r.workerId);
       await _worker(tx, r.farmId, r.workerId);
       await _workType(tx, r.farmId, r.workTypeId);
       if (r.basis == PayBasis.piece) await _unit(tx, r.farmId, r.pieceUnit);
@@ -306,6 +482,7 @@ class SqlitePersonnelRepository
         'work_type_id': r.workTypeId,
         'revision': revision,
       });
+      if (stamp != null) scope!.live.requireStamp(scope!.opened, stamp);
       await _audit(tx, r.farmId, r.id, 'rate.create', actorId);
     });
   }
@@ -316,10 +493,10 @@ class SqlitePersonnelRepository
     required bool money,
   }) async {
     final rows = await database.rawQuery(
-      'SELECT e.*,c.name,r.piece_unit,r.standard_minutes,t.name AS work_type_name FROM personnel_entries_v1 e '
+      'SELECT e.*,(SELECT department_id FROM personnel_profiles_v1 WHERE worker_id=e.worker_id) AS department_id,c.name,r.piece_unit,r.standard_minutes,t.name AS work_type_name FROM personnel_entries_v1 e '
       'JOIN company_catalog_entries_v1 c ON c.id=e.worker_id AND c.farm_id=e.farm_id LEFT JOIN personnel_pay_rates_v1 r ON r.id=e.rate_id '
       "LEFT JOIN company_catalog_entries_v1 t ON t.id=e.work_type_id AND t.farm_id=e.farm_id AND t.kind='taskType' "
-      'WHERE e.farm_id=? ORDER BY e.business_day DESC,e.starts_at,e.id',
+      'WHERE e.farm_id=? AND ${visible('e.worker_id')} ORDER BY e.business_day DESC,e.starts_at,e.id',
       [farmId],
     );
     final labels = await database.rawQuery(
@@ -342,11 +519,51 @@ class SqlitePersonnelRepository
             revision: r['revision']! as int,
             pieceQuantity: r['piece_quantity'] as String?,
             pieceUnit: r['piece_unit'] as String?,
-            currency: money ? r['currency'] as String? : null,
-            regularAmount: money ? r['regular_amount'] as String? : null,
-            overtimeAmount: money ? r['overtime_amount'] as String? : null,
-            pieceAmount: money ? r['piece_amount'] as String? : null,
-            rateId: money ? r['rate_id'] as String? : null,
+            currency:
+                money &&
+                    permitted(
+                      PermissionCodes.payrollView,
+                      farmId,
+                      r['department_id'] as String?,
+                    )
+                ? r['currency'] as String?
+                : null,
+            regularAmount:
+                money &&
+                    permitted(
+                      PermissionCodes.payrollView,
+                      farmId,
+                      r['department_id'] as String?,
+                    )
+                ? r['regular_amount'] as String?
+                : null,
+            overtimeAmount:
+                money &&
+                    permitted(
+                      PermissionCodes.payrollView,
+                      farmId,
+                      r['department_id'] as String?,
+                    )
+                ? r['overtime_amount'] as String?
+                : null,
+            pieceAmount:
+                money &&
+                    permitted(
+                      PermissionCodes.payrollView,
+                      farmId,
+                      r['department_id'] as String?,
+                    )
+                ? r['piece_amount'] as String?
+                : null,
+            rateId:
+                money &&
+                    permitted(
+                      PermissionCodes.payrollView,
+                      farmId,
+                      r['department_id'] as String?,
+                    )
+                ? r['rate_id'] as String?
+                : null,
             standardMinutes: r['standard_minutes'] as int?,
             machineId: r['machine_id'] as String?,
             outputQuantity: r['output_quantity'] as String?,
@@ -399,6 +616,8 @@ class SqlitePersonnelRepository
   Future<void> createEntry(LaborEntryDraft d, String actorId) async {
     d.validate();
     await database.transaction((tx) async {
+      final stamp = scope?.live.stamp(scope!.opened);
+      await checkWorker(tx, d.farmId, d.workerId);
       await _worker(tx, d.farmId, d.workerId);
       await _workType(tx, d.farmId, d.workTypeId);
       await _unit(tx, d.farmId, d.requestedPieceUnit);
@@ -463,6 +682,7 @@ class SqlitePersonnelRepository
           'overtime_minutes': a.overtimeMinutes,
         });
       }
+      if (stamp != null) scope!.live.requireStamp(scope!.opened, stamp);
       await _audit(tx, d.farmId, d.id, 'entry.create', actorId);
     });
   }
@@ -547,6 +767,7 @@ class SqlitePersonnelRepository
     String actorId,
   ) async {
     await database.transaction((tx) async {
+      final stamp = scope?.live.stamp(scope!.opened);
       final rows = await tx.query(
         'personnel_entries_v1',
         where: "id=? AND farm_id=? AND status='draft' AND revision=?",
@@ -554,6 +775,7 @@ class SqlitePersonnelRepository
       );
       if (rows.length != 1) throw StateError('Stale or non-draft attendance.');
       final e = rows.single;
+      await checkWorker(tx, farmId, e['worker_id']! as String);
       await _worker(tx, farmId, e['worker_id']! as String);
       final machineTable = await tx.rawQuery(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='machine_runs_v1'",
@@ -678,6 +900,7 @@ class SqlitePersonnelRepository
         where: 'id=? AND farm_id=? AND revision=?',
         whereArgs: [id, farmId, revision],
       );
+      if (stamp != null) scope!.live.requireStamp(scope!.opened, stamp);
       await _audit(tx, farmId, id, 'entry.approve', actorId);
     });
   }
@@ -694,6 +917,8 @@ class SqlitePersonnelRepository
       throw const FormatException('Void reason required.');
     }
     await database.transaction((tx) async {
+      final stamp = scope?.live.stamp(scope!.opened);
+      await checkRecord(tx, farmId, 'personnel_entries_v1', id);
       if ((await tx.query(
         'personnel_payroll_lines_v1',
         where: 'entry_id=? AND active=1',
@@ -709,6 +934,7 @@ class SqlitePersonnelRepository
         whereArgs: [id, farmId, revision],
       );
       if (n != 1) throw StateError('Stale entry.');
+      if (stamp != null) scope!.live.requireStamp(scope!.opened, stamp);
       await _audit(tx, farmId, id, 'entry.void', actorId, reason);
     });
   }
@@ -720,13 +946,13 @@ class SqlitePersonnelRepository
     );
     if (exists.isEmpty) return [];
     final rows = await database.rawQuery(
-      "SELECT c.*,e.business_day FROM production_labor_costs_v1 c JOIN personnel_entries_v1 e ON e.id=c.entry_id AND e.farm_id=c.farm_id WHERE c.farm_id=? AND e.status='approved' ORDER BY e.business_day,c.entry_id,c.plan_id",
+      "SELECT c.*,e.business_day FROM production_labor_costs_v1 c JOIN personnel_entries_v1 e ON e.id=c.entry_id AND e.farm_id=c.farm_id WHERE c.farm_id=? AND e.status='approved' AND ${visible('e.worker_id')} ORDER BY e.business_day,c.entry_id,c.plan_id",
       [farmId],
     );
     final extras = await database.query(
       'personnel_payrolls_v1',
       where:
-          "farm_id=? AND status='approved' AND adjustment_plan_id IS NOT NULL",
+          "farm_id=? AND status='approved' AND adjustment_plan_id IS NOT NULL AND ${visible('worker_id')}",
       whereArgs: [farmId],
     );
     return [
@@ -760,7 +986,7 @@ class SqlitePersonnelRepository
   @override
   Future<List<PayrollRecordV2>> payrolls(String farmId) async {
     final rows = await database.rawQuery(
-      'SELECT p.*,c.name FROM personnel_payrolls_v1 p JOIN company_catalog_entries_v1 c ON c.id=p.worker_id AND c.farm_id=p.farm_id WHERE p.farm_id=? ORDER BY p.period DESC,p.code',
+      'SELECT p.*,c.name FROM personnel_payrolls_v1 p JOIN company_catalog_entries_v1 c ON c.id=p.worker_id AND c.farm_id=p.farm_id WHERE p.farm_id=? AND ${visible('p.worker_id')} ORDER BY p.period DESC,p.code',
       [farmId],
     );
     final payments = await IntegrationCash.activePayments(database, farmId);
@@ -798,6 +1024,8 @@ class SqlitePersonnelRepository
   Future<void> createPayroll(PayrollDraft d, String actorId) async {
     d.validate();
     await database.transaction((tx) async {
+      final stamp = scope?.live.stamp(scope!.opened);
+      await checkWorker(tx, d.farmId, d.workerId);
       await _worker(tx, d.farmId, d.workerId, active: false);
       final sources = await tx.rawQuery(
         "SELECT e.* FROM personnel_entries_v1 e WHERE e.farm_id=? AND e.worker_id=? AND substr(e.business_day,1,7)=? AND e.currency=? AND e.status='approved' AND NOT EXISTS(SELECT 1 FROM personnel_payroll_lines_v1 l WHERE l.entry_id=e.id AND l.active=1) ORDER BY e.business_day,e.id",
@@ -879,6 +1107,7 @@ class SqlitePersonnelRepository
           'active': 1,
         });
       }
+      if (stamp != null) scope!.live.requireStamp(scope!.opened, stamp);
       await _audit(tx, d.farmId, d.id, 'payroll.create', actorId, d.note);
     });
   }
@@ -886,6 +1115,7 @@ class SqlitePersonnelRepository
   @override
   Future<void> approvePayroll(String farmId, String id, String actorId) async {
     await database.transaction((tx) async {
+      final stamp = scope?.live.stamp(scope!.opened);
       final rows = await tx.query(
         'personnel_payrolls_v1',
         where: "id=? AND farm_id=? AND status='draft'",
@@ -893,6 +1123,7 @@ class SqlitePersonnelRepository
       );
       if (rows.length != 1) throw StateError('Payroll draft required.');
       final p = rows.single;
+      await checkWorker(tx, farmId, p['worker_id']! as String);
       if (p['adjustment_plan_id'] != null) {
         await _destination(
           tx,
@@ -909,6 +1140,7 @@ class SqlitePersonnelRepository
         whereArgs: [id, farmId],
       );
       if (n != 1) throw StateError('Payroll must be a draft in this farm.');
+      if (stamp != null) scope!.live.requireStamp(scope!.opened, stamp);
       await _audit(tx, farmId, id, 'payroll.approve', actorId);
     });
   }
@@ -924,6 +1156,8 @@ class SqlitePersonnelRepository
       throw const FormatException('Cancellation reason required.');
     }
     await database.transaction((tx) async {
+      final stamp = scope?.live.stamp(scope!.opened);
+      await checkRecord(tx, farmId, 'personnel_payrolls_v1', id);
       final n = await tx.update(
         'personnel_payrolls_v1',
         {'status': 'cancelled'},
@@ -937,6 +1171,7 @@ class SqlitePersonnelRepository
         where: 'payroll_id=?',
         whereArgs: [id],
       );
+      if (stamp != null) scope!.live.requireStamp(scope!.opened, stamp);
       await _audit(tx, farmId, id, 'payroll.cancel', actorId, reason);
     });
   }
@@ -960,6 +1195,8 @@ class SqlitePersonnelRepository
       throw const FormatException('Payment and reference required.');
     }
     await database.transaction((tx) async {
+      final stamp = scope?.live.stamp(scope!.opened);
+      await checkRecord(tx, farmId, 'personnel_payrolls_v1', payrollId);
       final prior = await tx.query(
         'personnel_payments_v1',
         where: 'id=?',
@@ -1018,6 +1255,7 @@ class SqlitePersonnelRepository
         'business_day': day,
         'note': note,
       }, actorId);
+      if (stamp != null) scope!.live.requireStamp(scope!.opened, stamp);
       await _audit(tx, farmId, id, 'payroll.payment', actorId, note);
     });
   }
@@ -1025,7 +1263,7 @@ class SqlitePersonnelRepository
   @override
   Future<List<PersonnelPlanChoice>> planChoices(String farmId) async {
     final rows = await database.rawQuery(
-      "SELECT p.id,p.code,p.name,p.currency,p.starts_on,p.ends_on FROM production_plans_v1 p JOIN production_seasons_v2 s ON s.id=p.season_id AND s.farm_id=p.farm_id JOIN land_parcels l ON l.id=p.parcel_id AND l.farm_id=p.farm_id WHERE p.farm_id=? AND p.status='active' AND s.active=1 AND l.active=1 ORDER BY p.code",
+      "SELECT p.id,p.code,p.name,p.currency,p.starts_on,p.ends_on FROM production_plans_v1 p JOIN production_seasons_v2 s ON s.id=p.season_id AND s.farm_id=p.farm_id JOIN land_parcels l ON l.id=p.parcel_id AND l.farm_id=p.farm_id WHERE p.farm_id=? AND p.status='active' AND s.active=1 AND l.active=1 AND ${scope == null || scope!.farmWide ? '1' : "p.id IN (SELECT plan_id FROM production_labor_costs_v1 WHERE entry_id IN (SELECT id FROM personnel_entries_v1 WHERE ${visible('worker_id')}) UNION SELECT t.plan_id FROM production_plan_tasks_v1 t JOIN farm_tasks_v2 f ON f.id=t.id AND f.farm_id=t.farm_id WHERE ${visible('f.worker_resource_id')})"} ORDER BY p.code",
       [farmId],
     );
     return rows
@@ -1044,7 +1282,7 @@ class SqlitePersonnelRepository
   @override
   Future<List<PersonnelTaskChoice>> taskChoices(String farmId) async {
     final rows = await database.rawQuery(
-      'SELECT t.id,t.plan_id,f.title,f.worker_resource_id FROM production_plan_tasks_v1 t JOIN farm_tasks_v2 f ON f.id=t.id AND f.farm_id=t.farm_id WHERE t.farm_id=? ORDER BY f.due_at,t.id',
+      'SELECT t.id,t.plan_id,f.title,f.worker_resource_id FROM production_plan_tasks_v1 t JOIN farm_tasks_v2 f ON f.id=t.id AND f.farm_id=t.farm_id WHERE t.farm_id=? AND ${visible('f.worker_resource_id')} ORDER BY f.due_at,t.id',
       [farmId],
     );
     return rows
@@ -1064,7 +1302,8 @@ class SqlitePersonnelRepository
     final reversed = await IntegrationCash.reversed(database);
     final rows = await database.query(
       'personnel_payments_v1',
-      where: 'farm_id=?',
+      where:
+          'farm_id=? AND payroll_id IN (SELECT id FROM personnel_payrolls_v1 WHERE ${visible('worker_id')})',
       whereArgs: [farmId],
       orderBy: 'business_day,id',
     );

@@ -154,6 +154,25 @@ class LocalRestoreActivation {
             data[entry.key]!['tables'] as Map<String, dynamic>,
           );
           if (entry.key == 'agrico.db') {
+            // An accepted older empty snapshot must not retain newer scope
+            // assignments or warehouse balances from the current database.
+            for (final table in [
+              'inventory_warehouses_v1',
+              'inventory_warehouse_sequences_v1',
+              'inventory_warehouse_stock_v1',
+              'inventory_transfers_v1',
+              'personnel_departments_v1',
+              'personnel_department_sequences_v1',
+            ]) {
+              if (!tables.containsKey(table)) {
+                final installed = await tx.rawQuery(
+                  "SELECT name FROM main.sqlite_master WHERE type='table' AND name=?",
+                  [table],
+                );
+                if (installed.isNotEmpty) tables[table] = <dynamic>[];
+              }
+            }
+
             if (!tables.containsKey('farm_task_work_links_v1')) {
               final links = await tx.rawQuery(
                 "SELECT name FROM main.sqlite_master WHERE type='table' "

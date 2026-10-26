@@ -1,3 +1,4 @@
+import '../domain/repositories/warehouse_repository.dart';
 import '../domain/repositories/production_planning_repository.dart';
 import '../domain/entities/exact_decimal.dart';
 
@@ -35,21 +36,166 @@ class InventoryCatalogScreen extends StatefulWidget {
 
 class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
   late Future<List<InventoryItem>> items;
+  String? selectedWarehouse;
+  List<InventoryWarehouse> warehouseOptions = [];
+  Future<List<InventoryItem>> loadItems() async {
+    final stamp = widget.service.access.stamp(widget.subject);
+    warehouseOptions = await widget.service.warehouses(widget.subject);
+    if (warehouseOptions.isNotEmpty &&
+        !warehouseOptions.any((w) => w.id == selectedWarehouse))
+      selectedWarehouse = warehouseOptions.first.id;
+    final rows = await widget.service.list(
+      widget.subject,
+      warehouseId: selectedWarehouse,
+    );
+    widget.service.access.requireStamp(widget.subject, stamp);
+    if (mounted) setState(() {});
+    return rows;
+  }
+
+  bool allowed(String p) => selectedWarehouse == null
+      ? widget.service.can(widget.subject, p)
+      : widget.service.canAtWarehouse(widget.subject, p, selectedWarehouse!);
+  Future<void> createWarehouse() async {
+    final name = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(AppLocalizations.of(c).text('warehouse.create')),
+        content: TextField(controller: name),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c),
+            child: Text(AppLocalizations.of(c).text('common.cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(c, name.text.trim()),
+            child: Text(AppLocalizations.of(c).text('common.save')),
+          ),
+        ],
+      ),
+    );
+    name.dispose();
+    if (result == null || result.isEmpty) return;
+    try {
+      await widget.service.createWarehouse(
+        widget.subject,
+        'warehouse-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}',
+        result,
+      );
+      if (mounted) reload();
+    } catch (_) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(context).text('inventory.movementFailed'),
+            ),
+          ),
+        );
+    }
+  }
+
+  Future<void> transfer(InventoryItem item) async {
+    final source = selectedWarehouse;
+    if (source == null) return;
+    final destinations = warehouseOptions
+        .where(
+          (w) =>
+              w.active &&
+              w.id != source &&
+              widget.service.canAtWarehouse(
+                widget.subject,
+                PermissionCodes.inventoryTransfer,
+                w.id,
+              ) &&
+              widget.service.canAtWarehouse(
+                widget.subject,
+                PermissionCodes.inventoryView,
+                w.id,
+              ),
+        )
+        .toList();
+    if (destinations.isEmpty) return;
+    String destination = destinations.first.id;
+    final quantity = TextEditingController();
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(AppLocalizations.of(c).text('warehouse.transfer')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DropdownButtonFormField<String>(
+              initialValue: destination,
+              items: [
+                for (final w in destinations)
+                  DropdownMenuItem(
+                    value: w.id,
+                    child: Text('${w.code} · ${w.name}'),
+                  ),
+              ],
+              onChanged: (v) => destination = v!,
+            ),
+            TextField(
+              controller: quantity,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: InputDecoration(
+                labelText: AppLocalizations.of(c).text('inventory.quantity'),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c),
+            child: Text(AppLocalizations.of(c).text('common.cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(AppLocalizations.of(c).text('common.save')),
+          ),
+        ],
+      ),
+    );
+    final text = quantity.text.trim().replaceAll(',', '.');
+    quantity.dispose();
+    if (result != true) return;
+    try {
+      await widget.service.transfer(
+        widget.subject,
+        id: 'transfer-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}',
+        itemId: item.id,
+        sourceId: source,
+        destinationId: destination,
+        quantity: num.parse(text),
+        at: DateTime.now(),
+      );
+      if (mounted) reload();
+    } catch (_) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(context).text('inventory.movementFailed'),
+            ),
+          ),
+        );
+    }
+  }
 
   @override
   void initState() {
     super.initState();
-    items = Future<List<InventoryItem>>.sync(
-      () => widget.service.list(widget.subject),
-    );
+    items = Future<List<InventoryItem>>.sync(loadItems);
     items.ignore();
   }
 
   void reload() {
     setState(() {
-      items = Future<List<InventoryItem>>.sync(
-        () => widget.service.list(widget.subject),
-      );
+      items = Future<List<InventoryItem>>.sync(loadItems);
       items.ignore();
     });
   }
@@ -81,6 +227,7 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
         service: widget.service,
         item: item,
         kind: kind,
+        warehouseId: selectedWarehouse,
         production: production,
       ),
     );
@@ -92,18 +239,56 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final canManage = widget.service.can(
-      widget.subject,
-      PermissionCodes.inventoryManage,
-    );
-    if (!widget.service.can(widget.subject, PermissionCodes.inventoryView))
+    final canReceipt =
+        allowed(PermissionCodes.inventoryManage) ||
+        allowed(PermissionCodes.inventoryReceive);
+    final canIssue =
+        (allowed(PermissionCodes.inventoryManage) ||
+            allowed(PermissionCodes.inventoryIssue)) &&
+        widget.service.can(widget.subject, PermissionCodes.inventoryPrice);
+    final canManage = canReceipt || canIssue;
+    if (!widget.service.canOpenWarehouse(widget.subject))
       return Scaffold(
         body: Center(child: Text(l10n.text('error.permissionDenied'))),
       );
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.text('module.warehouse')),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: FutureBuilder<List<InventoryItem>>(
+            future: items,
+            builder: (context, snapshot) => warehouseOptions.isEmpty
+                ? const SizedBox.shrink()
+                : DropdownButton<String>(
+                    key: const Key('warehouse-selector'),
+                    value: selectedWarehouse,
+                    items: [
+                      for (final w in warehouseOptions)
+                        DropdownMenuItem(
+                          value: w.id,
+                          child: Text('${w.code} · ${w.name}'),
+                        ),
+                    ],
+                    onChanged: (v) => setState(() {
+                      selectedWarehouse = v;
+                      items = Future.sync(
+                        () =>
+                            widget.service.list(widget.subject, warehouseId: v),
+                      );
+                      items.ignore();
+                    }),
+                  ),
+          ),
+        ),
         actions: [
+          if (widget.service.can(widget.subject, PermissionCodes.catalogManage))
+            IconButton(
+              key: const Key('warehouse-create'),
+              tooltip: l10n.text('warehouse.create'),
+              onPressed: createWarehouse,
+              icon: const Icon(Icons.add_business),
+            ),
           if (widget.productionIssuesEnabled)
             IconButton(
               key: const Key('inventory-production-workspace'),
@@ -127,6 +312,7 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
                 builder: (_) => InventoryHistoryScreen(
                   subject: widget.subject,
                   service: widget.service,
+                  warehouseId: selectedWarehouse,
                 ),
               ),
             ),
@@ -178,7 +364,11 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
                         key: Key('inventory-actions-${item.id}'),
                         onSelected: (kind) => record(item, kind),
                         itemBuilder: (_) => [
-                          for (final kind in InventoryMovementKind.values)
+                          for (final kind in InventoryMovementKind.values.where(
+                            (k) => k == InventoryMovementKind.receipt
+                                ? canReceipt
+                                : canIssue,
+                          ))
                             PopupMenuItem(
                               key: Key('inventory-${kind.name}-${item.id}'),
                               value: kind,
@@ -195,17 +385,25 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
                     ),
                     if (item.finishedGoods)
                       Text(l10n.text('trade.productWorkflow')),
+                    if (!item.finishedGoods &&
+                        allowed(PermissionCodes.inventoryTransfer))
+                      TextButton(
+                        key: Key('warehouse-transfer-${item.id}'),
+                        onPressed: () => transfer(item),
+                        child: Text(l10n.text('warehouse.transfer')),
+                      ),
                     if (canManage && !item.finishedGoods)
                       Wrap(
                         spacing: 8,
                         children: [
-                          TextButton(
-                            key: Key('inventory-direct-receipt-${item.id}'),
-                            onPressed: () =>
-                                record(item, InventoryMovementKind.receipt),
-                            child: Text(l10n.text('inventory.receipt')),
-                          ),
-                          if (widget.productionIssuesEnabled)
+                          if (canReceipt)
+                            TextButton(
+                              key: Key('inventory-direct-receipt-${item.id}'),
+                              onPressed: () =>
+                                  record(item, InventoryMovementKind.receipt),
+                              child: Text(l10n.text('inventory.receipt')),
+                            ),
+                          if (widget.productionIssuesEnabled && canIssue)
                             TextButton(
                               key: Key('inventory-production-issue-${item.id}'),
                               onPressed: () => record(
@@ -217,12 +415,13 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
                                 l10n.text('inventory.productionIssue'),
                               ),
                             ),
-                          TextButton(
-                            key: Key('inventory-direct-issue-${item.id}'),
-                            onPressed: () =>
-                                record(item, InventoryMovementKind.issue),
-                            child: Text(l10n.text('inventory.issue')),
-                          ),
+                          if (canIssue)
+                            TextButton(
+                              key: Key('inventory-direct-issue-${item.id}'),
+                              onPressed: () =>
+                                  record(item, InventoryMovementKind.issue),
+                              child: Text(l10n.text('inventory.issue')),
+                            ),
                         ],
                       ),
                   ],
@@ -504,6 +703,7 @@ class _MovementDialog extends StatefulWidget {
     required this.service,
     required this.item,
     required this.kind,
+    this.warehouseId,
     this.production = false,
   });
 
@@ -512,6 +712,7 @@ class _MovementDialog extends StatefulWidget {
   final InventoryService service;
   final InventoryItem item;
   final InventoryMovementKind kind;
+  final String? warehouseId;
 
   @override
   State<_MovementDialog> createState() => _MovementDialogState();
@@ -595,6 +796,7 @@ class _MovementDialogState extends State<_MovementDialog> {
         id: movementId,
         farmId: widget.subject.farmId,
         itemId: widget.item.id,
+        warehouseId: widget.warehouseId,
         kind: widget.kind,
         quantity: amount,
         occurredAt: occurredAt,

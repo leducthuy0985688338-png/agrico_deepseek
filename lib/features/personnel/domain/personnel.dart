@@ -117,8 +117,16 @@ class EmployeeProfile {
     required this.farmId,
     required Map<String, String> details,
     this.revision = 0,
+    this.departmentId,
   }) : details = Map.unmodifiable(details);
   final String workerId, farmId;
+  final String? departmentId;
+  static const sensitiveFields = {
+    'identityNo',
+    'birthOn',
+    'bankName',
+    'bankAccount',
+  };
   final int revision;
   final Map<String, String> details;
   static const fields = {
@@ -547,6 +555,20 @@ abstract interface class PersonnelRepository {
     String currency,
     String day,
     String note,
+    String actorId,
+  );
+}
+
+class PersonnelDepartment {
+  const PersonnelDepartment(this.id, this.name, {this.code = ''});
+  final String id, name, code;
+}
+
+abstract interface class PersonnelOrganizationRepository {
+  Future<List<PersonnelDepartment>> departments(String farmId);
+  Future<void> createDepartment(
+    String farmId,
+    PersonnelDepartment department,
     String actorId,
   );
 }

@@ -1,3 +1,4 @@
+import 'sqlite_warehouse_stock.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../../domain/entities/exact_decimal.dart';
@@ -7,6 +8,7 @@ import 'sqlite_production_planning_repository.dart';
 /// Read-only checks used on disposable restore databases; never changes live data.
 abstract final class ProductionInventoryIntegrity {
   static Future<void> validate(DatabaseExecutor db) async {
+    await SqliteWarehouseStock.validate(db);
     final plans = await db.query('production_plans_v1');
     final byPlan = {for (final r in plans) r['id']: r};
     for (final r in plans) {
@@ -87,7 +89,7 @@ abstract final class ProductionInventoryIntegrity {
             m['zero_price_confirmed'] != 1) {
           throw StateError('Unconfirmed zero price.');
         }
-      } else if (m['kind'] == 'issue') {
+      } else if (m['kind'] == 'issue' && m['transfer_id'] == null) {
         throw StateError('Unpriced historical issue is incompatible.');
       }
     }

@@ -1,3 +1,5 @@
+import '../core/permissions/data/sqlite_operation_directory.dart';
+import '../core/permissions/live_authorization.dart';
 import '../features/integration/data/integration_repository.dart';
 import '../features/integration/application/integration_service.dart';
 import '../features/integration/presentation/integration_workspace_screen.dart';
@@ -474,6 +476,12 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
                 )
                 ? () => push(
                     CompanyAccountAdminScreen(
+                      loadScopeOptions: () => SqliteOperationDirectory(
+                        deps.database,
+                        LiveAuthorization(
+                          () => mounted ? widget.subject : null,
+                        ),
+                      ).load(deps.subject),
                       service: CompanyAccountAdminService(
                         repository: FirebaseCompanyAccountAdminRepository(),
                         subject: deps.subject,
@@ -507,12 +515,9 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
           subject: deps.subject,
           currentSubject: () => mounted ? widget.subject : null,
           openMachines: () => push(
-            deps.subject.dataScopes.contains(DataScope.allFarm) &&
-                    const AuthorizationService().can(
-                      subject: deps.subject,
-                      permission: PermissionCodes.machineView,
-                      resource: ResourceContext(farmId: deps.subject.farmId),
-                    )
+            LiveAuthorization(
+                  () => mounted ? widget.subject : null,
+                ).canEnter(deps.subject, PermissionCodes.machineView)
                 ? MachineWorkspaceScreen(
                     service: MachineService(
                       SqliteMachineRepository(deps.database),
@@ -534,12 +539,9 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
                   ),
           ),
           openWorkers: () => push(
-            const AuthorizationService().can(
-                      subject: deps.subject,
-                      permission: PermissionCodes.employeeView,
-                      resource: ResourceContext(farmId: deps.subject.farmId),
-                    ) &&
-                    deps.subject.dataScopes.contains(DataScope.allFarm)
+            LiveAuthorization(
+                  () => mounted ? widget.subject : null,
+                ).canEnter(deps.subject, PermissionCodes.employeeView)
                 ? PersonnelWorkspaceScreen(
                     service: PersonnelService(
                       SqlitePersonnelRepository(deps.database),

@@ -49,11 +49,19 @@ class _MachineWorkspaceState extends State<MachineWorkspaceScreen> {
   bool busy = false;
   String t(String key) => AppLocalizations.of(context).text('machine.$key');
   bool can(String permission) => widget.service.can(widget.subject, permission);
+  bool machineAccess(String id, String permission) => widget.service.access.can(
+    widget.subject,
+    permission,
+    resource: ResourceContext(farmId: widget.subject.farmId, machineId: id),
+  );
   bool get money => can(PermissionCodes.financeView);
-  Future<_MachineData> load() async {
-    final s = widget.service;
+  Future<_MachineData> load({bool exporting = false}) async {
+    final stamp = widget.service.access.stamp(widget.subject);
+    final s = exporting
+        ? widget.service.exporting(widget.subject)
+        : widget.service;
     final u = widget.subject;
-    return _MachineData(
+    final result = _MachineData(
       await s.machines(u),
       money ? await s.rates(u) : [],
       await s.runs(u),
@@ -62,6 +70,8 @@ class _MachineWorkspaceState extends State<MachineWorkspaceScreen> {
       await s.workers(u),
       money ? await s.costs(u) : [],
     );
+    widget.service.access.requireStamp(widget.subject, stamp);
+    return result;
   }
 
   @override
@@ -412,7 +422,14 @@ class _MachineWorkspaceState extends State<MachineWorkspaceScreen> {
                               ? null
                               : () => action(() async {
                                   final requestedPeriod = month.text;
-                                  final fresh = await load();
+                                  final stamp = widget.service.access.stamp(
+                                    widget.subject,
+                                  );
+                                  final fresh = await load(exporting: true);
+                                  widget.service.access.requireStamp(
+                                    widget.subject,
+                                    stamp,
+                                  );
                                   widget.service.exportPermission(
                                     widget.subject,
                                   );
@@ -446,7 +463,10 @@ class _MachineWorkspaceState extends State<MachineWorkspaceScreen> {
                               '${m.profile['model'] ?? ''} · ${m.profile['plate'] ?? ''} · ${m.profile['meterUnit'] ?? ''}',
                             ),
                             ..._due(d, m),
-                            if (can(PermissionCodes.machineMaintain))
+                            if (machineAccess(
+                              m.id,
+                              PermissionCodes.machineMaintain,
+                            ))
                               TextButton(
                                 onPressed: busy ? null : () => profile(m),
                                 child: Text(t('profile')),
@@ -476,10 +496,17 @@ class _MachineWorkspaceState extends State<MachineWorkspaceScreen> {
                               Text(
                                 '${d.plans.where((p) => p['id'] == a.planId).firstOrNull?['code'] ?? a.planId}: ${a.minutes} min',
                               ),
-                            if (can(PermissionCodes.machineVerify))
+                            if (machineAccess(
+                              r.value.machineId,
+                              PermissionCodes.machineVerify,
+                            ))
                               Wrap(
                                 children: [
-                                  if (r.status == 'draft' && money)
+                                  if (r.status == 'draft' &&
+                                      machineAccess(
+                                        r.value.machineId,
+                                        PermissionCodes.financeView,
+                                      ))
                                     TextButton(
                                       onPressed: busy
                                           ? null
@@ -559,7 +586,10 @@ class _MachineWorkspaceState extends State<MachineWorkspaceScreen> {
                                   Text(
                                     '${r.value.nextOn ?? ''} · ${r.value.nextMeter ?? ''}',
                                   ),
-                                if (can(PermissionCodes.machineVerify))
+                                if (machineAccess(
+                                  r.value.machineId,
+                                  PermissionCodes.machineVerify,
+                                ))
                                   Wrap(
                                     children: [
                                       if (r.status == 'draft')

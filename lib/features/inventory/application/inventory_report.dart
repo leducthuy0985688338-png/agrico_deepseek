@@ -5,7 +5,12 @@ import '../domain/entities/inventory_item.dart';
 
 /// A read-only snapshot; stock remains authoritative in the repository.
 class InventoryReport {
-  const InventoryReport({required this.items, required this.movements});
+  const InventoryReport({
+    required this.items,
+    required this.movements,
+    this.warehouseId,
+  });
+  final String? warehouseId;
   final List<InventoryItem> items;
   final List<InventoryMovement> movements;
 
@@ -72,9 +77,16 @@ class InventoryReport {
     final excel = Excel.createExcel();
     final overview = excel['Overview'];
     overview.appendRow([
-      TextCellValue('Farm inventory'),
+      TextCellValue(
+        warehouseId == null ? 'Farm inventory' : 'Warehouse inventory',
+      ),
       TextCellValue('Read-only report'),
     ]);
+    if (warehouseId != null)
+      overview.appendRow([
+        TextCellValue('Warehouse ID'),
+        TextCellValue(warehouseId!),
+      ]);
     overview.appendRow([
       TextCellValue('Stock totals scope'),
       TextCellValue(
@@ -112,6 +124,8 @@ class InventoryReport {
         'Type',
         'Quantity',
         'Unit',
+        'Warehouse ID',
+        'Transfer ID',
       ].map(TextCellValue.new).toList(),
     );
     final byId = {for (final item in items) item.id: item};
@@ -125,6 +139,8 @@ class InventoryReport {
         TextCellValue(movement.kind.name),
         _number(movement.quantity),
         TextCellValue(item?.unit ?? ''),
+        TextCellValue(movement.warehouseId ?? ''),
+        TextCellValue(movement.transferId ?? ''),
       ]);
     }
     final stock = excel['Stock'];

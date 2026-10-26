@@ -38,6 +38,7 @@ class _PersonnelData {
     this.machines,
     this.workTypes,
     this.units,
+    this.departments,
   );
   final List<EmployeeCard> employees;
   final List<LaborEntryRecord> entries;
@@ -48,6 +49,7 @@ class _PersonnelData {
   final List<PersonnelPlanChoice> plans;
   final List<PersonnelTaskChoice> tasks;
   final List<CatalogEntry> machines, workTypes, units;
+  final List<PersonnelDepartment> departments;
 }
 
 class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
@@ -72,24 +74,31 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
     super.dispose();
   }
 
-  Future<_PersonnelData> load() async {
-    final people = await widget.service.employees(widget.subject);
-    final entries = await widget.service.entries(widget.subject);
-    final rates = salary
-        ? await widget.service.rates(widget.subject)
-        : <PayRate>[];
+  Future<_PersonnelData> load({bool exporting = false}) async {
+    final stamp = widget.service.access.stamp(widget.subject);
+    final service = exporting
+        ? widget.service.exporting(widget.subject)
+        : widget.service;
+    final people = await service.employees(widget.subject);
+    final entries = await service.entries(widget.subject);
+    final rates = salary ? await service.rates(widget.subject) : <PayRate>[];
     final payroll = salary
-        ? await widget.service.payrolls(widget.subject)
+        ? await service.payrolls(widget.subject)
         : <PayrollRecordV2>[];
     final payments = salary
-        ? await widget.service.payments(widget.subject)
+        ? await service.payments(widget.subject)
         : <SalaryPayment>[];
     final costs = salary
-        ? await widget.service.laborCosts(widget.subject)
+        ? await service.laborCosts(widget.subject)
         : <ProductionLaborCost>[];
-    final plans = await widget.service.planChoices(widget.subject);
-    final tasks = await widget.service.taskChoices(widget.subject);
-    final catalog = widget.catalog == null
+    final plans = await service.planChoices(widget.subject);
+    final tasks = await service.taskChoices(widget.subject);
+    final catalog =
+        widget.catalog == null ||
+            !widget.service.access.can(
+              widget.subject,
+              PermissionCodes.catalogView,
+            )
         ? <CatalogEntry>[]
         : await widget.catalog!.entries();
     final machines = catalog
@@ -98,6 +107,8 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
     final workTypes = catalog
         .where((c) => c.kind == CatalogKind.taskType && c.active)
         .toList();
+    final departments = await service.departments(widget.subject);
+    widget.service.access.requireStamp(widget.subject, stamp);
     return _PersonnelData(
       people,
       entries,
@@ -110,6 +121,7 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
       machines,
       workTypes,
       catalog.where((c) => c.kind == CatalogKind.unit && c.active).toList(),
+      departments,
     );
   }
 
@@ -160,23 +172,115 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
     for (final e in d.employees.where((e) => !activeOnly || e.active))
       e.workerId: '${e.code} · ${e.name}',
   };
-  void profile(EmployeeCard e) {
+  Future<void> viewProfile(EmployeeCard selected) async {
+    try {
+      final records = await widget.service.employees(widget.subject);
+      if (!mounted) return;
+      final current = records
+          .where((e) => e.workerId == selected.workerId)
+          .firstOrNull;
+      if (current == null) throw StateError('Profile unavailable.');
+      final l = AppLocalizations.of(context);
+      await showDialog<void>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: Text('${current.code} · ${current.name}'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final key in EmployeeProfile.fields)
+                  if ((current.profile?.details[key] ?? '').isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: SelectableText(
+                        '${l.text('hr.profile.$key')}: ${current.profile!.details[key]}',
+                      ),
+                    ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(c),
+              child: Text(l.text('hr.close')),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(_failure(context, e))));
+    }
+  }
+
+  bool employeeAccess(_PersonnelData d, String worker, String permission) =>
+      widget.service.access.can(
+        widget.subject,
+        permission,
+        resource: ResourceContext(
+          farmId: widget.subject.farmId,
+          departmentId: d.employees
+              .where((e) => e.workerId == worker)
+              .firstOrNull
+              ?.profile
+              ?.departmentId,
+        ),
+      );
+  void profile(EmployeeCard e, _PersonnelData d) {
     form(
       'hr.profile',
       (_) => [
-        for (final key in EmployeeProfile.fields)
+        for (final key in EmployeeProfile.fields.where(
+          (k) =>
+              k != 'department' &&
+              (!EmployeeProfile.sensitiveFields.contains(k) ||
+                  employeeAccess(
+                    d,
+                    e.workerId,
+                    PermissionCodes.employeeSensitiveView,
+                  )),
+        ))
           _Field(key, 'hr.profile.$key'),
+        _Field(
+          'departmentId',
+          'hr.profile.department',
+          choices: {
+            '': AppLocalizations.of(context).text('hr.none'),
+            for (final dept in d.departments) dept.id: dept.name,
+          },
+        ),
       ],
       (v) => widget.service.saveProfile(
         widget.subject,
         EmployeeProfile(
           workerId: e.workerId,
           farmId: widget.subject.farmId,
-          details: v,
+          details: Map.from(v)..remove('departmentId'),
+          departmentId: (v['departmentId'] ?? '').isEmpty
+              ? null
+              : v['departmentId'],
           revision: e.profile?.revision ?? 0,
         ),
       ),
-      initial: e.profile?.details ?? {},
+      initial: {
+        ...?e.profile?.details,
+        'departmentId': e.profile?.departmentId ?? '',
+      },
+    );
+  }
+
+  void addDepartment() {
+    form(
+      'hr.department.create',
+      (_) => [_Field('name', 'hr.profile.department')],
+      (v) => widget.service.createDepartment(
+        widget.subject,
+        PersonnelDepartment(_id('department'), v['name'] ?? ''),
+      ),
     );
   }
 
@@ -528,6 +632,16 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
         appBar: AppBar(
           title: Text(l.text('hr.title')),
           actions: [
+            if (widget.service.access.can(
+              widget.subject,
+              PermissionCodes.employeeEdit,
+            ))
+              IconButton(
+                key: const Key('hr-department-create'),
+                tooltip: l.text('hr.department.create'),
+                onPressed: addDepartment,
+                icon: const Icon(Icons.account_tree),
+              ),
             if (widget.catalog != null)
               IconButton(
                 key: const Key('hr-catalog'),
@@ -644,17 +758,24 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
                         ? null
                         : () => run(() async {
                             final includeSensitive = can(
-                              PermissionCodes.employeeEdit,
+                              PermissionCodes.employeeSensitiveView,
                             );
                             final requestedPeriod = period.text.trim();
-                            final fresh = await load();
+                            final stamp = widget.service.access.stamp(
+                              widget.subject,
+                            );
+                            final fresh = await load(exporting: true);
+                            widget.service.access.requireStamp(
+                              widget.subject,
+                              stamp,
+                            );
                             for (final permission in [
                               PermissionCodes.employeeView,
                               PermissionCodes.payrollView,
                               PermissionCodes.reportPersonnel,
                               PermissionCodes.dataExport,
                               if (includeSensitive)
-                                PermissionCodes.employeeEdit,
+                                PermissionCodes.employeeSensitiveView,
                             ]) {
                               widget.service.authorize(
                                 widget.subject,
@@ -689,15 +810,22 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
                           for (final e in peopleRows)
                             Card(
                               child: ListTile(
+                                key: Key('hr-profile-view-${e.workerId}'),
+                                onTap: () => viewProfile(e),
                                 title: Text('${e.code} · ${e.name}'),
                                 subtitle: Text(
                                   '${e.profile?.details['position'] ?? ''} · ${e.profile?.details['department'] ?? ''}\n${e.profile?.details['phone'] ?? ''}',
                                 ),
-                                trailing: can(PermissionCodes.employeeEdit)
+                                trailing:
+                                    employeeAccess(
+                                      d,
+                                      e.workerId,
+                                      PermissionCodes.employeeEdit,
+                                    )
                                     ? IconButton(
                                         key: Key('hr-profile-${e.workerId}'),
                                         icon: const Icon(Icons.edit),
-                                        onPressed: () => profile(e),
+                                        onPressed: () => profile(e, d),
                                       )
                                     : null,
                               ),
@@ -749,10 +877,16 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
                                       spacing: 8,
                                       children: [
                                         if (e.status == 'draft' &&
-                                            can(
+                                            employeeAccess(
+                                              d,
+                                              e.workerId,
                                               PermissionCodes.attendanceVerify,
                                             ) &&
-                                            salary)
+                                            employeeAccess(
+                                              d,
+                                              e.workerId,
+                                              PermissionCodes.payrollView,
+                                            ))
                                           TextButton(
                                             key: Key('hr-approve-${e.id}'),
                                             onPressed: busy
@@ -767,7 +901,9 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
                                             child: Text(l.text('hr.approve')),
                                           ),
                                         if (e.status != 'void' &&
-                                            can(
+                                            employeeAccess(
+                                              d,
+                                              e.workerId,
                                               PermissionCodes.attendanceVerify,
                                             ))
                                           TextButton(

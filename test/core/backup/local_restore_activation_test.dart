@@ -1,3 +1,4 @@
+import 'package:agrico_deepseek/features/inventory/data/local/sqlite_inventory_repository.dart';
 import 'package:agrico_deepseek/features/farm/data/local/sqlite_land_parcel_repository.dart';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
@@ -221,4 +222,65 @@ void main() {
       await pair.directory.delete(recursive: true);
     }
   });
+  test(
+    'restoring an accepted pre-warehouse empty snapshot clears newer warehouse configuration',
+    () async {
+      final pair = await createPair();
+      final activation = LocalRestoreActivation(
+        pair.directory,
+        databaseFactoryFfi,
+      );
+      try {
+        await SqliteInventoryRepository.createSchema(pair.primary);
+        final source = await LocalDatabaseSnapshot.create(
+          pair.primary,
+          costsDatabase: pair.costs,
+        );
+        final databases = LocalDatabaseSnapshot.decodeDatabases(source);
+        final tables = databases['agrico.db']!['tables'] as Map;
+        for (final table in [
+          'inventory_warehouses_v1',
+          'inventory_warehouse_sequences_v1',
+          'inventory_warehouse_stock_v1',
+          'inventory_transfers_v1',
+        ]) {
+          tables.remove(table);
+        }
+        final body = jsonEncode({'databases': databases});
+        final backup = Uint8List.fromList(
+          utf8.encode(
+            jsonEncode({
+              'format': LocalDatabaseSnapshot.format,
+              'version': 2,
+              'sha256': sha256.convert(utf8.encode(body)).toString(),
+              'payload': body,
+            }),
+          ),
+        );
+        await SqliteInventoryRepository(
+          pair.primary,
+        ).createWarehouse('f', 'newer', 'Newer warehouse', 'admin');
+        await pair.primary.close();
+        await pair.costs.close();
+        await activation.schedule(backup);
+        expect(await activation.applyPending(), isTrue);
+        final restored = await databaseFactoryFfi.openDatabase(
+          '${pair.directory.path}/agrico.db',
+        );
+        try {
+          expect(await restored.query('inventory_warehouses_v1'), isEmpty);
+          expect(
+            await restored.query('inventory_warehouse_sequences_v1'),
+            isEmpty,
+          );
+        } finally {
+          await restored.close();
+        }
+      } finally {
+        if (pair.primary.isOpen) await pair.primary.close();
+        if (pair.costs.isOpen) await pair.costs.close();
+        await pair.directory.delete(recursive: true);
+      }
+    },
+  );
 }

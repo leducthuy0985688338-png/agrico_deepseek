@@ -30,6 +30,9 @@ class IntegrationRepository implements IntegrationStore {
 
   static const reportTables = {
     'company_catalog_entries_v1',
+    'inventory_warehouses_v1',
+    'inventory_warehouse_stock_v1',
+    'inventory_transfers_v1',
     'inventory_items_v2',
     'inventory_movements_v2',
     'land_parcels',
@@ -466,6 +469,7 @@ class IntegrationRepository implements IntegrationStore {
         id: id,
         farmId: farm,
         itemId: m['item_id'] as String,
+        warehouseId: m['warehouse_id'] as String?,
         kind: InventoryMovementKind.receipt,
         quantity: ExactDecimal.quantityFromUnits(m['quantity_units'] as int),
         occurredAt: TradeMath.instant(day),

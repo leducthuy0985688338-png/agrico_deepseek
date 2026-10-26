@@ -1,3 +1,4 @@
+import '../core/permissions/live_authorization.dart';
 import 'package:flutter/foundation.dart';
 
 import '../core/backup/local_backup_access.dart';
@@ -23,17 +24,14 @@ Map<String, VoidCallback> v2ResourceModuleRoutes({
     if (key == 'backup') {
       return LocalBackupAccess(currentSubject: () => live).canOpen;
     }
-    final permission = key == 'warehouse'
-        ? PermissionCodes.inventoryView
-        : PermissionCodes.catalogView;
-    if (key == 'warehouse' && !live.dataScopes.contains(DataScope.allFarm)) {
-      return false;
-    }
-    return const AuthorizationService().can(
-      subject: live,
-      permission: permission,
-      resource: ResourceContext(farmId: live.farmId),
-    );
+    final guard = LiveAuthorization(currentSubject);
+    if (key == 'warehouse')
+      return guard.canEnter(subject, PermissionCodes.inventoryView);
+    final domainPermission = key == 'machines'
+        ? PermissionCodes.machineView
+        : PermissionCodes.employeeView;
+    return guard.canEnter(subject, domainPermission) ||
+        guard.can(subject, PermissionCodes.catalogView);
   }
 
   final candidates = <String, VoidCallback>{

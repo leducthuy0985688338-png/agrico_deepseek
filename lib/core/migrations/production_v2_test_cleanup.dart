@@ -65,6 +65,22 @@ class ProductionV2TestCleanup {
           counts[name] = (count.single['n']! as num).toInt();
           await tx.delete(name);
         }
+        if (tables.contains('inventory_transfers_v1') &&
+            (await tx.query(
+              'inventory_transfers_v1',
+              where: 'farm_id=?',
+              whereArgs: [farmId],
+              limit: 1,
+            )).isNotEmpty)
+          throw StateError(
+            'Warehouse transfers already exist without a cutover marker.',
+          );
+        if (tables.contains('inventory_warehouse_stock_v1'))
+          await tx.delete(
+            'inventory_warehouse_stock_v1',
+            where: 'farm_id=?',
+            whereArgs: [farmId],
+          );
         counts['inventory_movements_v2'] = await tx.delete(
           'inventory_movements_v2',
           where: 'farm_id=?',

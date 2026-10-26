@@ -157,7 +157,8 @@ class Report20 {
             doc?['code'] ?? m['id'],
           ],
           currency: value(m['currency']),
-          state: value(m['id']),
+          state:
+              '${value(m['id'])} · kho:${value(m['warehouse_id'])}${m['transfer_id'] == null ? '' : ' · chuyển kho:${value(m['transfer_id'])}'}',
         );
       else
         add(
@@ -175,7 +176,8 @@ class Report20 {
             doc?['code'] ?? m['id'],
           ],
           currency: value(m['currency']),
-          state: value(m['id']),
+          state:
+              '${value(m['id'])} · kho:${value(m['warehouse_id'])}${m['transfer_id'] == null ? '' : ' · chuyển kho:${value(m['transfer_id'])}'}',
         );
     }
     for (final item in items.values) {

@@ -32,6 +32,7 @@ abstract final class PermissionCodes {
   static const taskComplete = 'task.complete';
   static const inventoryView = 'inventory.view';
   static const inventoryManage = 'inventory.manage';
+  static const inventoryTransfer = 'inventory.transfer';
   static const inventoryPrice = 'inventory.price';
   static const taskVerify = 'task.verify';
   static const chatView = 'chat.view';
@@ -74,6 +75,7 @@ abstract final class PermissionCodes {
   static const cashView = 'cash.view';
   static const cashRecord = 'cash.record';
   static const employeeView = 'employee.view';
+  static const employeeSensitiveView = 'employee.sensitive.view';
   static const employeeEdit = 'employee.edit';
   static const attendanceRecord = 'attendance.record';
   static const attendanceVerify = 'attendance.verify';
@@ -124,6 +126,7 @@ abstract final class PermissionCodes {
     cashRecord,
     employeeView,
     employeeEdit,
+    employeeSensitiveView,
     attendanceRecord,
     attendanceVerify,
     payrollView,
@@ -156,6 +159,7 @@ abstract final class PermissionCodes {
     inventoryView,
     inventoryManage,
     inventoryPrice,
+    inventoryTransfer,
     taskVerify,
     chatView,
     chatSend,

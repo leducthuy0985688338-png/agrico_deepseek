@@ -6,6 +6,22 @@ import 'sqlite_personnel_repository.dart';
 
 abstract final class PersonnelIntegrity {
   static Future<void> validate(DatabaseExecutor db) async {
+    for (final d in await db.query('personnel_departments_v1')) {
+      final match = RegExp(
+        r'^BP-([0-9]{3,})$',
+      ).firstMatch(d['code']! as String);
+      final seq = await db.query(
+        'personnel_department_sequences_v1',
+        where: 'farm_id=?',
+        whereArgs: [d['farm_id']],
+      );
+      if ((d['name']! as String).trim().isEmpty ||
+          match == null ||
+          int.parse(match.group(1)!) < 1 ||
+          seq.length != 1 ||
+          (seq.single['last_value']! as int) < int.parse(match.group(1)!))
+        throw StateError('Invalid department sequence.');
+    }
     final workers = {
       for (final c in await db.query('company_catalog_entries_v1')) c['id']: c,
     };
@@ -18,6 +34,14 @@ abstract final class PersonnelIntegrity {
 
     for (final p in await db.query('personnel_profiles_v1')) {
       worker(p['worker_id']! as String, p['farm_id']! as String);
+      if (p['department_id'] != null) {
+        final d = await db.query(
+          'personnel_departments_v1',
+          where: 'id=? AND farm_id=?',
+          whereArgs: [p['department_id'], p['farm_id']],
+        );
+        if (d.length != 1) throw StateError('Invalid personnel department.');
+      }
       EmployeeProfile(
         workerId: p['worker_id']! as String,
         farmId: p['farm_id']! as String,

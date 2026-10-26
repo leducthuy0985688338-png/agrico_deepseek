@@ -216,4 +216,64 @@ void main() {
       expect(repo.rateReads, 0);
     },
   );
+  testWidgets(
+    'private employee information can be viewed read-only independently of edit permission',
+    (tester) async {
+      for (final privateView in [true, false]) {
+        await tester.pumpWidget(const SizedBox.shrink());
+        final subject = AuthorizationSubject(
+          userId: 'reader',
+          membershipId: 'm',
+          farmId: 'f',
+          permissionCodes: {
+            PermissionCodes.employeeView,
+            if (privateView) PermissionCodes.employeeSensitiveView,
+          },
+          dataScopes: const {DataScope.allFarm},
+        );
+        await open(tester, ProfilePersonnel(), subject);
+        expect(find.byKey(const Key('hr-profile-w')), findsNothing);
+        await tester.tap(find.byKey(const Key('hr-profile-view-w')));
+        await tester.pumpAndSettle();
+        expect(find.byType(AlertDialog), findsOneWidget);
+        expect(
+          find.textContaining('BANK-PRIVATE'),
+          privateView ? findsOneWidget : findsNothing,
+        );
+        expect(
+          find.descendant(
+            of: find.byType(AlertDialog),
+            matching: find.byType(TextField),
+          ),
+          findsNothing,
+        );
+        await tester.tap(find.text('Đóng'));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      }
+    },
+  );
+}
+
+class ProfilePersonnel extends MemoryPersonnel {
+  @override
+  Future<List<EmployeeCard>> employees(
+    String farmId, {
+    required bool sensitive,
+  }) async => [
+    EmployeeCard(
+      workerId: 'w',
+      code: 'CN-000001',
+      name: 'Worker',
+      active: true,
+      profile: EmployeeProfile(
+        workerId: 'w',
+        farmId: farmId,
+        details: {
+          'position': 'Staff',
+          if (sensitive) 'bankAccount': 'BANK-PRIVATE',
+        },
+      ),
+    ),
+  ];
 }

@@ -1,3 +1,4 @@
+import '../../features/inventory/data/local/sqlite_warehouse_stock.dart';
 import '../../features/integration/data/integration_repository.dart';
 import '../../features/integration/data/integration_integrity.dart';
 import '../../features/trade/data/sqlite_trade_repository.dart';
@@ -132,6 +133,7 @@ class LocalRestorePreflight {
               'production_field_links_v1',
               'inventory_cost_outbox_v2',
               'production_seasons',
+              ...SqliteWarehouseStock.tables,
               'inventory_items_v2',
               'inventory_movements_v2',
               'company_catalog_entries_v1',
@@ -276,6 +278,16 @@ class LocalRestorePreflight {
           !saved.keys.toSet().containsAll(catalogTables)) {
         throw RestorePreflightException('tables', database: databaseName);
       }
+      if (tables.contains('inventory_warehouses_v1') &&
+          missing.intersection(SqliteWarehouseStock.tables).isNotEmpty &&
+          [
+            'inventory_items_v2',
+            'inventory_movements_v2',
+          ].any((t) => (saved[t] as List? ?? const []).isNotEmpty))
+        throw RestorePreflightException(
+          'incompatibleProductionData',
+          database: databaseName,
+        );
       const inventoryTables = {'inventory_items_v2', 'inventory_movements_v2'};
       if (missing.intersection(inventoryTables).isNotEmpty &&
           inventoryTables.any(
@@ -571,6 +583,15 @@ class LocalRestorePreflight {
       }
       if (databaseName == 'agrico.db' && tables.containsAll(inventoryTables)) {
         step = 'inventory reconciliation';
+        try {
+          await SqliteWarehouseStock.validate(staged);
+        } catch (_) {
+          throw RestorePreflightException(
+            'integrity',
+            database: databaseName,
+            step: step,
+          );
+        }
         final wrongFarm = await staged.rawQuery('''
           SELECT m.id FROM inventory_movements_v2 m
           JOIN inventory_items_v2 i ON i.id = m.item_id

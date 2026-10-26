@@ -1,3 +1,5 @@
+import 'package:agrico_deepseek/core/permissions/live_authorization.dart';
+import 'package:agrico_deepseek/core/permissions/operation_scope.dart';
 import 'package:agrico_deepseek/features/trade/data/sqlite_trade_repository.dart';
 import 'package:agrico_deepseek/features/trade/domain/trade.dart' as trade;
 import 'package:agrico_deepseek/features/finance/data/local/sqlite_finance_document_repository.dart';
@@ -486,6 +488,14 @@ void main() {
       final bytes = _rewrite(await snapshot(), (tables) {
         tables.remove(SqliteInventoryRepository.itemsTable);
         tables.remove(SqliteInventoryRepository.movementsTable);
+        for (final t in [
+          'inventory_warehouses_v1',
+          'inventory_warehouse_sequences_v1',
+          'inventory_warehouse_stock_v1',
+          'inventory_transfers_v1',
+        ]) {
+          tables.remove(t);
+        }
       });
       final counts = await validate(bytes);
       expect(counts.containsKey('agrico.db/inventory_items_v2'), isFalse);
@@ -548,6 +558,88 @@ void main() {
           ),
         );
       }
+      await unchanged();
+    },
+  );
+  test(
+    'multi-warehouse backup reconciles transfer pairs and rejects a tampered leg',
+    () async {
+      const actor = AuthorizationSubject(
+        userId: 'admin',
+        membershipId: 'm',
+        farmId: 'farm-1',
+        permissionCodes: PermissionCodes.values,
+        dataScopes: {DataScope.allFarm},
+      );
+      await repository.createWarehouse(
+        'farm-1',
+        'second',
+        'Kho thứ hai',
+        'admin',
+      );
+      await repository.transfer(
+        'farm-1',
+        'transfer',
+        'item-1',
+        'warehouse:default:farm-1',
+        'second',
+        1.125,
+        DateTime.utc(2026, 10, 1),
+        'admin',
+        OperationScope(actor, LiveAuthorization(() => actor), [
+          PermissionCodes.inventoryView,
+          PermissionCodes.inventoryTransfer,
+        ]),
+      );
+      final bytes = await snapshot();
+      final counts = await validate(bytes);
+      expect(counts['agrico.db/inventory_transfers_v1'], 1);
+      final tampered = _rewrite(bytes, (tables) {
+        final rows = tables['inventory_movements_v2'] as List;
+        (rows.singleWhere((r) => (r as Map)['id'] == 'transfer:transfer:in')
+                as Map)['transfer_id'] =
+            null;
+      });
+      await expectLater(
+        validate(tampered),
+        throwsA(
+          isA<RestorePreflightException>().having(
+            (e) => e.reason,
+            'reason',
+            'integrity',
+          ),
+        ),
+      );
+      expect((await repository.listByFarm('farm-1')).single.stock, 3);
+    },
+  );
+  test(
+    'nonempty pre-warehouse backups are rejected rather than guessing split balances',
+    () async {
+      final old = _rewrite(await snapshot(), (tables) {
+        for (final name in [
+          'inventory_warehouses_v1',
+          'inventory_warehouse_sequences_v1',
+          'inventory_warehouse_stock_v1',
+          'inventory_transfers_v1',
+        ]) {
+          tables.remove(name);
+        }
+        for (final row in tables['inventory_movements_v2'] as List) {
+          (row as Map).remove('warehouse_id');
+          row.remove('transfer_id');
+        }
+      });
+      await expectLater(
+        validate(old),
+        throwsA(
+          isA<RestorePreflightException>().having(
+            (e) => e.reason,
+            'reason',
+            'incompatibleProductionData',
+          ),
+        ),
+      );
       await unchanged();
     },
   );

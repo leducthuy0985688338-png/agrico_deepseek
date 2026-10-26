@@ -79,6 +79,7 @@ void main() {
       }
       expect(await costs.query('production_costs'), isEmpty);
       expect(await inventory.movementsByFarm('local-farm'), isEmpty);
+      expect(await main.query('inventory_warehouse_stock_v1'), isEmpty);
       expect((await inventory.listByFarm('local-farm')).single.stock, 0);
       expect((await inventory.listByFarm('local-farm')).single.unitPrice, 12);
       expect(await main.query('land_parcels'), hasLength(1));

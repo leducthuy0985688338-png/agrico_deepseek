@@ -1,3 +1,5 @@
+import '../../../core/permissions/operation_scope.dart';
+import '../domain/repositories/warehouse_repository.dart';
 import '../../../core/permissions/live_authorization.dart';
 import '../../machines/domain/machines.dart'
     show ProductionMachineCost, ProductionMachineCostRepository;
@@ -17,34 +19,131 @@ class InventoryService {
 
   final InventoryRepository repository;
 
+  bool canOpenWarehouse(AuthorizationSubject s) =>
+      access.canEnter(s, PermissionCodes.inventoryView);
+  bool canAtWarehouse(AuthorizationSubject s, String p, String id) =>
+      access.can(
+        s,
+        p,
+        resource: ResourceContext(farmId: s.farmId, warehouseId: id),
+      );
+  String warehouseOf(AuthorizationSubject s, String? id) =>
+      id ?? InventoryWarehouse.defaultId(s.farmId);
+  Future<List<InventoryWarehouse>> warehouses(AuthorizationSubject s) {
+    if (!canOpenWarehouse(s)) throw StateError('Warehouse access denied.');
+    final r = repository;
+    if (r is! WarehouseRepository) return Future.value([]);
+    return access.readScoped(
+      s,
+      [PermissionCodes.inventoryView],
+      () => (r as WarehouseRepository).warehouses(
+        s.farmId,
+        OperationScope(s, access, [PermissionCodes.inventoryView]),
+      ),
+    );
+  }
+
+  Future<void> createWarehouse(AuthorizationSubject s, String id, String name) {
+    access.require(s, PermissionCodes.catalogManage);
+    return (repository as WarehouseRepository).createWarehouse(
+      s.farmId,
+      id,
+      name,
+      s.userId,
+    );
+  }
+
+  Future<void> transfer(
+    AuthorizationSubject s, {
+    required String id,
+    required String itemId,
+    required String sourceId,
+    required String destinationId,
+    required num quantity,
+    required DateTime at,
+  }) {
+    final scope = OperationScope(s, access, [
+      PermissionCodes.inventoryView,
+      PermissionCodes.inventoryTransfer,
+    ]);
+    scope.require(ResourceContext(farmId: s.farmId, warehouseId: sourceId));
+    scope.require(
+      ResourceContext(farmId: s.farmId, warehouseId: destinationId),
+    );
+    return (repository as WarehouseRepository).transfer(
+      s.farmId,
+      id,
+      itemId,
+      sourceId,
+      destinationId,
+      quantity,
+      at,
+      s.userId,
+      scope,
+    );
+  }
+
+  InventoryRepository warehouseStore(
+    AuthorizationSubject s,
+    String? id,
+    List<String> permissions,
+  ) {
+    if (id == null) {
+      for (final p in permissions) {
+        access.require(s, p);
+      }
+      return repository;
+    }
+    final r = repository;
+    final scope = OperationScope(s, access, permissions);
+    scope.require(ResourceContext(farmId: s.farmId, warehouseId: id));
+    if (r is! WarehouseRepository)
+      throw StateError('Warehouse repository unavailable.');
+    return (r as WarehouseRepository).inWarehouse(scope, id);
+  }
+
   bool can(AuthorizationSubject subject, String permission) =>
       access.can(subject, permission);
   void _authorize(AuthorizationSubject subject, String permission) {
     access.require(subject, permission);
   }
 
-  void exportPermission(AuthorizationSubject subject) {
+  void exportPermission(AuthorizationSubject subject, {String? warehouseId}) {
     for (final permission in [
       PermissionCodes.inventoryView,
       PermissionCodes.reportOperations,
       PermissionCodes.dataExport,
     ]) {
-      _authorize(subject, permission);
+      if (warehouseId == null) {
+        _authorize(subject, permission);
+      } else if (!canAtWarehouse(subject, permission, warehouseId)) {
+        throw StateError('Warehouse export denied.');
+      }
     }
   }
 
-  Future<List<InventoryItem>> list(AuthorizationSubject subject) {
-    _authorize(subject, PermissionCodes.inventoryView);
-    return access.read(subject, [
+  Future<List<InventoryItem>> list(
+    AuthorizationSubject subject, {
+    String? warehouseId,
+  }) {
+    final r = warehouseStore(subject, warehouseId, [
       PermissionCodes.inventoryView,
-    ], () => repository.listByFarm(subject.farmId));
+    ]);
+    return access.readScoped(subject, [
+      PermissionCodes.inventoryView,
+    ], () => r.listByFarm(subject.farmId));
   }
 
-  Future<List<InventoryMovement>> movements(AuthorizationSubject subject) {
-    _authorize(subject, PermissionCodes.inventoryView);
-    return access.read(subject, [
+  Future<List<InventoryMovement>> movements(
+    AuthorizationSubject subject, {
+    String? warehouseId,
+  }) {
+    final r = warehouseStore(subject, warehouseId, [
       PermissionCodes.inventoryView,
-    ], () => repository.movementsByFarm(subject.farmId));
+    ]);
+    return access.readScoped(subject, [
+      PermissionCodes.inventoryView,
+    ], () => r.movementsByFarm(subject.farmId));
   }
 
   Future<void> register(AuthorizationSubject subject, InventoryItem item) {
@@ -139,7 +238,15 @@ class InventoryService {
       throw StateError('Movement is outside the current farm.');
     }
     movement.validate();
-    return _destinations.recordProductionIssue(
+    final store = repository is WarehouseRepository
+        ? warehouseStore(subject, warehouseOf(subject, movement.warehouseId), [
+                PermissionCodes.inventoryView,
+                PermissionCodes.inventoryManage,
+                PermissionCodes.inventoryPrice,
+              ])
+              as ProductionDestinationRepository
+        : _destinations;
+    return store.recordProductionIssue(
       _priced(subject, movement),
       planId: planId,
       parcelId: parcelId,
@@ -151,12 +258,26 @@ class InventoryService {
     AuthorizationSubject subject,
     InventoryMovement movement,
   ) {
-    _authorize(subject, PermissionCodes.inventoryManage);
-    if (movement.farmId != subject.farmId) {
-      throw StateError('Movement is outside the current farm.');
-    }
+    if (movement.farmId != subject.farmId) throw StateError('Wrong farm.');
     movement.validate();
-    return repository.record(_priced(subject, movement));
+    final selected = warehouseOf(subject, movement.warehouseId);
+    final permission =
+        canAtWarehouse(subject, PermissionCodes.inventoryManage, selected)
+        ? PermissionCodes.inventoryManage
+        : movement.kind == InventoryMovementKind.receipt
+        ? PermissionCodes.inventoryReceive
+        : PermissionCodes.inventoryIssue;
+    if (repository is! WarehouseRepository) {
+      _authorize(subject, PermissionCodes.inventoryManage);
+      return repository.record(_priced(subject, movement));
+    }
+    return warehouseStore(subject, selected, [
+      PermissionCodes.inventoryView,
+      permission,
+      if (movement.unitPriceText != null ||
+          movement.kind == InventoryMovementKind.issue)
+        PermissionCodes.inventoryPrice,
+    ]).record(_priced(subject, movement));
   }
 
   InventoryMovement _priced(

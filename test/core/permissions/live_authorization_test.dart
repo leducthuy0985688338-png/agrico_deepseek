@@ -136,7 +136,7 @@ void main() {
     },
   );
   test(
-    'personnel read discards private fields when employee edit is revoked during I/O',
+    'personnel read discards private fields when sensitive view is revoked during I/O',
     () async {
       final opened = user();
       var live = opened;

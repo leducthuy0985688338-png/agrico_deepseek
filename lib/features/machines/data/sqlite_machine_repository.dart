@@ -1,3 +1,5 @@
+import '../../../core/permissions/operation_scope.dart';
+import '../../../core/permissions/authorization.dart';
 import 'dart:convert';
 
 import 'package:sqflite/sqflite.dart';
@@ -5,8 +7,24 @@ import 'package:sqflite/sqflite.dart';
 import '../domain/machines.dart';
 import '../../personnel/domain/personnel.dart' show LaborMoney;
 
-class SqliteMachineRepository implements MachineRepository {
-  const SqliteMachineRepository(this.database);
+class SqliteMachineRepository
+    implements MachineRepository, ScopedOperationRepository<MachineRepository> {
+  const SqliteMachineRepository(this.database, {this.scope});
+  final OperationScope? scope;
+  @override
+  MachineRepository scoped(OperationScope scope) => SqliteMachineRepository(
+    database,
+    scope: this.scope == null
+        ? scope
+        : OperationScope(
+            scope.opened,
+            scope.live,
+            {...this.scope!.permissions, ...scope.permissions}.toList(),
+          ),
+  );
+  String visible(String machine) => scope?.sql(machine: machine) ?? '1';
+  void check(String farm, String machine) =>
+      scope?.require(ResourceContext(farmId: farm, machineId: machine));
   final Database database;
   static const tables = {
     'machine_profiles_v1',
@@ -102,7 +120,7 @@ class SqliteMachineRepository implements MachineRepository {
   @override
   Future<List<MachineCard>> machines(String farm) async {
     final rows = await database.rawQuery(
-      "SELECT c.id,c.code,c.name,c.active,p.body,p.revision FROM company_catalog_entries_v1 c JOIN parcel_work_resources r ON r.id=c.id AND r.farm_id=c.farm_id AND r.kind=c.kind AND r.code=c.code LEFT JOIN machine_profiles_v1 p ON p.machine_id=c.id AND p.farm_id=c.farm_id WHERE c.farm_id=? AND c.kind='machine' ORDER BY c.code",
+      "SELECT c.id,c.code,c.name,c.active,p.body,p.revision FROM company_catalog_entries_v1 c JOIN parcel_work_resources r ON r.id=c.id AND r.farm_id=c.farm_id AND r.kind=c.kind AND r.code=c.code LEFT JOIN machine_profiles_v1 p ON p.machine_id=c.id AND p.farm_id=c.farm_id WHERE c.farm_id=? AND c.kind='machine' AND ${visible('c.id')} ORDER BY c.code",
       [farm],
     );
     return rows
@@ -131,6 +149,8 @@ class SqliteMachineRepository implements MachineRepository {
     Map<String, String> values,
     String actor,
   ) => database.transaction((tx) async {
+    final stamp = scope?.live.stamp(scope!.opened);
+    check(farm, machine);
     await resource(tx, farm, machine, 'machine');
     const allowed = {
       'model',
@@ -181,12 +201,13 @@ class SqliteMachineRepository implements MachineRepository {
       'body': jsonEncode(values),
       'revision': revision + 1,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
+    if (stamp != null) scope!.live.requireStamp(scope!.opened, stamp);
     await audit(tx, farm, machine, 'profile', actor);
   });
   @override
   Future<List<MachineRate>> rates(String farm) async => (await database.query(
     'machine_rates_v1',
-    where: 'farm_id=?',
+    where: 'farm_id=? AND ${visible('machine_id')}',
     whereArgs: [farm],
     orderBy: 'effective_on DESC,revision DESC',
   )).map((r) => MachineRate.fromJson(body(r))).toList();
@@ -196,6 +217,8 @@ class SqliteMachineRepository implements MachineRepository {
     MachineRate rate,
     String actor,
   ) => database.transaction((tx) async {
+    final stamp = scope?.live.stamp(scope!.opened);
+    check(farm, rate.machineId);
     rate.validate();
     if (rate.revision != 0) {
       throw const FormatException('Revision is allocated by system.');
@@ -228,6 +251,7 @@ class SqliteMachineRepository implements MachineRepository {
       'revision': revision,
       'body': jsonEncode(json),
     });
+    if (stamp != null) scope!.live.requireStamp(scope!.opened, stamp);
     await audit(tx, farm, rate.id, 'rate', actor);
   });
   static Future<void> profileExists(
@@ -318,6 +342,8 @@ class SqliteMachineRepository implements MachineRepository {
   @override
   Future<void> addRun(String farm, MachineRun run, String actor) =>
       database.transaction((tx) async {
+        final stamp = scope?.live.stamp(scope!.opened);
+        check(farm, run.machineId);
         final existing = await tx.query(
           'machine_runs_v1',
           where: 'id=?',
@@ -353,6 +379,7 @@ class SqliteMachineRepository implements MachineRepository {
             'minutes': a.minutes,
           });
         }
+        if (stamp != null) scope!.live.requireStamp(scope!.opened, stamp);
         await audit(tx, farm, run.id, 'run.create', actor);
       });
   @override
@@ -362,7 +389,9 @@ class SqliteMachineRepository implements MachineRepository {
     int revision,
     String actor,
   ) => database.transaction((tx) async {
+    final stamp = scope?.live.stamp(scope!.opened);
     final row = await one(tx, 'machine_runs_v1', farm, id);
+    check(farm, row['machine_id']! as String);
     version(row, revision);
     final run = MachineRun.fromJson(body(row));
     final attendanceTable = await tx.rawQuery(
@@ -429,6 +458,7 @@ class SqliteMachineRepository implements MachineRepository {
       where: 'id=? AND farm_id=?',
       whereArgs: [id, farm],
     );
+    if (stamp != null) scope!.live.requireStamp(scope!.opened, stamp);
     await audit(tx, farm, id, 'run.approve', actor);
   });
   @override
@@ -438,7 +468,7 @@ class SqliteMachineRepository implements MachineRepository {
   }) async =>
       (await database.query(
             'machine_runs_v1',
-            where: 'farm_id=?',
+            where: 'farm_id=? AND ${visible('machine_id')}',
             whereArgs: [farm],
             orderBy: 'starts_at DESC',
           ))
@@ -447,9 +477,45 @@ class SqliteMachineRepository implements MachineRepository {
               MachineRun.fromJson(body(r)),
               r['status'] as String,
               r['revision'] as int,
-              amount: money ? r['amount'] as String? : null,
-              currency: money ? r['currency'] as String? : null,
-              rateId: money ? r['rate_id'] as String? : null,
+              amount:
+                  money &&
+                      (scope == null ||
+                          scope!.live.can(
+                            scope!.opened,
+                            PermissionCodes.financeView,
+                            resource: ResourceContext(
+                              farmId: farm,
+                              machineId: r['machine_id'] as String,
+                            ),
+                          ))
+                  ? r['amount'] as String?
+                  : null,
+              currency:
+                  money &&
+                      (scope == null ||
+                          scope!.live.can(
+                            scope!.opened,
+                            PermissionCodes.financeView,
+                            resource: ResourceContext(
+                              farmId: farm,
+                              machineId: r['machine_id'] as String,
+                            ),
+                          ))
+                  ? r['currency'] as String?
+                  : null,
+              rateId:
+                  money &&
+                      (scope == null ||
+                          scope!.live.can(
+                            scope!.opened,
+                            PermissionCodes.financeView,
+                            resource: ResourceContext(
+                              farmId: farm,
+                              machineId: r['machine_id'] as String,
+                            ),
+                          ))
+                  ? r['rate_id'] as String?
+                  : null,
             ),
           )
           .toList();
@@ -461,8 +527,10 @@ class SqliteMachineRepository implements MachineRepository {
     String reason,
     String actor,
   ) => database.transaction((tx) async {
+    final stamp = scope?.live.stamp(scope!.opened);
     MachineRules.requiredText(reason);
     final r = await one(tx, table, farm, id);
+    check(farm, r['machine_id']! as String);
     if (r['revision'] != revision || r['status'] == 'void') {
       throw StateError('Stale record.');
     }
@@ -499,6 +567,7 @@ class SqliteMachineRepository implements MachineRepository {
       where: 'id=? AND farm_id=?',
       whereArgs: [id, farm],
     );
+    if (stamp != null) scope!.live.requireStamp(scope!.opened, stamp);
     await audit(tx, farm, id, '$table.void', actor, reason);
   });
   @override
@@ -513,7 +582,7 @@ class SqliteMachineRepository implements MachineRepository {
   Future<List<MachineRecord<MachineExpense>>> expenses(String farm) async =>
       (await database.query(
             'machine_expenses_v1',
-            where: 'farm_id=?',
+            where: 'farm_id=? AND ${visible('machine_id')}',
             whereArgs: [farm],
             orderBy: 'day DESC,id',
           ))
@@ -528,6 +597,8 @@ class SqliteMachineRepository implements MachineRepository {
   @override
   Future<void> addExpense(String farm, MachineExpense e, String actor) =>
       database.transaction((tx) async {
+        final stamp = scope?.live.stamp(scope!.opened);
+        check(farm, e.machineId);
         e.validate();
         final found = await tx.query(
           'machine_expenses_v1',
@@ -554,6 +625,7 @@ class SqliteMachineRepository implements MachineRepository {
           'status': 'draft',
           'revision': 0,
         });
+        if (stamp != null) scope!.live.requireStamp(scope!.opened, stamp);
         await audit(tx, farm, e.id, 'expense.create', actor);
       });
   @override
@@ -563,7 +635,9 @@ class SqliteMachineRepository implements MachineRepository {
     int revision,
     String actor,
   ) => database.transaction((tx) async {
+    final stamp = scope?.live.stamp(scope!.opened);
     final r = await one(tx, 'machine_expenses_v1', farm, id);
+    check(farm, r['machine_id']! as String);
     version(r, revision);
     final e = MachineExpense.fromJson(body(r));
     e.validate();
@@ -574,6 +648,7 @@ class SqliteMachineRepository implements MachineRepository {
       where: 'id=? AND farm_id=?',
       whereArgs: [id, farm],
     );
+    if (stamp != null) scope!.live.requireStamp(scope!.opened, stamp);
     await audit(tx, farm, id, 'expense.approve', actor);
   });
   @override
@@ -589,7 +664,7 @@ class SqliteMachineRepository implements MachineRepository {
     String farm,
   ) async =>
       (await database.rawQuery(
-            "SELECT c.*,r.machine_id,r.day FROM machine_costs_v1 c JOIN machine_runs_v1 r ON r.id=c.source_id AND r.farm_id=c.farm_id WHERE c.farm_id=? AND r.status='approved'",
+            "SELECT c.*,r.machine_id,r.day FROM machine_costs_v1 c JOIN machine_runs_v1 r ON r.id=c.source_id AND r.farm_id=c.farm_id WHERE c.farm_id=? AND r.status='approved' AND ${visible('r.machine_id')}",
             [farm],
           ))
           .map(
@@ -607,14 +682,18 @@ class SqliteMachineRepository implements MachineRepository {
   @override
   Future<List<Map<String, Object?>>> plans(String farm) => database.query(
     'production_plans_v1',
-    where: "farm_id=? AND status='active'",
+    columns: ['id', 'code', 'name', 'currency', 'starts_on', 'ends_on'],
+    where:
+        "farm_id=? AND status='active' AND ${scope == null || scope!.farmWide ? '1' : "id IN (SELECT plan_id FROM machine_costs_v1 WHERE ${visible('machine_id').replaceAll('machine_id', '(SELECT machine_id FROM machine_runs_v1 WHERE id=source_id)')} UNION SELECT t.plan_id FROM production_plan_tasks_v1 t JOIN farm_tasks_v2 f ON f.id=t.id AND f.farm_id=t.farm_id WHERE ${visible('f.machine_resource_id')})"}",
     whereArgs: [farm],
     orderBy: 'code',
   );
   @override
   Future<List<Map<String, Object?>>> workers(String farm) => database.query(
     'company_catalog_entries_v1',
-    where: "farm_id=? AND kind='worker' AND active=1",
+    columns: ['id', 'code', 'name', 'active'],
+    where:
+        "farm_id=? AND kind='worker' AND active=1 AND ${scope == null || scope!.farmWide ? '1' : "id IN (SELECT json_extract(body,'\$.operatorId') FROM machine_runs_v1 WHERE ${visible('machine_id')} UNION SELECT worker_resource_id FROM farm_tasks_v2 WHERE ${visible('machine_resource_id')})"}",
     whereArgs: [farm],
     orderBy: 'code',
   );

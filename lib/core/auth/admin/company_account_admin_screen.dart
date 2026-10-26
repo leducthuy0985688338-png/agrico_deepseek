@@ -6,7 +6,12 @@ import '../company_membership.dart';
 import 'company_account_admin_service.dart';
 
 class CompanyAccountAdminScreen extends StatefulWidget {
-  const CompanyAccountAdminScreen({super.key, required this.service});
+  const CompanyAccountAdminScreen({
+    super.key,
+    required this.service,
+    this.loadScopeOptions,
+  });
+  final Future<Map<String, Map<String, String>>> Function()? loadScopeOptions;
   final CompanyAccountAdminService service;
   @override
   State<CompanyAccountAdminScreen> createState() =>
@@ -54,8 +59,11 @@ class _CompanyAccountAdminScreenState extends State<CompanyAccountAdminScreen> {
   Future<void> _edit(CompanyAccountRecord? record) async {
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) =>
-            _AccountEditor(service: widget.service, original: record),
+        builder: (_) => _AccountEditor(
+          service: widget.service,
+          original: record,
+          loadScopeOptions: widget.loadScopeOptions,
+        ),
       ),
     );
     if (saved == true && mounted) {
@@ -169,7 +177,12 @@ class _CompanyAccountAdminScreenState extends State<CompanyAccountAdminScreen> {
 }
 
 class _AccountEditor extends StatefulWidget {
-  const _AccountEditor({required this.service, this.original});
+  const _AccountEditor({
+    required this.service,
+    this.original,
+    this.loadScopeOptions,
+  });
+  final Future<Map<String, Map<String, String>>> Function()? loadScopeOptions;
   final CompanyAccountAdminService service;
   final CompanyAccountRecord? original;
   @override
@@ -181,6 +194,16 @@ class _AccountEditorState extends State<_AccountEditor> {
   late final TextEditingController uid, name;
   final reason = TextEditingController();
   final ids = <String, TextEditingController>{};
+  Map<String, Map<String, String>> scopeOptions = {};
+  Future<void> loadScopeOptions() async {
+    try {
+      final options = await widget.loadScopeOptions?.call();
+      if (mounted && options != null) setState(() => scopeOptions = options);
+    } catch (_) {
+      /* Existing IDs remain editable if the local directory is unavailable. */
+    }
+  }
+
   final roles = <CompanyRole, Set<DataScope>>{};
   final extras = <String>{}, denies = <String>{};
   final extraScopes = <DataScope>{};
@@ -219,6 +242,7 @@ class _AccountEditorState extends State<_AccountEditor> {
     for (final entry in values.entries) {
       ids[entry.key] = TextEditingController(text: entry.value.join(', '));
     }
+    loadScopeOptions();
   }
 
   @override
@@ -280,15 +304,16 @@ class _AccountEditorState extends State<_AccountEditor> {
     }
   }
 
+  Set<String> values(String key) => ids[key]!.text
+      .split(',')
+      .map((s) => s.trim())
+      .where((s) => s.isNotEmpty)
+      .toSet();
+
   Future<void> _save() async {
     if (!form.currentState!.validate() || saving || self) {
       return;
     }
-    Set<String> values(String key) => ids[key]!.text
-        .split(',')
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty)
-        .toSet();
     late final CompanyAccountRecord record;
     try {
       final profile = CompanyAccessProfile(
@@ -459,11 +484,49 @@ class _AccountEditorState extends State<_AccountEditor> {
                   child: Text(t('idsHint')),
                 ),
                 for (final e in ids.entries)
-                  TextFormField(
-                    controller: e.value,
-                    enabled: !saving && !self,
-                    decoration: InputDecoration(labelText: t(e.key)),
-                  ),
+                  if (scopeOptions.containsKey(e.key))
+                    Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(t(e.key)),
+                          Wrap(
+                            spacing: 6,
+                            children: [
+                              for (final id in {
+                                ...scopeOptions[e.key]!.keys,
+                                ...e.value.text
+                                    .split(',')
+                                    .map((v) => v.trim())
+                                    .where((v) => v.isNotEmpty),
+                              })
+                                FilterChip(
+                                  label: Text(scopeOptions[e.key]![id] ?? id),
+                                  selected: values(e.key).contains(id),
+                                  onSelected: saving || self
+                                      ? null
+                                      : (selected) => setState(() {
+                                          final chosen = values(e.key).toSet();
+                                          if (selected) {
+                                            chosen.add(id);
+                                          } else {
+                                            chosen.remove(id);
+                                          }
+                                          e.value.text = chosen.join(', ');
+                                        }),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    TextFormField(
+                      controller: e.value,
+                      enabled: !saving && !self,
+                      decoration: InputDecoration(labelText: t(e.key)),
+                    ),
               ],
             ),
             ExpansionTile(

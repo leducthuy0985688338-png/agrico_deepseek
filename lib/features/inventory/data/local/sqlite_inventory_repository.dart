@@ -1,3 +1,7 @@
+import 'sqlite_warehouse_stock.dart';
+import '../../../../core/permissions/operation_scope.dart';
+import '../../../../core/permissions/authorization.dart';
+import '../../domain/repositories/warehouse_repository.dart';
 import '../../../machines/domain/machines.dart'
     show ProductionMachineCost, ProductionMachineCostRepository;
 import '../../../machines/data/sqlite_machine_repository.dart';
@@ -23,11 +27,156 @@ import '../../../../core/catalog/company_catalog.dart';
 class SqliteInventoryRepository
     implements
         InventoryRepository,
+        WarehouseRepository,
         ProductionDestinationRepository,
         ProductionPlanningRepository,
         ProductionLaborCostRepository,
         ProductionMachineCostRepository {
-  const SqliteInventoryRepository(this.database);
+  const SqliteInventoryRepository(
+    this.database, {
+    this.warehouseId,
+    this.scope,
+  });
+  final String? warehouseId;
+  final OperationScope? scope;
+  @override
+  InventoryRepository inWarehouse(OperationScope scope, String warehouseId) =>
+      SqliteInventoryRepository(
+        database,
+        warehouseId: warehouseId,
+        scope: scope,
+      );
+  @override
+  Future<List<InventoryWarehouse>> warehouses(
+    String farmId,
+    OperationScope scope,
+  ) async {
+    // No writes on a read path. Empty farms get their default at startup or first receipt.
+    final rows = await database.query(
+      'inventory_warehouses_v1',
+      where: 'farm_id=? AND ${scope.sql(warehouse: 'id')}',
+      whereArgs: [farmId],
+      orderBy: 'code,id',
+    );
+    final result = rows
+        .map(
+          (r) => InventoryWarehouse(
+            r['id']! as String,
+            r['code']! as String,
+            r['name']! as String,
+            active: r['active'] == 1,
+          ),
+        )
+        .toList();
+    final defaultId = InventoryWarehouse.defaultId(farmId);
+    if (!result.any((w) => w.id == defaultId) &&
+        scope.allows(ResourceContext(farmId: farmId, warehouseId: defaultId)))
+      result.insert(
+        0,
+        InventoryWarehouse(defaultId, 'KHO-000', 'Kho mặc định'),
+      );
+    return result;
+  }
+
+  @override
+  Future<void> createWarehouse(
+    String farmId,
+    String id,
+    String name,
+    String actorId,
+  ) => database.transaction((tx) async {
+    if (id.trim().isEmpty ||
+        id.startsWith('warehouse:default:') ||
+        name.trim().isEmpty ||
+        name.length > 200 ||
+        actorId.trim().isEmpty)
+      throw const FormatException('Invalid warehouse.');
+    await SqliteWarehouseStock.ensureDefault(tx, farmId);
+    final previous = await tx.query(
+      'inventory_warehouse_sequences_v1',
+      where: 'farm_id=?',
+      whereArgs: [farmId],
+    );
+    final n = previous.isEmpty
+        ? 1
+        : (previous.single['last_value']! as int) + 1;
+    await tx.insert('inventory_warehouse_sequences_v1', {
+      'farm_id': farmId,
+      'last_value': n,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await tx.insert('inventory_warehouses_v1', {
+      'id': id,
+      'farm_id': farmId,
+      'code': 'KHO-${n.toString().padLeft(3, '0')}',
+      'name': name.trim(),
+      'active': 1,
+    });
+  });
+  @override
+  Future<void> transfer(
+    String farmId,
+    String id,
+    String itemId,
+    String sourceId,
+    String destinationId,
+    num quantity,
+    DateTime at,
+    String actorId,
+    OperationScope scope,
+  ) => database.transaction((tx) async {
+    final stamp = scope.live.stamp(scope.opened);
+    scope.require(ResourceContext(farmId: farmId, warehouseId: sourceId));
+    scope.require(ResourceContext(farmId: farmId, warehouseId: destinationId));
+    if (sourceId == destinationId || id.trim().isEmpty)
+      throw const FormatException('Different warehouses required.');
+    final units = ExactDecimal.quantityUnits(quantity);
+    if (units <= 0) throw const FormatException('Positive quantity required.');
+    final previous = await tx.query(
+      'inventory_transfers_v1',
+      where: 'id=?',
+      whereArgs: [id],
+    );
+    if (previous.isNotEmpty) {
+      final r = previous.single;
+      if (r['farm_id'] == farmId &&
+          r['item_id'] == itemId &&
+          r['source_id'] == sourceId &&
+          r['destination_id'] == destinationId &&
+          r['quantity_units'] == units &&
+          r['occurred_at'] == at.toUtc().toIso8601String() &&
+          r['actor_id'] == actorId)
+        return;
+      throw StateError('Transfer identity conflict.');
+    }
+    await tx.insert('inventory_transfers_v1', {
+      'id': id,
+      'farm_id': farmId,
+      'item_id': itemId,
+      'source_id': sourceId,
+      'destination_id': destinationId,
+      'quantity_units': units,
+      'occurred_at': at.toUtc().toIso8601String(),
+      'actor_id': actorId,
+    });
+    for (final receipt in [false, true]) {
+      await recordInTransaction(
+        tx,
+        InventoryMovement(
+          id: 'transfer:$id:${receipt ? 'in' : 'out'}',
+          farmId: farmId,
+          itemId: itemId,
+          warehouseId: receipt ? destinationId : sourceId,
+          kind: receipt
+              ? InventoryMovementKind.receipt
+              : InventoryMovementKind.issue,
+          quantity: quantity,
+          occurredAt: at,
+        ),
+        transferId: id,
+      );
+    }
+    scope.live.requireStamp(scope.opened, stamp);
+  });
 
   final Database database;
   static const seasonsTable = 'production_seasons_v2';
@@ -137,6 +286,7 @@ class SqliteInventoryRepository
       'CREATE INDEX IF NOT EXISTS idx_inventory_movements_v2_farm '
       'ON $movementsTable(farm_id, occurred_at, id)',
     );
+    await SqliteWarehouseStock.createSchema(db);
   }
 
   @override
@@ -219,12 +369,19 @@ class SqliteInventoryRepository
             whereArgs: [farmId],
           )).map((r) => r['id']).toSet()
         : <Object?>{};
-    final rows = await database.query(
-      itemsTable,
-      where: 'farm_id = ?',
-      whereArgs: [farmId],
-      orderBy: 'code, id',
-    );
+    if (warehouseId != null)
+      scope?.require(ResourceContext(farmId: farmId, warehouseId: warehouseId));
+    final rows = warehouseId == null
+        ? await database.query(
+            itemsTable,
+            where: 'farm_id=?',
+            whereArgs: [farmId],
+            orderBy: 'code,id',
+          )
+        : await database.rawQuery(
+            'SELECT i.*,COALESCE(s.stock_units,0) AS warehouse_stock_units FROM inventory_items_v2 i LEFT JOIN inventory_warehouse_stock_v1 s ON s.item_id=i.id AND s.farm_id=i.farm_id AND s.warehouse_id=? WHERE i.farm_id=? ORDER BY i.code,i.id',
+            [warehouseId, farmId],
+          );
     return List.unmodifiable(
       rows.map(
         (row) => InventoryItem(
@@ -235,7 +392,9 @@ class SqliteInventoryRepository
           unit: row['unit']! as String,
           unitPrice: (row['unit_price']! as num).toDouble(),
           supplier: row['supplier']! as String,
-          stock: ExactDecimal.quantityFromUnits(row['stock_units']! as int),
+          stock: ExactDecimal.quantityFromUnits(
+            (row['warehouse_stock_units'] ?? row['stock_units'])! as int,
+          ),
           finishedGoods: productIds.contains(row['id']),
         ),
       ),
@@ -293,9 +452,50 @@ class SqliteInventoryRepository
     String? seasonId,
     String? planId,
     bool finishedGoods = false,
+    String? transferId,
   }) async {
     movement.validate();
-    if (movement.kind == InventoryMovementKind.issue &&
+    final scopeStamp = scope?.live.stamp(scope!.opened);
+    if (movement.transferId != null)
+      throw const FormatException('Transfers are generated internally.');
+    if (transferId != null) {
+      final t = await tx.query(
+        'inventory_transfers_v1',
+        where: 'id=? AND farm_id=? AND item_id=? AND quantity_units=?',
+        whereArgs: [
+          transferId,
+          movement.farmId,
+          movement.itemId,
+          movement.quantityUnits,
+        ],
+      );
+      final expectedWarehouse = movement.kind == InventoryMovementKind.receipt
+          ? 'destination_id'
+          : 'source_id';
+      if (t.length != 1 ||
+          t.single[expectedWarehouse] != movement.warehouseId ||
+          movement.unitPriceText != null ||
+          movement.currency != null ||
+          planId != null)
+        throw StateError('Invalid internal transfer.');
+    }
+    final selected =
+        movement.warehouseId ?? InventoryWarehouse.defaultId(movement.farmId);
+    if (warehouseId != null && warehouseId != selected)
+      throw StateError('Warehouse mismatch.');
+    scope?.require(
+      ResourceContext(farmId: movement.farmId, warehouseId: selected),
+    );
+    if (selected == InventoryWarehouse.defaultId(movement.farmId))
+      await SqliteWarehouseStock.ensureDefault(tx, movement.farmId);
+    final selectedRows = await tx.query(
+      'inventory_warehouses_v1',
+      where: 'id=? AND farm_id=? AND active=1',
+      whereArgs: [selected, movement.farmId],
+    );
+    if (selectedRows.length != 1) throw StateError('Warehouse unavailable.');
+    if (transferId == null &&
+        movement.kind == InventoryMovementKind.issue &&
         (movement.unitPriceText == null ||
             movement.currency == null ||
             movement.pricedBy == null ||
@@ -336,6 +536,8 @@ class SqliteInventoryRepository
     if (prior.isNotEmpty) {
       final r = prior.single;
       if (r['farm_id'] == movement.farmId &&
+          r['warehouse_id'] == selected &&
+          r['transfer_id'] == transferId &&
           r['item_id'] == movement.itemId &&
           r['kind'] == movement.kind.name &&
           r['quantity_units'] == movement.quantityUnits &&
@@ -396,6 +598,16 @@ class SqliteInventoryRepository
         );
       }
     }
+    if (movement.kind == InventoryMovementKind.issue) {
+      final balance = await tx.query(
+        'inventory_warehouse_stock_v1',
+        where: 'warehouse_id=? AND item_id=? AND farm_id=?',
+        whereArgs: [selected, movement.itemId, movement.farmId],
+      );
+      if (balance.isEmpty ||
+          (balance.single['stock_units']! as int) < movement.quantityUnits)
+        throw StateError('Insufficient stock in selected warehouse.');
+    }
     final delta = movement.kind == InventoryMovementKind.receipt
         ? movement.quantityUnits
         : -movement.quantityUnits;
@@ -409,6 +621,18 @@ class SqliteInventoryRepository
         'Item is missing or stock is insufficient in this farm.',
       );
     }
+    await tx.insert('inventory_warehouse_stock_v1', {
+      'farm_id': movement.farmId,
+      'warehouse_id': selected,
+      'item_id': movement.itemId,
+      'stock_units': 0,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    final balanceChanged = await tx.rawUpdate(
+      'UPDATE inventory_warehouse_stock_v1 SET stock_units=stock_units+? WHERE farm_id=? AND warehouse_id=? AND item_id=? AND stock_units+?>=0 AND stock_units+?<=9007199254740991',
+      [delta, movement.farmId, selected, movement.itemId, delta, delta],
+    );
+    if (balanceChanged != 1)
+      throw StateError('Warehouse stock overflow or shortage.');
     final costItem = parcelId == null
         ? null
         : (await tx.query(
@@ -435,6 +659,8 @@ class SqliteInventoryRepository
         'code': code,
         'farm_id': movement.farmId,
         'item_id': movement.itemId,
+        'warehouse_id': selected,
+        'transfer_id': transferId,
         'kind': movement.kind.name,
         'quantity': movement.quantity,
         'quantity_units': movement.quantityUnits,
@@ -474,6 +700,7 @@ class SqliteInventoryRepository
         'amount': amount,
       }, conflictAlgorithm: ConflictAlgorithm.abort);
     }
+    if (scopeStamp != null) scope!.live.requireStamp(scope!.opened, scopeStamp);
   }
 
   @override
@@ -619,10 +846,12 @@ class SqliteInventoryRepository
 
   @override
   Future<List<InventoryMovement>> movementsByFarm(String farmId) async {
+    if (warehouseId != null)
+      scope?.require(ResourceContext(farmId: farmId, warehouseId: warehouseId));
     final rows = await database.query(
       movementsTable,
-      where: 'farm_id = ?',
-      whereArgs: [farmId],
+      where: warehouseId == null ? 'farm_id=?' : 'farm_id=? AND warehouse_id=?',
+      whereArgs: [farmId, if (warehouseId != null) warehouseId],
       orderBy: 'occurred_at, id',
     );
     return List.unmodifiable(
@@ -631,6 +860,8 @@ class SqliteInventoryRepository
           id: row['id']! as String,
           farmId: row['farm_id']! as String,
           itemId: row['item_id']! as String,
+          warehouseId: row['warehouse_id'] as String?,
+          transferId: row['transfer_id'] as String?,
           kind: InventoryMovementKind.values.byName(row['kind']! as String),
           quantity: ExactDecimal.quantityFromUnits(
             row['quantity_units']! as int,
