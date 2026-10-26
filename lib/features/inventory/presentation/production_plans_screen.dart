@@ -1,5 +1,7 @@
+import '../../machines/domain/machines.dart' show ProductionMachineCost;
 import '../../personnel/domain/personnel.dart' show ProductionLaborCost;
 import '../domain/entities/exact_decimal.dart';
+
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -33,6 +35,7 @@ class _ProductionPlansState extends State<ProductionPlansScreen> {
       List<ProductionPlanTask>,
       List<ProductionMaterialCost>,
       List<ProductionLaborCost>,
+      List<ProductionMachineCost>,
     )
   >
   data;
@@ -57,6 +60,7 @@ class _ProductionPlansState extends State<ProductionPlansScreen> {
       List<ProductionPlanTask>,
       List<ProductionMaterialCost>,
       List<ProductionLaborCost>,
+      List<ProductionMachineCost>,
     )
   >
   load() async {
@@ -64,12 +68,15 @@ class _ProductionPlansState extends State<ProductionPlansScreen> {
     final tasks = await widget.service.productionPlanTasks(widget.subject);
     final costs = await widget.service.productionCosts(widget.subject);
     final labor = await widget.service.productionLaborCosts(widget.subject);
-    return (plans, tasks, costs, labor);
+    final machine = await widget.service.productionMachineCosts(widget.subject);
+    return (plans, tasks, costs, labor, machine);
   }
 
   void reload() {
     final next = load();
-    setState(() => data = next);
+    setState(() {
+      data = next;
+    });
   }
 
   Future<void> run(Future<void> Function() action) async {
@@ -147,6 +154,7 @@ class _ProductionPlansState extends State<ProductionPlansScreen> {
               List<ProductionPlanTask>,
               List<ProductionMaterialCost>,
               List<ProductionLaborCost>,
+              List<ProductionMachineCost>,
             )
           >(
             future: data,
@@ -157,7 +165,7 @@ class _ProductionPlansState extends State<ProductionPlansScreen> {
               if (!snapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
-              final (plans, tasks, costs, labor) = snapshot.data!;
+              final (plans, tasks, costs, labor, machine) = snapshot.data!;
               final available = plans
                   .where(
                     (p) =>
@@ -172,6 +180,8 @@ class _ProductionPlansState extends State<ProductionPlansScreen> {
                 costs: costs,
                 laborCosts: labor,
                 laborActualsAvailable: true,
+                machineCosts: machine,
+                machineActualsAvailable: true,
                 parcelId: widget.initialParcelId,
                 planId: selectedPlan,
                 from: period?.start,
@@ -289,7 +299,9 @@ class _ProductionPlansState extends State<ProductionPlansScreen> {
                             Text(
                               '${l.text('hr.laborActual')}: ${report.laborActual(p.id)} ${p.currency}',
                             ),
-                            Text(l.text('hr.machinePending')),
+                            Text(
+                              '${l.text('planning.machineActual')}: ${report.machineActual(p.id)} ${p.currency}',
+                            ),
                             if (manage)
                               Wrap(
                                 spacing: 8,

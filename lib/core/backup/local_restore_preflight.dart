@@ -1,3 +1,5 @@
+import '../../features/machines/data/sqlite_machine_repository.dart';
+import '../../features/machines/data/machine_integrity.dart';
 import '../../features/personnel/data/personnel_integrity.dart';
 import '../../features/personnel/data/sqlite_personnel_repository.dart';
 import '../../features/inventory/data/local/production_inventory_integrity.dart';
@@ -113,6 +115,7 @@ class LocalRestorePreflight {
               'agrico_production_parcel_sequences_v4',
               'agrico_production_standalone_plot_sequences_v1',
               ...SqlitePersonnelRepository.tables,
+              ...SqliteMachineRepository.tables,
               'production_plans_v1',
               'production_plan_tasks_v1',
               'production_plan_sequences_v1',
@@ -183,6 +186,17 @@ class LocalRestorePreflight {
         );
       }
 
+      if (databaseName == 'agrico.db' &&
+          SqliteMachineRepository.tables.any(
+            (t) => (saved[t] as List? ?? const []).isNotEmpty,
+          ) &&
+          missing.intersection(SqliteMachineRepository.tables).isNotEmpty) {
+        throw RestorePreflightException(
+          'tables',
+          database: databaseName,
+          step: 'machine tables',
+        );
+      }
       final productionCode = RegExp(r'^(.+)-L([0-9]{3,})(?:-T([0-9]{3,}))?$');
       final standaloneProductionCode = RegExp(r'^(.+)-T([0-9]{3,})$');
       final productionRows = (saved['land_parcels'] as List? ?? const []).where(
@@ -265,9 +279,9 @@ class LocalRestorePreflight {
       }
       if (missing.contains('agrico_location_parcel_sequences_v3') &&
           (saved['land_parcels'] as List? ?? const []).any(
-            (row) => RegExp(
-              r'-L[0-9]{5}$',
-            ).hasMatch((row as Map)['parcel_code']?.toString() ?? ''),
+            (row) =>
+                RegExp(r'-L[0-9]{5}$')
+                    .hasMatch((row as Map)['parcel_code']?.toString() ?? ''),
           )) {
         throw RestorePreflightException('tables', database: databaseName);
       }
@@ -418,9 +432,10 @@ class LocalRestorePreflight {
         }
       }
       step = 'integrity';
-      if ((await staged.rawQuery(
-            'PRAGMA integrity_check',
-          )).single.values.single !=
+      if ((await staged.rawQuery('PRAGMA integrity_check'))
+              .single
+              .values
+              .single !=
           'ok') {
         throw RestorePreflightException('integrity', database: databaseName);
       }
@@ -489,6 +504,17 @@ class LocalRestorePreflight {
             'integrity',
             database: databaseName,
             step: 'personnel integrity',
+          );
+        }
+      }
+      if (databaseName == 'agrico.db' && tables.contains('machine_runs_v1')) {
+        try {
+          await MachineIntegrity.validate(staged);
+        } catch (_) {
+          throw RestorePreflightException(
+            'integrity',
+            database: databaseName,
+            step: 'machine integrity',
           );
         }
       }

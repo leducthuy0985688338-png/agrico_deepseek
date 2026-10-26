@@ -17,9 +17,6 @@ abstract final class PersonnelIntegrity {
 
     for (final p in await db.query('personnel_profiles_v1')) {
       worker(p['worker_id']! as String, p['farm_id']! as String);
-      if ((p['worker_name_snapshot']! as String).trim().isEmpty) {
-        throw StateError('Payroll name snapshot required.');
-      }
       EmployeeProfile(
         workerId: p['worker_id']! as String,
         farmId: p['farm_id']! as String,

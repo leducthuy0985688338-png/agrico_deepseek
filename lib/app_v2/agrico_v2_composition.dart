@@ -1,3 +1,6 @@
+import '../features/machines/data/sqlite_machine_repository.dart';
+import '../features/machines/application/machine_service.dart';
+import '../features/machines/presentation/machine_workspace_screen.dart';
 import '../features/personnel/data/sqlite_personnel_repository.dart';
 import '../features/personnel/application/personnel_service.dart';
 import '../features/personnel/presentation/personnel_workspace_screen.dart';
@@ -16,6 +19,7 @@ import '../core/auth/admin/company_account_admin_service.dart';
 import '../core/auth/admin/firebase_company_account_admin_repository.dart';
 import '../features/farm/application/production_parcel_creation_service.dart';
 import '../features/farm/data/adapters/spatial_production_parcel_creation_repository.dart';
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -138,6 +142,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     await SqliteCompanyCatalog.createSchema(database);
     await SqliteCompanyCatalog(database).adoptExisting(subject.farmId);
     await SqlitePersonnelRepository.createSchema(database);
+    await SqliteMachineRepository.createSchema(database);
     await SqliteParcelLandHistoryRepository.createSchema(database);
     await SqliteParcelNumberSequence.reconcileExistingHouseholds(database);
     await SqliteFinanceDocumentRepository.createSchema(database);
@@ -493,11 +498,30 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
           subject: deps.subject,
           currentSubject: () => mounted ? widget.subject : null,
           openMachines: () => push(
-            WorkResourceCatalogScreen(
-              kind: WorkResourceKind.machine,
-              subject: deps.subject,
-              service: resourceService,
-            ),
+            deps.subject.dataScopes.contains(DataScope.allFarm) &&
+                    const AuthorizationService().can(
+                      subject: deps.subject,
+                      permission: PermissionCodes.machineView,
+                      resource: ResourceContext(farmId: deps.subject.farmId),
+                    )
+                ? MachineWorkspaceScreen(
+                    service: MachineService(
+                      SqliteMachineRepository(deps.database),
+                    ),
+                    subject: deps.subject,
+                    openCatalog: () => push(
+                      WorkResourceCatalogScreen(
+                        kind: WorkResourceKind.machine,
+                        subject: deps.subject,
+                        service: resourceService,
+                      ),
+                    ),
+                  )
+                : WorkResourceCatalogScreen(
+                    kind: WorkResourceKind.machine,
+                    subject: deps.subject,
+                    service: resourceService,
+                  ),
           ),
           openWorkers: () => push(
             const AuthorizationService().can(

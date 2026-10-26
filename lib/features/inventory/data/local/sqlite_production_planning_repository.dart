@@ -221,6 +221,18 @@ class SqliteProductionPlanningRepository
       }
       if (status == ProductionPlanStatus.completed ||
           status == ProductionPlanStatus.cancelled) {
+        final machineTables = await tx.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='machine_runs_v1'",
+        );
+        if (machineTables.isNotEmpty &&
+            (await tx.rawQuery(
+              "SELECT r.id FROM machine_runs_v1 r JOIN machine_costs_v1 c ON c.source_id=r.id AND c.farm_id=r.farm_id WHERE c.plan_id=? AND c.farm_id=? AND r.status='draft' LIMIT 1",
+              [planId, farmId],
+            )).isNotEmpty) {
+          throw StateError(
+            'Approve or void machine logs before closing the plan.',
+          );
+        }
         final tables = await tx.rawQuery(
           "SELECT name FROM sqlite_master WHERE type='table' AND name='personnel_entries_v1'",
         );

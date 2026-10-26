@@ -554,6 +554,27 @@ class SqlitePersonnelRepository
       if (rows.length != 1) throw StateError('Stale or non-draft attendance.');
       final e = rows.single;
       await _worker(tx, farmId, e['worker_id']! as String);
+      final machineTable = await tx.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='machine_runs_v1'",
+      );
+      if (machineTable.isNotEmpty) {
+        final machines = await tx.query(
+          'machine_runs_v1',
+          where:
+              "farm_id=? AND status='approved' AND starts_at<? AND ends_at>?",
+          whereArgs: [farmId, e['ends_at'], e['starts_at']],
+        );
+        for (final machine in machines) {
+          final detail = jsonDecode(machine['body'] as String) as Map;
+          if (detail['operatorId'] == e['worker_id'] &&
+              e['machine_id'] != machine['machine_id']) {
+            throw StateError(
+              'Driver wages are included in the all-inclusive machine shift. Select that machine.',
+            );
+          }
+        }
+      }
+
       final basis = e['requested_basis'] as String?;
       final unit = e['requested_piece_unit']! as String;
       final type = e['work_type_id']! as String;

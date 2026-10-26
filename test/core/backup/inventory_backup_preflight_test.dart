@@ -1,3 +1,6 @@
+import 'package:agrico_deepseek/features/machines/data/sqlite_machine_repository.dart';
+import 'package:agrico_deepseek/features/machines/domain/machines.dart';
+import 'package:agrico_deepseek/core/catalog/sqlite_company_catalog.dart';
 import 'package:agrico_deepseek/features/inventory/domain/repositories/production_planning_repository.dart';
 
 import 'dart:convert';
@@ -91,6 +94,104 @@ void main() {
       isEmpty,
     );
   }
+
+  test(
+    'machine backup retains snapshots and rejects tampering or partial tables',
+    () async {
+      await primary.execute(
+        'CREATE TABLE land_parcels(id TEXT PRIMARY KEY,farm_id TEXT,parcel_code TEXT,active INTEGER,kind TEXT)',
+      );
+      await primary.execute(
+        'CREATE TABLE parcel_work_resources(id TEXT PRIMARY KEY,farm_id TEXT,kind TEXT,code TEXT,name TEXT,active INTEGER)',
+      );
+      await SqliteCompanyCatalog.createSchema(primary);
+      await SqliteMachineRepository.createSchema(primary);
+      for (final (id, kind) in [
+        ('machine', 'machine'),
+        ('operator', 'worker'),
+      ]) {
+        await primary.insert('company_catalog_entries_v1', {
+          'id': id,
+          'farm_id': 'farm-1',
+          'kind': kind,
+          'code': id,
+          'name': id,
+          'name_key': id,
+          'active': 1,
+          'revision': 1,
+        });
+        await primary.insert('parcel_work_resources', {
+          'id': id,
+          'farm_id': 'farm-1',
+          'kind': kind,
+          'code': id,
+          'name': id,
+          'active': 1,
+        });
+      }
+      final machines = SqliteMachineRepository(primary);
+      await machines.profile('farm-1', 'machine', 0, {
+        'meterUnit': 'hour',
+      }, 'admin');
+      await machines.addRate(
+        'farm-1',
+        const MachineRate(
+          id: 'rate',
+          machineId: 'machine',
+          effectiveOn: '2026-10-01',
+          amount: '800000',
+          currency: 'VND',
+          shiftMinutes: 480,
+          scale: 0,
+          rounding: MoneyRounding.halfUp,
+        ),
+        'admin',
+      );
+      await machines.addRun(
+        'farm-1',
+        MachineRun(
+          id: 'run',
+          machineId: 'machine',
+          operatorId: 'operator',
+          startsAt: DateTime.utc(2026, 10, 20, 1),
+          endsAt: DateTime.utc(2026, 10, 20, 10),
+          idleMinutes: 60,
+          meterStart: '100',
+          meterEnd: '108',
+        ),
+        'admin',
+      );
+      await machines.approveRun('farm-1', 'run', 0, 'admin');
+      final bytes = await snapshot();
+      final counts = await validate(bytes);
+      expect(counts['agrico.db/machine_runs_v1'], 1);
+      await expectLater(
+        validate(
+          _rewrite(bytes, (tables) {
+            ((tables['machine_runs_v1'] as List).single as Map)['amount'] = '1';
+          }),
+        ),
+        throwsA(isA<RestorePreflightException>()),
+      );
+      await expectLater(
+        validate(
+          _rewrite(bytes, (tables) {
+            tables.remove('machine_rates_v1');
+          }),
+        ),
+        throwsA(isA<RestorePreflightException>()),
+      );
+      await validate(
+        _rewrite(bytes, (tables) {
+          for (final table in SqliteMachineRepository.tables) {
+            tables.remove(table);
+          }
+        }),
+      );
+      expect((await machines.runs('farm-1')).single.amount, '800000');
+      await unchanged();
+    },
+  );
 
   test('native V2 seasons and cost snapshots survive backup preflight', () async {
     await primary.execute(

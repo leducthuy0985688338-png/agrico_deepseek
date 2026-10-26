@@ -1,5 +1,7 @@
+import '../../machines/domain/machines.dart' show ProductionMachineCost;
 import '../../../core/reports/excel_report_layout.dart';
 import '../../personnel/domain/personnel.dart' show ProductionLaborCost;
+
 import 'package:excel/excel.dart';
 
 import '../domain/entities/exact_decimal.dart';
@@ -13,6 +15,8 @@ class ProductionPlanReport {
     required this.tasks,
     required this.costs,
     this.laborCosts = const [],
+    this.machineCosts = const [],
+    this.machineActualsAvailable = false,
     this.laborActualsAvailable = false,
     this.parcelId,
     this.planId,
@@ -25,6 +29,8 @@ class ProductionPlanReport {
   final List<ProductionMaterialCost> costs;
   final List<ProductionLaborCost> laborCosts;
   final bool laborActualsAvailable;
+  final List<ProductionMachineCost> machineCosts;
+  final bool machineActualsAvailable;
   final String? parcelId, planId;
   final DateTime? from, to;
   List<ProductionPlan> get selectedPlans => plans
@@ -50,6 +56,27 @@ class ProductionPlanReport {
     }).toList();
   }
 
+  List<ProductionMachineCost> get selectedMachineCosts {
+    final ids = selectedPlans.map((p) => p.id).toSet();
+    return machineCosts
+        .where(
+          (c) =>
+              ids.contains(c.planId) &&
+              (from == null ||
+                  c.day.compareTo(from!.toIso8601String().substring(0, 10)) >=
+                      0) &&
+              (to == null ||
+                  c.day.compareTo(to!.toIso8601String().substring(0, 10)) <= 0),
+        )
+        .toList();
+  }
+
+  ExactDecimal machineActual(String id) => selectedMachineCosts
+      .where((c) => c.planId == id)
+      .fold(
+        ExactDecimal.parse('0'),
+        (s, c) => s + ExactDecimal.parse(c.amount),
+      );
   ExactDecimal materialActual(String id) => selectedCosts
       .where((c) => c.planId == id)
       .fold(ExactDecimal.parse('0'), (sum, c) {
@@ -138,7 +165,7 @@ class ProductionPlanReport {
     row(meta, [
       'Labor/machines',
       laborActualsAvailable
-          ? 'Labor = approved allocations and allocated payroll additions; machine actuals not connected.'
+          ? 'Labor = approved allocations and allocated payroll additions. Machine actuals available: $machineActualsAvailable; only approved all-inclusive allocations, no fuel/maintenance double count.'
           : 'Budgets only; labor/machine actuals not connected.',
     ]);
     row(meta, [
@@ -199,7 +226,9 @@ class ProductionPlanReport {
           laborActualsAvailable
               ? laborActual(p.id).toString()
               : 'Not connected',
-          'Not connected',
+          machineActualsAvailable
+              ? machineActual(p.id).toString()
+              : 'Not connected',
           work.where((t) => t.completed).length.toString(),
           work.length.toString(),
           p.parcelCode ?? p.parcelId,
@@ -215,6 +244,7 @@ class ProductionPlanReport {
           16,
           17,
           if (laborActualsAvailable) 18,
+          if (machineActualsAvailable) 19,
           20,
           21,
         },
@@ -318,6 +348,33 @@ class ProductionPlanReport {
             c.currency,
           ],
           numbers: {4, 5, 6},
+        );
+      }
+    }
+    if (machineActualsAvailable) {
+      final machines = excel['CA MAY SD'];
+      row(machines, [
+        'Day',
+        'Source ID',
+        'Machine ID',
+        'Plan ID',
+        'Minutes',
+        'All-inclusive cost',
+        'Currency',
+      ]);
+      for (final c in selectedMachineCosts) {
+        row(
+          machines,
+          [
+            c.day,
+            c.sourceId,
+            c.machineId,
+            c.planId,
+            '${c.minutes}',
+            c.amount,
+            c.currency,
+          ],
+          numbers: {4, 5},
         );
       }
     }

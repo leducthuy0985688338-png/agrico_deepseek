@@ -1,3 +1,6 @@
+import '../../../machines/domain/machines.dart'
+    show ProductionMachineCost, ProductionMachineCostRepository;
+import '../../../machines/data/sqlite_machine_repository.dart';
 import '../../../personnel/data/sqlite_personnel_repository.dart';
 import '../../../personnel/domain/personnel.dart'
     show ProductionLaborCost, ProductionLaborCostRepository;
@@ -22,7 +25,8 @@ class SqliteInventoryRepository
         InventoryRepository,
         ProductionDestinationRepository,
         ProductionPlanningRepository,
-        ProductionLaborCostRepository {
+        ProductionLaborCostRepository,
+        ProductionMachineCostRepository {
   const SqliteInventoryRepository(this.database);
 
   final Database database;
@@ -644,6 +648,17 @@ class SqliteInventoryRepository
     completed,
     actorId,
   );
+  @override
+  Future<List<ProductionMachineCost>> productionMachineCosts(
+    String farmId,
+  ) async {
+    final tables = await database.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='machine_runs_v1'",
+    );
+    if (tables.isEmpty) return [];
+    return SqliteMachineRepository(database).productionMachineCosts(farmId);
+  }
+
   @override
   Future<List<ProductionLaborCost>> productionLaborCosts(String farmId) =>
       SqlitePersonnelRepository(database).productionLaborCosts(farmId);
