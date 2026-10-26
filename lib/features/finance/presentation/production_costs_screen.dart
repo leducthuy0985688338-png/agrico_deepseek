@@ -436,7 +436,7 @@ class _ProductionCostsScreenState extends State<ProductionCostsScreen> {
               tooltip: l10n.text('finance.clearFilters'),
               onPressed: exporting ? null : clearFilters,
             ),
-          if (widget.service.canView)
+          if (widget.service.canExport)
             PopupMenuButton<bool>(
               key: const Key('costs-export'),
               icon: const Icon(Icons.file_download),

@@ -1,24 +1,24 @@
+import '../../../core/permissions/live_authorization.dart';
 import '../../../core/permissions/authorization.dart';
 import '../domain/machines.dart';
 export '../domain/machines.dart';
 
 class MachineService {
-  const MachineService(this.repository);
+  const MachineService(this.repository, {required this.currentSubject});
+  final AuthorizationSubject? Function() currentSubject;
+  LiveAuthorization get access => LiveAuthorization(currentSubject);
   final MachineRepository repository;
   bool can(AuthorizationSubject s, String permission) =>
-      s.dataScopes.contains(DataScope.allFarm) &&
-      const AuthorizationService().can(
-        subject: s,
-        permission: permission,
-        resource: ResourceContext(farmId: s.farmId),
-      );
+      access.can(s, permission);
   void authorize(AuthorizationSubject s, String permission) {
     if (!can(s, permission)) throw StateError('Machine permission denied.');
   }
 
   Future<List<MachineCard>> machines(AuthorizationSubject s) {
     authorize(s, PermissionCodes.machineView);
-    return repository.machines(s.farmId);
+    return access.read(s, [
+      PermissionCodes.machineView,
+    ], () => repository.machines(s.farmId));
   }
 
   Future<void> profile(
@@ -33,7 +33,10 @@ class MachineService {
   Future<List<MachineRate>> rates(AuthorizationSubject s) {
     authorize(s, PermissionCodes.financeView);
     authorize(s, PermissionCodes.machineView);
-    return repository.rates(s.farmId);
+    return access.read(s, [
+      PermissionCodes.financeView,
+      PermissionCodes.machineView,
+    ], () => repository.rates(s.farmId));
   }
 
   Future<void> addRate(AuthorizationSubject s, MachineRate rate) {
@@ -44,10 +47,11 @@ class MachineService {
 
   Future<List<MachineRecord<MachineRun>>> runs(AuthorizationSubject s) {
     authorize(s, PermissionCodes.machineView);
-    return repository.runs(
-      s.farmId,
-      money: can(s, PermissionCodes.financeView),
-    );
+    final money = can(s, PermissionCodes.financeView);
+    return access.read(s, [
+      PermissionCodes.machineView,
+      if (money) PermissionCodes.financeView,
+    ], () => repository.runs(s.farmId, money: money));
   }
 
   Future<void> addRun(AuthorizationSubject s, MachineRun run) {
@@ -79,7 +83,10 @@ class MachineService {
   Future<List<MachineRecord<MachineExpense>>> expenses(AuthorizationSubject s) {
     authorize(s, PermissionCodes.machineView);
     authorize(s, PermissionCodes.financeView);
-    return repository.expenses(s.farmId);
+    return access.read(s, [
+      PermissionCodes.financeView,
+      PermissionCodes.machineView,
+    ], () => repository.expenses(s.farmId));
   }
 
   Future<void> addExpense(AuthorizationSubject s, MachineExpense e) {
@@ -125,18 +132,25 @@ class MachineService {
 
   Future<List<Map<String, Object?>>> plans(AuthorizationSubject s) {
     authorize(s, PermissionCodes.machineView);
-    return repository.plans(s.farmId);
+    return access.read(s, [
+      PermissionCodes.machineView,
+    ], () => repository.plans(s.farmId));
   }
 
   Future<List<Map<String, Object?>>> workers(AuthorizationSubject s) {
     authorize(s, PermissionCodes.machineView);
-    return repository.workers(s.farmId);
+    return access.read(s, [
+      PermissionCodes.machineView,
+    ], () => repository.workers(s.farmId));
   }
 
   Future<List<ProductionMachineCost>> costs(AuthorizationSubject s) {
     authorize(s, PermissionCodes.machineView);
     authorize(s, PermissionCodes.financeView);
-    return repository.productionMachineCosts(s.farmId);
+    return access.read(s, [
+      PermissionCodes.machineView,
+      PermissionCodes.financeView,
+    ], () => repository.productionMachineCosts(s.farmId));
   }
 
   void exportPermission(AuthorizationSubject s) {

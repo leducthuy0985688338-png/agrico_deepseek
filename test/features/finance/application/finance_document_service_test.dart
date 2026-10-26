@@ -1,3 +1,5 @@
+import 'package:agrico_deepseek/features/finance/application/production_cost_summary.dart';
+import 'package:agrico_deepseek/features/finance/application/production_cost_report.dart';
 import 'package:agrico_deepseek/core/identity/domain/business_reference_code.dart';
 import 'package:agrico_deepseek/core/permissions/authorization.dart';
 import 'package:agrico_deepseek/features/finance/application/finance_document_service.dart';
@@ -8,6 +10,9 @@ AuthorizationSubject actor({
   Set<String> permissions = const {
     PermissionCodes.financeView,
     PermissionCodes.financeCreate,
+    PermissionCodes.cashView,
+    PermissionCodes.cashRecord,
+    PermissionCodes.dataExport,
     PermissionCodes.reportFinance,
   },
   Set<DataScope> scopes = const {DataScope.allFarm},
@@ -75,7 +80,9 @@ void main() {
   });
 
   test('view grant does not grant create or report', () async {
-    live = actor(permissions: {PermissionCodes.financeView});
+    live = actor(
+      permissions: {PermissionCodes.financeView, PermissionCodes.cashView},
+    );
     expect(await service.listByOrganization('farm-a'), isEmpty);
     await expectLater(create(service), throwsStateError);
     await expectLater(
@@ -154,7 +161,9 @@ void main() {
     'report revoked during report preparation never reaches file writer',
     () async {
       store.onRead = () {
-        live = actor(permissions: {PermissionCodes.financeView});
+        live = actor(
+          permissions: {PermissionCodes.financeView, PermissionCodes.cashView},
+        );
       };
       var writes = 0;
       await expectLater(
@@ -184,6 +193,131 @@ void main() {
     );
     await expectLater(service.listByOrganization('farm-a'), throwsStateError);
   });
+  test(
+    'finance permissions alone cannot read or create standalone cash',
+    () async {
+      live = actor(
+        permissions: const {
+          PermissionCodes.financeView,
+          PermissionCodes.financeCreate,
+          PermissionCodes.reportFinance,
+          PermissionCodes.dataExport,
+        },
+      );
+      await expectLater(service.listByOrganization('farm-a'), throwsStateError);
+      await expectLater(create(service), throwsStateError);
+      expect(store.reads, 0);
+      expect(store.creates, 0);
+    },
+  );
+  test(
+    'cash read plus finance create still requires the cash record grant',
+    () async {
+      live = actor(
+        permissions: const {
+          PermissionCodes.financeView,
+          PermissionCodes.cashView,
+          PermissionCodes.financeCreate,
+        },
+      );
+      expect(await service.listByOrganization('farm-a'), isEmpty);
+      await expectLater(create(service), throwsStateError);
+      expect(store.creates, 0);
+    },
+  );
+  test(
+    'report permission without data export cannot reach the writer',
+    () async {
+      live = actor(
+        permissions: const {
+          PermissionCodes.financeView,
+          PermissionCodes.cashView,
+          PermissionCodes.reportFinance,
+        },
+      );
+      var writes = 0;
+      await expectLater(
+        service.exportReport(
+          save: (_) async {
+            writes++;
+          },
+        ),
+        throwsStateError,
+      );
+      expect(writes, 0);
+    },
+  );
+  test(
+    'a cash reader may export with report and export grants without cash write',
+    () async {
+      live = actor(
+        permissions: const {
+          PermissionCodes.financeView,
+          PermissionCodes.cashView,
+          PermissionCodes.reportFinance,
+          PermissionCodes.dataExport,
+        },
+      );
+      var writes = 0;
+      await service.exportReport(
+        save: (_) async {
+          writes++;
+        },
+      );
+      expect(writes, 1);
+      await expectLater(create(service), throwsStateError);
+    },
+  );
+  test(
+    'cash view revocation during I/O discards cash and prevents export',
+    () async {
+      store.onRead = () {
+        live = actor(
+          permissions: const {
+            PermissionCodes.financeView,
+            PermissionCodes.reportFinance,
+            PermissionCodes.dataExport,
+          },
+        );
+      };
+      var writes = 0;
+      await expectLater(
+        service.exportReport(
+          save: (_) async {
+            writes++;
+          },
+        ),
+        throwsStateError,
+      );
+      expect(writes, 0);
+    },
+  );
+  test(
+    'report reading remains allowed without the export grant while both file writers deny',
+    () async {
+      live = actor(
+        permissions: const {
+          PermissionCodes.financeView,
+          PermissionCodes.cashView,
+          PermissionCodes.reportFinance,
+        },
+      );
+      final summary = ProductionCostSummary(service);
+      expect(summary.canView, isTrue);
+      expect(summary.canExport, isFalse);
+      expect(await ProductionCostReport(summary).workbook(), isNotNull);
+      var writes = 0;
+      await expectLater(
+        ProductionCostReport(summary).exportReport(
+          save: (_) async {
+            writes++;
+          },
+        ),
+        throwsStateError,
+      );
+      expect(writes, 0);
+    },
+  );
 }
 
 class _Store implements FinanceDocumentStore {

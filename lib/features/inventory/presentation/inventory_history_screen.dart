@@ -42,6 +42,7 @@ class _InventoryHistoryScreenState extends State<InventoryHistoryScreen> {
     if (exporting) return;
     setState(() => exporting = true);
     try {
+      widget.service.exportPermission(widget.subject);
       final workbook = report.workbook(
         query: search.text,
         itemId: itemFilter == 'all' ? null : itemFilter,
@@ -51,6 +52,7 @@ class _InventoryHistoryScreenState extends State<InventoryHistoryScreen> {
         from: period?.start,
         to: period?.end,
       );
+      widget.service.exportPermission(widget.subject);
       await (widget.saveReport ?? saveExcelFile)(
         workbook,
         'AGRICO-Inventory-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}.xlsx',
@@ -215,13 +217,25 @@ class _InventoryHistoryScreenState extends State<InventoryHistoryScreen> {
                     }),
                     child: Text(l10n.text('inventory.clearFilters')),
                   ),
-                  TextButton(
-                    key: const Key('inventory-history-export'),
-                    onPressed: exporting ? null : () => export(report),
-                    child: Text(
-                      exporting ? l10n.text('inventory.exporting') : 'Excel',
+                  if (widget.service.can(
+                        widget.subject,
+                        PermissionCodes.inventoryView,
+                      ) &&
+                      widget.service.can(
+                        widget.subject,
+                        PermissionCodes.reportOperations,
+                      ) &&
+                      widget.service.can(
+                        widget.subject,
+                        PermissionCodes.dataExport,
+                      ))
+                    TextButton(
+                      key: const Key('inventory-history-export'),
+                      onPressed: exporting ? null : () => export(report),
+                      child: Text(
+                        exporting ? l10n.text('inventory.exporting') : 'Excel',
+                      ),
                     ),
-                  ),
                 ],
               ),
               Text('${filtered.length} / ${movements.length}'),

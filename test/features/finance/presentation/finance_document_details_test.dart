@@ -12,7 +12,10 @@ AuthorizationSubject actor({bool view = true}) => AuthorizationSubject(
   userId: 'user',
   membershipId: 'member',
   farmId: 'farm',
-  permissionCodes: {if (view) PermissionCodes.financeView},
+  permissionCodes: {
+    if (view) PermissionCodes.financeView,
+    if (view) PermissionCodes.cashView,
+  },
   dataScopes: const {DataScope.allFarm},
   validUntil: DateTime.now().add(const Duration(hours: 1)),
 );

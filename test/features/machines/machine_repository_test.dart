@@ -20,6 +20,7 @@ void main() {
   late Database db;
   late SqliteMachineRepository repo;
   late MachineService service;
+  late AuthorizationSubject live;
   final admin = AuthorizationSubject(
     userId: 'admin',
     membershipId: 'm',
@@ -112,7 +113,8 @@ void main() {
     await SqliteMachineRepository.createSchema(db);
     await SqlitePersonnelRepository.createSchema(db);
     repo = SqliteMachineRepository(db);
-    service = MachineService(repo);
+    live = admin;
+    service = MachineService(repo, currentSubject: () => live);
     for (final (id, kind, farm) in [
       ('m', 'machine', 'f'),
       ('m2', 'machine', 'f'),
@@ -470,6 +472,7 @@ void main() {
     );
     await repo.addRate('f', rate(), 'admin');
     await approve(run());
+    live = clerk;
     expect((await service.runs(clerk)).single.amount, isNull);
     expect(() => service.rates(clerk), throwsStateError);
     expect(() => service.expenses(clerk), throwsStateError);
@@ -486,6 +489,7 @@ void main() {
       permissionCodes: PermissionCodes.values,
       dataScopes: const {DataScope.assignedMachines},
     );
+    live = narrow;
     expect(() => service.machines(narrow), throwsStateError);
   });
   test('LAK independent totals and machine plan report actuals', () async {

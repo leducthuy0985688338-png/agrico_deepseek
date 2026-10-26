@@ -1,3 +1,4 @@
+import '../../../core/permissions/live_authorization.dart';
 import '../../machines/domain/machines.dart'
     show ProductionMachineCost, ProductionMachineCostRepository;
 import '../../personnel/domain/personnel.dart'
@@ -10,29 +11,40 @@ import '../domain/repositories/inventory_repository.dart';
 import '../domain/repositories/production_destination_repository.dart';
 
 class InventoryService {
-  const InventoryService(this.repository);
+  const InventoryService(this.repository, {required this.currentSubject});
+  final AuthorizationSubject? Function() currentSubject;
+  LiveAuthorization get access => LiveAuthorization(currentSubject);
 
   final InventoryRepository repository;
 
+  bool can(AuthorizationSubject subject, String permission) =>
+      access.can(subject, permission);
   void _authorize(AuthorizationSubject subject, String permission) {
-    if (!subject.dataScopes.contains(DataScope.allFarm) ||
-        !const AuthorizationService().can(
-          subject: subject,
-          permission: permission,
-          resource: ResourceContext(farmId: subject.farmId),
-        )) {
-      throw StateError('Inventory requires farm-wide access.');
+    access.require(subject, permission);
+  }
+
+  void exportPermission(AuthorizationSubject subject) {
+    for (final permission in [
+      PermissionCodes.inventoryView,
+      PermissionCodes.reportOperations,
+      PermissionCodes.dataExport,
+    ]) {
+      _authorize(subject, permission);
     }
   }
 
   Future<List<InventoryItem>> list(AuthorizationSubject subject) {
     _authorize(subject, PermissionCodes.inventoryView);
-    return repository.listByFarm(subject.farmId);
+    return access.read(subject, [
+      PermissionCodes.inventoryView,
+    ], () => repository.listByFarm(subject.farmId));
   }
 
   Future<List<InventoryMovement>> movements(AuthorizationSubject subject) {
     _authorize(subject, PermissionCodes.inventoryView);
-    return repository.movementsByFarm(subject.farmId);
+    return access.read(subject, [
+      PermissionCodes.inventoryView,
+    ], () => repository.movementsByFarm(subject.farmId));
   }
 
   Future<void> register(AuthorizationSubject subject, InventoryItem item) {
@@ -56,28 +68,36 @@ class InventoryService {
     AuthorizationSubject subject,
   ) {
     _authorize(subject, PermissionCodes.inventoryManage);
-    return _destinations.productionDestinations(subject.farmId);
+    return access.read(subject, [
+      PermissionCodes.inventoryManage,
+    ], () => _destinations.productionDestinations(subject.farmId));
   }
 
   Future<List<ProductionIdentityChoice>> productionParcels(
     AuthorizationSubject subject,
   ) {
     _authorize(subject, PermissionCodes.inventoryView);
-    return _destinations.productionParcels(subject.farmId);
+    return access.read(subject, [
+      PermissionCodes.inventoryView,
+    ], () => _destinations.productionParcels(subject.farmId));
   }
 
   Future<List<ProductionSeason>> productionSeasons(
     AuthorizationSubject subject,
   ) {
     _authorize(subject, PermissionCodes.inventoryView);
-    return _destinations.productionSeasons(subject.farmId);
+    return access.read(subject, [
+      PermissionCodes.inventoryView,
+    ], () => _destinations.productionSeasons(subject.farmId));
   }
 
   Future<List<ProductionMaterialCost>> productionCosts(
     AuthorizationSubject subject,
   ) {
     _authorize(subject, PermissionCodes.financeView);
-    return _destinations.productionCosts(subject.farmId);
+    return access.read(subject, [
+      PermissionCodes.financeView,
+    ], () => _destinations.productionCosts(subject.farmId));
   }
 
   Future<void> createProductionSeason(
@@ -172,7 +192,10 @@ class InventoryService {
     _authorize(subject, PermissionCodes.inventoryView);
     _authorize(subject, PermissionCodes.financeView);
     if (repository is! ProductionPlanningRepository) return Future.value([]);
-    return _planning.productionPlans(subject.farmId);
+    return access.read(subject, [
+      PermissionCodes.inventoryView,
+      PermissionCodes.financeView,
+    ], () => _planning.productionPlans(subject.farmId));
   }
 
   Future<List<ProductionPlanTask>> productionPlanTasks(
@@ -180,7 +203,9 @@ class InventoryService {
   ) {
     _authorize(subject, PermissionCodes.inventoryView);
     if (repository is! ProductionPlanningRepository) return Future.value([]);
-    return _planning.productionPlanTasks(subject.farmId);
+    return access.read(subject, [
+      PermissionCodes.inventoryView,
+    ], () => _planning.productionPlanTasks(subject.farmId));
   }
 
   Future<void> createProductionPlan(
@@ -247,8 +272,12 @@ class InventoryService {
     _authorize(subject, PermissionCodes.financeView);
     final store = repository;
     if (store is! ProductionMachineCostRepository) return Future.value([]);
-    return (store as ProductionMachineCostRepository).productionMachineCosts(
-      subject.farmId,
+    return access.read(
+      subject,
+      [PermissionCodes.financeView],
+      () => (store as ProductionMachineCostRepository).productionMachineCosts(
+        subject.farmId,
+      ),
     );
   }
 
@@ -258,8 +287,12 @@ class InventoryService {
     _authorize(subject, PermissionCodes.financeView);
     final store = repository;
     if (store is! ProductionLaborCostRepository) return Future.value([]);
-    return (store as ProductionLaborCostRepository).productionLaborCosts(
-      subject.farmId,
+    return access.read(
+      subject,
+      [PermissionCodes.financeView],
+      () => (store as ProductionLaborCostRepository).productionLaborCosts(
+        subject.farmId,
+      ),
     );
   }
 }

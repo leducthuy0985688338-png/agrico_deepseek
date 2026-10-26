@@ -124,7 +124,7 @@ void main() {
   test(
     'creates seasons directly on V2 plots without any legacy field table',
     () async {
-      final service = InventoryService(repo);
+      final service = InventoryService(repo, currentSubject: () => admin);
       await service.createProductionSeason(admin, season('s1', 'p1'));
       expect(
         (await service.productionDestinations(admin)).single.parcelId,
@@ -320,7 +320,7 @@ void main() {
         permissionCodes: {PermissionCodes.inventoryView},
         dataScopes: {DataScope.allFarm},
       );
-      final service = InventoryService(repo);
+      final service = InventoryService(repo, currentSubject: () => admin);
       const warehouse = AuthorizationSubject(
         userId: 'u',
         membershipId: 'm',

@@ -13,6 +13,9 @@ FinanceDocumentService _service(
   Set<String> permissions = const {
     PermissionCodes.financeView,
     PermissionCodes.financeCreate,
+    PermissionCodes.cashView,
+    PermissionCodes.cashRecord,
+    PermissionCodes.dataExport,
     PermissionCodes.reportFinance,
   },
 }) {
@@ -42,7 +45,10 @@ void main() {
         home: FinanceDocumentsScreen(
           service: _service(
             _MemoryFinanceStore(),
-            permissions: const {PermissionCodes.financeView},
+            permissions: const {
+              PermissionCodes.financeView,
+              PermissionCodes.cashView,
+            },
           ),
         ),
       ),

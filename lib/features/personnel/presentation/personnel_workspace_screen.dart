@@ -63,6 +63,7 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
   void initState() {
     super.initState();
     data = load();
+    data.ignore();
   }
 
   @override
@@ -512,6 +513,14 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.service.can(widget.subject, PermissionCodes.employeeView))
+      return Scaffold(
+        body: Center(
+          child: Text(
+            AppLocalizations.of(context).text('error.permissionDenied'),
+          ),
+        ),
+      );
     final l = AppLocalizations.of(context);
     return DefaultTabController(
       length: salary ? 4 : 2,
@@ -634,10 +643,18 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
                     onPressed: busy
                         ? null
                         : () => run(() async {
+                            final includeSensitive = can(
+                              PermissionCodes.employeeEdit,
+                            );
+                            final requestedPeriod = period.text.trim();
+                            final fresh = await load();
                             for (final permission in [
+                              PermissionCodes.employeeView,
                               PermissionCodes.payrollView,
                               PermissionCodes.reportPersonnel,
                               PermissionCodes.dataExport,
+                              if (includeSensitive)
+                                PermissionCodes.employeeEdit,
                             ]) {
                               widget.service.authorize(
                                 widget.subject,
@@ -646,17 +663,17 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
                             }
                             final report = PersonnelReport(
                               farmId: widget.subject.farmId,
-                              period: period.text.trim(),
+                              period: requestedPeriod,
                               workerId: workerId,
-                              employees: d.employees,
-                              entries: d.entries,
-                              payrolls: d.payrolls,
-                              payments: d.payments,
-                              laborCosts: d.costs,
+                              employees: fresh.employees,
+                              entries: fresh.entries,
+                              payrolls: fresh.payrolls,
+                              payments: fresh.payments,
+                              laborCosts: fresh.costs,
                             );
                             await saveExcelBytes(
                               report.bytes(),
-                              'AGRICO-Personnel-${period.text.trim()}-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}.xlsx',
+                              'AGRICO-Personnel-${requestedPeriod}-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}.xlsx',
                             );
                           }),
                   ),

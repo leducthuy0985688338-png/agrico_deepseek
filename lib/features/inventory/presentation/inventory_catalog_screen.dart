@@ -39,12 +39,18 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
   @override
   void initState() {
     super.initState();
-    items = widget.service.list(widget.subject);
+    items = Future<List<InventoryItem>>.sync(
+      () => widget.service.list(widget.subject),
+    );
+    items.ignore();
   }
 
   void reload() {
     setState(() {
-      items = widget.service.list(widget.subject);
+      items = Future<List<InventoryItem>>.sync(
+        () => widget.service.list(widget.subject),
+      );
+      items.ignore();
     });
   }
 
@@ -86,12 +92,14 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final canManage =
-        widget.subject.active &&
-        widget.subject.permissionCodes.contains(
-          PermissionCodes.inventoryManage,
-        ) &&
-        widget.subject.dataScopes.contains(DataScope.allFarm);
+    final canManage = widget.service.can(
+      widget.subject,
+      PermissionCodes.inventoryManage,
+    );
+    if (!widget.service.can(widget.subject, PermissionCodes.inventoryView))
+      return Scaffold(
+        body: Center(child: Text(l10n.text('error.permissionDenied'))),
+      );
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.text('module.warehouse')),

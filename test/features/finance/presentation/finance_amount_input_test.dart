@@ -12,6 +12,9 @@ FinanceDocumentService _service(
   Set<String> permissions = const {
     PermissionCodes.financeView,
     PermissionCodes.financeCreate,
+    PermissionCodes.cashView,
+    PermissionCodes.cashRecord,
+    PermissionCodes.dataExport,
     PermissionCodes.reportFinance,
   },
 }) {

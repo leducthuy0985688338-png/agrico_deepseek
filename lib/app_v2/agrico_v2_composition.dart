@@ -267,6 +267,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
                     ProductionWorkspaceScreen(
                       service: InventoryService(
                         SqliteInventoryRepository(deps.database),
+                        currentSubject: () => mounted ? widget.subject : null,
                       ),
                       subject: deps.subject,
                       initialParcelId: id,
@@ -515,6 +516,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
                 ? MachineWorkspaceScreen(
                     service: MachineService(
                       SqliteMachineRepository(deps.database),
+                      currentSubject: () => mounted ? widget.subject : null,
                     ),
                     subject: deps.subject,
                     openCatalog: () => push(
@@ -541,6 +543,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
                 ? PersonnelWorkspaceScreen(
                     service: PersonnelService(
                       SqlitePersonnelRepository(deps.database),
+                      currentSubject: () => mounted ? widget.subject : null,
                     ),
                     subject: deps.subject,
                     catalog: CompanyCatalogService(
@@ -564,6 +567,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
               ),
               service: InventoryService(
                 SqliteInventoryRepository(deps.database),
+                currentSubject: () => mounted ? widget.subject : null,
               ),
             ),
           ),
@@ -612,9 +616,15 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         subject: deps.subject,
         currentSubject: () => mounted ? widget.subject : null,
       );
-      if (financeService.canView) {
+      final trade = TradeService(
+        SqliteTradeRepository(deps.database),
+        subject: deps.subject,
+        currentSubject: () => mounted ? widget.subject : null,
+      );
+      if (trade.can(PermissionCodes.financeView) || financeService.canView) {
         legacy['finance'] = () {
-          if (financeService.canView) {
+          if (trade.can(PermissionCodes.financeView) ||
+              financeService.canView) {
             push(
               deps.subject.dataScopes.contains(DataScope.allFarm)
                   ? TradeWorkspaceScreen(
@@ -623,11 +633,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
                               IntegrationWorkspaceScreen(service: integrated),
                             )
                           : null,
-                      service: TradeService(
-                        SqliteTradeRepository(deps.database),
-                        subject: deps.subject,
-                        currentSubject: () => mounted ? widget.subject : null,
-                      ),
+                      service: trade,
                       openCatalog: () => push(
                         CompanyCatalogScreen(
                           service: CompanyCatalogService(
@@ -637,8 +643,16 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
                           initialKind: CatalogKind.product,
                         ),
                       ),
-                      openCash: () =>
-                          push(FinanceDocumentsScreen(service: financeService)),
+                      openCash: financeService.canView
+                          ? () {
+                              if (financeService.canView)
+                                push(
+                                  FinanceDocumentsScreen(
+                                    service: financeService,
+                                  ),
+                                );
+                            }
+                          : null,
                     )
                   : FinanceDocumentsScreen(service: financeService),
             );
@@ -654,7 +668,10 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       if (canViewProduction) {
         void openProduction() => push(
           ProductionWorkspaceScreen(
-            service: InventoryService(SqliteInventoryRepository(deps.database)),
+            service: InventoryService(
+              SqliteInventoryRepository(deps.database),
+              currentSubject: () => mounted ? widget.subject : null,
+            ),
             subject: deps.subject,
             openFinanceCosts: costService.canView
                 ? () => push(ProductionCostsScreen(service: costService))

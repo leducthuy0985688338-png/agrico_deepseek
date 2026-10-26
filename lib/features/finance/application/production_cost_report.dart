@@ -131,6 +131,7 @@ class ProductionCostReport {
     ProductionCostParcelFilter parcelFilter =
         const ProductionCostParcelFilter.all(),
   }) async {
+    if (!summary.canExport) throw StateError('Cost export denied.');
     final report = await workbook(
       period: period,
       parcelFilter: parcelFilter,
@@ -138,6 +139,7 @@ class ProductionCostReport {
       query: query,
     );
     _authorize();
+    if (!summary.canExport) throw StateError('Cost export denied.');
     await save(report);
   }
 }

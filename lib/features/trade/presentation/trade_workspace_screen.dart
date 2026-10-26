@@ -15,7 +15,8 @@ class TradeWorkspaceScreen extends StatefulWidget {
     this.openReports,
   });
   final TradeService service;
-  final VoidCallback openCatalog, openCash;
+  final VoidCallback openCatalog;
+  final VoidCallback? openCash;
   final VoidCallback? openReports;
   @override
   State<TradeWorkspaceScreen> createState() => _TradeWorkspaceState();
@@ -363,11 +364,12 @@ class _TradeWorkspaceState extends State<TradeWorkspaceScreen> {
               onPressed: widget.openCatalog,
               icon: const Icon(Icons.list_alt),
             ),
-            IconButton(
-              tooltip: t('legacyCash'),
-              onPressed: widget.openCash,
-              icon: const Icon(Icons.account_balance_wallet),
-            ),
+            if (widget.openCash != null && can(PermissionCodes.cashView))
+              IconButton(
+                tooltip: t('legacyCash'),
+                onPressed: widget.openCash,
+                icon: const Icon(Icons.account_balance_wallet),
+              ),
             IconButton(
               tooltip: t('reload'),
               onPressed: busy ? null : reload,
@@ -420,17 +422,19 @@ class _TradeWorkspaceState extends State<TradeWorkspaceScreen> {
                               onPressed: busy
                                   ? null
                                   : () => action(() async {
+                                      final requestedPeriod = period.text;
+                                      final fresh = await load();
                                       widget.service.exportPermission();
                                       await saveExcelBytes(
                                         TradeReport(
                                           farm: widget.service.subject.farmId,
-                                          period: period.text,
-                                          documents: d.documents,
-                                          lots: d.lots,
-                                          payments: d.payments,
-                                          cash: d.cash,
+                                          period: requestedPeriod,
+                                          documents: fresh.documents,
+                                          lots: fresh.lots,
+                                          payments: fresh.payments,
+                                          cash: fresh.cash,
                                         ).bytes(),
-                                        'AGRICO-Trade-${period.text}-${DateTime.now().microsecondsSinceEpoch}.xlsx',
+                                        'AGRICO-Trade-${requestedPeriod}-${DateTime.now().microsecondsSinceEpoch}.xlsx',
                                       );
                                     }),
                             ),

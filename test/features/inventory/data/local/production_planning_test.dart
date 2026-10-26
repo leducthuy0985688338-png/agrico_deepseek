@@ -18,6 +18,7 @@ void main() {
   late Database db;
   late SqliteInventoryRepository repo;
   late InventoryService service;
+  late AuthorizationSubject live;
   final admin = AuthorizationSubject(
     userId: 'admin',
     membershipId: 'a',
@@ -94,7 +95,8 @@ void main() {
     await SqliteFarmTaskRepository.createTaskTable(db);
     await SqliteInventoryRepository.createSchema(db);
     repo = SqliteInventoryRepository(db);
-    service = InventoryService(repo);
+    live = admin;
+    service = InventoryService(repo, currentSubject: () => live);
     await db.insert('land_parcels', {
       'id': 'p',
       'farm_id': 'f',
@@ -240,6 +242,7 @@ void main() {
   test(
     'warehouse permissions cannot supply a price or read financial budgets',
     () async {
+      live = keeper;
       expect(() => service.record(keeper, move('x')), throwsStateError);
       expect(() => service.productionPlans(keeper), throwsStateError);
       expect((await repo.listByFarm('f')).single.stock, 10.5);

@@ -12,19 +12,20 @@ void main() {
     tester,
   ) async {
     final repository = _History();
+    final subject = const AuthorizationSubject(
+      userId: 'user',
+      membershipId: 'member',
+      farmId: 'farm-1',
+      permissionCodes: {PermissionCodes.inventoryView},
+      dataScopes: {DataScope.allFarm},
+    );
     await tester.pumpWidget(
       MaterialApp(
         locale: const Locale('vi'),
         localizationsDelegates: const [AppLocalizations.delegate],
         home: InventoryHistoryScreen(
-          subject: const AuthorizationSubject(
-            userId: 'user',
-            membershipId: 'member',
-            farmId: 'farm-1',
-            permissionCodes: {PermissionCodes.inventoryView},
-            dataScopes: {DataScope.allFarm},
-          ),
-          service: InventoryService(repository),
+          subject: subject,
+          service: InventoryService(repository, currentSubject: () => subject),
         ),
       ),
     );

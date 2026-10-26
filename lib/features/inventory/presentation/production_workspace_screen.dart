@@ -57,20 +57,9 @@ class _ProductionWorkspaceScreenState extends State<ProductionWorkspaceScreen> {
   }
 
   bool get canManage =>
-      widget.subject.dataScopes.contains(DataScope.allFarm) &&
-      const AuthorizationService().can(
-        subject: widget.subject,
-        permission: PermissionCodes.productionPlan,
-        resource: ResourceContext(farmId: widget.subject.farmId),
-      );
-
+      widget.service.can(widget.subject, PermissionCodes.productionPlan);
   bool get canViewCosts =>
-      widget.subject.dataScopes.contains(DataScope.allFarm) &&
-      const AuthorizationService().can(
-        subject: widget.subject,
-        permission: PermissionCodes.financeView,
-        resource: ResourceContext(farmId: widget.subject.farmId),
-      );
+      widget.service.can(widget.subject, PermissionCodes.financeView);
 
   Future<void> add() async {
     final saved = await showDialog<bool>(

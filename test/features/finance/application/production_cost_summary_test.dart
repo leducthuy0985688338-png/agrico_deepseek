@@ -23,6 +23,8 @@ AuthorizationSubject actor({
   farmId: farm,
   permissionCodes: {
     PermissionCodes.financeView,
+    PermissionCodes.cashView,
+    if (report) PermissionCodes.dataExport,
     if (report) PermissionCodes.reportFinance,
   },
   dataScopes: scopes,

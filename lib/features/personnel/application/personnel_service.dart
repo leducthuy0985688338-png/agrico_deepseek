@@ -1,27 +1,25 @@
+import '../../../core/permissions/live_authorization.dart';
 import '../../../core/permissions/authorization.dart';
 import '../domain/personnel.dart';
 export '../domain/personnel.dart';
 
 class PersonnelService {
-  const PersonnelService(this.repository);
+  const PersonnelService(this.repository, {required this.currentSubject});
+  final AuthorizationSubject? Function() currentSubject;
+  LiveAuthorization get access => LiveAuthorization(currentSubject);
   final PersonnelRepository repository;
-  bool can(AuthorizationSubject s, String p) =>
-      s.dataScopes.contains(DataScope.allFarm) &&
-      const AuthorizationService().can(
-        subject: s,
-        permission: p,
-        resource: ResourceContext(farmId: s.farmId),
-      );
+  bool can(AuthorizationSubject s, String p) => access.can(s, p);
   void authorize(AuthorizationSubject s, String p) {
     if (!can(s, p)) throw StateError('Personnel permission denied.');
   }
 
   Future<List<EmployeeCard>> employees(AuthorizationSubject s) {
     authorize(s, PermissionCodes.employeeView);
-    return repository.employees(
-      s.farmId,
-      sensitive: can(s, PermissionCodes.employeeEdit),
-    );
+    final sensitive = can(s, PermissionCodes.employeeEdit);
+    return access.read(s, [
+      PermissionCodes.employeeView,
+      if (sensitive) PermissionCodes.employeeEdit,
+    ], () => repository.employees(s.farmId, sensitive: sensitive));
   }
 
   Future<void> saveProfile(AuthorizationSubject s, EmployeeProfile profile) {
@@ -33,7 +31,9 @@ class PersonnelService {
 
   Future<List<PayRate>> rates(AuthorizationSubject s) {
     authorize(s, PermissionCodes.payrollView);
-    return repository.rates(s.farmId);
+    return access.read(s, [
+      PermissionCodes.payrollView,
+    ], () => repository.rates(s.farmId));
   }
 
   Future<void> createRate(AuthorizationSubject s, PayRate rate) {
@@ -45,10 +45,11 @@ class PersonnelService {
 
   Future<List<LaborEntryRecord>> entries(AuthorizationSubject s) {
     authorize(s, PermissionCodes.employeeView);
-    return repository.entries(
-      s.farmId,
-      money: can(s, PermissionCodes.payrollView),
-    );
+    final money = can(s, PermissionCodes.payrollView);
+    return access.read(s, [
+      PermissionCodes.employeeView,
+      if (money) PermissionCodes.payrollView,
+    ], () => repository.entries(s.farmId, money: money));
   }
 
   Future<void> createEntry(AuthorizationSubject s, LaborEntryDraft draft) {
@@ -75,7 +76,9 @@ class PersonnelService {
 
   Future<List<PayrollRecordV2>> payrolls(AuthorizationSubject s) {
     authorize(s, PermissionCodes.payrollView);
-    return repository.payrolls(s.farmId);
+    return access.read(s, [
+      PermissionCodes.payrollView,
+    ], () => repository.payrolls(s.farmId));
   }
 
   Future<void> createPayroll(AuthorizationSubject s, PayrollDraft d) {
@@ -120,17 +123,23 @@ class PersonnelService {
 
   Future<List<PersonnelPlanChoice>> planChoices(AuthorizationSubject s) {
     authorize(s, PermissionCodes.employeeView);
-    return repository.planChoices(s.farmId);
+    return access.read(s, [
+      PermissionCodes.employeeView,
+    ], () => repository.planChoices(s.farmId));
   }
 
   Future<List<PersonnelTaskChoice>> taskChoices(AuthorizationSubject s) {
     authorize(s, PermissionCodes.employeeView);
-    return repository.taskChoices(s.farmId);
+    return access.read(s, [
+      PermissionCodes.employeeView,
+    ], () => repository.taskChoices(s.farmId));
   }
 
   Future<List<SalaryPayment>> payments(AuthorizationSubject s) {
     authorize(s, PermissionCodes.payrollView);
-    return repository.payments(s.farmId);
+    return access.read(s, [
+      PermissionCodes.payrollView,
+    ], () => repository.payments(s.farmId));
   }
 
   Future<List<ProductionLaborCost>> laborCosts(AuthorizationSubject s) {
@@ -139,6 +148,10 @@ class PersonnelService {
     if (r is! ProductionLaborCostRepository) {
       throw StateError('Labor projection unavailable.');
     }
-    return (r as ProductionLaborCostRepository).productionLaborCosts(s.farmId);
+    return access.read(
+      s,
+      [PermissionCodes.payrollView],
+      () => (r as ProductionLaborCostRepository).productionLaborCosts(s.farmId),
+    );
   }
 }

@@ -150,7 +150,10 @@ void main() {
         userId: actor.userId,
         membershipId: actor.membershipId,
         farmId: actor.farmId,
-        permissionCodes: {PermissionCodes.financeView},
+        permissionCodes: {
+          PermissionCodes.financeView,
+          PermissionCodes.cashView,
+        },
         dataScopes: const {DataScope.allFarm},
         validUntil: DateTime.now().add(const Duration(hours: 1)),
       );

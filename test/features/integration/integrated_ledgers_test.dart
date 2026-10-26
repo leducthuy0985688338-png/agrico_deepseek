@@ -210,7 +210,7 @@ void main() {
     );
     await addPlan('plan');
     repo = SqlitePersonnelRepository(db);
-    service = PersonnelService(repo);
+    service = PersonnelService(repo, currentSubject: () => admin);
   });
   tearDown(() => db.close());
 

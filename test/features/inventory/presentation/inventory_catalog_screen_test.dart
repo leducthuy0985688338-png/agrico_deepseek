@@ -28,7 +28,7 @@ void main() {
       localizationsDelegates: const [AppLocalizations.delegate],
       home: InventoryCatalogScreen(
         subject: subject,
-        service: InventoryService(repository),
+        service: InventoryService(repository, currentSubject: () => subject),
       ),
     );
     await tester.pumpWidget(screen());

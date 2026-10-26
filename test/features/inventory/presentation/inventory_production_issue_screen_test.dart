@@ -191,7 +191,7 @@ void main() {
         ],
         home: InventoryCatalogScreen(
           subject: subject,
-          service: InventoryService(repo),
+          service: InventoryService(repo, currentSubject: () => subject),
           productionIssuesEnabled: true,
         ),
       ),
@@ -370,7 +370,7 @@ void main() {
           GlobalCupertinoLocalizations.delegate,
         ],
         home: ProductionWorkspaceScreen(
-          service: InventoryService(repo),
+          service: InventoryService(repo, currentSubject: () => subject),
           subject: subject,
           initialParcelId: 'p1',
         ),
@@ -404,7 +404,7 @@ void main() {
             GlobalCupertinoLocalizations.delegate,
           ],
           home: ProductionWorkspaceScreen(
-            service: InventoryService(repo),
+            service: InventoryService(repo, currentSubject: () => viewer),
             subject: viewer,
           ),
         ),

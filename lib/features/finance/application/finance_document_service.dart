@@ -37,9 +37,14 @@ class FinanceDocumentService implements FinanceDocumentStore {
         );
   }
 
-  bool get canView => _can(PermissionCodes.financeView);
-  bool get canCreate => canView && _can(PermissionCodes.financeCreate);
-  bool get canExport => canView && _can(PermissionCodes.reportFinance);
+  bool get canView =>
+      _can(PermissionCodes.financeView) && _can(PermissionCodes.cashView);
+  bool get canCreate =>
+      canView &&
+      _can(PermissionCodes.financeCreate) &&
+      _can(PermissionCodes.cashRecord);
+  bool get canReport => canView && _can(PermissionCodes.reportFinance);
+  bool get canExport => canReport && _can(PermissionCodes.dataExport);
   bool get canViewParcels =>
       canView && parcels != null && _can(PermissionCodes.fieldView);
 

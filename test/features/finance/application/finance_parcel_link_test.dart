@@ -18,6 +18,9 @@ AuthorizationSubject actor({bool viewParcel = true}) => AuthorizationSubject(
   permissionCodes: {
     PermissionCodes.financeView,
     PermissionCodes.financeCreate,
+    PermissionCodes.cashView,
+    PermissionCodes.cashRecord,
+    PermissionCodes.dataExport,
     PermissionCodes.reportFinance,
     if (viewParcel) PermissionCodes.fieldView,
   },

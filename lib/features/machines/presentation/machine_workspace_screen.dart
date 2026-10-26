@@ -68,6 +68,7 @@ class _MachineWorkspaceState extends State<MachineWorkspaceScreen> {
   void initState() {
     super.initState();
     data = load();
+    data.ignore();
   }
 
   @override
@@ -303,6 +304,14 @@ class _MachineWorkspaceState extends State<MachineWorkspaceScreen> {
   );
   @override
   Widget build(BuildContext context) {
+    if (!widget.service.can(widget.subject, PermissionCodes.machineView))
+      return Scaffold(
+        body: Center(
+          child: Text(
+            AppLocalizations.of(context).text('error.permissionDenied'),
+          ),
+        ),
+      );
     final tabs = [
       'machines',
       'runs',
@@ -402,20 +411,22 @@ class _MachineWorkspaceState extends State<MachineWorkspaceScreen> {
                           onPressed: busy
                               ? null
                               : () => action(() async {
+                                  final requestedPeriod = month.text;
+                                  final fresh = await load();
                                   widget.service.exportPermission(
                                     widget.subject,
                                   );
                                   await saveExcelBytes(
                                     MachineReport(
                                       farm: widget.subject.farmId,
-                                      period: month.text,
+                                      period: requestedPeriod,
                                       machineId: machine,
-                                      machines: d.machines,
-                                      runs: d.runs,
-                                      expenses: d.expenses,
-                                      costs: d.costs,
+                                      machines: fresh.machines,
+                                      runs: fresh.runs,
+                                      expenses: fresh.expenses,
+                                      costs: fresh.costs,
                                     ).export(),
-                                    'AGRICO-machines-${month.text}-${DateTime.now().millisecondsSinceEpoch}.xlsx',
+                                    'AGRICO-machines-${requestedPeriod}-${DateTime.now().millisecondsSinceEpoch}.xlsx',
                                   );
                                 }),
                         ),

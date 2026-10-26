@@ -58,6 +58,13 @@ void main() {
     MemoryMachines repo,
     Set<String> permissions,
   ) async {
+    final subject = AuthorizationSubject(
+      userId: 'a',
+      membershipId: 'a',
+      farmId: 'f',
+      permissionCodes: permissions,
+      dataScopes: const {DataScope.allFarm},
+    );
     await tester.pumpWidget(
       MaterialApp(
         locale: const Locale('vi'),
@@ -69,14 +76,8 @@ void main() {
           GlobalCupertinoLocalizations.delegate,
         ],
         home: MachineWorkspaceScreen(
-          service: MachineService(repo),
-          subject: AuthorizationSubject(
-            userId: 'a',
-            membershipId: 'a',
-            farmId: 'f',
-            permissionCodes: permissions,
-            dataScopes: const {DataScope.allFarm},
-          ),
+          service: MachineService(repo, currentSubject: () => subject),
+          subject: subject,
           openCatalog: () {},
         ),
       ),

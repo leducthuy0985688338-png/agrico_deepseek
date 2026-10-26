@@ -137,7 +137,7 @@ void main() {
           GlobalCupertinoLocalizations.delegate,
         ],
         home: PersonnelWorkspaceScreen(
-          service: PersonnelService(repo),
+          service: PersonnelService(repo, currentSubject: () => subject),
           subject: subject,
         ),
       ),

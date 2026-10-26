@@ -15,7 +15,7 @@ AuthorizationSubject actor() => AuthorizationSubject(
   userId: 'user',
   membershipId: 'member',
   farmId: 'farm',
-  permissionCodes: {PermissionCodes.financeView},
+  permissionCodes: {PermissionCodes.financeView, PermissionCodes.cashView},
   dataScopes: const {DataScope.allFarm},
   validUntil: DateTime.now().add(const Duration(hours: 1)),
 );

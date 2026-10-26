@@ -48,7 +48,10 @@ void main() {
         dataScopes: {DataScope.allFarm},
       );
       expect(
-        () => InventoryService(repository).register(stockManager, item),
+        () => InventoryService(
+          repository,
+          currentSubject: () => stockManager,
+        ).register(stockManager, item),
         throwsStateError,
       );
       expect(repository.items, isEmpty);
@@ -57,10 +60,13 @@ void main() {
 
   test('reads by farm and rejects unauthorized or cross-farm writes', () async {
     final repository = _Inventory();
-    final service = InventoryService(repository);
+    AuthorizationSubject live = manager;
+    final service = InventoryService(repository, currentSubject: () => live);
     await service.register(manager, item);
+    live = viewer;
     expect(await service.list(viewer), [item]);
     expect(() => service.register(viewer, item), throwsStateError);
+    live = manager;
     expect(
       () => service.register(
         manager,
@@ -83,6 +89,7 @@ void main() {
       permissionCodes: {PermissionCodes.inventoryView},
       dataScopes: {DataScope.assignedFields},
     );
+    live = limited;
     expect(() => service.list(limited), throwsStateError);
     expect(repository.items, hasLength(1));
   });

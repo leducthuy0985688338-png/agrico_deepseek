@@ -42,11 +42,7 @@ class _ProductionPlansState extends State<ProductionPlansScreen> {
   String? selectedPlan;
   DateTimeRange? period;
   bool busy = false;
-  bool permission(String code) => const AuthorizationService().can(
-    subject: widget.subject,
-    permission: code,
-    resource: ResourceContext(farmId: widget.subject.farmId),
-  );
+  bool permission(String code) => widget.service.can(widget.subject, code);
   bool get manage => permission(PermissionCodes.productionPlan);
   @override
   void initState() {
@@ -239,7 +235,8 @@ class _ProductionPlansState extends State<ProductionPlansScreen> {
                           onPressed: () => setState(() => period = null),
                           child: Text(l.text('planning.all')),
                         ),
-                      if (permission(PermissionCodes.dataExport))
+                      if (permission(PermissionCodes.dataExport) &&
+                          permission(PermissionCodes.reportOperations))
                         FilledButton.icon(
                           key: const Key('planning-export'),
                           icon: const Icon(Icons.download),
@@ -247,6 +244,9 @@ class _ProductionPlansState extends State<ProductionPlansScreen> {
                           onPressed: busy
                               ? null
                               : () => run(() async {
+                                  widget.service.exportPermission(
+                                    widget.subject,
+                                  );
                                   // Recheck live session permissions before building the financial export.
                                   if (!permission(
                                         PermissionCodes.financeView,

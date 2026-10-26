@@ -60,7 +60,8 @@ class ProductionCostSnapshot {
 class ProductionCostSummary {
   const ProductionCostSummary(this.finance);
   final FinanceDocumentService finance;
-  bool get canView => finance.canExport;
+  bool get canView => finance.canReport;
+  bool get canExport => finance.canExport;
 
   Future<ProductionCostSnapshot> load({
     String? currency,

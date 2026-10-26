@@ -25,6 +25,7 @@ void main() {
   late Database db;
   late SqlitePersonnelRepository repo;
   late PersonnelService service;
+  late AuthorizationSubject live;
   late SqliteInventoryRepository inventory;
   final admin = AuthorizationSubject(
     userId: 'admin',
@@ -192,7 +193,8 @@ void main() {
     );
     await addPlan('plan');
     repo = SqlitePersonnelRepository(db);
-    service = PersonnelService(repo);
+    live = admin;
+    service = PersonnelService(repo, currentSubject: () => live);
   });
   tearDown(() => db.close());
   test(
@@ -559,6 +561,7 @@ void main() {
       },
       dataScopes: {DataScope.allFarm},
     );
+    live = clerk;
     expect((await service.entries(clerk)).single.total, isNull);
     expect(() => service.rates(clerk), throwsStateError);
     expect(

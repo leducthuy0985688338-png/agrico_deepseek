@@ -100,6 +100,7 @@ void main() {
     expect(find.text('Thêm'), findsNothing);
     expect(find.text('Xuất Excel'), findsNothing);
     expect(repo.cashReads, 0);
+    expect(find.byIcon(Icons.account_balance_wallet), findsNothing);
     expect(tester.takeException(), isNull);
   });
   testWidgets('harvest requires explicit currency and rounding before saving', (
