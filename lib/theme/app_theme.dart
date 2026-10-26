@@ -94,6 +94,15 @@ class AppTheme {
           color: Colors.white,
         ),
       ),
+      // AppBar tabs must stay readable on the shared green background.
+      tabBarTheme: const TabBarThemeData(
+        labelColor: Colors.white,
+        unselectedLabelColor: Color(0xFFE8F5E9),
+        indicatorColor: secondaryColor,
+        dividerColor: Colors.transparent,
+        labelStyle: TextStyle(fontWeight: FontWeight.w700),
+        unselectedLabelStyle: TextStyle(fontWeight: FontWeight.w500),
+      ),
       // Sửa lỗi CardTheme -> CardThemeData
       cardTheme: CardThemeData(
         color: cardColor,
