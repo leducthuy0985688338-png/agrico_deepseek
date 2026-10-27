@@ -1,0 +1,22 @@
+rules_version = '2';
+service firebase.storage {
+ match /b/{bucket}/o {
+  function membership(){return firestore.get(/databases/(default)/documents/agrico_memberships/$(request.auth.uid)).data;}
+  function ready(farm){let m=membership();return request.auth!=null&&m.active==true&&m.userId==request.auth.uid&&m.membershipId==request.auth.uid&&m.farmId==farm&&m.offlineUntil>request.time&&!m.get('deniedPermissions',[]).hasAny(['cloud.sync']);}
+  function writer(){let m=membership();return (!m.get('deniedPermissions',[]).hasAny(['chat.send'])&&(m.get('extraPermissions',[]).hasAny(['chat.send'])||m.roles[0].role!='auditor')) || (!m.get('deniedPermissions',[]).hasAny(['office.request'])&&(m.get('extraPermissions',[]).hasAny(['office.request'])||m.roles[0].role!='auditor'));}
+  function fullAdmin(farm){let m=membership();let a=firestore.get(/databases/(default)/documents/agrico_access_admins/$(request.auth.uid)).data;return a.active==true&&a.farmId==farm&&m.roles[0].role=='systemAdmin'&&m.roles[0].scopes.hasAny(['allFarm'])&&!m.get('deniedPermissions',[]).hasAny(['cloud.restore','local_backup.export','employee.sensitive.view','payroll.view','finance.view']);}
+  function immutable(limit,digest){return resource==null&&request.resource.size>0&&request.resource.size<=limit&&digest.matches('^[a-f0-9]{64}$')&&request.resource.metadata.sha256==digest;}
+  function grant(farm,uid,digest,path){let g=firestore.get(/databases/(default)/documents/agrico_workspace/$(farm)/users/$(request.auth.uid)/file_grants/$(digest)).data;return g.path==path&&g.until>request.time&&g.revision==membership().get('adminRevision',0);}
+  match /company-workspace/{farm}/files/{uid}/{digest} {
+   allow create: if ready(farm)&&request.auth.uid==uid&&writer()&&immutable(5242880,digest);
+   allow get: if ready(farm)&&(request.auth.uid==uid||grant(farm,uid,digest,'company-workspace/'+farm+'/files/'+uid+'/'+digest));
+   allow list,update,delete: if false;
+  }
+  match /company-workspace/{farm}/snapshots/{uid}/{digest} {
+   allow create: if ready(farm)&&request.auth.uid==uid&&fullAdmin(farm)&&immutable(26214400,digest);
+   allow get: if ready(farm)&&fullAdmin(farm);
+   allow list,update,delete: if false;
+  }
+  match /{all=**}{allow read,write:if false;}
+ }
+}

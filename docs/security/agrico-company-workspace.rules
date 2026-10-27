@@ -1,0 +1,349 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function actor() {
+      return get(/databases/$(database)/documents/agrico_memberships/$(request.auth.uid)).data;
+    }
+    function authority() {
+      return get(/databases/$(database)/documents/agrico_access_admins/$(request.auth.uid)).data;
+    }
+    function policy(farm) {
+      return get(/databases/$(database)/documents/agrico_access_policy/$(farm)).data;
+    }
+    function isAdmin(farm) {
+      let a = authority();
+      let m = actor();
+      return signedIn() && a.active == true && a.farmId == farm
+        && m.active == true && m.farmId == farm
+        && m.userId == request.auth.uid && m.membershipId == request.auth.uid
+        && m.offlineUntil > request.time
+        && !m.get('deniedPermissions', []).hasAny(['account.view', 'account.manage', 'role.manage']);
+    }
+    function validScopes(s) { return s is list && s.size() <= 9 && s.hasOnly(["allFarm", "team", "assignedFields", "assignedTasks", "own", "project", "department", "assignedMachines", "assignedWarehouses"]); }
+    function validRole(r, names, allowed) {
+      return r is map && r.size() == 2 && r.role in names
+        && r.scopes is list && r.scopes.size() > 0 && r.scopes.size() <= 9
+        && r.scopes.hasOnly(allowed);
+    }
+    function validRoles(r) {
+      let names = ["systemAdmin", "director", "operationsManager", "departmentManager", "teamLeader", "agronomist", "gisOfficer", "machineOperator", "fieldWorker", "equipmentCoordinator", "warehouseKeeper", "purchasingOfficer", "accountant", "cashier", "hrOfficer", "officeStaff", "auditor"];
+      let allowed = ["allFarm", "team", "assignedFields", "assignedTasks", "own", "project", "department", "assignedMachines", "assignedWarehouses"];
+      return r is list && r.size() > 0 && r.size() <= 4
+        && validRole(r[0], names, allowed)
+        && (r.size() <= 1 || validRole(r[1], names, allowed))
+        && (r.size() <= 2 || validRole(r[2], names, allowed))
+        && (r.size() <= 3 || validRole(r[3], names, allowed));
+    }
+    function idList(v) { return v is list && v.size() <= 100; }
+    function valid(d, uid) {
+      let p = policy(d.farmId);
+      return d.keys().hasOnly(['schemaVersion', 'userId', 'membershipId', 'farmId', 'active', 'roles',
+        'offlineUntil', 'extraPermissions', 'deniedPermissions', 'extraPermissionScopes',
+        'projectIds', 'departmentIds', 'teamIds', 'fieldIds', 'taskIds', 'machineIds', 'warehouseIds',
+        'displayName', 'adminRevision', 'adminAuditId', 'updatedBy', 'updatedAt'])
+        && d.schemaVersion == 1 && d.userId == uid && d.membershipId == uid
+        && uid.matches('^[A-Za-z0-9_-]{1,128}$') && d.farmId is string && d.farmId == 'local-farm'
+        && d.active is bool && validRoles(d.roles)
+        && d.displayName is string && d.displayName.size() > 0 && d.displayName.size() <= 100
+        && d.extraPermissions is list && d.deniedPermissions is list
+        && d.extraPermissions.concat(d.deniedPermissions).hasOnly(["field.view", "household.create", "household.edit", "field.create", "field.edit", "field.delete", "field.measure", "field.boundary.edit", "field.boundary.verify", "field.google_earth.import", "field.google_earth.export", "task.view", "task.create", "task.edit", "task.assign", "task.complete", "inventory.view", "inventory.manage", "inventory.transfer", "inventory.price", "task.verify", "chat.view", "chat.send", "cloud.sync", "cloud.restore", "administrative_catalog.manage", "local_backup.export", "account.view", "account.manage", "role.manage", "catalog.view", "catalog.manage", "catalog.request", "production.plan", "production.approve", "crop.view", "crop.edit", "machine.view", "machine.assign", "machine.log", "machine.maintain", "machine.verify", "inventory.request", "inventory.receive", "inventory.issue", "inventory.count", "inventory.adjust", "inventory.approve", "purchase.view", "purchase.request", "purchase.edit", "purchase.approve", "finance.view", "finance.create", "finance.post", "finance.approve", "finance.correct", "cash.view", "cash.record", "employee.view", "employee.sensitive.view", "employee.edit", "attendance.record", "attendance.verify", "payroll.view", "payroll.manage", "payroll.approve", "office.request", "office.view", "office.edit", "report.operations", "report.finance", "report.personnel", "audit.view", "audit.review", "data.export"])
+        && validScopes(d.extraPermissionScopes)
+        && (d.extraPermissions.size() == 0 || d.extraPermissionScopes.size() > 0)
+        && idList(d.projectIds) && idList(d.departmentIds) && idList(d.teamIds)
+        && idList(d.fieldIds) && idList(d.taskIds) && idList(d.machineIds) && idList(d.warehouseIds)
+        && d.offlineUntil is timestamp && (!d.active || d.offlineUntil > request.time)
+        && p.maxOfflineDays is int && p.maxOfflineDays >= 1
+        && p.maxOfflineDays <= 90
+        && (!d.active || d.offlineUntil <= request.time + duration.value(p.maxOfflineDays, 'd'))
+        && d.adminRevision is int && d.adminAuditId is string
+        && d.updatedBy == request.auth.uid && d.updatedAt == request.time;
+    }
+    function audited(d, uid, before) {
+      let a = getAfter(/databases/$(database)/documents/agrico_access_audit/$(d.adminAuditId)).data;
+      return !exists(/databases/$(database)/documents/agrico_access_audit/$(d.adminAuditId))
+        && a.actorUid == request.auth.uid && a.targetUid == uid && a.farmId == d.farmId
+        && a.revision == d.adminRevision && a.occurredAt == request.time
+        && a.before == before;
+    }
+    function renewable(uid) {
+      let p = policy(resource.data.farmId);
+      let d = request.resource.data;
+      return signedIn() && request.auth.uid == uid && resource.data.userId == uid
+        && resource.data.membershipId == uid && resource.data.active == true
+        && p.autoRenew == true && p.offlineDays is int && p.offlineDays >= 1 && p.offlineDays <= 90
+        && p.offlineDays <= p.maxOfflineDays
+        && d.diff(resource.data).affectedKeys().hasOnly(['offlineUntil', 'leaseRenewedAt'])
+        && d.leaseRenewedAt == request.time && d.offlineUntil is timestamp
+        && d.offlineUntil > request.time && d.offlineUntil >= resource.data.offlineUntil
+        && d.offlineUntil <= request.time + duration.value(p.offlineDays, 'd');
+    }
+    match /agrico_access_admins/{uid} {
+      allow get: if signedIn() && uid == request.auth.uid;
+      allow list, create, update, delete: if false;
+    }
+    match /agrico_access_policy/{farm} {
+      allow get: if signedIn() && actor().farmId == farm && actor().active == true;
+      allow list, create, update, delete: if false;
+    }
+    match /agrico_memberships/{uid} {
+      allow get: if signedIn() && (uid == request.auth.uid
+        || (!exists(/databases/$(database)/documents/agrico_memberships/$(uid))
+          && isAdmin(actor().farmId))
+        || (exists(/databases/$(database)/documents/agrico_memberships/$(uid))
+          && isAdmin(resource.data.farmId)));
+      allow list: if isAdmin(resource.data.farmId) && request.query.limit <= 200;
+      allow create: if isAdmin(request.resource.data.farmId) && uid != request.auth.uid
+        && !exists(/databases/$(database)/documents/agrico_access_admins/$(uid))
+        && valid(request.resource.data, uid) && request.resource.data.adminRevision == 1
+        && audited(request.resource.data, uid, null);
+      allow update: if renewable(uid) || (isAdmin(resource.data.farmId) && uid != request.auth.uid
+        && !exists(/databases/$(database)/documents/agrico_access_admins/$(uid))
+        && request.resource.data.farmId == resource.data.farmId
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.membershipId == resource.data.membershipId
+        && valid(request.resource.data, uid)
+        && request.resource.data.adminRevision == resource.data.get('adminRevision', 0) + 1
+        && audited(request.resource.data, uid, resource.data));
+      allow delete: if false;
+    }
+    match /agrico_access_audit/{id} {
+      allow get: if isAdmin(resource.data.farmId);
+      allow list: if isAdmin(resource.data.farmId) && request.query.limit <= 200;
+      allow create: if isAdmin(request.resource.data.farmId)
+        && request.resource.data.keys().hasOnly(['farmId', 'actorUid', 'targetUid', 'revision', 'reason', 'occurredAt', 'before', 'after'])
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.reason is string && request.resource.data.reason.size() > 0
+        && request.resource.data.reason.size() <= 500
+        && request.resource.data.occurredAt == request.time
+        && getAfter(/databases/$(database)/documents/agrico_memberships/$(request.resource.data.targetUid)).data == request.resource.data.after
+        && request.resource.data.after.updatedAt == request.time
+        && request.resource.data.after.updatedBy == request.auth.uid
+        && request.resource.data.before != request.resource.data.after
+        && request.resource.data.after.adminAuditId == id
+        && request.resource.data.after.adminRevision == request.resource.data.revision;
+      allow update, delete: if false;
+    }
+    // A05 catalog protocol. No writes are authorized by app UI alone.
+    function catPath(farm, entity, id) {
+      return /databases/$(database)/documents/agrico_catalog/$(farm)/$(entity)/$(id);
+    }
+    function catRole(r, permission) {
+      let scopes = r.get('scopes', ['allFarm']);
+      return scopes is list && scopes.size() > 0
+        && (permission == 'catalog.manage' ? (r.role == 'systemAdmin' && 'allFarm' in scopes)
+          : (r.role in ['systemAdmin','director','operationsManager','departmentManager','teamLeader','agronomist','gisOfficer','machineOperator','fieldWorker','equipmentCoordinator','warehouseKeeper','purchasingOfficer','accountant','cashier','hrOfficer','officeStaff','auditor']
+            && (permission != 'catalog.request' || r.role != 'auditor')));
+    }
+    function catAdminRole(r) {
+      return r.role == 'systemAdmin' && 'allFarm' in r.get('scopes',['allFarm']);
+    }
+    function catBuiltin(m, permission) {
+      let r = m.get('roles', []);
+      return permission == 'catalog.manage'
+        ? ((r.size() > 0 && catAdminRole(r[0])) || (r.size() > 1 && catAdminRole(r[1]))
+          || (r.size() > 2 && catAdminRole(r[2])) || (r.size() > 3 && catAdminRole(r[3])))
+        : ((r.size() > 0 && catRole(r[0], permission)) || (r.size() > 1 && catRole(r[1], permission))
+          || (r.size() > 2 && catRole(r[2], permission)) || (r.size() > 3 && catRole(r[3], permission)));
+    }
+    function catExtra(m, permission) {
+      let scopes = m.get('extraPermissionScopes', []);
+      return permission in m.get('extraPermissions', [])
+        && ('allFarm' in scopes || (permission in ['catalog.request','cloud.sync'] && 'own' in scopes));
+    }
+    function catCan(farm, permission) {
+      let m = actor();
+      return signedIn() && m.schemaVersion == 1 && farm == 'local-farm' && m.farmId == farm
+        && m.active == true && m.userId == request.auth.uid && m.membershipId == request.auth.uid
+        && m.offlineUntil > request.time
+        && !m.get('deniedPermissions', []).hasAny([permission, 'cloud.sync'])
+        && (catBuiltin(m, permission) || (catExtra(m, permission)
+          && (catBuiltin(m, 'cloud.sync') || catExtra(m, 'cloud.sync'))));
+    }
+    function catId(id) { return id is string && id.size() > 0 && id.size() <= 500 && !id.matches('.*[/].*') && id != '.' && id != '..'; }
+    function catKind(k) { return k in ['unit','crop','machine','worker','material','taskType','supplier','incomeCategory','expenseCategory']; }
+    function catKey(kind, type, value) { return kind + '~' + type + '~' + hashing.sha256(value).toHexString(); }
+    function catUsage(farm, unit) {
+      return exists(catPath(farm, 'unit_usage', unit))
+        ? get(catPath(farm, 'unit_usage', unit)).data : {'references':0, 'activeReferences':0};
+    }
+    function catRef(p, unit) { return p != null && p.get('unit_id', null) == unit ? 1 : 0; }
+    function catActiveRef(p, unit) { return catRef(p, unit) == 1 && p.active == 1 ? 1 : 0; }
+    function catUsageValid(o, unit) {
+      let prior = catUsage(o.farmId, unit);
+      let next = getAfter(catPath(o.farmId, 'unit_usage', unit)).data;
+      return next.keys().hasOnly(['references','activeReferences','operationId'])
+        && next.operationId == o.operationId
+        && next.references is int && next.activeReferences is int
+        && next.references >= 0 && next.activeReferences >= 0 && next.activeReferences <= next.references
+        && next.references == prior.references + catRef(o.payload, unit) - catRef(o.before, unit)
+        && next.activeReferences == prior.activeReferences + catActiveRef(o.payload, unit) - catActiveRef(o.before, unit);
+    }
+    function catUsageAfter(o, unit) {
+      return getAfter(catPath(o.farmId, 'unit_usage', unit)).data.operationId == o.operationId;
+    }
+    // Rules upper() folds ASCII only. Preserve EN/VN/LA canonical keys exactly.
+    function catName(name, key) {
+      let normal = name.replace('\\s+', ' ');
+      let vietnamese = '[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴĐ]';
+      let quoted = normal.split('\\\\E').join('\\E\\\\E\\Q');
+      return key is string && !key.matches('[\\s\\S]*[\\p{Ll}\\p{Lt}][\\s\\S]*')
+        && key.replace(vietnamese, '~') == normal.upper().replace(vietnamese, '~')
+        && key.matches('(?i)\\Q' + quoted + '\\E');
+    }
+    function catEntry(p, farm, id) {
+      return p.keys().hasOnly(['id','farm_id','kind','code','name','name_key','unit_id','active','revision'])
+        && p.id == id && p.farm_id == farm && catKind(p.kind)
+        && p.code is string && p.code.matches('^[A-Z0-9][A-Z0-9_-]{0,39}$')
+        && p.name is string && p.name.size() > 0 && p.name.size() <= 100
+        && p.name == p.name.replace('^\\s+|\\s+$', '')
+        && catName(p.name,p.name_key)
+        && p.active is int && p.active in [0,1] && p.revision is int && p.revision > 0
+        && (p.unit_id == null || catId(p.unit_id))
+        && (p.kind != 'unit' || p.unit_id == null)
+        && (!(p.kind in ['crop','material']) || p.unit_id != null);
+    }
+    function catKeyAfter(o, type, value, target) {
+      let d = getAfter(catPath(o.farmId, 'keys', catKey(o.payload.kind, type, value))).data;
+      return d.targetId == target && d.operationId == o.operationId;
+    }
+    function catEntryChange(o) {
+      let p = o.payload;
+      let before = o.before;
+      let usage = p.kind == 'unit' ? catUsage(o.farmId, o.targetId) : {'references':0,'activeReferences':0};
+      return (before == null || (p.code == before.code && p.kind == before.kind
+          && (p.kind != 'material' || p.unit_id == before.unit_id)))
+        && (p.unit_id == null || (get(catPath(o.farmId,'entries',p.unit_id)).data.payload.kind == 'unit'
+          && getAfter(catPath(o.farmId,'entries',p.unit_id)).data.payload.active == 1
+          && catUsageAfter(o, p.unit_id)))
+        && (before == null || before.unit_id == null || before.unit_id == p.unit_id || catUsageAfter(o, before.unit_id))
+        && (p.kind != 'unit' || ((p.active == 1 || usage.activeReferences == 0)
+          && (before == null || p.name == before.name || usage.references == 0)));
+    }
+    function catKeysProof(o) {
+      let p = o.payload;
+      let before = o.before;
+      return catKeyAfter(o,'code',p.code,o.targetId) && catKeyAfter(o,'name',p.name_key,o.targetId)
+        && (before == null || before.name_key == p.name_key || catKeyAfter(o,'name',before.name_key,null));
+    }
+    function catIso(value) {
+      return value is string && value.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3,6}Z$');
+    }
+    function catRequest(p, farm, id) {
+      return p.keys().hasOnly(['id','farm_id','actor_uid','kind','code','name','reason','created_at','status','entry_id','resolved_by','resolved_at','resolution'])
+        && p.id == id && p.farm_id == farm && catId(p.actor_uid) && catKind(p.kind)
+        && p.code is string && p.code.matches('^[A-Z0-9][A-Z0-9_-]{0,39}$')
+        && p.name is string && p.name.size() > 0 && p.name.size() <= 100
+        && p.reason is string && p.reason.size() > 0 && p.reason.size() <= 500
+        && catIso(p.created_at) && p.name.trim().size() > 0 && p.reason.trim().size() > 0;
+    }
+    function catRequestChange(o) {
+      let p = o.payload;
+      let b = o.before;
+      return ((b == null && catCan(o.farmId,'catalog.request') && p.actor_uid == request.auth.uid
+          && p.status == 'pending' && p.get('entry_id',null) == null
+          && p.get('resolved_by',null) == null && p.get('resolved_at',null) == null && p.get('resolution',null) == null)
+        || (b != null && catCan(o.farmId,'catalog.manage') && b.status == 'pending'
+          && p.actor_uid == b.actor_uid && p.kind == b.kind && p.code == b.code
+          && p.name == b.name && p.reason == b.reason && p.created_at == b.created_at
+          && p.resolved_by == request.auth.uid && p.resolved_at == o.occurredAt && p.resolution == o.reason
+          && ((p.status == 'rejected' && p.entry_id == null)
+            || (p.status == 'approved' && p.actor_uid != request.auth.uid && catId(p.entry_id)
+              && get(catPath(o.farmId,'entries',p.entry_id)).data.payload.kind == p.kind
+              && getAfter(catPath(o.farmId,'entries',p.entry_id)).data.payload.active == 1))));
+    }
+    function catOperation(o, farm, id) {
+      let collection = o.entity == 'entry' ? 'entries' : 'requests';
+      let target = catPath(farm, collection, o.targetId);
+      return o.keys().hasOnly(['operationId','farmId','actorUid','entity','targetId','baseVersion','newVersion','payload','reason','occurredAt','before','acceptedAt'])
+        && o.operationId == id && catId(id) && o.farmId == farm && o.actorUid == request.auth.uid
+        && o.entity in ['entry','request'] && catId(o.targetId) && o.payload is map
+        && o.baseVersion is int && o.baseVersion >= 0 && o.newVersion is int && o.newVersion == o.baseVersion + 1
+        && o.reason is string && o.reason.size() > 0 && o.reason.size() <= 500
+        && catIso(o.occurredAt) && o.reason.trim().size() > 0
+        && o.acceptedAt == request.time
+        && ((o.baseVersion == 0 && !exists(target) && o.before == null)
+          || (exists(target) && get(target).data.version == o.baseVersion && get(target).data.payload == o.before))
+        && getAfter(target).data == {'version':o.newVersion, 'operationId':id, 'payload':o.payload}
+        && ((o.entity == 'entry' && catCan(farm,'catalog.manage') && catKeysProof(o)) || (o.entity == 'request' && catRequest(o.payload,farm,o.targetId)));
+    }
+    function catTargetWrite(farm, entity, id) {
+      let d = request.resource.data;
+      let opPath = catPath(farm,'operations',d.operationId);
+      let o = getAfter(opPath).data;
+      return !exists(opPath) && o.entity == entity && o.targetId == id
+        && ((entity == 'entry' && catEntry(o.payload,farm,id) && catEntryChange(o))
+          || (entity == 'request' && catRequestChange(o)));
+    }
+    match /agrico_catalog/{farm}/entries/{id} {
+      allow get: if catCan(farm,'catalog.view');
+      allow list: if catCan(farm,'catalog.view') && request.query.limit <= 200;
+      allow create, update: if catTargetWrite(farm,'entry',id);
+      allow delete: if false;
+    }
+    match /agrico_catalog/{farm}/requests/{id} {
+      allow get: if catCan(farm,'catalog.manage') || (catCan(farm,'catalog.request')
+        && (!exists(catPath(farm,'requests',id)) || resource.data.payload.actor_uid == request.auth.uid));
+      allow list: if request.query.limit <= 200 && (catCan(farm,'catalog.manage')
+        || (catCan(farm,'catalog.request') && resource.data.payload.actor_uid == request.auth.uid));
+      allow create, update: if catTargetWrite(farm,'request',id);
+      allow delete: if false;
+    }
+    match /agrico_catalog/{farm}/operations/{id} {
+      // No list: staff receipts can contain only their own suggestion.
+      allow get: if catCan(farm,'catalog.manage') || (catCan(farm,'catalog.request')
+        && (!exists(catPath(farm,'operations',id)) || resource.data.actorUid == request.auth.uid));
+      allow create: if signedIn() && catOperation(request.resource.data,farm,id);
+      allow update, delete, list: if false;
+    }
+    match /agrico_catalog/{farm}/keys/{id} {
+      allow get: if catCan(farm,'catalog.manage');
+      allow list, delete: if false;
+      allow create, update: if signedIn() && catLockWrite(farm,id);
+    }
+    function catLockWrite(farm,id) {
+      let d = request.resource.data;
+      let path = catPath(farm,'operations',d.operationId);
+      let o = getAfter(path).data;
+      let p = o.payload;
+      return d.keys().hasOnly(['targetId','operationId','type','value']) && !exists(path)
+        && o.entity == 'entry' && id == catKey(p.kind,d.type,d.value)
+        && (!exists(catPath(farm,'keys',id)) || resource.data.targetId == null || resource.data.targetId == o.targetId)
+        && ((d.targetId == o.targetId && ((d.type == 'code' && d.value == p.code) || (d.type == 'name' && d.value == p.name_key)))
+          || (d.targetId == null && d.type == 'name' && o.before != null && o.before.name_key != p.name_key && d.value == o.before.name_key));
+    }
+    match /agrico_catalog/{farm}/unit_usage/{id} {
+      allow get: if catCan(farm,'catalog.manage');
+      allow list, delete: if false;
+      allow create, update: if signedIn() && catUsageWrite(farm,id);
+    }
+    function catUsageWrite(farm,id) {
+      let d = request.resource.data;
+      let path = catPath(farm,'operations',d.operationId);
+      let o = getAfter(path).data;
+      return !exists(path) && o.entity == 'entry'
+        && (catRef(o.payload,id) == 1 || catRef(o.before,id) == 1) && catUsageValid(o,id);
+    }
+
+
+    function wsReady(farm) { let m=actor(); return signedIn() && m.active==true && m.userId==request.auth.uid && m.membershipId==request.auth.uid && m.farmId==farm && m.offlineUntil>request.time && m.roles.size()>0 && !m.get('deniedPermissions',[]).hasAny(['cloud.sync']); }
+    match /agrico_workspace/{farm}/users/{uid}/commands/{op} {
+      allow get: if uid==request.auth.uid && wsReady(farm) && (!exists(/databases/$(database)/documents/agrico_workspace/$(farm)/users/$(uid)/commands/$(op)) || resource.data.status!='accepted' || resource.data.get('resultPolicyRevision',-1)==actor().get('adminRevision',0));
+      allow list, update, delete: if false;
+      allow create: if uid==request.auth.uid && wsReady(farm)
+        && op.matches('^[A-Za-z0-9_-]{1,120}$')
+        && request.resource.data.keys().hasOnly(['schemaVersion','action','entityId','expectedRevision','payload','status','createdAt'])
+        && request.resource.data.schemaVersion==1 && request.resource.data.status=='pending'
+        && request.resource.data.entityId.matches('^[A-Za-z0-9_-]{1,120}$')
+        && request.resource.data.expectedRevision is int && request.resource.data.expectedRevision>=0
+        && request.resource.data.payload is map && request.resource.data.createdAt==request.time
+        && request.resource.data.action in ['directory.list','template.list','template.save','route.list','route.save','inbox.list','record.history','message.list','attachment.authorize','snapshot.head','snapshot.publish','task.create','task.accept','task.start','task.progress','task.submit','task.verify','task.rework','task.cancel','form.create','form.edit','form.submit','form.receive','form.approve','form.changes','form.reject','form.withdraw','form.complete','room.create','message.create','ai.ask'];
+    }
+    match /agrico_workspace/{farm}/users/{uid}/notices/{notice} {
+      allow get: if uid==request.auth.uid && wsReady(farm) && !actor().get('deniedPermissions',[]).hasAny(['chat.view']);
+      allow list,write: if false;
+    }
+
+    match /{document=**} { allow read, write: if false; }
+  }
+}

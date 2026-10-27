@@ -1,0 +1,24 @@
+{
+  "firestore": {
+    "rules": "docs/security/agrico-company-workspace.rules",
+    "indexes": "docs/security/firestore-workspace.indexes.json"
+  },
+  "storage": {
+    "rules": "docs/security/agrico-company-workspace.storage.rules"
+  },
+  "functions": [
+    {
+      "source": "backend/company-workspace",
+      "codebase": "company-workspace",
+      "runtime": "nodejs22",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "test",
+        "tools",
+        "*.log",
+        ".env*"
+      ]
+    }
+  ]
+}
