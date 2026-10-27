@@ -10,6 +10,13 @@ class AppLocalizations {
 
   final Locale locale;
 
+  static String failureKey(Object error, String fallback) =>
+      error.toString().contains('ACCOUNTING_PERIOD_CLOSED')
+      ? 'period.closedError'
+      : fallback;
+  String failure(Object error, String fallback) =>
+      text(failureKey(error, fallback));
+
   static const supportedLocales = <Locale>[
     Locale('vi'),
     Locale('lo'),
@@ -26,6 +33,8 @@ class AppLocalizations {
   }
 
   static const _shellVi = <String, String>{
+    'period.closedError':
+        'Kỳ đã khóa. Ghi nhận vào kỳ đang mở hoặc nhờ người có quyền mở lại kỳ có lý do.',
     'trade.cost1': 'Giá vốn xuất kho dòng 1 (Admin nhập)',
     'trade.cost2': 'Giá vốn xuất kho dòng 2',
     'trade.productWorkflow':
@@ -967,6 +976,8 @@ class AppLocalizations {
     'gps.permissionDenied': 'Quyền vị trí bị từ chối.',
   };
   static const _shellLo = <String, String>{
+    'period.closedError':
+        'ເດືອນນີ້ລັອກແລ້ວ. ບັນທຶກໃນເດືອນທີ່ເປີດ ຫຼື ໃຫ້ຜູ້ມີສິດເປີດຄືນພ້ອມເຫດຜົນ.',
     'trade.cost1': 'ລາຄາທຶນເບີກສາງ ແຖວ 1 (Admin)',
     'trade.cost2': 'ລາຄາທຶນເບີກສາງ ແຖວ 2',
     'trade.productWorkflow': 'ຜະລິດຕະພັນຈັດການຕາມລັອດໃນ ເກັບກ່ຽວ / ຂາຍ.',
@@ -1858,6 +1869,8 @@ class AppLocalizations {
     'gps.permissionDenied': 'ສິດທີ່ຕັ້ງຖືກປະຕິເສດ.',
   };
   static const _shellEn = <String, String>{
+    'period.closedError':
+        'This period is closed. Post in an open period or ask an authorized approver to reopen it with a reason.',
     'trade.cost1': 'Issue cost line 1 (Admin-entered)',
     'trade.cost2': 'Issue cost line 2',
     'trade.productWorkflow':

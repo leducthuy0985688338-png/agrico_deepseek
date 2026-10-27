@@ -104,11 +104,15 @@ class _MachineWorkspaceState extends State<MachineWorkspaceScreen> {
     try {
       await fn();
       if (mounted) reload();
-    } catch (_) {
+    } catch (failure) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(t('error'))));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(context).failure(failure, 'machine.error'),
+            ),
+          ),
+        );
       }
     } finally {
       if (mounted) {
@@ -737,11 +741,13 @@ class _MachineFormState extends State<_MachineForm> {
           f.id: controllers[f.id]?.text.trim() ?? values[f.id]!,
       });
       if (mounted) Navigator.pop(context, true);
-    } catch (_) {
+    } catch (failure) {
       if (mounted) {
         setState(() {
           busy = false;
-          error = t('error');
+          error = AppLocalizations.of(
+            context,
+          ).failure(failure, 'machine.error');
         });
       }
     }

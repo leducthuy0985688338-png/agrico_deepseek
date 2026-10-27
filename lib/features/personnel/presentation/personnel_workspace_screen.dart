@@ -1590,6 +1590,9 @@ class _PersonnelFormState extends State<_PersonnelForm> {
 String _failure(BuildContext context, Object error) {
   final text = error.toString();
   final l = AppLocalizations.of(context);
+  if (text.contains('ACCOUNTING_PERIOD_CLOSED')) {
+    return l.text('period.closedError');
+  }
   if (text.contains('Link original salary'))
     return l.text('hr.adjustment.errorCashLink');
   if (text.contains('Reverse dependent') ||

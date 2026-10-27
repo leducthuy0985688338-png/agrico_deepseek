@@ -1,3 +1,4 @@
+import '../../../core/periods/period_lock.dart';
 import '../../personnel/data/sqlite_payroll_adjustments.dart';
 import 'dart:convert';
 import '../domain/integration_store.dart';
@@ -27,6 +28,7 @@ class IntegrationRepository implements IntegrationStore {
     await db.execute(
       '''CREATE TABLE IF NOT EXISTS integration_fuel_issues_v1(farm_id TEXT NOT NULL,expense_id TEXT PRIMARY KEY REFERENCES machine_expenses_v1(id),movement_id TEXT NOT NULL UNIQUE REFERENCES inventory_movements_v2(id),reversal_movement_id TEXT UNIQUE REFERENCES inventory_movements_v2(id),reason TEXT,actor_id TEXT NOT NULL)''',
     );
+    await PeriodLock.createSchema(db);
   }
 
   static const reportTables = {
@@ -64,41 +66,70 @@ class IntegrationRepository implements IntegrationStore {
     'trade_stock_links_v1',
     ...tables,
   };
-  Future<IntegrationSnapshot> snapshot(String farm, String period) async {
-    final snapshot = IntegrationSnapshot(
-      farm: farm,
-      period: period,
-      tables: {},
-    );
-    snapshot.to;
-    final data = await database.transaction((tx) async {
-      final tables = <String, List<Map<String, Object?>>>{};
-      final available = (await tx.rawQuery(
-        "SELECT name FROM sqlite_master WHERE type='table'",
-      )).map((r) => r['name']).toSet();
-      for (final name in reportTables) {
-        if (!available.contains(name)) {
-          tables[name] = [];
-          continue;
-        }
-        if (name == 'personnel_payroll_lines_v1') {
-          tables[name] = await tx.rawQuery(
-            'SELECT l.* FROM personnel_payroll_lines_v1 l JOIN personnel_payrolls_v1 p ON p.id=l.payroll_id WHERE p.farm_id=?',
-            [farm],
-          );
-        } else {
-          tables[name] = await tx.query(
-            name,
-            where: name == 'finance_documents_v2'
-                ? 'organization_id=?'
-                : 'farm_id=?',
-            whereArgs: [farm],
+  Future<IntegrationSnapshot> snapshot(String farm, String period) =>
+      database.transaction((tx) async {
+        PeriodLock.end(period);
+        final frozen = await PeriodLock.frozen(tx, farm, period);
+        if (frozen != null) {
+          final state = await PeriodLock.state(tx, farm, period);
+          final event = (await tx.query(
+            PeriodLock.events,
+            where: 'id=?',
+            whereArgs: [state!['event_id']],
+          )).single;
+          return IntegrationSnapshot(
+            closingRevision: state['revision'] as int,
+            closedAt: event['occurred_at'] as String,
+            closedBy: event['actor_id'] as String,
+            farm: farm,
+            period: period,
+            tables: {
+              for (final e in (frozen['tables'] as Map).entries)
+                e.key as String: (e.value as List)
+                    .map((r) => Map<String, Object?>.from(r as Map))
+                    .toList(),
+            },
           );
         }
+        return liveSnapshot(tx, farm, period);
+      });
+  static Future<IntegrationSnapshot> liveSnapshot(
+    DatabaseExecutor tx,
+    String farm,
+    String period,
+  ) async {
+    PeriodLock.end(period);
+    final tables = <String, List<Map<String, Object?>>>{};
+    final available = (await tx.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type='table'",
+    )).map((r) => r['name']).toSet();
+    for (final name in reportTables) {
+      if (!available.contains(name)) {
+        tables[name] = [];
+        continue;
       }
-      return tables;
-    });
-    return IntegrationSnapshot(farm: farm, period: period, tables: data);
+      if (name == 'personnel_payroll_lines_v1') {
+        tables[name] = await tx.rawQuery(
+          'SELECT l.* FROM personnel_payroll_lines_v1 l JOIN personnel_payrolls_v1 p ON p.id=l.payroll_id WHERE p.farm_id=?',
+          [farm],
+        );
+      } else {
+        tables[name] = await tx.query(
+          name,
+          where: name == 'finance_documents_v2'
+              ? 'organization_id=?'
+              : 'farm_id=?',
+          whereArgs: [farm],
+        );
+      }
+    }
+    // Stable row order makes review tokens independent of SQLite query plans.
+    for (final key in tables.keys.toList()) {
+      final rows = tables[key]!.toList();
+      tables[key] = rows;
+      rows.sort((a, b) => PeriodLock.encode(a).compareTo(PeriodLock.encode(b)));
+    }
+    return IntegrationSnapshot(farm: farm, period: period, tables: tables);
   }
 
   Future<List<String>> reconcile(String farm) async {

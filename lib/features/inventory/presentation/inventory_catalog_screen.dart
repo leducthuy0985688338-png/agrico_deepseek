@@ -84,12 +84,14 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
         result,
       );
       if (mounted) reload();
-    } catch (_) {
+    } catch (failure) {
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              AppLocalizations.of(context).text('inventory.movementFailed'),
+              AppLocalizations.of(
+                context,
+              ).failure(failure, 'inventory.movementFailed'),
             ),
           ),
         );
@@ -174,12 +176,14 @@ class _InventoryCatalogScreenState extends State<InventoryCatalogScreen> {
         at: DateTime.now(),
       );
       if (mounted) reload();
-    } catch (_) {
+    } catch (failure) {
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              AppLocalizations.of(context).text('inventory.movementFailed'),
+              AppLocalizations.of(
+                context,
+              ).failure(failure, 'inventory.movementFailed'),
             ),
           ),
         );
@@ -783,7 +787,7 @@ class _MovementDialogState extends State<_MovementDialog> {
           throw StateError('Confirm zero price.');
         }
       }
-    } catch (_) {
+    } catch (failure) {
       setState(() => errorKey = 'planning.priceRequired');
       return;
     }
@@ -820,11 +824,14 @@ class _MovementDialogState extends State<_MovementDialog> {
       if (mounted) {
         Navigator.pop(context, true);
       }
-    } catch (_) {
+    } catch (failure) {
       if (mounted) {
         setState(() {
           saving = false;
-          errorKey = 'inventory.movementFailed';
+          errorKey = AppLocalizations.failureKey(
+            failure,
+            'inventory.movementFailed',
+          );
         });
       }
     }

@@ -1,3 +1,5 @@
+import '../periods/period_lock.dart';
+import '../../features/integration/data/period_close_repository.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -146,6 +148,7 @@ class LocalRestoreActivation {
       }
       await db.execute('PRAGMA restore_costs.synchronous=FULL');
       await db.transaction((tx) async {
+        await PeriodLock.removeGuards(tx);
         for (final entry in <String, String>{
           'agrico.db': 'main',
           'agrico_costs.db': 'restore_costs',
@@ -157,6 +160,7 @@ class LocalRestoreActivation {
             // An accepted older empty snapshot must not retain newer scope
             // assignments or warehouse balances from the current database.
             for (final table in [
+              ...PeriodLock.tables,
               'inventory_warehouses_v1',
               'inventory_warehouse_sequences_v1',
               'inventory_warehouse_stock_v1',
@@ -247,6 +251,8 @@ class LocalRestoreActivation {
             }
           }
         }
+        await PeriodCloseRepository.validate(tx);
+        await PeriodLock.install(tx);
         _step = 'catalog.quarantine';
         // Device send authority cannot be resurrected by a backup restore.
         final syncTables = await tx.rawQuery(

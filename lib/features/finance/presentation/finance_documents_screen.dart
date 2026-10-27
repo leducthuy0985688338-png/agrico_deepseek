@@ -121,12 +121,14 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
     List<LandParcel> parcels;
     try {
       parcels = await widget.service.availableParcels();
-    } catch (_) {
+    } catch (failure) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              AppLocalizations.of(context).text('finance.saveFailed'),
+              AppLocalizations.of(
+                context,
+              ).failure(failure, 'finance.saveFailed'),
             ),
           ),
         );
@@ -190,7 +192,7 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
     });
     try {
       await refreshed;
-    } catch (_) {
+    } catch (failure) {
       // FutureBuilder displays the failure; the scrollable error permits retry.
     } finally {
       refreshing = false;
@@ -271,7 +273,7 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
           );
         },
       );
-    } catch (_) {
+    } catch (failure) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -307,7 +309,7 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
           ),
         );
       }
-    } catch (_) {
+    } catch (failure) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -732,10 +734,12 @@ class _FinanceDocumentDialogState extends State<_FinanceDocumentDialog> {
         parcelId: parcelId,
       );
       if (mounted) Navigator.of(context).pop(saved);
-    } catch (_) {
+    } catch (failure) {
       if (mounted)
         setState(
-          () => error = AppLocalizations.of(context).text('finance.saveFailed'),
+          () => error = AppLocalizations.of(
+            context,
+          ).failure(failure, 'finance.saveFailed'),
         );
     } finally {
       if (mounted) setState(() => saving = false);

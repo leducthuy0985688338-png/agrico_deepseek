@@ -926,7 +926,9 @@ class Report20 {
       'Kỳ phát sinh',
       s.period,
       '',
-      'Số dư công nợ tại lúc xuất; không phải chốt sổ quá khứ',
+      s.closingRevision == null
+          ? 'Số dư công nợ tại lúc xuất; không phải chốt sổ quá khứ'
+          : 'Bản chốt cuối kỳ · phiên bản ${s.closingRevision} · ${s.closedAt} · ${s.closedBy}',
     ]);
     add('DASHBOARD', [
       'Doanh thu bán trong kỳ',

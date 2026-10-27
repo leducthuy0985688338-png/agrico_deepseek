@@ -1,3 +1,5 @@
+import '../features/integration/application/period_close_service.dart';
+import '../features/integration/data/period_close_repository.dart';
 import '../core/permissions/data/sqlite_operation_directory.dart';
 import '../core/permissions/live_authorization.dart';
 import '../features/integration/data/integration_repository.dart';
@@ -632,7 +634,15 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
                   ? TradeWorkspaceScreen(
                       openReports: integrated.canView
                           ? () => push(
-                              IntegrationWorkspaceScreen(service: integrated),
+                              IntegrationWorkspaceScreen(
+                                service: integrated,
+                                periodClosing: PeriodCloseService(
+                                  repository: PeriodCloseRepository(
+                                    deps.database,
+                                  ),
+                                  access: integrated,
+                                ),
+                              ),
                             )
                           : null,
                       service: trade,

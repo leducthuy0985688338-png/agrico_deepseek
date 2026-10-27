@@ -9,8 +9,13 @@ class IntegrationSnapshot {
     required this.farm,
     required this.period,
     required this.tables,
+    this.closingRevision,
+    this.closedAt,
+    this.closedBy,
   });
   final String farm, period;
+  final int? closingRevision;
+  final String? closedAt, closedBy;
   final Map<String, List<Map<String, Object?>>> tables;
   List<Map<String, Object?>> rows(String table) => tables[table] ?? const [];
   Map<Object?, Map<String, Object?>> index(String table) => {

@@ -86,11 +86,15 @@ class _TradeWorkspaceState extends State<TradeWorkspaceScreen> {
     try {
       await fn();
       if (mounted) reload();
-    } catch (_) {
+    } catch (failure) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(t('error'))));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(context).failure(failure, 'trade.error'),
+            ),
+          ),
+        );
       }
     } finally {
       if (mounted) {
@@ -585,11 +589,11 @@ class _TradeFormState extends State<_TradeForm> {
           f.id: controllers[f.id]?.text.trim() ?? values[f.id]!,
       });
       if (mounted) Navigator.pop(context, true);
-    } catch (_) {
+    } catch (failure) {
       if (mounted) {
         setState(() {
           busy = false;
-          error = t('error');
+          error = AppLocalizations.of(context).failure(failure, 'trade.error');
         });
       }
     }

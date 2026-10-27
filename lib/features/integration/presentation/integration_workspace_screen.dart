@@ -1,3 +1,5 @@
+import '../application/period_close_service.dart';
+import 'period_close_panel.dart';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import '../../../core/localization/app_localizations.dart';
@@ -10,8 +12,13 @@ import '../../trade/domain/trade.dart' show MoneyRounding, TradeMath;
 /// Cross-ledger corrections remain explicit; historical sources are never
 /// silently copied into cash or inventory when this screen opens.
 class IntegrationWorkspaceScreen extends StatefulWidget {
-  const IntegrationWorkspaceScreen({super.key, required this.service});
+  const IntegrationWorkspaceScreen({
+    super.key,
+    required this.service,
+    this.periodClosing,
+  });
   final IntegrationService service;
+  final PeriodCloseService? periodClosing;
   @override
   State<IntegrationWorkspaceScreen> createState() => _IntegrationState();
 }
@@ -679,6 +686,12 @@ class _IntegrationState extends State<IntegrationWorkspaceScreen> {
                       ListView(
                         padding: const EdgeInsets.all(12),
                         children: [
+                          if (widget.periodClosing != null)
+                            PeriodClosePanel(
+                              service: widget.periodClosing!,
+                              period: s.period,
+                              onChanged: reload,
+                            ),
                           Text(
                             tr(
                               'Giữ riêng VND và LAK. Giá ca máy trọn gói; chi tiền không cộng lại vào chi phí sản xuất.',

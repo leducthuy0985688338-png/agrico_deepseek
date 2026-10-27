@@ -1,3 +1,5 @@
+import '../periods/period_lock.dart';
+import '../../features/integration/data/period_close_repository.dart';
 import '../../features/personnel/data/sqlite_payroll_adjustments.dart';
 import '../../features/inventory/data/local/sqlite_warehouse_stock.dart';
 import '../../features/integration/data/integration_repository.dart';
@@ -124,6 +126,7 @@ class LocalRestorePreflight {
               ...SqliteMachineRepository.tables,
               ...SqliteTradeRepository.tables,
               ...IntegrationRepository.tables,
+              ...PeriodLock.tables,
               'production_plans_v1',
               'production_plan_tasks_v1',
               'production_plan_sequences_v1',
@@ -591,6 +594,17 @@ class LocalRestorePreflight {
             'integrity',
             database: databaseName,
             step: 'integrated ledger integrity',
+          );
+        }
+      }
+      if (databaseName == 'agrico.db') {
+        try {
+          await PeriodCloseRepository.validate(staged);
+        } catch (_) {
+          throw RestorePreflightException(
+            'integrity',
+            database: databaseName,
+            step: 'period closing integrity',
           );
         }
       }
