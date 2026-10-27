@@ -1,5 +1,6 @@
 import '../periods/period_lock.dart';
 import '../../features/integration/data/period_close_repository.dart';
+
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -128,9 +129,9 @@ class LocalRestoreActivation {
     try {
       _step = 'main.journal';
       await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
-      if ((await db.rawQuery(
-            'PRAGMA journal_mode=DELETE',
-          )).single.values.single.toString().toLowerCase() !=
+      if ((await db.rawQuery('PRAGMA journal_mode=DELETE')).single.values.single
+              .toString()
+              .toLowerCase() !=
           'delete') {
         throw StateError('Main database cannot use rollback journal.');
       }
@@ -140,9 +141,12 @@ class LocalRestoreActivation {
       await db.execute('ATTACH DATABASE ? AS restore_costs', [costsPath]);
       _step = 'costs.journal';
       await db.rawQuery('PRAGMA restore_costs.wal_checkpoint(TRUNCATE)');
-      if ((await db.rawQuery(
-            'PRAGMA restore_costs.journal_mode=DELETE',
-          )).single.values.single.toString().toLowerCase() !=
+      if ((await db.rawQuery('PRAGMA restore_costs.journal_mode=DELETE'))
+              .single
+              .values
+              .single
+              .toString()
+              .toLowerCase() !=
           'delete') {
         throw StateError('Costs database cannot use rollback journal.');
       }
@@ -257,7 +261,7 @@ class LocalRestoreActivation {
         // Device send authority cannot be resurrected by a backup restore.
         final syncTables = await tx.rawQuery(
           "SELECT name FROM main.sqlite_master WHERE type='table' "
-          "AND name LIKE 'company_catalog_sync_%'",
+          "AND (name LIKE 'company_catalog_sync_%' OR name LIKE 'company_workspace_%')",
         );
         for (final row in syncTables) {
           final table = row['name']! as String;
@@ -275,14 +279,14 @@ class LocalRestoreActivation {
         }
         for (final alias in ['main', 'restore_costs']) {
           _step = '$alias.integrity';
-          if ((await tx.rawQuery(
-            'PRAGMA $alias.foreign_key_check',
-          )).isNotEmpty) {
+          if ((await tx.rawQuery('PRAGMA $alias.foreign_key_check'))
+              .isNotEmpty) {
             throw const FormatException('Restored foreign keys are invalid.');
           }
-          if ((await tx.rawQuery(
-                'PRAGMA $alias.integrity_check',
-              )).single.values.single !=
+          if ((await tx.rawQuery('PRAGMA $alias.integrity_check'))
+                  .single
+                  .values
+                  .single !=
               'ok') {
             throw const FormatException(
               'Restored SQLite integrity check failed.',

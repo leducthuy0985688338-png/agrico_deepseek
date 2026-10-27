@@ -108,6 +108,15 @@ class LocalRestorePreflight {
       final saved = Map<String, dynamic>.from(
         payload['tables'] as Map<String, dynamic>,
       )..remove('android_metadata');
+      if (saved.entries.any(
+        (e) =>
+            e.key.startsWith('company_workspace_') &&
+            (e.value as List).isNotEmpty,
+      )) {
+        throw const FormatException(
+          'Device workspace authority cannot be restored.',
+        );
+      }
       // Backups made before land-only parcel numbering lack the empty v3
       // counter table. Its CREATE TABLE comes from the current app schema.
       final optionalMissing = databaseName == 'agrico.db'
@@ -145,6 +154,9 @@ class LocalRestorePreflight {
               'company_catalog_audit_v1',
               'company_catalog_bootstrap_v1',
               'company_catalog_sequences_v1',
+              'company_workspace_outbox_v1',
+              'company_workspace_cache_v1',
+              'company_workspace_device_v1',
               'company_catalog_sync_outbox_v1',
               'company_catalog_sync_shadow_v1',
               'company_catalog_sync_device_v1',
@@ -335,9 +347,9 @@ class LocalRestorePreflight {
       }
       if (missing.contains('agrico_location_parcel_sequences_v3') &&
           (saved['land_parcels'] as List? ?? const []).any(
-            (row) => RegExp(
-              r'-L[0-9]{5}$',
-            ).hasMatch((row as Map)['parcel_code']?.toString() ?? ''),
+            (row) =>
+                RegExp(r'-L[0-9]{5}$')
+                    .hasMatch((row as Map)['parcel_code']?.toString() ?? ''),
           )) {
         throw RestorePreflightException('tables', database: databaseName);
       }
@@ -488,9 +500,10 @@ class LocalRestorePreflight {
         }
       }
       step = 'integrity';
-      if ((await staged.rawQuery(
-            'PRAGMA integrity_check',
-          )).single.values.single !=
+      if ((await staged.rawQuery('PRAGMA integrity_check'))
+              .single
+              .values
+              .single !=
           'ok') {
         throw RestorePreflightException('integrity', database: databaseName);
       }

@@ -45,7 +45,8 @@ class LocalDatabaseSnapshot {
         final data = <String, Object?>{};
         for (final table in tables) {
           final name = table['name']! as String;
-          if (name.startsWith('company_catalog_sync_')) {
+          if (name.startsWith('company_catalog_sync_') ||
+              name.startsWith('company_workspace_')) {
             continue;
           }
           if (!RegExp(r'^[a-zA-Z_][a-zA-Z_0-9]*$').hasMatch(name)) {
