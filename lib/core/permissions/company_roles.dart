@@ -26,6 +26,7 @@ abstract final class CompanyRolePolicy {
   static Set<String> permissions(CompanyRole role) => Set.unmodifiable({
     PermissionCodes.catalogView,
     PermissionCodes.chatView,
+    if (role != CompanyRole.auditor) PermissionCodes.officeRequest,
     if (role != CompanyRole.auditor) PermissionCodes.chatSend,
     if (role != CompanyRole.auditor) PermissionCodes.catalogRequest,
     PermissionCodes.cloudSync,
@@ -250,6 +251,11 @@ abstract final class CompanyRolePolicy {
     if (permission == PermissionCodes.catalogView ||
         permission == PermissionCodes.cloudSync) {
       return const {DataScope.allFarm};
+    }
+    if (permission == PermissionCodes.officeRequest ||
+        permission == PermissionCodes.chatView ||
+        permission == PermissionCodes.chatSend) {
+      return const {DataScope.own};
     }
     if (permission == PermissionCodes.catalogRequest) {
       return const {DataScope.own};

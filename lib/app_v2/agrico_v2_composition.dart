@@ -1,3 +1,10 @@
+import '../features/company_workspace/data/sqlite_workspace_store.dart';
+import '../features/company_workspace/data/firebase_workspace_transport.dart';
+import '../features/company_workspace/application/workspace_service.dart';
+import '../features/company_workspace/application/workspace_cloud_service.dart';
+import '../features/company_workspace/presentation/company_workspace_screen.dart';
+import '../features/company_workspace/presentation/workspace_cloud_screen.dart';
+import '../features/company_workspace/presentation/workspace_assistant_screen.dart';
 import '../features/integration/application/period_close_service.dart';
 import '../features/integration/data/period_close_repository.dart';
 import '../core/permissions/data/sqlite_operation_directory.dart';
@@ -144,6 +151,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     await SqliteParcelWorkRepository.createSchema(database);
     await SqliteFarmTaskRepository.createSchema(database);
     await SqliteInventoryRepository.createSchema(database);
+    await SqliteWorkspaceStore.createSchema(database);
     await ProductionV2TestCleanup.run(
       primary: database,
       legacyCosts: await ProductionCostDatabase().database,
@@ -161,6 +169,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     await SqliteAdministrativeCatalog.createSchema(database);
     final administrativeCatalog = SqliteAdministrativeCatalog(database);
     await administrativeCatalog.seedInitialLocation();
+    await WorkspaceCloudService.recover(database, subject);
     final finance = SqliteFinanceDocumentRepository(database);
     final parcels = SqliteLandParcelRepository(database);
     final spatialSyncWorkflow = LandParcelSpatialSyncWorkflow(
@@ -700,6 +709,87 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         resource: ResourceContext(farmId: deps.subject.farmId),
       )) {
         legacy.remove('tasks');
+      }
+      final workspace = WorkspaceService(
+        subject: deps.subject,
+        currentSubject: () => mounted ? widget.subject : null,
+        local: SqliteWorkspaceStore(deps.database),
+        transport: FirebaseWorkspaceTransport(),
+      );
+      if (workspace.canOpen) {
+        void openCompany(int tab) {
+          if (workspace.canOpen)
+            push(CompanyWorkspaceScreen(service: workspace, initialTab: tab));
+        }
+
+        if (legacy['tasks'] != null)
+          legacy['productionTasks'] = legacy['tasks']!;
+        legacy['tasks'] = () => openCompany(0);
+        legacy['office'] = () => openCompany(1);
+        legacy['chat'] = () => openCompany(2);
+        legacy['cloud'] = () {
+          if (workspace.canOpen)
+            push(
+              WorkspaceCloudScreen(
+                service: WorkspaceCloudService(workspace, deps.database),
+                openCatalog: null,
+              ),
+            );
+        };
+        legacy['ai'] = () {
+          if (workspace.canOpen)
+            push(WorkspaceAssistantScreen(service: workspace));
+        };
+      }
+      if (trade.can(PermissionCodes.financeView) &&
+          deps.subject.dataScopes.contains(DataScope.allFarm)) {
+        legacy['harvest'] = () {
+          if (trade.can(PermissionCodes.financeView))
+            push(
+              TradeWorkspaceScreen(
+                service: trade,
+                openCatalog: () => push(
+                  CompanyCatalogScreen(
+                    service: CompanyCatalogService(
+                      repository: SqliteCompanyCatalog(deps.database),
+                      subject: deps.subject,
+                    ),
+                    initialKind: CatalogKind.product,
+                  ),
+                ),
+                openCash: null,
+              ),
+            );
+        };
+      }
+      if (LiveAuthorization(
+            () => mounted ? widget.subject : null,
+          ).canEnter(deps.subject, PermissionCodes.machineView) &&
+          LiveAuthorization(
+            () => mounted ? widget.subject : null,
+          ).can(deps.subject, PermissionCodes.financeView)) {
+        legacy['fuel'] = () {
+          if (LiveAuthorization(
+            () => mounted ? widget.subject : null,
+          ).can(deps.subject, PermissionCodes.financeView))
+            push(
+              MachineWorkspaceScreen(
+                initialTab: 'fuel',
+                service: MachineService(
+                  SqliteMachineRepository(deps.database),
+                  currentSubject: () => mounted ? widget.subject : null,
+                ),
+                subject: deps.subject,
+                openCatalog: () => push(
+                  WorkResourceCatalogScreen(
+                    kind: WorkResourceKind.machine,
+                    subject: deps.subject,
+                    service: resourceService,
+                  ),
+                ),
+              ),
+            );
+        };
       }
       return AnimatedBuilder(
         animation: Listenable.merge([deps.controller, deps.taskController]),

@@ -242,7 +242,7 @@ class HomeV2 extends StatelessWidget {
                   icon: const Icon(Icons.notifications_none),
                 ),
                 IconButton(
-                  onPressed: null,
+                  onPressed: legacyRoutes['chat'],
                   icon: const Icon(Icons.chat_bubble_outline),
                 ),
               ],
@@ -322,6 +322,7 @@ class ModulesV2 extends StatelessWidget {
               : null,
           'seasons': legacyRoutes['seasons'],
           'productionLogs': legacyRoutes['productionLogs'],
+          'productionTasks': legacyRoutes['productionTasks'],
           'harvest': legacyRoutes['harvest'],
         }),
         _group(context, 'modules.resources', {
@@ -339,7 +340,9 @@ class ModulesV2 extends StatelessWidget {
           'administrativeCatalog': legacyRoutes['administrativeCatalog'],
           'tasks': legacyRoutes['tasks'],
           'ai': legacyRoutes['ai'],
-          'cloud': null,
+          'cloud': legacyRoutes['cloud'],
+          'office': legacyRoutes['office'],
+          'chat': legacyRoutes['chat'],
         }),
       ],
     );

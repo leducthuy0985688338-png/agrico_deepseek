@@ -82,6 +82,7 @@ abstract final class PermissionCodes {
   static const payrollView = 'payroll.view';
   static const payrollManage = 'payroll.manage';
   static const payrollApprove = 'payroll.approve';
+  static const officeRequest = 'office.request';
   static const officeView = 'office.view';
   static const officeEdit = 'office.edit';
   static const reportOperations = 'report.operations';
@@ -92,6 +93,7 @@ abstract final class PermissionCodes {
   static const dataExport = 'data.export';
 
   static const values = <String>{
+    officeRequest,
     accountView,
     accountManage,
     roleManage,

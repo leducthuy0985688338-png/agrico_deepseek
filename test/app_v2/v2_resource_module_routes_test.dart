@@ -72,12 +72,18 @@ void main() {
       await tester.ensureVisible(tile);
       await tester.pumpAndSettle();
       expect(tester.widget<ListTile>(tile).enabled, isTrue);
+      if (key == 'employees') expect(find.text('Nhân công'), findsOneWidget);
       await tester.tap(tile);
       await tester.pump();
     }
     expect(opened, ['employees', 'machines', 'warehouse', 'backup']);
-    expect(find.text('Nhân công'), findsOneWidget);
     final unsupported = find.byKey(const Key('module-v2-fuel'));
+    await tester.scrollUntilVisible(
+      unsupported,
+      -200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
     expect(tester.widget<ListTile>(unsupported).enabled, isFalse);
   });
 

@@ -14,7 +14,9 @@ class MachineWorkspaceScreen extends StatefulWidget {
     required this.service,
     required this.subject,
     required this.openCatalog,
+    this.initialTab = 'machines',
   });
+  final String initialTab;
   final MachineService service;
   final AuthorizationSubject subject;
   final VoidCallback openCatalog;
@@ -333,6 +335,7 @@ class _MachineWorkspaceState extends State<MachineWorkspaceScreen> {
     ];
     return DefaultTabController(
       length: tabs.length,
+      initialIndex: tabs.indexOf(widget.initialTab).clamp(0, tabs.length - 1),
       child: Scaffold(
         appBar: AppBar(
           title: Text(t('title')),
@@ -663,9 +666,8 @@ class _MachineWorkspaceState extends State<MachineWorkspaceScreen> {
             MachineRules.day(DateTime.now()).compareTo(last.nextOn!) >= 0) ||
         (last.nextMeter != null &&
             meter != null &&
-            ExactDecimal.parse(
-                  meter,
-                ).compareTo(ExactDecimal.parse(last.nextMeter!)) >=
+            ExactDecimal.parse(meter)
+                    .compareTo(ExactDecimal.parse(last.nextMeter!)) >=
                 0);
     return [
       if (due)
@@ -745,9 +747,8 @@ class _MachineFormState extends State<_MachineForm> {
       if (mounted) {
         setState(() {
           busy = false;
-          error = AppLocalizations.of(
-            context,
-          ).failure(failure, 'machine.error');
+          error = AppLocalizations.of(context)
+              .failure(failure, 'machine.error');
         });
       }
     }
