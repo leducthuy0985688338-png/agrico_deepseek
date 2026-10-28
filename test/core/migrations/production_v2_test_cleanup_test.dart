@@ -68,6 +68,7 @@ void main() {
     primary: main,
     legacyCosts: costs,
     farmId: 'local-farm',
+    confirmedDisposableTestData: true,
   );
 
   test(

@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 
-/// Explicitly authorized removal of incompatible local test data for the V2
-/// production cutover. A durable phase prevents clearing new stock on retry.
+/// Historical reset for explicitly confirmed disposable test fixtures only.
+/// Application startup must use the read-only [validateStartup] guard instead.
+/// A missing marker is never authorization to reset installed business data.
 /// Never touches parcels, geometry, shared catalog, finance, tasks, identity,
 /// external media, backups or cloud data.
 class ProductionV2TestCleanup {
@@ -16,11 +17,77 @@ class ProductionV2TestCleanup {
     'fields',
   ];
 
+  /// Inspect historical state without creating tables, advancing a marker or
+  /// touching either database's business rows. Interrupted/unknown resets need
+  /// an explicit recovery decision; startup must never resume their deletions.
+  static Future<void> validateStartup(DatabaseExecutor primary) async {
+    final installed = await primary.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+      [table],
+    );
+    if (installed.isEmpty) return;
+    // An empty table is safe to accept only after recognizing its historical
+    // shape. Never create or repair an unknown marker schema during startup.
+    final columns = await primary.rawQuery('PRAGMA table_info($table)');
+    const expectedTypes = {
+      'id': 'INTEGER',
+      'phase': 'TEXT',
+      'counts_json': 'TEXT',
+      'completed_at': 'TEXT',
+    };
+    if (columns.length != expectedTypes.length ||
+        columns.any(
+          (c) =>
+              expectedTypes[c['name']] != c['type'].toString().toUpperCase() ||
+              (c['name'] == 'id' ? c['pk'] != 1 : c['pk'] != 0),
+        )) {
+      throw StateError('Invalid legacy cleanup marker schema; data preserved.');
+    }
+    final rows = await primary.query(table);
+    if (rows.isEmpty) return;
+    if (rows.length != 1) {
+      throw StateError('Invalid legacy cleanup marker; data preserved.');
+    }
+    final row = rows.single;
+    Object? counts;
+    try {
+      counts = jsonDecode(row['counts_json'] as String);
+    } catch (_) {
+      throw StateError('Invalid legacy cleanup marker; data preserved.');
+    }
+    if (row['id'] != 1 ||
+        counts is! Map ||
+        counts.entries.any(
+          (e) => e.key is! String || e.value is! int || (e.value as int) < 0,
+        ) ||
+        !['main_done', 'complete'].contains(row['phase']) ||
+        (row['phase'] == 'complete' &&
+            (row['completed_at'] is! String ||
+                DateTime.tryParse(row['completed_at'] as String) == null))) {
+      throw StateError('Invalid legacy cleanup marker; data preserved.');
+    }
+    if (row['phase'] == 'main_done') {
+      throw StateError(
+        'Interrupted legacy test cleanup; automatic reset is disabled. '
+        'Preserve both databases and review recovery.',
+      );
+    }
+  }
+
+  /// This destructive historical helper is retained for synthetic fixtures.
+  /// No application route or startup path calls it. Confirmation must come
+  /// from the fixture owner, never from the absence of a completion marker.
   static Future<void> run({
     required Database primary,
     required Database legacyCosts,
     required String farmId,
+    required bool confirmedDisposableTestData,
   }) async {
+    if (!confirmedDisposableTestData) {
+      throw StateError(
+        'Destructive reset requires explicitly confirmed disposable test data.',
+      );
+    }
     // The current composition has exactly one approved local farm. Do not
     // broaden the unscoped legacy-data deletion to future multi-farm installs.
     if (farmId != 'local-farm') throw StateError('Unsupported cleanup farm.');

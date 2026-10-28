@@ -1,5 +1,10 @@
 # Native V2 production cutover — 2026-10-25
 
+> Historical authorization for a specific disposable test dataset, not a general
+> startup policy. The automatic reset described below is superseded by
+> [Startup data preservation — 2026-10-28](startup-data-preservation-20261028.md).
+> Current startup only inspects historical markers and never resumes deletion.
+
 The user explicitly confirmed that all installed business data is test data and
 requested removal of incompatible legacy data. This supersedes the earlier
 plan to preserve test data and map legacy fields to V2 parcels.

@@ -22,7 +22,6 @@ import '../features/personnel/data/sqlite_personnel_repository.dart';
 import '../features/personnel/application/personnel_service.dart';
 import '../features/personnel/presentation/personnel_workspace_screen.dart';
 import '../core/migrations/production_v2_test_cleanup.dart';
-import '../services/production_cost_database.dart';
 import '../features/inventory/presentation/production_workspace_screen.dart';
 import 'v2_resource_module_routes.dart';
 import '../features/farm/presentation/screens/work_resource_catalog_screen.dart';
@@ -144,6 +143,9 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     }
     final sharedDatabase = FieldDatabase();
     final database = await sharedDatabase.database;
+    // Read-only safety check before module bootstrap. Missing markers never
+    // authorize deleting legacy rows; interrupted test resets require review.
+    await ProductionV2TestCleanup.validateStartup(database);
     final spatial = SpatialPersistenceComposition(database);
     await SqliteLandSurveyRepository.createSchema(database);
     await SqliteParcelNumberSequence.createSchema(database);
@@ -152,11 +154,6 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     await SqliteFarmTaskRepository.createSchema(database);
     await SqliteInventoryRepository.createSchema(database);
     await SqliteWorkspaceStore.createSchema(database);
-    await ProductionV2TestCleanup.run(
-      primary: database,
-      legacyCosts: await ProductionCostDatabase().database,
-      farmId: subject.farmId,
-    );
     await SqliteCompanyCatalog.createSchema(database);
     await SqliteCompanyCatalog(database).adoptExisting(subject.farmId);
     await SqlitePersonnelRepository.createSchema(database);
