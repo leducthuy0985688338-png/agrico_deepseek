@@ -470,3 +470,61 @@ test("snapshot publish requires full sensitive authority and optimistic revision
   });
   assert.equal(saved.revision, 4);
 });
+
+ test("unchanged inbox revalidates records and membership changes invalidate token", async () => {
+  const repo = new Repo();
+  let reads = 0;
+  const inbox = repo.inbox.bind(repo);
+  repo.inbox = (...args) => { reads++; return inbox(...args); };
+  const first = await run(repo, "inbox.list", "inbox", 0, {});
+  const next = await run(repo, "inbox.list", "inbox", 0, {token: first.token});
+  assert.equal(next.unchanged, true);
+  assert.equal(reads, 2);
+  assert.equal(next.records, undefined);
+  repo.people.get("admin").departmentIds = ["changed"];
+  const changed = await run(repo, "inbox.list", "inbox", 0, {token: first.token});
+  assert.notEqual(changed.token, first.token);
+  assert.equal(reads, 3);
+ });
+
+test("measure unchanged inbox bytes with authoritative visibility checks", async () => {
+  const repo = new Repo();
+  for (let i = 0; i < 100; i++) repo.data.set('room~'+i, {
+    id: 'room'+i, kind: 'room', farmId: 'farm', participants: ['admin'],
+    revision: 1, content: {title: 'Unicode Nguyễn ລາວ '.repeat(25)}
+  });
+  let reads = 0;
+  const original = repo.inbox.bind(repo);
+  repo.inbox = (...args) => { reads++; return original(...args); };
+  const first = await run(repo, 'inbox.list', 'inbox');
+  const next = await run(repo, 'inbox.list', 'inbox', 0, {token: first.token});
+  const fullBytes = Buffer.byteLength(JSON.stringify(first));
+  const unchangedBytes = Buffer.byteLength(JSON.stringify(next));
+  console.log(JSON.stringify({fullBytes, unchangedBytes, recordQueriesForTwoPolls: reads}));
+  assert.equal(reads, 2);
+  assert.ok(unchangedBytes < fullBytes / 100);
+});
+test("message token skips messages but still enforces room access", async () => {
+  const repo = new Repo();
+  repo.data.set('room~room1', {id:'room1', kind:'room', farmId:'farm', participants:['admin'], revision:1, content:{title:'Room'}});
+  let reads = 0;
+  repo.messages = () => { reads++; return []; };
+  const first = await run(repo, 'message.list', 'room1');
+  assert.equal((await run(repo, 'message.list', 'room1', 0, {token:first.token})).unchanged, true);
+  assert.equal(reads, 1);
+  repo.data.get('room~room1').revision++;
+  assert.equal((await run(repo, 'message.list', 'room1', 0, {token:first.token})).unchanged, undefined);
+  assert.equal(reads, 2);
+  repo.data.get('room~room1').participants = ['other'];
+  await assert.rejects(() => run(repo, 'message.list', 'room1', 0, {token:first.token}));
+});
+
+test("inbox token detects visibility changes even without a notice update", async () => {
+  const repo = new Repo();
+  repo.data.set('room~room1', {id:'room1', kind:'room', farmId:'farm', participants:['admin'], revision:1, content:{title:'Room'}});
+  const first = await run(repo, 'inbox.list', 'inbox');
+  repo.data.get('room~room1').participants = ['other'];
+  const next = await run(repo, 'inbox.list', 'inbox', 0, {token:first.token});
+  assert.notEqual(next.token, first.token);
+  assert.deepEqual(next.records, []);
+});

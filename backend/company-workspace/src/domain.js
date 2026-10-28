@@ -304,6 +304,7 @@ export async function execute(repo, command, m, now) {
   }
   if (action === "inbox.list") {
     requirePermission(m, "chat.view");
+    const generation = await repo.generation(m.userId);
     const records = [];
     let bytes = 0;
     for (const r of (await repo.inbox(m.userId)).filter((r) => visible(m, r))) {
@@ -312,7 +313,11 @@ export async function execute(repo, command, m, now) {
       records.push(r);
       bytes += size;
     }
-    return { records, generation: await repo.generation(m.userId) };
+    // A notice alone cannot prove visibility: a linked source can revoke
+    // access without changing this user's room notice. Revalidate originals.
+    const token = createHash("sha256").update(JSON.stringify([m, generation, records])).digest("hex");
+    if (p.token === token) return { unchanged: true, token, generation };
+    return { records, generation, token };
   }
   if (action === "record.history") {
     const r = await read(repo, m, p.kind, id);
@@ -320,7 +325,9 @@ export async function execute(repo, command, m, now) {
   }
   if (action === "message.list") {
     const r = await read(repo, m, "room", id);
-    return { records: await repo.messages(r.id), room: r };
+    const token = createHash("sha256").update(JSON.stringify([m, r])).digest("hex");
+    if (p.token === token) return { unchanged: true, token };
+    return { records: await repo.messages(r.id), room: r, token };
   }
   if (action === "attachment.authorize") {
     const r = await read(repo, m, p.kind, id);
