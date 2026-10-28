@@ -12,6 +12,7 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   sqflite: ^2.3.0
+  http: ^1.6.0
   crypto: ^3.0.7
   cryptography: ^2.9.0
   cryptography_flutter: ^2.3.4

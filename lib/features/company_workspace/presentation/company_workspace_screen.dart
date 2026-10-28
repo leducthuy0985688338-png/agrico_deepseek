@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'workspace_polling.dart';
+
 import 'package:flutter/material.dart';
 
 import '../application/workspace_service.dart';
@@ -24,29 +26,24 @@ class CompanyWorkspaceScreen extends StatefulWidget {
   State<CompanyWorkspaceScreen> createState() => _WorkspaceState();
 }
 
-class _WorkspaceState extends State<CompanyWorkspaceScreen> {
+class _WorkspaceState extends State<CompanyWorkspaceScreen>
+    with WidgetsBindingObserver, WorkspacePolling<CompanyWorkspaceScreen> {
   List<Json> rows = [], outbox = [];
   bool busy = false;
   String? error;
-  Timer? timer;
+  bool loading = false;
+  @override
+  Future<void> refreshWorkspace() async {
+    if (!busy) await load();
+  }
+
+  @override
+  bool get workspaceChanged => service.lastSyncChanged;
   WorkspaceService get service => widget.service;
   WorkspaceStrings get s => WorkspaceStrings(context);
-  @override
-  void initState() {
-    super.initState();
-    unawaited(load());
-    timer = Timer.periodic(const Duration(seconds: 15), (_) {
-      if (!busy) unawaited(load());
-    });
-  }
-
-  @override
-  void dispose() {
-    timer?.cancel();
-    super.dispose();
-  }
-
   Future<void> load() async {
+    if (loading) return;
+    loading = true;
     try {
       final cached = await service.records();
       final pending = await service.local.pending(service.farm, service.uid);
@@ -67,7 +64,19 @@ class _WorkspaceState extends State<CompanyWorkspaceScreen> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => error = s.error(e));
+      if (mounted) {
+        setState(() {
+          if (!service.canOpen ||
+              e is WorkspaceFailure &&
+                  (e.code == 'denied' || e.code == 'session')) {
+            rows = [];
+            outbox = [];
+          }
+          error = s.error(e);
+        });
+      }
+    } finally {
+      loading = false;
     }
   }
 

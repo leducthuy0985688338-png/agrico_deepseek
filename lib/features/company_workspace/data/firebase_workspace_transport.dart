@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'workspace_command_channel.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:crypto/crypto.dart';
@@ -8,7 +8,20 @@ import 'package:crypto/crypto.dart';
 import '../domain/workspace.dart';
 
 class FirebaseWorkspaceTransport implements WorkspaceTransport {
+  FirebaseWorkspaceTransport({
+    WorkspaceCommandChannel? channel,
+    this.verifySession,
+    Future<void> Function(Duration)? wait,
+  }) : channel = channel ?? FirebaseWorkspaceCommandChannel(),
+       wait = wait ?? Future<void>.delayed;
+  final WorkspaceCommandChannel channel;
+  final void Function(String)? verifySession;
+  final Future<void> Function(Duration) wait;
   void session(String uid) {
+    if (verifySession != null) {
+      verifySession!(uid);
+      return;
+    }
     if (FirebaseAuth.instance.currentUser?.uid != uid) {
       throw const WorkspaceFailure('session');
     }
@@ -16,36 +29,30 @@ class FirebaseWorkspaceTransport implements WorkspaceTransport {
 
   @override
   Future<Json> send(String f, String u, String op, Json command) async {
-    session(u);
-    final firestore = FirebaseFirestore.instance;
-    final ref = firestore.doc('agrico_workspace/$f/users/$u/commands/$op');
-    await firestore.runTransaction((tx) async {
-      final old = await tx.get(ref);
-      if (!old.exists) {
-        tx.set(ref, {
-          ...command,
-          'createdAt': FieldValue.serverTimestamp(),
-          'status': 'pending',
-          'schemaVersion': 1,
-        });
-      } else {
-        for (final k in ['action', 'entityId', 'expectedRevision', 'payload']) {
-          if (canonical(old.data()![k]) != canonical(command[k])) {
-            throw const WorkspaceFailure('conflict');
-          }
-        }
+    try {
+      return await _send(f, u, op, command);
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied' || e.code == 'unauthenticated') {
+        // A transport denial invalidates private reads but does not establish
+        // whether a queued write was processed by the server.
+        throw const WorkspaceFailure('denied');
       }
-    });
+      rethrow;
+    }
+  }
+
+  Future<Json> _send(String f, String u, String op, Json command) async {
+    session(u);
+    await channel.submit(f, u, op, command);
     for (var i = 0; i < (command['action'] == 'ai.ask' ? 50 : 12); i++) {
       session(u);
-      final result = (await ref.get(
-        const GetOptions(source: Source.server),
-      )).data()!;
+      final result = await channel.result(f, u, op, command);
+      session(u);
       if (result['status'] == 'accepted') return result;
       if (result['status'] == 'rejected') {
         throw WorkspaceRejected(result['error'] as String? ?? 'rejected');
       }
-      await Future<void>.delayed(const Duration(seconds: 2));
+      await wait(const Duration(seconds: 2));
     }
     throw const WorkspaceFailure('pending');
   }

@@ -1,6 +1,10 @@
 import { before, after, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { initializeTestEnvironment } from "@firebase/rules-unit-testing";
+import {
+  doc, getDocFromServer, getDocFromCache, setDoc, serverTimestamp,
+  disableNetwork, enableNetwork,
+} from "firebase/firestore";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 process.env.GCLOUD_PROJECT = "demo-agrico-workspace";
 process.env.GOOGLE_CLOUD_PROJECT = "demo-agrico-workspace";
@@ -9,7 +13,7 @@ process.env.FIREBASE_CONFIG = JSON.stringify({
   projectId: "demo-agrico-workspace",
   storageBucket: "demo-agrico-workspace.appspot.com",
 });
-const { processCommand, processAssistant } = await import("../src/index.js");
+const { processCommand, processAssistant, readCommandResult, deliverCommandResult } = await import("../src/index.js");
 const db = getFirestore();
 let env;
 const member = (uid) => ({
@@ -62,6 +66,10 @@ async function event(
     params: { farm: "farm", uid, op },
     data: { ref, data: () => ({ action }) },
   };
+}
+async function receive(op, uid = 'worker') {
+  const c = (await db.doc('agrico_workspace/farm/users/'+uid+'/commands/'+op).get()).data();
+  return readCommandResult('farm', uid, op, {action:c.action,entityId:c.entityId,expectedRevision:c.expectedRevision,payload:c.payload});
 }
 async function submit(...args) {
   const e = await event(...args);
@@ -366,4 +374,179 @@ test("snapshot SHA and farm checked before compare-and-swap publish", async () =
     (await db.collection("agrico_workspace/farm/snapshots").get()).size,
     1,
   );
+});
+
+// Counts SDK calls and returned snapshots, NOT Firebase billable operations.
+async function measuredCommand(label, e, phase = "process") {
+  let delivered;
+  const counters = { label, transactionAttempts: 0, documentGetCalls: 0,
+    documentSnapshots: 0, missingDocuments: 0, queryGetCalls: 0,
+    queryDocuments: 0, setCalls: 0, updateCalls: 0, deleteCalls: 0,
+    committedWrites: 0 };
+  const original = db.runTransaction;
+  db.runTransaction = function (body, ...options) {
+    let attemptWrites = 0;
+    return original.call(this, async (tx) => {
+      counters.transactionAttempts++;
+      attemptWrites = 0;
+      const proxy = new Proxy(tx, { get(target, key) {
+        if (key === "get") return async (...args) => {
+          const result = await target.get(...args);
+          if (Array.isArray(result.docs)) {
+            counters.queryGetCalls++; counters.queryDocuments += result.size;
+          } else {
+            counters.documentGetCalls++;
+            if (result.exists) counters.documentSnapshots++;
+            else counters.missingDocuments++;
+          }
+          return result;
+        };
+        if (["set", "update", "delete"].includes(key)) return (...args) => {
+          counters[key + "Calls"]++; attemptWrites++;
+          return target[key](...args);
+        };
+        const value = target[key];
+        return typeof value === "function" ? value.bind(target) : value;
+      }});
+      return body(proxy);
+    }, ...options).then((result) => {
+      counters.committedWrites += attemptWrites;
+      return result;
+    });
+  };
+  try {
+    if (phase === "process") await processCommand(e);
+    else delivered = await receive(e.params.op, e.params.uid);
+  }
+  finally {
+    db.runTransaction = original;
+    console.log("SYNC_EMULATOR_MEASURE " + JSON.stringify(counters));
+  }
+  // This inspection is one Admin SDK document read, outside transaction counts.
+  const stored = (await e.data.ref.get()).data();
+  if (phase === "process") {
+    await measuredCommand(label + "-delivery", e, "delivery");
+  } else {
+    const {resultDelivery, resultSubjectHash, resultGuards, ...legacyShape} = stored;
+    console.log("SYNC_RECEIPT_PAYLOAD " + JSON.stringify({label,
+      legacyShapeJsonBytes:Buffer.byteLength(JSON.stringify(legacyShape)),
+      guardedStoredJsonBytes:Buffer.byteLength(JSON.stringify(stored)),
+      deliveredJsonBytes:Buffer.byteLength(JSON.stringify(delivered))}));
+  }
+  return stored;
+}
+
+test("sync controls measure full unchanged changed and replay on real Firestore", async () => {
+  const create = await event("cost-room", "room.create", "cost-room", 0,
+    {title:"Nhóm Nguyễn ລາວ", members:["worker"]});
+  await measuredCommand("create-room", create);
+  await measuredCommand("replay-same-command", create);
+  assert.equal((await db.collection("agrico_workspace/farm/records").get()).size, 1);
+  const full = await measuredCommand("inbox-full", await event("cost-inbox1", "inbox.list", "inbox", 0, {}, "worker"));
+  const same = await measuredCommand("inbox-unchanged", await event("cost-inbox2", "inbox.list", "inbox", 0, {token:full.result.token}, "worker"));
+  assert.equal(same.result.unchanged, true);
+  const chat = await measuredCommand("messages-full", await event("cost-chat1", "message.list", "cost-room", 0, {}, "worker"));
+  const sameChat = await measuredCommand("messages-unchanged", await event("cost-chat2", "message.list", "cost-room", 0, {token:chat.result.token}, "worker"));
+  assert.equal(sameChat.result.unchanged, true);
+  const message = await event("cost-message", "message.create", "cost-message", 1, {roomId:"cost-room", text:"Nội dung ລາວ"}, "worker");
+  await measuredCommand("create-message", message);
+  await measuredCommand("retry-message-response-lost", message);
+  const changed = await measuredCommand("inbox-changed", await event("cost-inbox3", "inbox.list", "inbox", 0, {token:full.result.token}, "worker"));
+  assert.equal(changed.result.unchanged, undefined);
+  const changedChat = await measuredCommand("messages-changed", await event("cost-chat3", "message.list", "cost-room", 0, {token:chat.result.token}, "worker"));
+  assert.equal(changedChat.result.records.length, 1);
+  assert.equal((await db.collection("agrico_workspace/farm/records").where("kind", "==", "message").get()).size, 1);
+  // Test-only Admin mutation models removing a participant. No product API exists yet.
+  await db.doc("agrico_workspace/farm/records/room~cost-room").update({participants:["admin"], revision:3});
+  const denied = await measuredCommand("messages-after-room-removal", await event("cost-chat4", "message.list", "cost-room", 0, {token:changedChat.result.token}, "worker"));
+  assert.equal(denied.status, "rejected");
+  assert.equal(denied.error, "denied");
+  const hidden = await measuredCommand("inbox-after-room-removal", await event("cost-inbox4", "inbox.list", "inbox", 0, {token:changed.result.token}, "worker"));
+  assert.equal(hidden.result.records.length, 0);
+});
+
+test("offline client queues one command and replay creates no duplicate", async () => {
+  const client = env.authenticatedContext("worker").firestore();
+  const path = "agrico_workspace/farm/users/worker/commands/offline-create";
+  const ref = doc(client, path);
+  await disableNetwork(client);
+  let acknowledged = false;
+  const pending = setDoc(ref, {schemaVersion:1, action:"room.create", entityId:"offline-room",
+    expectedRevision:0, payload:{title:"Offline",members:[]}, status:"pending", createdAt:serverTimestamp()})
+    .then(() => { acknowledged = true; });
+  const cached = await getDocFromCache(ref);
+  assert.equal(cached.metadata.hasPendingWrites, true);
+  assert.equal(acknowledged, false);
+  assert.equal((await db.doc(path).get()).exists, false);
+  await enableNetwork(client);
+  await pending;
+  const e = {params:{farm:"farm",uid:"worker",op:"offline-create"}, data:{ref:db.doc(path),data:()=>({action:"room.create"})}};
+  await measuredCommand("offline-command-reconnect", e);
+  await measuredCommand("offline-command-replay", e);
+  assert.equal((await db.doc("agrico_workspace/farm/records/room~offline-room").get()).data().revision, 1);
+  assert.equal((await db.collection("agrico_workspace/farm/command_audit").get()).size, 1);
+});
+
+test("accepted private receipt must not remain readable after room removal", async () => {
+  await submit("private-room", "room.create", "private-room", 0, {title:"Private",members:["worker"]});
+  await submit("private-msg", "message.create", "private-msg", 1, {roomId:"private-room",text:"Private receipt text"});
+  await submit("private-read", "message.list", "private-room", 0, {}, "worker");
+  const client = env.authenticatedContext("worker").firestore();
+  const receipt = doc(client,"agrico_workspace/farm/users/worker/commands/private-read");
+  // The positive check now uses the authenticated delivery path. The security
+  // assertion below is retained exactly; direct accepted reads are stricter.
+  assert.equal((await receive("private-read")).result.records.length, 1);
+  await assert.rejects(() => getDocFromServer(receipt), {code:"permission-denied"});
+  await db.doc("agrico_workspace/farm/records/room~private-room").update({participants:["admin"],revision:3});
+  await assert.rejects(() => getDocFromServer(receipt), {code:"permission-denied"});
+  await assert.rejects(() => receive("private-read"), {code:"denied"});
+});
+
+test("receipt delivery rejects logout other account and modified replay", async () => {
+  await submit("session-room", "room.create", "session-room", 0, {title:"Session",members:["worker"]});
+  await submit("session-read", "message.list", "session-room", 0, {}, "worker");
+  const c = (await db.doc("agrico_workspace/farm/users/worker/commands/session-read").get()).data();
+  const data = {farm:"farm", operation:"session-read", command:{action:c.action,entityId:c.entityId,expectedRevision:0,payload:{}}};
+  assert.equal((await deliverCommandResult({auth:{uid:"worker"},data})).status,"accepted");
+  await assert.rejects(() => deliverCommandResult({data}), {code:"unauthenticated"});
+  await assert.rejects(() => deliverCommandResult({auth:{uid:"reviewer"},data}), {code:"permission-denied"});
+  await assert.rejects(() => deliverCommandResult({auth:{uid:"worker"},data:{...data,command:{...data.command,payload:{token:"forged"}}}}), {code:"invalid-argument"});
+  await db.doc("agrico_memberships/worker").update({deniedPermissions:["chat.view"]});
+  await assert.rejects(() => receive("session-read"), {code:"denied"});
+});
+test("source revocation invalidates old room inbox and AI result without adminRevision bump", async () => {
+  await submit("source-create", "form.create", "source", 0, {templateId:"advance",fields:{amount:"100",currency:"VND",reason:"private"}});
+  await submit("source-route", "route.save", "source-route", 0, {templateId:"advance",department:"D",steps:["reviewer"]});
+  await submit("source-submit", "form.submit", "source", 1, {routeId:"source-route"});
+  await submit("source-room", "room.create", "source-room", 0, {title:"Source",members:["reviewer"],sourceKind:"form",sourceId:"source"});
+  await submit("source-read", "message.list", "source-room", 0, {}, "reviewer");
+  await submit("source-inbox", "inbox.list", "inbox", 0, {}, "reviewer");
+  assert.equal((await receive("source-read","reviewer")).status,"accepted");
+  const original = globalThis.fetch;
+  process.env.AGRICO_AI_API_KEY = "test-only";
+  globalThis.fetch = async () => ({ok:true,json:async()=>({choices:[{message:{content:"Private source summary"}}]})});
+  try { await processAssistant(await event("source-ai","ai.ask","source-ai",0,{question:"Summarize",language:"en"},"reviewer")); }
+  finally { globalThis.fetch = original; }
+  assert.equal((await receive("source-ai","reviewer")).result.answer,"Private source summary");
+  // Use the real workflow to replace a reviewer; membership/adminRevision stays unchanged.
+  await submit("source-changes","form.changes","source",2,{reason:"Revise"},"reviewer");
+  await submit("source-newroute","route.save","source-route",1,{templateId:"advance",department:"D",steps:["worker"]});
+  await submit("source-resubmit","form.submit","source",3,{routeId:"source-route"});
+  for (const op of ["source-read","source-inbox","source-ai"]) {
+    await assert.rejects(() => receive(op,"reviewer"), {code:"denied"});
+    await assert.rejects(() => getDocFromServer(doc(env.authenticatedContext("reviewer").firestore(),"agrico_workspace/farm/users/reviewer/commands/"+op)), {code:"permission-denied"});
+  }
+});
+test("stale accepted write returns technical acknowledgement and legacy private reads fail closed", async () => {
+  const e = await event("safe-ack","room.create","safe-room",0,{title:"Old private title",members:["worker"]});
+  await processCommand(e);
+  await db.doc("agrico_workspace/farm/records/room~safe-room").update({participants:["worker"],revision:2});
+  const ack = await receive("safe-ack","admin");
+  assert.deepEqual(ack,{status:"accepted",result:{},resultUnavailable:true});
+  await processCommand(e);
+  assert.equal((await db.collection("agrico_workspace/farm/command_audit").get()).size,1);
+  const ref = db.doc("agrico_workspace/farm/users/worker/commands/legacy");
+  await ref.set({action:"message.list",entityId:"safe-room",expectedRevision:0,payload:{},status:"accepted",result:{records:[{secret:"legacy"}]},resultPolicyRevision:1});
+  await assert.rejects(() => receive("legacy"), {code:"denied"});
+  await assert.rejects(() => getDocFromServer(doc(env.authenticatedContext("worker").firestore(),ref.path)), {code:"permission-denied"});
 });

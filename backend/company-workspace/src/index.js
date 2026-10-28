@@ -1,6 +1,8 @@
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, Timestamp, FieldValue } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
+import { onCall } from "firebase-functions/v2/https";
+import { fingerprint, trackReceiptReads, guardsMatch, readReceipt, createResultDelivery } from "./receipt_access.js";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { defineSecret, defineString } from "firebase-functions/params";
 import { summarizeCash } from "./assistant_context.js";
@@ -368,6 +370,8 @@ export async function processCommand(event) {
     await db.runTransaction(async (tx) => {
       const command = (await tx.get(ref)).data();
       if (command?.status !== "pending") return;
+      const tracked = trackReceiptReads(tx, farm, uid);
+      tx = tracked.tx;
       const repo = new Repository(tx, farm);
       const m = await repo.member(uid);
       const now = new Date().toISOString();
@@ -378,6 +382,9 @@ export async function processCommand(event) {
       tx.update(ref, {
         status: "accepted",
         result,
+        resultDelivery: 2,
+        resultSubjectHash: fingerprint(m),
+        resultGuards: [...tracked.guards.values()],
         resultPolicyRevision: m.adminRevision ?? 0,
         inboxGeneration: generation,
         finishedAt: FieldValue.serverTimestamp(),
@@ -402,6 +409,10 @@ export async function processCommand(event) {
     });
   }
 }
+export const readCommandResult = (f, u, o, c) => readReceipt(db, Repository, f, u, o, c);
+export const deliverCommandResult = createResultDelivery(db, Repository);
+export const companyWorkspaceResult = onCall({region:"asia-southeast1", maxInstances:5, timeoutSeconds:60, cors:true}, deliverCommandResult);
+
 export const companyWorkspaceCommand = onDocumentCreated(
   {
     document,
@@ -446,7 +457,8 @@ export async function processAssistant(event) {
       claimed = true;
     });
     if (!claimed) return;
-    const repo = new Repository({ get: (r) => r.get() }, farm);
+    const tracked = trackReceiptReads({ get: (r) => r.get() }, farm, uid);
+    const repo = new Repository(tracked.tx, farm);
     const records = (await repo.inbox(uid)).filter((r) => visible(m, r));
     const context = records.map((r) => ({
       code: r.code ?? r.id,
@@ -531,11 +543,15 @@ export async function processAssistant(event) {
       if (c?.status !== "processing") return;
       if (
         !active(current, farm, new Date().toISOString()) ||
-        JSON.stringify(current) !== JSON.stringify(m)
+        fingerprint(current) !== fingerprint(m) ||
+        !await guardsMatch(tx, db, [...tracked.guards.values()])
       )
         fail("denied");
       tx.update(ref, {
         status: "accepted",
+        resultDelivery: 2,
+        resultSubjectHash: fingerprint(m),
+        resultGuards: [...tracked.guards.values()],
         result: {
           answer,
           sourceCount: context.length,

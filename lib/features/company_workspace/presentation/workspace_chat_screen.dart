@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'workspace_polling.dart';
 
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
@@ -20,32 +20,38 @@ class WorkspaceChatScreen extends StatefulWidget {
   State<WorkspaceChatScreen> createState() => _ChatState();
 }
 
-class _ChatState extends State<WorkspaceChatScreen> {
+class _ChatState extends State<WorkspaceChatScreen>
+    with WidgetsBindingObserver, WorkspacePolling<WorkspaceChatScreen> {
   final input = TextEditingController();
   late Json room;
   List<Json> rows = [], files = [], pending = [];
-  Timer? timer;
+  bool loading = false;
+  @override
+  Future<void> refreshWorkspace() async {
+    if (!busy) await load();
+  }
+
+  @override
+  bool get workspaceChanged => service.lastSyncChanged;
   bool busy = false;
+  bool accessDenied = false;
   String? error;
   WorkspaceService get service => widget.service;
   @override
   void initState() {
     super.initState();
     room = widget.room;
-    unawaited(load());
-    timer = Timer.periodic(const Duration(seconds: 10), (_) {
-      if (!busy) unawaited(load());
-    });
   }
 
   @override
   void dispose() {
-    timer?.cancel();
     input.dispose();
     super.dispose();
   }
 
   Future<void> load() async {
+    if (loading) return;
+    loading = true;
     try {
       await service.records();
       if (!service.canReadRecord(room)) throw const WorkspaceFailure('denied');
@@ -58,19 +64,11 @@ class _ChatState extends State<WorkspaceChatScreen> {
         setState(() => rows = (old['records'] as List).map(jsonMap).toList());
       }
       await service.sync();
-      final r = await service.request(
-        'message.list',
-        entity: room['id'] as String,
-      );
-      await service.local.putValue(
-        service.farm,
-        service.uid,
-        'chat_${room['id']}',
-        r,
-      );
+      final r = await service.messages(room['id'] as String);
       final queued = await service.local.pending(service.farm, service.uid);
       if (mounted) {
         setState(() {
+          accessDenied = false;
           room = jsonMap(r['room']);
           rows = (r['records'] as List).map(jsonMap).toList();
           pending = queued
@@ -80,7 +78,22 @@ class _ChatState extends State<WorkspaceChatScreen> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => error = WorkspaceStrings(context).error(e));
+      if (mounted) {
+        setState(() {
+          if (!service.canOpen ||
+              e is WorkspaceFailure &&
+                  (e.code == 'denied' || e.code == 'session')) {
+            accessDenied = true;
+            rows = [];
+            pending = [];
+            files = [];
+            input.clear();
+          }
+          error = WorkspaceStrings(context).error(e);
+        });
+      }
+    } finally {
+      loading = false;
     }
   }
 
@@ -111,6 +124,12 @@ class _ChatState extends State<WorkspaceChatScreen> {
   @override
   Widget build(BuildContext context) {
     final s = WorkspaceStrings(context);
+    if (accessDenied || !service.canReadRecord(room)) {
+      return Scaffold(
+        appBar: AppBar(),
+        body: Center(child: Text(s.error(const WorkspaceFailure('denied')))),
+      );
+    }
     return Scaffold(
       appBar: AppBar(title: Text(jsonMap(room['content'])['title'] as String)),
       body: Column(

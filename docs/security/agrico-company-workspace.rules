@@ -328,7 +328,7 @@ service cloud.firestore {
 
     function wsReady(farm) { let m=actor(); return signedIn() && m.active==true && m.userId==request.auth.uid && m.membershipId==request.auth.uid && m.farmId==farm && m.offlineUntil>request.time && m.roles.size()>0 && !m.get('deniedPermissions',[]).hasAny(['cloud.sync']); }
     match /agrico_workspace/{farm}/users/{uid}/commands/{op} {
-      allow get: if uid==request.auth.uid && wsReady(farm) && (!exists(/databases/$(database)/documents/agrico_workspace/$(farm)/users/$(uid)/commands/$(op)) || resource.data.status!='accepted' || resource.data.get('resultPolicyRevision',-1)==actor().get('adminRevision',0));
+      allow get: if uid==request.auth.uid && wsReady(farm) && (!exists(/databases/$(database)/documents/agrico_workspace/$(farm)/users/$(uid)/commands/$(op)) || (resource.data.status!='accepted' && !resource.data.keys().hasAny(['result','resultGuards','resultSubjectHash'])));
       allow list, update, delete: if false;
       allow create: if uid==request.auth.uid && wsReady(farm)
         && op.matches('^[A-Za-z0-9_-]{1,120}$')

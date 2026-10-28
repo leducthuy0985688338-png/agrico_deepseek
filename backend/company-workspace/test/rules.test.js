@@ -111,7 +111,7 @@ test("private records inbox and audit are server-only", async () => {
     await assertFails(getDoc(doc(db("worker"), `agrico_workspace/farm/${p}`)));
   }
 });
-test("command list denied and accepted result revoked after policy revision changes", async () => {
+test("accepted results are server-only even before policy revision changes", async () => {
   await env.withSecurityRulesDisabled(async (c) =>
     setDoc(doc(c.firestore(), path), {
       ...command(),
@@ -120,7 +120,7 @@ test("command list denied and accepted result revoked after policy revision chan
       result: { private: "content" },
     }),
   );
-  await assertSucceeds(getDoc(doc(db("worker"), path)));
+  await assertFails(getDoc(doc(db("worker"), path)));
   await assertFails(
     getDocs(
       collection(db("worker"), "agrico_workspace/farm/users/worker/commands"),
@@ -196,4 +196,11 @@ test("full sensitive snapshots are root admin only", async () => {
   await assertFails(
     getBytes(ref(env.authenticatedContext("worker").storage(), path)),
   );
+});
+
+test("processing or rejected receipts containing private result fields also fail closed", async () => {
+  for (const status of ["pending","processing","rejected","accepted"]) {
+    await env.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(),path), {...command(),status,result:{secret:"private"}}));
+    await assertFails(getDoc(doc(db("worker"),path)));
+  }
 });

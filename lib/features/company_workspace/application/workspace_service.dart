@@ -16,7 +16,28 @@ class WorkspaceService {
   final AuthorizationSubject? Function() currentSubject;
   final WorkspaceStore local;
   final WorkspaceTransport transport;
-  bool syncing = false;
+  Future<void>? _sync;
+  bool get syncing => _sync != null;
+  bool lastSyncChanged = true;
+
+  Future<String> _session() async {
+    try {
+      return stamp();
+    } catch (_) {
+      await local.clearCache(farm, uid);
+      rethrow;
+    }
+  }
+
+  Future<void> _purgeIfChanged(String expected) async {
+    try {
+      check(expected);
+    } catch (_) {
+      await local.clearCache(farm, uid);
+      rethrow;
+    }
+  }
+
   String newId() =>
       'w_${DateTime.now().microsecondsSinceEpoch}_${Random.secure().nextInt(1 << 30)}';
   LiveAuthorization get live => LiveAuthorization(currentSubject);
@@ -61,14 +82,25 @@ class WorkspaceService {
     Json payload = const {},
     String? operation,
   }) async {
-    final s = stamp();
-    final result = await transport.send(farm, uid, operation ?? newId(), {
-      'action': action,
-      'entityId': entity ?? newId(),
-      'expectedRevision': revision,
-      'payload': payload,
-    });
-    check(s);
+    final s = await _session();
+    Json result;
+    try {
+      result = await transport.send(farm, uid, operation ?? newId(), {
+        'action': action,
+        'entityId': entity ?? newId(),
+        'expectedRevision': revision,
+        'payload': payload,
+      });
+      await _purgeIfChanged(s);
+    } on WorkspaceFailure catch (e) {
+      if (e.code == 'denied' || e.code == 'session') {
+        await local.clearCache(farm, uid);
+      }
+      rethrow;
+    } catch (_) {
+      await _purgeIfChanged(s);
+      rethrow;
+    }
     return jsonMap(result['result']);
   }
 
@@ -89,10 +121,10 @@ class WorkspaceService {
     check(s);
   }
 
-  Future<void> sync() async {
-    if (syncing) return;
-    final s = stamp();
-    syncing = true;
+  Future<void> sync() => _sync ??= _runSync().whenComplete(() => _sync = null);
+
+  Future<void> _runSync() async {
+    final s = await _session();
     try {
       final previous = await local.value(farm, uid, 'session');
       if (previous?['stamp'] != s) {
@@ -114,22 +146,38 @@ class WorkspaceService {
           });
           check(s);
           await local.accept(farm, uid, c['id'] as String, response);
-        } on WorkspaceFailure catch (e) {
+        } on WorkspaceRejected catch (e) {
           check(s);
-          if (e.code == 'pending') rethrow;
           await local.reject(farm, uid, c['id'] as String, e.code);
         }
       }
-      final result = await request('inbox.list');
+      // Only a full inbox response establishes this token; acknowledgements
+      // may advance generation without containing all other users' changes.
+      final snapshot = await local.value(farm, uid, 'inbox_snapshot');
+      final result = await request(
+        'inbox.list',
+        payload: {if (snapshot?['token'] != null) 'token': snapshot!['token']},
+      );
       check(s);
+      lastSyncChanged = result['unchanged'] != true;
+      if (!lastSyncChanged) return;
       await local.replace(
         farm,
         uid,
         (result['records'] as List).map(jsonMap).toList(),
         result['generation'] as int,
       );
-    } finally {
-      syncing = false;
+      await local.putValue(farm, uid, 'inbox_snapshot', {
+        if (result['token'] != null) 'token': result['token'],
+      });
+      await _purgeIfChanged(s);
+    } catch (e) {
+      if (e is WorkspaceFailure &&
+          (e.code == 'denied' || e.code == 'session')) {
+        await local.clearCache(farm, uid);
+      }
+      await _purgeIfChanged(s);
+      rethrow;
     }
   }
 
@@ -178,15 +226,46 @@ class WorkspaceService {
   }
 
   Future<List<Json>> records() async {
-    final s = stamp();
+    final s = await _session();
     final fingerprint = await local.value(farm, uid, 'session');
     if (fingerprint?['stamp'] != s) {
       await local.clearCache(farm, uid);
       await local.putValue(farm, uid, 'session', {'stamp': s});
     }
     final rows = await local.records(farm, uid);
-    check(s);
+    await _purgeIfChanged(s);
     return rows.where(canReadRecord).toList();
+  }
+
+  final _messageReads = <String, Future<Json>>{};
+  Future<Json> messages(String roomId) => _messageReads.putIfAbsent(
+    roomId,
+    () => _readMessages(roomId).whenComplete(() {
+      _messageReads.remove(roomId);
+    }),
+  );
+
+  Future<Json> _readMessages(String roomId) async {
+    final s = await _session();
+    try {
+      await records();
+      final key = 'chat_$roomId';
+      final old = await local.value(farm, uid, key);
+      final result = await request(
+        'message.list',
+        entity: roomId,
+        payload: {if (old?['token'] != null) 'token': old!['token']},
+      );
+      final next = result['unchanged'] == true && old != null ? old : result;
+      if (result['unchanged'] != true) {
+        await local.putValue(farm, uid, key, next);
+      }
+      await _purgeIfChanged(s);
+      return next;
+    } catch (_) {
+      await _purgeIfChanged(s);
+      rethrow;
+    }
   }
 
   Future<List<Json>> directory() async {

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -13,16 +14,26 @@ import 'package:agrico_deepseek/core/backup/local_database_snapshot.dart';
 
 class Transport implements WorkspaceTransport {
   final calls = <Json>[];
+  Json? messageResult;
+  Object? failure;
   bool timeout = false;
+  bool unchanged = false;
+  Completer<void>? gate;
   void Function()? onSend;
   @override
   Future<Json> send(String f, String u, String op, Json c) async {
     calls.add({'op': op, ...c});
     onSend?.call();
+    if (gate != null) await gate!.future;
+    if (failure != null) throw failure!;
     if (timeout) throw const WorkspaceFailure('pending');
     return {
-      'result': c['action'] == 'inbox.list'
-          ? {'records': <Json>[], 'generation': 10}
+      'result': c['action'] == 'message.list'
+          ? messageResult ?? <String, dynamic>{}
+          : c['action'] == 'inbox.list'
+          ? (unchanged
+                ? {'unchanged': true, 'token': 'v10', 'generation': 10}
+                : {'records': <Json>[], 'generation': 10, 'token': 'v10'})
           : <String, dynamic>{},
       'inboxGeneration': 10,
     };
@@ -206,6 +217,170 @@ void main() {
     },
     dataScopes: const {DataScope.allFarm},
   );
+  test('concurrent sync callers await one transport request', () async {
+    final t = Transport()..gate = Completer<void>();
+    final u = subject('u');
+    final service = WorkspaceService(
+      subject: u,
+      currentSubject: () => u,
+      local: store,
+      transport: t,
+    );
+    var completed = false;
+    final first = service.sync();
+    final second = service.sync().then((_) => completed = true);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(completed, isFalse);
+    expect(t.calls, hasLength(1));
+    t.gate!.complete();
+    await Future.wait([first, second]);
+    expect(t.calls, hasLength(1));
+  });
+  test(
+    'unchanged inbox preserves cache and sends full snapshot token',
+    () async {
+      final t = Transport();
+      final u = subject('u');
+      final service = WorkspaceService(
+        subject: u,
+        currentSubject: () => u,
+        local: store,
+        transport: t,
+      );
+      await service.sync();
+      await store.replace('f', 'u', [record('kept', 1)], 10);
+      t.unchanged = true;
+      await service.sync();
+      expect(jsonMap(t.calls.last['payload'])['token'], 'v10');
+      expect(await store.records('f', 'u'), hasLength(1));
+      expect(service.lastSyncChanged, isFalse);
+    },
+  );
+  test('revoked access purges private cache but preserves outbox', () async {
+    final u = subject('u');
+    AuthorizationSubject? live = u;
+    final service = WorkspaceService(
+      subject: u,
+      currentSubject: () => live,
+      local: store,
+      transport: Transport(),
+    );
+    await service.queue('task.accept', entity: 'task');
+    await store.replace('f', 'u', [record('private', 1)], 10);
+    await store.putValue('f', 'u', 'chat_private', {
+      'records': ['secret'],
+    });
+    live = null;
+    await expectLater(service.sync(), throwsA(isA<WorkspaceFailure>()));
+    expect(await store.records('f', 'u'), isEmpty);
+    expect(await store.value('f', 'u', 'chat_private'), isNull);
+    expect(await store.pending('f', 'u'), hasLength(1));
+  });
+  test(
+    'transport failure keeps outbox retryable without a rejection marker',
+    () async {
+      final t = Transport()..failure = const WorkspaceFailure('unavailable');
+      final u = subject('u');
+      final service = WorkspaceService(
+        subject: u,
+        currentSubject: () => u,
+        local: store,
+        transport: t,
+      );
+      await service.queue('task.accept', entity: 'task');
+      await expectLater(service.sync(), throwsA(isA<WorkspaceFailure>()));
+      final queued = (await store.pending('f', 'u')).single;
+      expect(queued['error'], isNull);
+      t.failure = null;
+      await service.sync();
+      expect(await store.pending('f', 'u'), isEmpty);
+      expect(t.calls.first['op'], queued['id']);
+    },
+  );
+  test('server rejection purges private cache on read', () async {
+    final t = Transport()..failure = const WorkspaceFailure('denied');
+    final u = subject('u');
+    final service = WorkspaceService(
+      subject: u,
+      currentSubject: () => u,
+      local: store,
+      transport: t,
+    );
+    await store.putValue('f', 'u', 'private', {'secret': 'value'});
+    await expectLater(
+      service.request('message.list', entity: 'room'),
+      throwsA(isA<WorkspaceFailure>()),
+    );
+    expect(await store.value('f', 'u', 'private'), isNull);
+  });
+  test('ack generation cannot establish a full inbox token', () async {
+    final t = Transport();
+    final u = subject('u');
+    final service = WorkspaceService(
+      subject: u,
+      currentSubject: () => u,
+      local: store,
+      transport: t,
+    );
+    await service.sync();
+    await service.queue('task.accept', entity: 'task');
+    await store.accept(
+      'f',
+      'u',
+      (await store.pending('f', 'u')).single['id'] as String,
+      {'inboxGeneration': 999},
+    );
+    await service.sync();
+    expect(jsonMap(t.calls.last['payload'])['token'], 'v10');
+  });
+  test(
+    'concurrent message reads share request and unchanged preserves cached data',
+    () async {
+      final t = Transport()
+        ..gate = Completer<void>()
+        ..messageResult = {
+          'records': <Json>[],
+          'room': {'id': 'room'},
+          'token': 'chat1',
+        };
+      final u = subject('u');
+      final service = WorkspaceService(
+        subject: u,
+        currentSubject: () => u,
+        local: store,
+        transport: t,
+      );
+      final first = service.messages('room');
+      final second = service.messages('room');
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(t.calls, hasLength(1));
+      t.gate!.complete();
+      final values = await Future.wait([first, second]);
+      expect(values.first, values.last);
+      t.messageResult = {'unchanged': true, 'token': 'chat1'};
+      expect((await service.messages('room'))['room'], {'id': 'room'});
+      expect(jsonMap(t.calls.last['payload'])['token'], 'chat1');
+    },
+  );
+  test('logout during message read cannot repopulate private cache', () async {
+    final u = subject('u');
+    AuthorizationSubject? live = u;
+    final t = Transport()
+      ..messageResult = {
+        'records': <Json>[],
+        'room': {'id': 'room'},
+        'token': 'chat1',
+      };
+    final service = WorkspaceService(
+      subject: u,
+      currentSubject: () => live,
+      local: store,
+      transport: t,
+    );
+    t.onSend = () => live = null;
+    await expectLater(service.messages('room'), throwsA(anything));
+    expect(await store.value('f', 'u', 'chat_room'), isNull);
+  });
   test('network timeout keeps same operation id for reconnect', () async {
     final t = Transport()..timeout = true;
     final u = subject('u');
