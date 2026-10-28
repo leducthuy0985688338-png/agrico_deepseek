@@ -6,7 +6,7 @@ Push-Location $repoPath
 try {
     $cli=Join-Path $repoPath 'backend/company-workspace/node_modules/firebase-tools/lib/bin/firebase.js'
     if (-not (Test-Path $cli)) { throw 'Run npm ci --prefix backend/company-workspace with Node 22 first.' }
-    $only='firestore:rules,firestore:indexes,storage,functions:company-workspace:companyWorkspaceCommand'
+    $only='firestore:rules,firestore:indexes,storage,functions:company-workspace:companyWorkspaceCommand,functions:company-workspace:companyWorkspaceResult'
     if ($IncludeAI) { $only+=',functions:company-workspace:companyWorkspaceAssistant' }
     Write-Host "Project: agrico-erp | Targets: $only"
     if (-not $Deploy) {

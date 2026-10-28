@@ -17,7 +17,8 @@
         "test",
         "tools",
         "*.log",
-        ".env*"
+        ".env*",
+        ".secret.local"
       ]
     }
   ]

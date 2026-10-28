@@ -1,0 +1,40 @@
+{
+  "firestore": {
+    "rules": "docs/security/agrico-company-workspace.rules",
+    "indexes": "docs/security/firestore-workspace.indexes.json"
+  },
+  "functions": [
+    {
+      "source": "backend/company-workspace",
+      "codebase": "company-workspace",
+      "runtime": "nodejs22",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "test",
+        "tools",
+        "*.log",
+        ".env*",
+        ".secret.local"
+      ]
+    }
+  ],
+  "emulators": {
+    "auth": {
+      "host": "127.0.0.1",
+      "port": 9099
+    },
+    "functions": {
+      "host": "127.0.0.1",
+      "port": 5002
+    },
+    "firestore": {
+      "host": "127.0.0.1",
+      "port": 8088
+    },
+    "ui": {
+      "enabled": false
+    },
+    "singleProjectMode": true
+  }
+}
