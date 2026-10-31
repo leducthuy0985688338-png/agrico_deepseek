@@ -62,6 +62,9 @@ export function manages(m, p, target) {
     )
   );
 }
+// Read-only scope introspection for authority endpoints. Existing Workspace
+// authorization continues to use the same scope calculation unchanged.
+export function permissionScopes(m,p){return has(m,p)?scopes(m,p):new Set();}
 const access = (m) =>
   Object.fromEntries(
     ["departmentIds", "teamIds", "projectIds"].map((k) => [k, m[k] ?? []]),

@@ -7,7 +7,7 @@
     "node": "22"
   },
   "scripts": {
-    "test": "node --test test/domain.test.js test/assistant-context.test.js",
+    "test": "node --test test/domain.test.js test/assistant-context.test.js test/approval-authority.test.js",
     "test:emulator": "node tools/test-emulator.mjs"
   },
   "dependencies": {

@@ -2,6 +2,7 @@ import { initializeApp } from "firebase-admin/app";
 import { getFirestore, Timestamp, FieldValue } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { onCall } from "firebase-functions/v2/https";
+import {approvalAuthority,approvalRelations} from './approval_authority.js';
 import { fingerprint, trackReceiptReads, guardsMatch, readReceipt, createResultDelivery } from "./receipt_access.js";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { defineSecret, defineString } from "firebase-functions/params";
@@ -30,6 +31,38 @@ const principal = (doc) =>
           doc.data().offlineUntil,
       }
     : null;
+// Authority collections are provisioned only by the project owner through a
+// separately authorized administrative process; no bootstrap identities.
+export const companyApprovalAuthority=onCall({region:'asia-southeast1',maxInstances:5,timeoutSeconds:30},async request=>{
+  if(!request.auth)throw new Error('Unauthenticated approval authority request.');
+  return db.runTransaction(async tx=>{
+    const ref=(farm,kind,currency)=>db.doc(`agrico_approval_policies/${farm}/active/${kind}_${currency}`);
+    const repo={
+      member:async uid=>principal(await tx.get(db.doc(`agrico_memberships/${uid}`))),
+      authority:async farm=>(await tx.get(db.doc(`agrico_approval_authorities/${farm}`))).data(),
+      current:async(farm,kind,currency)=>(await tx.get(ref(farm,kind,currency))).data(),
+      draft:async(farm,digest)=>(await tx.get(db.doc(`agrico_approval_policies/${farm}/drafts/${digest}`))).data(),
+      draftHead:async(farm,kind,currency)=>(await tx.get(db.doc(`agrico_approval_policies/${farm}/draftHeads/${kind}_${currency}`))).data(),
+      propose:async(farm,kind,currency,record)=>{
+        tx.create(db.doc(`agrico_approval_policies/${farm}/drafts/${record.digest}`),record);
+        tx.set(db.doc(`agrico_approval_policies/${farm}/draftHeads/${kind}_${currency}`),{version:record.version,digest:record.digest});
+      },
+      activate:async(farm,kind,currency,record,before,actor,now)=>{
+        tx.set(ref(farm,kind,currency),record);
+        tx.create(db.doc(`agrico_approval_policies/${farm}/versions/${record.digest}`),record);
+        tx.create(db.collection(`agrico_approval_policies/${farm}/audit`).doc(),{actor,occurredAt:now,before:before??null,after:record});
+      }
+    };
+    return approvalAuthority(repo,request.auth.uid,request.data,new Date().toISOString());
+  });
+});
+export const companyApprovalRelations=onCall({region:'asia-southeast1',maxInstances:5,timeoutSeconds:30},async request=>{
+  if(!request.auth)throw new Error('Unauthenticated approval relations request.');
+  return db.runTransaction(async tx=>approvalRelations({
+    member:async uid=>principal(await tx.get(db.doc(`agrico_memberships/${uid}`))),
+    authority:async farm=>(await tx.get(db.doc(`agrico_approval_authorities/${farm}`))).data()
+  },request.auth.uid,request.data,new Date().toISOString()));
+});
 export class Repository {
   constructor(tx, farm) {
     this.tx = tx;
