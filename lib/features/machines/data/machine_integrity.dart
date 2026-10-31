@@ -51,6 +51,17 @@ abstract final class MachineIntegrity {
       final v = MachineRun.fromJson(SqliteMachineRepository.body(r));
       v.validate();
       final farm = r['farm_id'] as String;
+      for (final visit in v.segments) {
+        // Historical/closed plans remain valid during restore; task identity
+        // and resource links are checked below without requiring active status.
+        if (visit.taskId != null) {
+          final tasks = await db.rawQuery(
+            'SELECT t.id FROM farm_tasks_v2 t JOIN production_plan_tasks_v1 p ON p.id=t.id WHERE t.id=? AND t.farm_id=? AND p.plan_id=? AND (t.worker_resource_id IS NULL OR t.worker_resource_id=?) AND (t.machine_resource_id IS NULL OR t.machine_resource_id=?)',
+            [visit.taskId, farm, visit.planId, v.operatorId, v.machineId],
+          );
+          require(tasks.length == 1);
+        }
+      }
       require(
         v.id == r['id'] &&
             v.machineId == r['machine_id'] &&

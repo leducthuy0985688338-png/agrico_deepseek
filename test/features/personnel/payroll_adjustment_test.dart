@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:agrico_deepseek/core/production/source_governance.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
@@ -284,6 +285,73 @@ void main() {
     reversesId: reversesId,
   );
   Future<void> validate() => PersonnelIntegrity.validate(db);
+  test(
+    'native payroll approval persists exact payload version and included entry identity',
+    () async {
+      await salaryReady();
+      final g = (await SourceGovernance.get(
+        db,
+        'f',
+        'payrollExtra',
+        'salary',
+      ))!;
+      expect(g['revision'], 2);
+      expect(g['status'], 'approved');
+      expect(g['creator'], 'admin');
+      expect(g['approver'], 'admin');
+      expect(
+        g['payload_digest'],
+        SourceGovernance.digest(
+          await SourceGovernance.nativePayload(db, 'payrollExtra', 'salary'),
+        ),
+      );
+      await SourceGovernance.validate(db);
+      await db.update(
+        'personnel_payrolls_v1',
+        {'bonus': '999'},
+        where: 'id=?',
+        whereArgs: ['salary'],
+      );
+      await expectLater(SourceGovernance.validate(db), throwsStateError);
+    },
+  );
+  test(
+    'native signed adjustment approval binds immutable amount and allocation digest',
+    () async {
+      await salaryReady();
+      await adjust(
+        adjustment(
+          'approved-digest',
+          allocations: [const PayrollCostAdjustment('plan', '0.2')],
+        ),
+      );
+      final g = (await SourceGovernance.get(
+        db,
+        'f',
+        'payrollCorrection',
+        'approved-digest',
+      ))!;
+      expect(g['revision'], 2);
+      expect(g['status'], 'approved');
+      expect(
+        g['payload_digest'],
+        SourceGovernance.digest(
+          await SourceGovernance.nativePayload(
+            db,
+            'payrollCorrection',
+            'approved-digest',
+          ),
+        ),
+      );
+      expect(
+        (await db.query(
+          'personnel_payroll_adjustment_costs_v1',
+        )).single['amount'],
+        '0.2',
+      );
+      await SourceGovernance.validate(db);
+    },
+  );
   test(
     'draft has an automatic code, immutable base and no cost or cash effect before approval',
     () async {
@@ -801,7 +869,7 @@ void main() {
       expect(snapshot.laborCost('plan', 'VND'), '0.6');
       expect(snapshot.laborCost('plan', 'LAK'), '0');
       final workbook = Report20(snapshot).workbook();
-      expect(workbook.tables.length, 20);
+      expect(workbook.tables.length, 27);
       expect(workbook['BANG LUONG'].rows.length, 3);
       final report = PersonnelReport(
         farmId: 'f',

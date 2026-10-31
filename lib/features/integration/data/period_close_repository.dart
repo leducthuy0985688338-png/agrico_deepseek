@@ -1,4 +1,6 @@
 import '../../trade/domain/trade.dart' show TradeLine;
+import '../../../core/production/source_governance.dart';
+import '../../personnel/domain/personnel.dart' show LaborMoney, ExactDecimal;
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import '../../../core/periods/period_lock.dart';
@@ -80,6 +82,60 @@ class PeriodCloseRepository implements PeriodCloseStore {
       }
     }
     final data = await IntegrationRepository.liveSnapshot(tx, farm, period);
+    for (final g
+        in data
+            .rows(SourceGovernance.versions)
+            .where(
+              (r) =>
+                  r['status'] == 'draft' &&
+                  (r['day'] as String).substring(0, 7).compareTo(period) <= 0,
+            )) {
+      final type = g['source_type'], id = g['source_id'];
+      final nativeTable = type == 'payrollExtra'
+          ? 'personnel_payrolls_v1'
+          : type == 'payrollCorrection'
+          ? 'personnel_payroll_adjustments_v1'
+          : {
+              'expenseAllocation',
+              'tradeExpense',
+              'expenseReversal',
+            }.contains(type)
+          ? 'trade_documents_v1'
+          : null;
+      final native = nativeTable == null ? null : data.index(nativeTable)[id];
+      if (native != null && {'cancelled', 'void'}.contains(native['status'])) {
+        continue;
+      }
+      issues.add('unapprovedProductionSource:$type:$id');
+    }
+    for (final policy in data.rows('production_expense_policies_v2')) {
+      final source = data.index('trade_documents_v1')[policy['source_id']];
+      final approved = data
+          .rows(SourceGovernance.versions)
+          .any(
+            (g) =>
+                g['source_type'] == 'expenseAllocation' &&
+                g['source_id'] == policy['id'] &&
+                g['status'] == 'approved',
+          );
+      if (approved &&
+          source != null &&
+          source['status'] != 'void' &&
+          (policy['day'] as String).substring(0, 7).compareTo(period) <= 0) {
+        final amount = LaborMoney.sum(
+          data
+              .rows('production_expense_costs_v2')
+              .where((r) => r['policy_id'] == policy['id'])
+              .map((r) => r['amount'] as String),
+        );
+        if (ExactDecimal.parse(
+              amount,
+            ).compareTo(ExactDecimal.parse(source['total'] as String)) !=
+            0) {
+          issues.add('unallocatedProductionExpense');
+        }
+      }
+    }
     bool before(Map<String, Object?> r, String key) =>
         r[key].toString().substring(0, 7).compareTo(period) <= 0;
     for (final config in const [
@@ -132,7 +188,13 @@ class PeriodCloseRepository implements PeriodCloseStore {
     }
     // Do not net VND against LAK, or one employee's receivable against another.
     // Debt may legitimately remain outstanding; it carries forward unchanged.
-    final payload = {'farm': farm, 'period': period, 'tables': data.tables};
+    final payload = {
+      'farm': farm,
+      'period': period,
+      'tables': data.tables,
+      'sourceCoverageVerified':
+          data.sourceCoverageVerified && data.unavailableTables.isEmpty,
+    };
     final token = PeriodLock.digest({
       'payload': payload,
       'revision': s?['revision'] ?? 0,

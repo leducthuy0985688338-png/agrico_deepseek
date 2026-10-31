@@ -198,4 +198,22 @@ class MachineService {
     authorize(s, PermissionCodes.dataExport);
     authorize(s, PermissionCodes.financeView);
   }
+
+  Future<MachineTrace> trace(AuthorizationSubject s) {
+    authorize(s, PermissionCodes.machineView);
+    authorize(s, PermissionCodes.financeView);
+    return access.readScoped(
+      s,
+      [PermissionCodes.machineView, PermissionCodes.financeView],
+      () async {
+        final scoped = store(s, [
+          PermissionCodes.machineView,
+          PermissionCodes.financeView,
+        ]);
+        return scoped is MachineTraceRepository
+            ? (scoped as MachineTraceRepository).machineTrace(s.farmId)
+            : const MachineTrace();
+      },
+    );
+  }
 }

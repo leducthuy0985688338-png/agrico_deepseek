@@ -11,6 +11,8 @@ import 'package:agrico_deepseek/features/integration/data/integration_cash.dart'
 import 'package:agrico_deepseek/features/integration/data/integration_integrity.dart';
 import 'package:agrico_deepseek/features/integration/application/integration_service.dart';
 import 'package:agrico_deepseek/features/integration/application/report20.dart';
+import 'package:agrico_deepseek/features/integration/application/production_cost_projection.dart';
+import 'package:agrico_deepseek/features/integration/domain/production_cost_entry.dart';
 import 'package:agrico_deepseek/features/finance/data/local/sqlite_finance_document_repository.dart';
 import 'package:agrico_deepseek/features/finance/application/finance_document_summary.dart';
 import 'package:agrico_deepseek/features/trade/data/sqlite_trade_repository.dart';
@@ -362,7 +364,7 @@ void main() {
       final s = await bridge().snapshot('f', '2026-10');
       final bytes = Report20(s).bytes();
       final x = Excel.decodeBytes(bytes);
-      expect(x.tables, hasLength(20));
+      expect(x.tables, hasLength(27));
       final staff = x['DANH SACH NV'];
       expect(staff.rows[1][5]!.value, TextCellValue('0123456789'));
       expect(staff.rows[1][13]!.value, TextCellValue('0000123'));
@@ -860,7 +862,7 @@ void main() {
     );
   }
 
-  Future<void> measuredRun() async {
+  Future<void> measuredRun({bool visits = false}) async {
     final c = CompanyCatalogService(
       repository: SqliteCompanyCatalog(db),
       subject: admin,
@@ -902,6 +904,13 @@ void main() {
         meterStart: '100',
         meterEnd: '108',
         allocations: const [MachineAllocation('plan', 480)],
+        segments: visits
+            ? const [
+                MachineAllocation('plan', 120),
+                MachineAllocation('plan', 240),
+                MachineAllocation('plan', 120),
+              ]
+            : const [],
         outputQuantity: '100',
         outputUnit: 'm2',
       ),
@@ -1144,7 +1153,7 @@ void main() {
     () async {
       await fuelStock();
       await machineSource();
-      await measuredRun();
+      await measuredRun(visits: true);
       await salaryReady();
       await pay();
       await bridge().metadata('f', 'stock', 'diesel', 0, {
@@ -1304,6 +1313,49 @@ void main() {
       expect(snapshot.materialCost('plan', 'VND'), '10');
       expect(snapshot.laborCost('plan', 'VND'), '1');
       expect(snapshot.machineCost('plan', 'VND'), '80');
+      final sourceBefore = jsonEncode(snapshot.tables);
+      final projection = ProductionCostProjection(snapshot);
+      expect(
+        projection.entries
+            .firstWhere((e) => e.sourceType == 'machine')
+            .amountExact,
+        '80',
+      );
+      expect(
+        projection.entries
+            .firstWhere((e) => e.sourceType == 'machine')
+            .eligibility,
+        CostEligibility.eligible,
+      );
+      expect(
+        projection.entries
+            .firstWhere((e) => e.sourceType == 'material')
+            .sourceRevision,
+        1,
+      );
+      expect(
+        projection.entries
+            .firstWhere((e) => e.sourceType == 'material')
+            .eligibility,
+        CostEligibility.pending,
+      );
+      expect(
+        projection.entries
+            .firstWhere((e) => e.sourceType == 'material')
+            .createdBy,
+        isNotNull,
+      );
+      expect(
+        projection.entries
+            .firstWhere((e) => e.sourceType == 'material')
+            .approvedBy,
+        isNull,
+      );
+      expect(
+        projection.groups().firstWhere((g) => g.currency == 'VND').totalCost,
+        isNull,
+      );
+      expect(jsonEncode(snapshot.tables), sourceBefore);
       expect(snapshot.capitalTotal('VND'), '950');
       expect(snapshot.cashTotal('VND', 'THU'), '1020');
       expect(snapshot.cashTotal('VND', 'CHI'), '60.25');
@@ -1319,7 +1371,22 @@ void main() {
         6500000,
       );
       final report = Excel.decodeBytes(Report20(snapshot).bytes());
-      expect(report.tables, hasLength(20));
+      final acceptanceDirectory =
+          Platform.environment['AGRICO_PRODUCTION_ACCEPTANCE_DIR'];
+      if (acceptanceDirectory != null) {
+        await Directory(acceptanceDirectory).create(recursive: true);
+        await File(
+          '$acceptanceDirectory/production-cost-synthetic-27-sheets.xlsx',
+        ).writeAsBytes(Report20(snapshot).bytes());
+      }
+      expect(report.tables, hasLength(27));
+      expect(report['LUOT CHUYEN MAY ERP'].rows.length, 4);
+      expect(report['PHAN BO CA MAY ERP'].rows[1][10]!.value.toString(), '80');
+      expect(
+        report['PHAN BO CA MAY ERP'].rows[1][22]!.value.toString(),
+        'admin',
+      );
+      expect(report['NHAT KY VAN HANH'].rows[1][7]!.value.toString(), '480');
       expect(
         report['TH KHO VA TAI CHINH'].rows
             .skip(1)

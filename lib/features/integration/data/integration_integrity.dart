@@ -1,4 +1,5 @@
 import '../../personnel/data/sqlite_payroll_adjustments.dart';
+import 'production_cost_workflow_repository.dart';
 import '../../personnel/domain/personnel.dart' show LaborMoney;
 import 'package:sqflite/sqflite.dart';
 import 'integration_cash.dart';
@@ -8,6 +9,7 @@ import '../../trade/domain/trade.dart';
 
 abstract final class IntegrationIntegrity {
   static Future<void> validate(DatabaseExecutor db) async {
+    await ProductionCostWorkflowRepository.validate(db);
     void require(bool value) {
       if (!value) throw StateError('Integrated ledger does not reconcile.');
     }

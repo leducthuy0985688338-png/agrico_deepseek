@@ -14,6 +14,7 @@ import 'package:agrico_deepseek/features/machines/data/machine_integrity.dart';
 import 'package:agrico_deepseek/features/inventory/application/production_plan_report.dart';
 import 'package:agrico_deepseek/features/inventory/domain/entities/production_plan.dart';
 import 'package:agrico_deepseek/features/inventory/data/local/sqlite_production_planning_repository.dart';
+import 'package:agrico_deepseek/core/periods/period_lock.dart';
 
 void main() {
   sqfliteFfiInit();
@@ -35,6 +36,7 @@ void main() {
     String currency = 'VND',
     int minutes = 480,
     int scale = 0,
+    MoneyRounding rounding = MoneyRounding.halfUp,
   }) => MachineRate(
     id: id,
     machineId: 'm',
@@ -43,7 +45,7 @@ void main() {
     currency: currency,
     shiftMinutes: minutes,
     scale: scale,
-    rounding: MoneyRounding.halfUp,
+    rounding: rounding,
   );
   MachineRun run({
     String id = 'run',
@@ -56,6 +58,7 @@ void main() {
     String meterStart = '100',
     String meterEnd = '108',
     List<MachineAllocation>? allocations,
+    List<MachineAllocation> segments = const [],
   }) => MachineRun(
     id: id,
     machineId: machine,
@@ -65,7 +68,12 @@ void main() {
     idleMinutes: idle,
     meterStart: meterStart,
     meterEnd: meterEnd,
-    allocations: allocations ?? [const MachineAllocation('p', 480)],
+    allocations:
+        allocations ??
+        (segments.isEmpty
+            ? [const MachineAllocation('p', 480)]
+            : MachineRun.aggregateSegments(segments)),
+    segments: segments,
     outputQuantity: '4',
     outputUnit: 'ha',
   );
@@ -103,7 +111,9 @@ void main() {
     await db.execute(
       'CREATE TABLE parcel_work_resources(id TEXT PRIMARY KEY,farm_id TEXT,kind TEXT,code TEXT,name TEXT,active INTEGER)',
     );
-    await db.execute('CREATE TABLE land_parcels(id TEXT PRIMARY KEY)');
+    await db.execute(
+      'CREATE TABLE land_parcels(id TEXT PRIMARY KEY,farm_id TEXT,parcel_code TEXT)',
+    );
     await db.execute('CREATE TABLE production_seasons_v2(id TEXT PRIMARY KEY)');
     await db.execute(
       'CREATE TABLE farm_tasks_v2(id TEXT PRIMARY KEY,farm_id TEXT,worker_resource_id TEXT,machine_resource_id TEXT,status TEXT)',
@@ -141,7 +151,11 @@ void main() {
         'active': 1,
       });
     }
-    await db.insert('land_parcels', {'id': 'land'});
+    await db.insert('land_parcels', {
+      'id': 'land',
+      'farm_id': 'f',
+      'parcel_code': 'LO-001',
+    });
     await db.insert('production_seasons_v2', {'id': 'season'});
     for (final (id, currency) in [
       ('p', 'VND'),
@@ -178,6 +192,172 @@ void main() {
     await db.close();
   });
   test(
+    'export preserves money beyond spreadsheet numeric precision as text',
+    () async {
+      await repo.addRate(
+        'f',
+        rate(amount: '9007199254740993.01', scale: 2),
+        'admin',
+      );
+      await approve(
+        run(
+          segments: const [
+            MachineAllocation('p', 240),
+            MachineAllocation('p2', 240),
+          ],
+        ),
+      );
+      final book = Excel.decodeBytes(
+        MachineReport(
+          farm: 'f',
+          period: '2026-10',
+          machines: await repo.machines('f'),
+          runs: await repo.runs('f'),
+          expenses: [],
+          costs: await repo.productionMachineCosts('f'),
+          trace: await repo.machineTrace('f'),
+        ).export(),
+      );
+      expect(
+        book['PHAN BO CA MAY ERP'].rows[1][10]!.value,
+        TextCellValue('4503599627370496.51'),
+      );
+      expect(
+        book['PHAN BO CA MAY ERP'].rows[2][10]!.value,
+        TextCellValue('4503599627370496.5'),
+      );
+      await MachineIntegrity.validate(db);
+    },
+  );
+  test(
+    'trace respects assigned machine scope for plans rates and actor events',
+    () async {
+      await repo.addRate('f', rate(), 'admin');
+      await approve(run());
+      await repo.addRate(
+        'f',
+        const MachineRate(
+          id: 'm2-rate',
+          machineId: 'm2',
+          effectiveOn: '2026-10-01',
+          amount: '800000',
+          currency: 'VND',
+          shiftMinutes: 480,
+          scale: 0,
+          rounding: MoneyRounding.halfUp,
+        ),
+        'admin',
+      );
+      await approve(
+        run(
+          id: 'private-run',
+          machine: 'm2',
+          day: 21,
+          allocations: const [MachineAllocation('p2', 480)],
+        ),
+      );
+      final limited = AuthorizationSubject(
+        userId: 'u',
+        membershipId: 'u',
+        farmId: 'f',
+        permissionCodes: PermissionCodes.values,
+        dataScopes: const {DataScope.assignedMachines},
+        assignedMachineIds: const {'m'},
+      );
+      live = limited;
+      final trace = await service.trace(limited);
+      expect(trace.plans.keys, {'p'});
+      expect(trace.rates.map((r) => r.machineId).toSet(), {'m'});
+      expect(trace.audit.map((r) => r['entity_id']).toSet(), {'run'});
+      expect(trace.parcelCodes.values, {'LO-001'});
+    },
+  );
+  for (final rounding in MoneyRounding.values) {
+    test(
+      'decimal rate keeps $rounding policy before grouping returning minute visits',
+      () async {
+        await repo.addRate(
+          'f',
+          rate(amount: '1.005', scale: 2, rounding: rounding),
+          'admin',
+        );
+        await approve(
+          run(
+            segments: const [
+              MachineAllocation('p', 120),
+              MachineAllocation('p2', 240),
+              MachineAllocation('p', 120),
+            ],
+          ),
+        );
+        final costs = await repo.productionMachineCosts('f');
+        expect(
+          (await repo.runs('f')).single.amount,
+          rounding == MoneyRounding.halfUp ? '1.01' : '1',
+        );
+        expect(
+          costs.map((c) => c.amount),
+          rounding == MoneyRounding.halfUp ? ['0.51', '0.5'] : ['0.5', '0.5'],
+        );
+        await MachineIntegrity.validate(db);
+      },
+    );
+  }
+  test(
+    'mixed VND LAK reports never combine currency and preserve old approved rate',
+    () async {
+      await repo.addRate('f', rate(), 'admin');
+      await approve(
+        run(
+          segments: const [
+            MachineAllocation('p', 240),
+            MachineAllocation('p2', 240),
+          ],
+        ),
+      );
+      await repo.addRate('f', rate(id: 'lak-rate', currency: 'LAK'), 'admin');
+      await approve(
+        run(
+          id: 'lak-run',
+          day: 21,
+          meterStart: '108',
+          meterEnd: '116',
+          segments: const [
+            MachineAllocation('lak', 120),
+            MachineAllocation('lak', 360),
+          ],
+        ),
+      );
+      final records = await repo.runs('f');
+      expect(records.firstWhere((r) => r.value.id == 'run').rateId, 'rate');
+      final book = MachineReport(
+        farm: 'f',
+        period: '2026-10',
+        machines: await repo.machines('f'),
+        runs: records,
+        expenses: [],
+        costs: await repo.productionMachineCosts('f'),
+      ).workbook();
+      expect(book['TONG HOP'].rows[1][0]!.value.toString(), 'VND');
+      expect(book['TONG HOP'].rows[2][0]!.value.toString(), 'LAK');
+      expect(book['TONG HOP'].rows[1][2]!.value.toString(), '800000');
+      expect(book['TONG HOP'].rows[2][2]!.value.toString(), '800000');
+      await MachineIntegrity.validate(db);
+    },
+  );
+  test('trace requires financial permission and live membership', () async {
+    final clerk = AuthorizationSubject(
+      userId: 'clerk',
+      membershipId: 'm',
+      farmId: 'f',
+      permissionCodes: const {PermissionCodes.machineView},
+      dataScopes: const {DataScope.allFarm},
+    );
+    live = clerk;
+    expect(() => service.trace(clerk), throwsStateError);
+    expect(() => service.trace(admin), throwsStateError);
+  });
+  test(
     'shared identity profile preserves code, revision and no duplicate catalog',
     () async {
       final before = await db.query('company_catalog_entries_v1');
@@ -193,6 +373,294 @@ void main() {
         repo.profile('f', 'foreign', 0, {'meterUnit': 'hour'}, 'admin'),
         throwsStateError,
       );
+    },
+  );
+  test(
+    'two minute visits split the 480 minute cost without components',
+    () async {
+      await repo.addRate('f', rate(), 'admin');
+      await approve(
+        run(
+          segments: const [
+            MachineAllocation('p', 240),
+            MachineAllocation('p2', 240),
+          ],
+        ),
+      );
+      final costs = await repo.productionMachineCosts('f');
+      expect(costs.map((c) => c.amount), ['400000', '400000']);
+      expect(hr.LaborMoney.sum(costs.map((c) => c.amount)), '800000');
+      await MachineIntegrity.validate(db);
+    },
+  );
+  test(
+    'three plans preserve parcel codes, rate snapshot and entry approval trace',
+    () async {
+      final p = Map<String, Object?>.from(
+        (await db.query(
+          'production_plans_v1',
+          where: 'id=?',
+          whereArgs: ['p'],
+        )).single,
+      );
+      await db.insert('land_parcels', {
+        'id': 'other',
+        'farm_id': 'f',
+        'parcel_code': 'LO-002',
+      });
+      await db.insert('production_plans_v1', {
+        ...p,
+        'id': 'p3',
+        'code': 'PLAN-3',
+        'parcel_id': 'other',
+      });
+      await repo.addRate('f', rate(), 'admin');
+      await approve(
+        run(
+          segments: const [
+            MachineAllocation('p', 120),
+            MachineAllocation('p2', 120),
+            MachineAllocation('p3', 240),
+          ],
+        ),
+      );
+      final trace = await service.trace(admin);
+      final book = MachineReport(
+        farm: 'f',
+        period: '2026-10',
+        machines: await repo.machines('f'),
+        runs: await repo.runs('f'),
+        expenses: [],
+        costs: await repo.productionMachineCosts('f'),
+        trace: trace,
+      ).workbook();
+      final rows = book['PHAN BO CA MAY ERP'].rows;
+      expect(rows.length, 4);
+      expect(rows[3][6]!.value.toString(), 'PLAN-3');
+      expect(rows[3][8]!.value.toString(), 'LO-002');
+      expect(rows[3][10]!.value.toString(), '400000');
+      expect(rows[3][12]!.value.toString(), 'rate');
+      expect(rows[3][13]!.value.toString(), '1');
+      expect(rows[3][20]!.value.toString(), 'admin');
+      expect(rows[3][22]!.value.toString(), 'admin');
+      expect(rows[3][23]!.value.toString(), isNotEmpty);
+      expect(book['LUOT CHUYEN MAY ERP'].rows.length, 4);
+      await MachineIntegrity.validate(db);
+    },
+  );
+  test(
+    'many visits returning to a plan retain order but only one cost per plan',
+    () async {
+      final segments = List.generate(
+        12,
+        (i) => MachineAllocation(i.isEven ? 'p' : 'p2', 40),
+      );
+      final r = run(segments: segments);
+      await repo.addRate('f', rate(), 'admin');
+      await repo.addRun('f', r, 'admin');
+      await repo.addRun('f', r, 'admin');
+      await repo.approveRun('f', r.id, 0, 'admin');
+      await expectLater(
+        repo.approveRun('f', r.id, 0, 'admin'),
+        throwsStateError,
+      );
+      final saved = (await repo.runs('f')).single;
+      expect(
+        saved.value.segments.map((v) => v.planId),
+        segments.map((v) => v.planId),
+      );
+      expect(saved.value.allocations.map((v) => v.minutes), [240, 240]);
+      expect((await repo.productionMachineCosts('f')).length, 2);
+      final json = saved.value.toJson();
+      expect(MachineRun.fromJson(json).toJson(), json);
+      await MachineIntegrity.validate(db);
+      final book = Excel.decodeBytes(
+        MachineReport(
+          farm: 'f',
+          period: '2026-10',
+          machines: await repo.machines('f'),
+          runs: [saved],
+          expenses: [],
+          costs: await repo.productionMachineCosts('f'),
+          trace: await repo.machineTrace('f'),
+        ).export(),
+      );
+      expect(book['LUOT CHUYEN MAY ERP'].rows.length, 13);
+      expect(book['PHAN BO CA MAY ERP'].rows.length, 3);
+      expect(book['LUOT CHUYEN MAY ERP'].rows[3][2]!.value.toString(), 'p');
+    },
+  );
+  test(
+    'visits cannot exceed run minutes, omit plan, or diverge from aggregate',
+    () async {
+      for (final segments in [
+        const [MachineAllocation('p', 481)],
+        const [MachineAllocation('', 10)],
+        const [MachineAllocation('p', 0)],
+      ]) {
+        await expectLater(
+          repo.addRun('f', run(segments: segments), 'admin'),
+          throwsFormatException,
+        );
+      }
+      await expectLater(
+        repo.addRun(
+          'f',
+          run(
+            allocations: const [MachineAllocation('p', 480)],
+            segments: const [MachineAllocation('p', 240)],
+          ),
+          'admin',
+        ),
+        throwsFormatException,
+      );
+      expect(await db.query('machine_runs_v1'), isEmpty);
+    },
+  );
+  test('visit precision is integer minutes with a bounded technical limit', () {
+    expect(
+      () => run(
+        segments: List.generate(1441, (_) => const MachineAllocation('p', 1)),
+      ).validate(),
+      throwsFormatException,
+    );
+    final historical = run();
+    expect(historical.toJson().containsKey('segments'), isFalse);
+    expect(
+      MachineRun.fromJson(historical.toJson()).toJson(),
+      historical.toJson(),
+    );
+  });
+  test(
+    'partial visits retain remainder and preserve historical rounding tie order',
+    () async {
+      await repo.addRate('f', rate(amount: '1', minutes: 3), 'admin');
+      await approve(
+        run(
+          hours: 1,
+          idle: 57,
+          segments: const [
+            MachineAllocation('p', 1),
+            MachineAllocation('p2', 1),
+          ],
+        ),
+      );
+      expect((await repo.productionMachineCosts('f')).map((c) => c.amount), [
+        '1',
+        '0',
+      ]);
+      final book = MachineReport(
+        farm: 'f',
+        period: '2026-10',
+        machines: await repo.machines('f'),
+        runs: await repo.runs('f'),
+        expenses: [],
+        costs: await repo.productionMachineCosts('f'),
+      ).workbook();
+      expect(book['PHAN BO CA MAY ERP'].rows[1][24]!.value.toString(), '1');
+      expect(book['PHAN BO CA MAY ERP'].rows[1][25]!.value.toString(), '0');
+    },
+  );
+  test(
+    'approved visit body is immutable; correction is void plus a new source',
+    () async {
+      await repo.addRate('f', rate(), 'admin');
+      final r = run(
+        segments: const [
+          MachineAllocation('p', 120),
+          MachineAllocation('p2', 240),
+          MachineAllocation('p', 120),
+        ],
+      );
+      await approve(r);
+      await expectLater(
+        repo.addRun(
+          'f',
+          run(segments: const [MachineAllocation('p', 480)]),
+          'admin',
+        ),
+        throwsStateError,
+      );
+      await repo.voidRun('f', r.id, 1, 'Correct minutes', 'admin');
+      await approve(
+        run(
+          id: 'replacement',
+          segments: const [
+            MachineAllocation('p', 240),
+            MachineAllocation('p2', 240),
+          ],
+        ),
+      );
+      expect(
+        (await repo.productionMachineCosts('f')).map((c) => c.sourceId).toSet(),
+        {'replacement'},
+      );
+      expect(
+        (await repo.runs(
+          'f',
+        )).firstWhere((r) => r.value.id == 'run').value.segments.length,
+        3,
+      );
+      expect(
+        (await repo.machineTrace(
+          'f',
+        )).audit.where((a) => a['reason'] == 'Correct minutes').length,
+        1,
+      );
+      await MachineIntegrity.validate(db);
+    },
+  );
+  test(
+    'late offline run and allocation changes fail at SQLite after local period lock',
+    () async {
+      await repo.addRate('f', rate(), 'admin');
+      final r = run(
+        segments: const [
+          MachineAllocation('p', 240),
+          MachineAllocation('p2', 240),
+        ],
+      );
+      await approve(r);
+      await PeriodLock.createSchema(db);
+      await db.insert(PeriodLock.states, {
+        'farm_id': 'f',
+        'period': '2026-10',
+        'revision': 1,
+        'status': 'closed',
+        'event_id': 'test-lock',
+      });
+      await expectLater(
+        repo.addRun(
+          'f',
+          run(
+            id: 'late',
+            day: 21,
+            meterStart: '108',
+            meterEnd: '116',
+            segments: const [MachineAllocation('p', 480)],
+          ),
+          'admin',
+        ),
+        throwsA(isA<DatabaseException>()),
+      );
+      await expectLater(
+        repo.voidRun('f', r.id, 1, 'Late correction', 'admin'),
+        throwsA(isA<DatabaseException>()),
+      );
+      await expectLater(
+        db.update(
+          'machine_costs_v1',
+          {'minutes': 1},
+          where: 'source_id=?',
+          whereArgs: [r.id],
+        ),
+        throwsA(isA<DatabaseException>()),
+      );
+      expect((await repo.productionMachineCosts('f')).map((c) => c.amount), [
+        '400000',
+        '400000',
+      ]);
+      expect((await repo.runs('f')).length, 1);
     },
   );
   test(
@@ -241,7 +709,11 @@ void main() {
         costs: await repo.productionMachineCosts('f'),
       );
       final excel = Excel.decodeBytes(report.export());
-      expect(excel.tables.length, 9);
+      expect(excel.tables.length, 11);
+      expect(
+        excel.tables.keys,
+        containsAll(['PHAN BO CA MAY ERP', 'LUOT CHUYEN MAY ERP']),
+      );
       expect(excel['TONG HOP'].rows[1][3]!.value.toString(), '400000');
     },
   );

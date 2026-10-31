@@ -114,6 +114,7 @@ class MachineRun {
     required this.meterStart,
     required this.meterEnd,
     this.allocations = const [],
+    this.segments = const [],
     this.outputQuantity,
     this.outputUnit,
     this.note = '',
@@ -122,12 +123,52 @@ class MachineRun {
   final DateTime startsAt, endsAt;
   final int idleMinutes;
   final List<MachineAllocation> allocations;
+
+  /// Ordered visits, including returns to a plan. Empty on historical runs.
+  /// Money is allocated to the aggregate plan, never independently per visit.
+  final List<MachineAllocation> segments;
+  static const maxSegments = 1440;
+  static List<MachineAllocation> aggregateSegments(
+    List<MachineAllocation> segments,
+  ) {
+    final groups = <String, List<MachineAllocation>>{};
+    for (final segment in segments) {
+      groups.putIfAbsent(segment.planId, () => []).add(segment);
+    }
+    return [
+      for (final entry in groups.entries)
+        MachineAllocation(
+          entry.key,
+          entry.value.fold<int>(0, (sum, s) => sum + s.minutes),
+          taskId: entry.value.map((s) => s.taskId).toSet().length == 1
+              ? entry.value.first.taskId
+              : null,
+        ),
+    ];
+  }
+
   final String? outputQuantity, outputUnit;
   int get minutes => endsAt.difference(startsAt).inMinutes - idleMinutes;
   String get businessDay => MachineRules.day(startsAt);
   void validate() {
     for (final s in [id, machineId, operatorId]) {
       MachineRules.requiredText(s);
+    }
+    if (segments.isNotEmpty) {
+      if (segments.length > maxSegments ||
+          segments.any((s) => s.planId.trim().isEmpty || s.minutes <= 0)) {
+        throw const FormatException('Invalid minute visits.');
+      }
+      final grouped = aggregateSegments(segments);
+      if (grouped.length != allocations.length ||
+          List.generate(grouped.length, (i) => i).any(
+            (i) =>
+                grouped[i].planId != allocations[i].planId ||
+                grouped[i].minutes != allocations[i].minutes ||
+                grouped[i].taskId != allocations[i].taskId,
+          )) {
+        throw const FormatException('Visits do not match plan allocations.');
+      }
     }
     if (startsAt.second != 0 ||
         endsAt.second != 0 ||
@@ -172,6 +213,8 @@ class MachineRun {
     'outputUnit': outputUnit,
     'note': note,
     'allocations': allocations.map((a) => a.toJson()).toList(),
+    if (segments.isNotEmpty)
+      'segments': segments.map((s) => s.toJson()).toList(),
   };
   factory MachineRun.fromJson(Map<String, dynamic> j) => MachineRun(
     id: j['id'] as String,
@@ -191,6 +234,12 @@ class MachineRun {
               MachineAllocation.fromJson(Map<String, dynamic>.from(a as Map)),
         )
         .toList(),
+    segments: (j['segments'] as List? ?? const [])
+        .map(
+          (s) =>
+              MachineAllocation.fromJson(Map<String, dynamic>.from(s as Map)),
+        )
+        .toList(),
   );
 }
 
@@ -208,9 +257,10 @@ class MachineExpense {
     this.meter,
     this.nextOn,
     this.nextMeter,
+    this.partyId,
   });
   final String id, machineId, kind, day, amount, currency, reference, note;
-  final String? litres, meter, nextOn, nextMeter;
+  final String? litres, meter, nextOn, nextMeter, partyId;
   void validate() {
     for (final s in [id, machineId, reference, note]) {
       MachineRules.requiredText(s);
@@ -265,6 +315,7 @@ class MachineExpense {
     'meter': meter,
     'nextOn': nextOn,
     'nextMeter': nextMeter,
+    if (partyId != null) 'partyId': partyId,
   };
   factory MachineExpense.fromJson(Map<String, dynamic> j) => MachineExpense(
     id: j['id'] as String,
@@ -279,6 +330,7 @@ class MachineExpense {
     meter: j['meter'] as String?,
     nextOn: j['nextOn'] as String?,
     nextMeter: j['nextMeter'] as String?,
+    partyId: j['partyId'] as String?,
   );
 }
 
@@ -313,6 +365,24 @@ class ProductionMachineCost {
 
 abstract interface class ProductionMachineCostRepository {
   Future<List<ProductionMachineCost>> productionMachineCosts(String farm);
+}
+
+/// Optional read-only trace source. Never required to decode older backups.
+class MachineTrace {
+  const MachineTrace({
+    this.plans = const {},
+    this.parcelCodes = const {},
+    this.rates = const [],
+    this.audit = const [],
+  });
+  final Map<String, Map<String, Object?>> plans;
+  final Map<String, String> parcelCodes;
+  final List<MachineRate> rates;
+  final List<Map<String, Object?>> audit;
+}
+
+abstract interface class MachineTraceRepository {
+  Future<MachineTrace> machineTrace(String farm);
 }
 
 abstract interface class MachineRepository

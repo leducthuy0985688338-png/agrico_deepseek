@@ -8,7 +8,10 @@ import '../domain/machines.dart';
 import '../../personnel/domain/personnel.dart' show LaborMoney;
 
 class SqliteMachineRepository
-    implements MachineRepository, ScopedOperationRepository<MachineRepository> {
+    implements
+        MachineRepository,
+        MachineTraceRepository,
+        ScopedOperationRepository<MachineRepository> {
   const SqliteMachineRepository(this.database, {this.scope});
   final OperationScope? scope;
   @override
@@ -360,6 +363,9 @@ class SqliteMachineRepository
         for (final a in run.allocations) {
           await checkPlan(tx, farm, run, a);
         }
+        for (final visit in run.segments) {
+          await checkPlan(tx, farm, run, visit);
+        }
         await tx.insert('machine_runs_v1', {
           'id': run.id,
           'farm_id': farm,
@@ -428,6 +434,9 @@ class SqliteMachineRepository
       throw StateError('No effective all-inclusive shift rate.');
     }
     final rate = MachineRate.fromJson(body(rates.single));
+    for (final visit in run.segments) {
+      await checkPlan(tx, farm, run, visit, currency: rate.currency);
+    }
     final total = rate.cost(run.minutes);
     final amounts = LaborMoney.allocate(
       total,
@@ -659,6 +668,36 @@ class SqliteMachineRepository
     String reason,
     String actor,
   ) => _void('machine_expenses_v1', farm, id, revision, reason, actor);
+  @override
+  Future<MachineTrace> machineTrace(String farm) async {
+    // Restrict every label/audit to the same visible runs as financial reads.
+    final planRows = await database.rawQuery(
+      'SELECT DISTINCT p.* FROM production_plans_v1 p JOIN machine_costs_v1 c ON c.plan_id=p.id AND c.farm_id=p.farm_id JOIN machine_runs_v1 r ON r.id=c.source_id AND r.farm_id=c.farm_id WHERE r.farm_id=? AND ${visible('r.machine_id')}',
+      [farm],
+    );
+    final audit = await database.rawQuery(
+      'SELECT a.* FROM machine_audit_v1 a JOIN machine_runs_v1 r ON r.id=a.entity_id AND r.farm_id=a.farm_id WHERE r.farm_id=? AND ${visible('r.machine_id')} ORDER BY a.id',
+      [farm],
+    );
+    final columns = await database.rawQuery('PRAGMA table_info(land_parcels)');
+    final codes = <String, String>{};
+    if (columns.any((c) => c['name'] == 'parcel_code')) {
+      final parcels = await database.rawQuery(
+        'SELECT DISTINCT l.id,l.parcel_code FROM land_parcels l JOIN production_plans_v1 p ON p.parcel_id=l.id AND p.farm_id=l.farm_id JOIN machine_costs_v1 c ON c.plan_id=p.id AND c.farm_id=p.farm_id JOIN machine_runs_v1 r ON r.id=c.source_id AND r.farm_id=c.farm_id WHERE r.farm_id=? AND ${visible('r.machine_id')}',
+        [farm],
+      );
+      for (final p in parcels) {
+        codes[p['id'] as String] = p['parcel_code'] as String;
+      }
+    }
+    return MachineTrace(
+      plans: {for (final p in planRows) p['id'] as String: p},
+      parcelCodes: codes,
+      rates: await rates(farm),
+      audit: audit,
+    );
+  }
+
   @override
   Future<List<ProductionMachineCost>> productionMachineCosts(
     String farm,

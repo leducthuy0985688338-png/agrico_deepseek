@@ -1,4 +1,5 @@
 import 'sqlite_payroll_adjustments.dart';
+import '../../../core/production/source_governance.dart';
 import '../../../core/permissions/operation_scope.dart';
 import '../../../core/permissions/authorization.dart';
 import '../../integration/data/integration_cash.dart';
@@ -136,6 +137,7 @@ class SqlitePersonnelRepository
     'personnel_payroll_sequences_v1',
   };
   static Future<void> createSchema(DatabaseExecutor db) async {
+    await SourceGovernance.createSchema(db);
     await db.execute(
       'CREATE TABLE IF NOT EXISTS personnel_departments_v1(id TEXT PRIMARY KEY,farm_id TEXT NOT NULL,code TEXT NOT NULL,name TEXT NOT NULL,UNIQUE(farm_id,name),UNIQUE(farm_id,code))',
     );
@@ -1140,6 +1142,15 @@ class SqlitePersonnelRepository
       }
       if (stamp != null) scope!.live.requireStamp(scope!.opened, stamp);
       await _audit(tx, d.farmId, d.id, 'payroll.create', actorId, d.note);
+      await SourceGovernance.register(
+        tx,
+        farm: d.farmId,
+        type: 'payrollExtra',
+        id: d.id,
+        day: extraDay,
+        actor: actorId,
+        payload: await SourceGovernance.nativePayload(tx, 'payrollExtra', d.id),
+      );
     });
   }
 
@@ -1173,6 +1184,15 @@ class SqlitePersonnelRepository
       if (n != 1) throw StateError('Payroll must be a draft in this farm.');
       if (stamp != null) scope!.live.requireStamp(scope!.opened, stamp);
       await _audit(tx, farmId, id, 'payroll.approve', actorId);
+      await SourceGovernance.approve(
+        tx,
+        farm: farmId,
+        type: 'payrollExtra',
+        id: id,
+        expectedRevision: 1,
+        actor: actorId,
+        payload: await SourceGovernance.nativePayload(tx, 'payrollExtra', id),
+      );
     });
   }
 

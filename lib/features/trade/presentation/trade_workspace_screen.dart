@@ -13,11 +13,13 @@ class TradeWorkspaceScreen extends StatefulWidget {
     required this.openCatalog,
     required this.openCash,
     this.openReports,
+    this.controlledApprovals = false,
   });
   final TradeService service;
   final VoidCallback openCatalog;
   final VoidCallback? openCash;
   final VoidCallback? openReports;
+  final bool controlledApprovals;
   @override
   State<TradeWorkspaceScreen> createState() => _TradeWorkspaceState();
 }
@@ -42,7 +44,15 @@ class _TradeWorkspaceState extends State<TradeWorkspaceScreen> {
   final period = TextEditingController(text: TradeMath.day().substring(0, 7));
   bool busy = false;
   String t(String k) => AppLocalizations.of(context).text('trade.$k');
-  bool can(String p) => widget.service.can(p);
+  bool can(String p) =>
+      (!widget.controlledApprovals ||
+          !{
+            PermissionCodes.financePost,
+            PermissionCodes.financeApprove,
+            PermissionCodes.cashRecord,
+            PermissionCodes.financeCorrect,
+          }.contains(p)) &&
+      widget.service.can(p);
   Future<_TradeData> load() async {
     final s = widget.service;
     return _TradeData(
@@ -159,10 +169,29 @@ class _TradeWorkspaceState extends State<TradeWorkspaceScreen> {
         field('rounding', choices: {'halfUp': t('halfUp'), 'down': t('down')}),
         if (expense) ...[
           field(
+            'plan',
+            required: false,
+            choices: {'': '—', ...choices(d, 'plan')},
+          ),
+          field(
             'treatment',
             choices: {
               'periodExpense': t('periodExpense'),
               'includedInProduction': t('includedInProduction'),
+              'directProduction': switch (AppLocalizations.of(
+                context,
+              ).locale.languageCode) {
+                'vi' => 'Chi phí trực tiếp',
+                'lo' => 'ຕົ້ນທຶນໂດຍກົງ',
+                _ => 'Direct production cost',
+              },
+              'commonProduction': switch (AppLocalizations.of(
+                context,
+              ).locale.languageCode) {
+                'vi' => 'Chi phí sản xuất chung',
+                'lo' => 'ຕົ້ນທຶນລວມ',
+                _ => 'Common production cost',
+              },
             },
           ),
           field('note'),
@@ -221,7 +250,9 @@ class _TradeWorkspaceState extends State<TradeWorkspaceScreen> {
             rounding: MoneyRounding.values.byName(v['rounding']!),
             lines: lines,
             partyId: harvest ? null : v['party'],
-            planId: harvest ? v['plan'] : null,
+            planId: harvest || (expense && v['treatment'] == 'directProduction')
+                ? v['plan']
+                : null,
             dueOn: harvest ? null : v['due'],
             reference: v['reference']!,
             note: v['note']!,

@@ -150,9 +150,19 @@ class _FinanceDocumentsScreenState extends State<FinanceDocumentsScreen> {
     setState(() {
       data = _load();
     });
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(saved.code)));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          saved.code.isEmpty
+              ? switch (AppLocalizations.of(context).locale.languageCode) {
+                  'vi' => 'Đã lưu chờ duyệt; chưa ghi sổ tiền',
+                  'lo' => 'ບັນທຶກລໍຖ້າອະນຸມັດ; ຍັງບໍ່ລົງບັນຊີ',
+                  _ => 'Pending approval saved; cash ledger unchanged',
+                }
+              : saved.code,
+        ),
+      ),
+    );
   }
 
   bool get hasFilters =>
@@ -679,7 +689,7 @@ class _FinanceDocumentDialog extends StatefulWidget {
     required this.parcels,
   });
 
-  final FinanceDocumentStore repository;
+  final FinanceDocumentService repository;
   final String organizationId;
   final List<LandParcel> parcels;
 
@@ -688,8 +698,11 @@ class _FinanceDocumentDialog extends StatefulWidget {
 }
 
 class _FinanceDocumentDialogState extends State<_FinanceDocumentDialog> {
+  late final String requestId =
+      'finance-${DateTime.now().toUtc().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}';
   final category = TextEditingController();
   final amount = TextEditingController();
+  final beneficiaryParty = TextEditingController();
   BusinessDocumentKind kind = BusinessDocumentKind.payment;
   String currency = 'LAK';
   String? parcelId;
@@ -701,6 +714,7 @@ class _FinanceDocumentDialogState extends State<_FinanceDocumentDialog> {
   void dispose() {
     category.dispose();
     amount.dispose();
+    beneficiaryParty.dispose();
     super.dispose();
   }
 
@@ -721,8 +735,7 @@ class _FinanceDocumentDialogState extends State<_FinanceDocumentDialog> {
       error = null;
     });
     try {
-      final now = DateTime.now().toUtc().microsecondsSinceEpoch;
-      final id = 'finance-$now-${Random.secure().nextInt(1 << 32)}';
+      final id = requestId;
       final saved = await widget.repository.create(
         id: id,
         organizationId: widget.organizationId,
@@ -731,6 +744,9 @@ class _FinanceDocumentDialogState extends State<_FinanceDocumentDialog> {
         amountMinor: parsedAmount,
         currency: currency,
         category: category.text.trim(),
+        beneficiaryPartyId: beneficiaryParty.text.trim().isEmpty
+            ? null
+            : beneficiaryParty.text.trim(),
         parcelId: parcelId,
       );
       if (mounted) Navigator.of(context).pop(saved);
@@ -755,6 +771,17 @@ class _FinanceDocumentDialogState extends State<_FinanceDocumentDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            TextField(
+              key: const ValueKey('finance-beneficiary-party'),
+              controller: beneficiaryParty,
+              decoration: InputDecoration(
+                labelText: switch (l10n.locale.languageCode) {
+                  'vi' => 'ID đối tác/người hưởng (cần liên kết được xác minh)',
+                  'lo' => 'ID ຄູ່ຄ້າ/ຜູ້ຮັບ (ຕ້ອງຢືນຢັນການເຊື່ອມ)',
+                  _ => 'Party/beneficiary ID (verified binding required)',
+                },
+              ),
+            ),
             DropdownButtonFormField<BusinessDocumentKind>(
               isExpanded: true,
               initialValue: kind,

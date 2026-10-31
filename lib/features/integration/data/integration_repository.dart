@@ -1,4 +1,7 @@
 import '../../../core/periods/period_lock.dart';
+import '../../../core/approval/sqlite_document_approval.dart';
+import '../../../core/approval/native_approval_guard.dart';
+import 'production_cost_workflow_repository.dart';
 import '../../personnel/data/sqlite_payroll_adjustments.dart';
 import 'dart:convert';
 import '../domain/integration_store.dart';
@@ -24,6 +27,8 @@ class IntegrationRepository implements IntegrationStore {
     'integration_fuel_issues_v1',
   };
   static Future<void> createSchema(DatabaseExecutor db) async {
+    await SqliteDocumentApproval.createSchema(db);
+    await ProductionCostWorkflowRepository.createSchema(db);
     await IntegrationCash.createSchema(db);
     await db.execute(
       '''CREATE TABLE IF NOT EXISTS integration_fuel_issues_v1(farm_id TEXT NOT NULL,expense_id TEXT PRIMARY KEY REFERENCES machine_expenses_v1(id),movement_id TEXT NOT NULL UNIQUE REFERENCES inventory_movements_v2(id),reversal_movement_id TEXT UNIQUE REFERENCES inventory_movements_v2(id),reason TEXT,actor_id TEXT NOT NULL)''',
@@ -32,6 +37,11 @@ class IntegrationRepository implements IntegrationStore {
   }
 
   static const reportTables = {
+    NativeApprovalGuard.marker,
+    NativeApprovalGuard.commands,
+    SqliteDocumentApproval.requests,
+    SqliteDocumentApproval.audit,
+    ...ProductionCostWorkflowRepository.tables,
     'company_catalog_entries_v1',
     'inventory_warehouses_v1',
     'inventory_warehouse_stock_v1',
@@ -78,6 +88,17 @@ class IntegrationRepository implements IntegrationStore {
             whereArgs: [state!['event_id']],
           )).single;
           return IntegrationSnapshot(
+            sourceCoverageVerified: frozen['sourceCoverageVerified'] == true,
+            sourceAudit: await sourceAudit(
+              tx,
+              farm,
+              before: event['occurred_at'] as String,
+            ),
+            machineAudit: await machineAudit(
+              tx,
+              farm,
+              before: event['occurred_at'] as String,
+            ),
             closingRevision: state['revision'] as int,
             closedAt: event['occurred_at'] as String,
             closedBy: event['actor_id'] as String,
@@ -108,7 +129,9 @@ class IntegrationRepository implements IntegrationStore {
         tables[name] = [];
         continue;
       }
-      if (name == 'personnel_payroll_lines_v1') {
+      if (name == NativeApprovalGuard.marker) {
+        tables[name] = await tx.query(name);
+      } else if (name == 'personnel_payroll_lines_v1') {
         tables[name] = await tx.rawQuery(
           'SELECT l.* FROM personnel_payroll_lines_v1 l JOIN personnel_payrolls_v1 p ON p.id=l.payroll_id WHERE p.farm_id=?',
           [farm],
@@ -129,7 +152,59 @@ class IntegrationRepository implements IntegrationStore {
       tables[key] = rows;
       rows.sort((a, b) => PeriodLock.encode(a).compareTo(PeriodLock.encode(b)));
     }
-    return IntegrationSnapshot(farm: farm, period: period, tables: tables);
+    return IntegrationSnapshot(
+      farm: farm,
+      period: period,
+      tables: tables,
+      machineAudit: await machineAudit(tx, farm),
+      sourceAudit: await sourceAudit(tx, farm),
+      unavailableTables: reportTables.difference(available.cast<String>()),
+      sourceCoverageVerified: true,
+    );
+  }
+
+  static Future<List<Map<String, Object?>>> machineAudit(
+    DatabaseExecutor tx,
+    String farm, {
+    String? before,
+  }) async {
+    if ((await tx.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='machine_audit_v1'",
+    )).isEmpty) {
+      return [];
+    }
+    return tx.query(
+      'machine_audit_v1',
+      where: 'farm_id=?${before == null ? '' : ' AND occurred_at<=?'}',
+      whereArgs: [farm, ?before],
+      orderBy: 'id',
+    );
+  }
+
+  static Future<Map<String, List<Map<String, Object?>>>> sourceAudit(
+    DatabaseExecutor tx,
+    String farm, {
+    String? before,
+  }) async {
+    final result = <String, List<Map<String, Object?>>>{};
+    for (final pair in const {
+      'personnel': 'personnel_audit_v1',
+      'trade': 'trade_audit_v1',
+    }.entries) {
+      final available = await tx.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        [pair.value],
+      );
+      result[pair.key] = available.isEmpty
+          ? []
+          : await tx.query(
+              pair.value,
+              where: 'farm_id=?${before == null ? '' : ' AND occurred_at<=?'}',
+              whereArgs: [farm, ?before],
+              orderBy: 'id',
+            );
+    }
+    return result;
   }
 
   Future<List<String>> reconcile(String farm) async {
@@ -284,6 +359,7 @@ class IntegrationRepository implements IntegrationStore {
     MoneyRounding rounding,
     String actorId, {
     String? existingDocumentId,
+    String? requestedBy,
   }) => database.transaction((tx) async {
     await actor(actorId);
     final source = await SqliteTradeRepository.one(
@@ -348,7 +424,7 @@ class IntegrationRepository implements IntegrationStore {
         note: 'Machine expense $expenseId',
         expenseTreatment: 'includedInProduction',
       );
-      await repo.createInTransaction(tx, farm, draft, actorId);
+      await repo.createInTransaction(tx, farm, draft, requestedBy ?? actorId);
       await repo.postInTransaction(tx, farm, doc, 0, actorId);
     } else {
       final existing = await SqliteTradeRepository.one(

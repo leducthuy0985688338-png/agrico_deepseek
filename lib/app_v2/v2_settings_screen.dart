@@ -8,6 +8,7 @@ class V2SettingsScreen extends StatelessWidget {
     this.onOpenBackup,
     this.onSignOut,
     this.onOpenAccounts,
+    this.onOpenApprovalPolicies,
     this.onOpenCatalog,
     this.onOpenCatalogSync,
     this.sessionOffline = false,
@@ -17,6 +18,7 @@ class V2SettingsScreen extends StatelessWidget {
   final VoidCallback? onOpenBackup;
   final VoidCallback? onSignOut;
   final VoidCallback? onOpenAccounts;
+  final VoidCallback? onOpenApprovalPolicies;
   final VoidCallback? onOpenCatalog;
   final VoidCallback? onOpenCatalogSync;
   final bool sessionOffline;
@@ -60,6 +62,17 @@ class V2SettingsScreen extends StatelessWidget {
               leading: const Icon(Icons.sync),
               title: Text(l10n.text('catalogSync.title')),
               onTap: onOpenCatalogSync,
+            ),
+          if (onOpenApprovalPolicies != null)
+            ListTile(
+              key: const Key('company-approval-policy-open'),
+              leading: const Icon(Icons.policy_outlined),
+              title: Text(switch (l10n.locale.languageCode) {
+                'vi' => 'Chính sách phê duyệt',
+                'lo' => 'ນະໂຍບາຍອະນຸມັດ',
+                _ => 'Approval policy',
+              }),
+              onTap: onOpenApprovalPolicies,
             ),
           if (onOpenAccounts != null)
             ListTile(

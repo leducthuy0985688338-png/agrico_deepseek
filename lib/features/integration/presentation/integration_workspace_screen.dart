@@ -1,12 +1,17 @@
 import '../application/period_close_service.dart';
 import 'period_close_panel.dart';
+import 'approval_policy_panel.dart';
 import 'dart:math';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/permissions/authorization.dart';
 import '../../../services/report_file_saver.dart';
 import '../application/integration_service.dart';
 import '../application/report20.dart';
+import 'production_cost_panel.dart';
+import '../application/production_cost_workflow_service.dart';
+import '../domain/production_cost_workflow.dart';
 import '../../trade/domain/trade.dart' show MoneyRounding, TradeMath;
 
 /// Cross-ledger corrections remain explicit; historical sources are never
@@ -16,8 +21,10 @@ class IntegrationWorkspaceScreen extends StatefulWidget {
     super.key,
     required this.service,
     this.periodClosing,
+    this.controlledApprovals = false,
   });
   final IntegrationService service;
+  final bool controlledApprovals;
   final PeriodCloseService? periodClosing;
   @override
   State<IntegrationWorkspaceScreen> createState() => _IntegrationState();
@@ -59,6 +66,184 @@ class _IntegrationState extends State<IntegrationWorkspaceScreen> {
 
   void reload() {
     setState(() => data = load());
+  }
+
+  Future<void> costWorkflow(String action) async {
+    final store = widget.service.productionCosts;
+    if (store == null) return;
+    final workflow = ProductionCostWorkflowService(store, widget.service);
+    final proposal = action == 'propose';
+    final values = await form(
+      action == 'material'
+          ? tr(
+              'Duyệt xuất vật tư',
+              'Approve material issue',
+              'ອະນຸມັດເບີກວັດສະດຸ',
+            )
+          : proposal
+          ? tr(
+              'Đề xuất phân bổ chi phí',
+              'Propose cost allocation',
+              'ສະເໜີແບ່ງຕົ້ນທຶນ',
+            )
+          : tr(
+              'Duyệt phân bổ chi phí',
+              'Approve cost allocation',
+              'ອະນຸມັດແບ່ງຕົ້ນທຶນ',
+            ),
+      {
+        'id': tr('ID chứng từ nguồn', 'Source document ID', 'ID ເອກະສານ'),
+        if (!proposal)
+          'revision': tr(
+            'Revision đề xuất đã xem',
+            'Reviewed proposal revision',
+            'Revision ທີ່ກວດແລ້ວ',
+          ),
+        if (proposal) ...{
+          'driver': tr(
+            'Tiêu thức (phải chọn)',
+            'Allocation basis (choose explicitly)',
+            'ເກນແບ່ງ (ຕ້ອງເລືອກ)',
+          ),
+          'base': tr(
+            'Tổng đơn vị cơ sở, gồm phần chưa phân bổ',
+            'Total basis units including unallocated',
+            'ຈຳນວນຖານລວມ',
+          ),
+          'scale': tr(
+            'Số chữ số thập phân tiền đã duyệt',
+            'Approved money decimal places',
+            'ຈຳນວນທົດສະນິຍົມເງິນ',
+          ),
+          'weights': tr(
+            'Mỗi dòng: ID kế hoạch | đơn vị | căn cứ; ngăn bằng dấu ;',
+            'Each: plan ID | units | evidence; separate by ;',
+            'ID ແຜນ | ຫົວໜ່ວຍ | ຫຼັກຖານ; ແຍກດ້ວຍ ;',
+          ),
+        },
+      },
+      choices: proposal
+          ? {
+              'driver': {
+                'direct': tr(
+                  'Trực tiếp: một kế hoạch, cơ sở 1',
+                  'Direct: one plan, base 1',
+                  'ໂດຍກົງ: ແຜນດຽວ, ຖານ 1',
+                ),
+                'area': tr(
+                  'Diện tích: đơn vị 0,000001 m²',
+                  'Area: units of 0.000001 m²',
+                  'ເນື້ອທີ່: 0.000001 m²',
+                ),
+                'machineMinutes': tr(
+                  'Phút máy',
+                  'Machine minutes',
+                  'ນາທີເຄື່ອງຈັກ',
+                ),
+                'laborMinutes': tr(
+                  'Phút nhân công',
+                  'Labor minutes',
+                  'ນາທີແຮງງານ',
+                ),
+                'approvedWeights': tr(
+                  'Trọng số có căn cứ duyệt',
+                  'Evidenced approved weights',
+                  'ນ້ຳໜັກທີ່ອະນຸມັດ',
+                ),
+              },
+            }
+          : {},
+    );
+    if (values == null || !mounted) return;
+    await run(() async {
+      if (action == 'material') {
+        await workflow.approveMaterial(
+          values['id']!,
+          int.parse(values['revision']!),
+        );
+      } else if (!proposal) {
+        await workflow.approveExpense(
+          values['id']!,
+          int.parse(values['revision']!),
+        );
+      } else {
+        final weights = values['weights']!.split(';').map((v) {
+          final fields = v.split('|').map((s) => s.trim()).toList();
+          if (fields.length != 3) {
+            throw const FormatException('Plan, units and evidence required.');
+          }
+          return CostAllocationWeight(
+            fields[0],
+            int.parse(fields[1]),
+            fields[2],
+          );
+        }).toList();
+        await workflow.proposeExpense(
+          ExpenseAllocationProposal(
+            expenseId: values['id']!,
+            driver: CostAllocationDriver.values.byName(values['driver']!),
+            baseUnits: int.parse(values['base']!),
+            moneyScale: int.parse(values['scale']!),
+            weights: weights,
+          ),
+        );
+      }
+    });
+  }
+
+  Widget costReview(IntegrationSnapshot snapshot) {
+    final versions = snapshot.rows('production_source_versions_v2');
+    final policies = snapshot.rows('production_expense_policies_v2');
+    return ExpansionTile(
+      key: const ValueKey('production-cost-approval-review'),
+      title: Text(
+        tr(
+          'Chứng từ và cấu hình cần duyệt',
+          'Source and allocation approval review',
+          'ກວດເອກະສານ ແລະ ເກນແບ່ງ',
+        ),
+      ),
+      children: [
+        for (final v in versions)
+          ListTile(
+            title: SelectableText(
+              '${v['source_type']} · ${v['source_id']} · revision ${v['revision']} · ${v['status']}',
+            ),
+            subtitle: SelectableText(
+              '${tr('Người tạo / duyệt', 'Created / approved by', 'ຜູ້ສ້າງ / ອະນຸມັດ')}: ${v['creator']} / ${v['approver'] ?? '—'}\n${v['created_at']} / ${v['approved_at'] ?? '—'}\n${v['payload_digest']}',
+            ),
+          ),
+        for (final p in policies)
+          ListTile(
+            title: SelectableText(
+              '${p['source_id']} · ${p['driver']} · ${tr('Tổng cơ sở', 'Total basis', 'ຖານລວມ')}: ${p['base_units']} · ${p['currency']} · ${tr('Số lẻ', 'Decimal places', 'ທົດສະນິຍົມ')}: ${p['money_scale']}',
+            ),
+            subtitle: SelectableText(allocationReview(snapshot, p)),
+          ),
+      ],
+    );
+  }
+
+  String allocationReview(
+    IntegrationSnapshot snapshot,
+    Map<String, Object?> policy,
+  ) {
+    try {
+      final weights = jsonDecode(policy['weights_json'] as String) as List;
+      return weights
+          .map((raw) {
+            final w = raw as Map;
+            final plan = snapshot.index('production_plans_v1')[w['planId']];
+            return '${snapshot.planCode(w['planId'])} · ${snapshot.parcelCode(plan?['parcel_id'])}: ${w['units']} · ${w['evidence']}';
+          })
+          .join('\n');
+    } catch (_) {
+      return tr(
+        'Cấu hình không hợp lệ',
+        'Invalid configuration',
+        'ເກນບໍ່ຖືກຕ້ອງ',
+      );
+    }
   }
 
   Future<void> run(Future<void> Function() operation) async {
@@ -586,10 +771,29 @@ class _IntegrationState extends State<IntegrationWorkspaceScreen> {
       );
   }
 
-  Widget button(String text, VoidCallback onPressed) =>
+  Widget button(String text, VoidCallback? onPressed) =>
       TextButton(onPressed: busy ? null : onPressed, child: Text(text));
   @override
   Widget build(BuildContext context) {
+    if (!widget.service.canView && widget.service.canAdministerApproval) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(
+            tr('Chính sách phê duyệt', 'Approval policy', 'ນະໂຍບາຍອະນຸມັດ'),
+          ),
+        ),
+        body: ListView(
+          children: [
+            ApprovalPolicyPanel(
+              store: widget.service.approvalPolicies!,
+              can: widget.service.can,
+              farm: widget.service.subject.farmId,
+              actor: widget.service.subject.userId,
+            ),
+          ],
+        ),
+      );
+    }
     if (!widget.service.canView)
       return Scaffold(
         body: Center(
@@ -692,6 +896,80 @@ class _IntegrationState extends State<IntegrationWorkspaceScreen> {
                               period: s.period,
                               onChanged: reload,
                             ),
+                          ProductionCostPanel(
+                            snapshot: s,
+                            canView: () => widget.service.canView,
+                          ),
+                          if (widget.service.approvalPolicies != null)
+                            ApprovalPolicyPanel(
+                              store: widget.service.approvalPolicies!,
+                              can: widget.service.can,
+                              farm: widget.service.subject.farmId,
+                              actor: widget.service.subject.userId,
+                            ),
+                          if (widget.service.productionCosts != null)
+                            costReview(s),
+                          if (widget.service.productionCosts != null)
+                            Wrap(
+                              spacing: 8,
+                              children: [
+                                OutlinedButton(
+                                  onPressed:
+                                      busy ||
+                                          !widget.service.can(
+                                            PermissionCodes.inventoryPrice,
+                                          ) ||
+                                          !widget.service.can(
+                                            PermissionCodes.financeApprove,
+                                          )
+                                      ? null
+                                      : widget.controlledApprovals
+                                      ? null
+                                      : () => costWorkflow('material'),
+                                  child: Text(
+                                    tr(
+                                      'Duyệt vật tư',
+                                      'Approve material',
+                                      'ອະນຸມັດວັດສະດຸ',
+                                    ),
+                                  ),
+                                ),
+                                OutlinedButton(
+                                  onPressed:
+                                      busy ||
+                                          !widget.service.can(
+                                            PermissionCodes.financeCreate,
+                                          )
+                                      ? null
+                                      : () => costWorkflow('propose'),
+                                  child: Text(
+                                    tr(
+                                      'Đề xuất phân bổ',
+                                      'Propose allocation',
+                                      'ສະເໜີແບ່ງຕົ້ນທຶນ',
+                                    ),
+                                  ),
+                                ),
+                                OutlinedButton(
+                                  onPressed:
+                                      busy ||
+                                          !widget.service.can(
+                                            PermissionCodes.financeApprove,
+                                          )
+                                      ? null
+                                      : widget.controlledApprovals
+                                      ? null
+                                      : () => costWorkflow('approve'),
+                                  child: Text(
+                                    tr(
+                                      'Duyệt phân bổ',
+                                      'Approve allocation',
+                                      'ອະນຸມັດແບ່ງຕົ້ນທຶນ',
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           Text(
                             tr(
                               'Giữ riêng VND và LAK. Giá ca máy trọn gói; chi tiền không cộng lại vào chi phí sản xuất.',
@@ -731,9 +1009,9 @@ class _IntegrationState extends State<IntegrationWorkspaceScreen> {
                           if (widget.service.can(PermissionCodes.dataExport))
                             button(
                               tr(
-                                'Xuất Excel đủ 20 trang',
-                                'Export 20-sheet Excel',
-                                'ສົ່ງອອກ Excel 20 ໜ້າ',
+                                'Xuất Excel và giá thành theo nguồn',
+                                'Export Excel and source production costs',
+                                'ສົ່ງອອກ Excel ແລະ ຕົ້ນທຶນຕາມແຫຼ່ງ',
                               ),
                               () => run(() async {
                                 widget.service.exportAccess();
@@ -744,7 +1022,7 @@ class _IntegrationState extends State<IntegrationWorkspaceScreen> {
                                 widget.service.exportAccess();
                                 await saveExcelBytes(
                                   bytes,
-                                  'AGRICO-20-${fresh.period}.xlsx',
+                                  'AGRICO-production-${fresh.period}.xlsx',
                                 );
                               }),
                             ),
@@ -781,11 +1059,13 @@ class _IntegrationState extends State<IntegrationWorkspaceScreen> {
                                               'Link cash',
                                               'ເຊື່ອມບັນຊີເງິນ',
                                             ),
-                                      () => salary(
-                                        s,
-                                        p,
-                                        linked.contains(p['id']),
-                                      ),
+                                      widget.controlledApprovals
+                                          ? null
+                                          : () => salary(
+                                              s,
+                                              p,
+                                              linked.contains(p['id']),
+                                            ),
                                     ),
                             ),
                         ],
@@ -834,10 +1114,18 @@ class _IntegrationState extends State<IntegrationWorkspaceScreen> {
                                                   'Return fuel',
                                                   'ຄືນສາງ',
                                                 ),
-                                                () => machine(s, r, 'reverse'),
+                                                widget.controlledApprovals
+                                                    ? null
+                                                    : () => machine(
+                                                        s,
+                                                        r,
+                                                        'reverse',
+                                                      ),
                                               ))
                                       : PopupMenuButton<String>(
-                                          enabled: !busy,
+                                          enabled:
+                                              !busy &&
+                                              !widget.controlledApprovals,
                                           onSelected: (v) => machine(s, r, v),
                                           itemBuilder: (_) => [
                                             PopupMenuItem(

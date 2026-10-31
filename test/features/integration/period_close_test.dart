@@ -25,6 +25,8 @@ import 'package:agrico_deepseek/features/inventory/domain/entities/production_pl
 import 'package:agrico_deepseek/features/personnel/application/personnel_service.dart';
 import 'package:agrico_deepseek/features/personnel/data/sqlite_personnel_repository.dart';
 import 'package:agrico_deepseek/features/machines/data/sqlite_machine_repository.dart';
+import 'package:agrico_deepseek/features/machines/domain/machines.dart'
+    show MachineRate, MachineRun, MachineAllocation;
 import 'package:agrico_deepseek/features/finance/data/local/sqlite_finance_document_repository.dart';
 import 'package:agrico_deepseek/features/trade/data/sqlite_trade_repository.dart';
 import 'package:agrico_deepseek/features/integration/data/integration_repository.dart';
@@ -252,6 +254,87 @@ void main() {
       () {},
     );
   }
+
+  test(
+    'ordered visits survive closed snapshot activation and reject late offline delivery',
+    () async {
+      final machines = SqliteMachineRepository(db);
+      await machines.profile('f', 'machine', 0, {'meterUnit': 'hour'}, 'admin');
+      await machines.addRate(
+        'f',
+        const MachineRate(
+          id: 'machine-rate',
+          machineId: 'machine',
+          effectiveOn: '2026-09-01',
+          amount: '800000',
+          currency: 'VND',
+          shiftMinutes: 480,
+          scale: 0,
+          rounding: MoneyRounding.halfUp,
+        ),
+        'admin',
+      );
+      MachineRun source(String id, int day) => MachineRun(
+        id: id,
+        machineId: 'machine',
+        operatorId: 'w',
+        startsAt: DateTime.utc(2026, 9, day, 1),
+        endsAt: DateTime.utc(2026, 9, day, 9),
+        idleMinutes: 0,
+        meterStart: day == 20 ? '100' : '108',
+        meterEnd: day == 20 ? '108' : '116',
+        allocations: const [MachineAllocation('plan', 480)],
+        segments: const [
+          MachineAllocation('plan', 120),
+          MachineAllocation('plan', 240),
+          MachineAllocation('plan', 120),
+        ],
+      );
+      await machines.addRun('f', source('minute-run', 20), 'admin');
+      await machines.approveRun('f', 'minute-run', 0, 'admin');
+      await closeSeptember();
+      final frozen = await bridge().snapshot('f', '2026-09');
+      final book = Report20(frozen).workbook();
+      expect(book['LUOT CHUYEN MAY ERP'].rows.length, 4);
+      expect(
+        book['PHAN BO CA MAY ERP'].rows[1][10]!.value.toString(),
+        '800000',
+      );
+      final costs = await databaseFactoryFfi.openDatabase(
+        '${directory.path}/agrico_costs.db',
+      );
+      await costs.execute('CREATE TABLE production_costs(id TEXT PRIMARY KEY)');
+      final bytes = await LocalDatabaseSnapshot.create(
+        db,
+        costsDatabase: costs,
+      );
+      await db.close();
+      await costs.close();
+      final activation = LocalRestoreActivation(directory, databaseFactoryFfi);
+      await activation.schedule(bytes);
+      expect(await activation.applyPending(), isTrue);
+      db = await databaseFactoryFfi.openDatabase('${directory.path}/agrico.db');
+      final restored = SqliteMachineRepository(db);
+      expect(
+        (await restored.runs('f')).single.value.segments.map((s) => s.minutes),
+        [120, 240, 120],
+      );
+      expect(
+        (await restored.productionMachineCosts('f')).single.amount,
+        '800000',
+      );
+      await PeriodCloseRepository.validate(db);
+      await expectLater(
+        restored.addRun('f', source('late-offline', 21), 'admin'),
+        throwsA(isA<DatabaseException>()),
+      );
+      await expectLater(
+        restored.voidRun('f', 'minute-run', 1, 'late edit', 'admin'),
+        throwsA(isA<DatabaseException>()),
+      );
+      expect((await restored.runs('f')).length, 1);
+    },
+  );
 
   Future<void> cash(String id, String day, {String farm = 'f'}) =>
       db.insert('finance_documents_v2', {
@@ -578,7 +661,7 @@ void main() {
       expect(frozen.rows('finance_documents_v2'), isEmpty);
       expect(frozen.closingRevision, 1);
       expect(frozen.closedBy, 'admin');
-      expect(Report20(frozen).workbook().tables.length, 20);
+      expect(Report20(frozen).workbook().tables.length, 27);
       await PeriodCloseRepository.validate(db);
     },
   );

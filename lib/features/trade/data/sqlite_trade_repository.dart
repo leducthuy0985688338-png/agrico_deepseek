@@ -1,4 +1,6 @@
 import '../../integration/data/integration_cash.dart';
+import '../../../core/production/source_governance.dart';
+import '../../integration/data/production_cost_workflow_repository.dart';
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import '../domain/trade.dart';
@@ -8,8 +10,11 @@ import '../../../core/identity/data/sqlite_monthly_document_sequence.dart';
 import '../../../core/identity/domain/business_reference_code.dart';
 
 class SqliteTradeRepository implements TradeRepository {
-  const SqliteTradeRepository(this.database);
+  const SqliteTradeRepository(this.database, {this.requestedBy});
   final Database database;
+
+  /// Author of an immutable reviewed command; execution actor stays separate.
+  final String? requestedBy;
   static const tables = {
     'trade_documents_v1',
     'trade_lots_v1',
@@ -20,6 +25,7 @@ class SqliteTradeRepository implements TradeRepository {
     'trade_audit_v1',
   };
   static Future<void> createSchema(DatabaseExecutor db) async {
+    await SourceGovernance.createSchema(db);
     await db.execute(
       '''CREATE TABLE IF NOT EXISTS trade_documents_v1(id TEXT PRIMARY KEY,farm_id TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN ('harvest','sale','purchase','expense')),code TEXT NOT NULL,day TEXT NOT NULL,party_id TEXT REFERENCES company_catalog_entries_v1(id),plan_id TEXT REFERENCES production_plans_v1(id),currency TEXT NOT NULL CHECK(currency IN ('VND','LAK')),total TEXT NOT NULL,reference TEXT NOT NULL,body TEXT NOT NULL,snapshot TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('draft','posted','void')),revision INTEGER NOT NULL CHECK(revision>=0),void_day TEXT,UNIQUE(farm_id,code))''',
     );
@@ -118,6 +124,16 @@ class SqliteTradeRepository implements TradeRepository {
     bool posting = false,
   }) async {
     d.validate();
+    if (d.kind == TradeKind.expense &&
+        d.expenseTreatment == 'directProduction') {
+      await ProductionCostWorkflowRepository.destination(
+        tx,
+        farm,
+        d.planId!,
+        d.currency,
+        d.day,
+      );
+    }
     if (d.kind == TradeKind.harvest) {
       final p = await one(tx, 'production_plans_v1', farm, d.planId!);
       if (p['status'] != 'active' ||
@@ -233,6 +249,17 @@ class SqliteTradeRepository implements TradeRepository {
       'revision': 0,
     });
     await audit(tx, farm, d.id, 'create', actor);
+    if (d.kind == TradeKind.expense) {
+      await SourceGovernance.register(
+        tx,
+        farm: farm,
+        type: 'tradeExpense',
+        id: d.id,
+        day: d.day,
+        actor: actor,
+        payload: await SourceGovernance.nativePayload(tx, 'tradeExpense', d.id),
+      );
+    }
   }
 
   Future<void> movement(
@@ -433,6 +460,17 @@ class SqliteTradeRepository implements TradeRepository {
       whereArgs: [id, farm],
     );
     await audit(tx, farm, id, 'post', actor);
+    if (d.kind == TradeKind.expense) {
+      await SourceGovernance.approve(
+        tx,
+        farm: farm,
+        type: 'tradeExpense',
+        id: id,
+        expectedRevision: 1,
+        actor: actor,
+        payload: await SourceGovernance.nativePayload(tx, 'tradeExpense', id),
+      );
+    }
   }
 
   @override
@@ -453,6 +491,32 @@ class SqliteTradeRepository implements TradeRepository {
     final d = TradeDraft.fromJson(decode(row['body']));
     if (day.compareTo(d.day) < 0) {
       throw const FormatException('Reversal precedes source.');
+    }
+    if (d.kind == TradeKind.expense &&
+        day.substring(0, 7) != d.day.substring(0, 7) &&
+        (await tx.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+          [ProductionCostWorkflowRepository.policies],
+        )).isNotEmpty) {
+      final policies = await tx.query(
+        ProductionCostWorkflowRepository.policies,
+        where: 'source_id=? AND farm_id=?',
+        whereArgs: [id, farm],
+      );
+      if (policies.isNotEmpty) {
+        final allocations = await tx.query(
+          ProductionCostWorkflowRepository.costs,
+          where: 'policy_id=?',
+          whereArgs: [policies.single['id']],
+        );
+        if (allocations.isNotEmpty &&
+            TradeMath.total(allocations.map((r) => r['amount'] as String)) !=
+                ExactDecimal.parse(row['total'] as String).toString()) {
+          throw StateError(
+            'Partial allocation must be cancelled in its open source period before reissue.',
+          );
+        }
+      }
     }
     if (await paid(tx, id) != '0') {
       throw StateError('Reverse active payments first.');
@@ -550,6 +614,31 @@ class SqliteTradeRepository implements TradeRepository {
       whereArgs: [id, farm],
     );
     await audit(tx, farm, id, 'void', actor, reason);
+    if (d.kind == TradeKind.expense) {
+      final payload = await SourceGovernance.nativePayload(
+        tx,
+        'expenseReversal',
+        id,
+      );
+      await SourceGovernance.register(
+        tx,
+        farm: farm,
+        type: 'expenseReversal',
+        id: id,
+        day: day,
+        actor: requestedBy ?? actor,
+        payload: payload,
+      );
+      await SourceGovernance.approve(
+        tx,
+        farm: farm,
+        type: 'expenseReversal',
+        id: id,
+        expectedRevision: 1,
+        actor: actor,
+        payload: payload,
+      );
+    }
   });
   static Future<String> cash(
     Transaction tx, {

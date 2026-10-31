@@ -7,6 +7,10 @@ import '../domain/integration_snapshot.dart';
 import '../../personnel/domain/personnel.dart' show LaborMoney, MoneyRounding;
 import '../../trade/domain/trade.dart' show TradeMath, ExactDecimal;
 import 'report20_headers.dart';
+import '../../machines/domain/machines.dart';
+import '../../machines/application/machine_allocation_export.dart';
+import 'production_cost_projection.dart';
+import 'production_cost_export.dart';
 
 class Report20 {
   Report20(this.snapshot);
@@ -64,9 +68,13 @@ class Report20 {
     headers['TH KHO VA TAI CHINH']!.add('Tồn đầu kỳ');
     headers['TH KHO VA TAI CHINH']![9] = 'DÒNG TIỀN THU−CHI';
     headers['THONG KE LO DAT']![5] = 'THU BÁN − CHI PHÍ SX TRONG KỲ';
+    headers['THONG KE LO DAT']![3] = 'TỔNG SNAPSHOT V2 (XEM ĐỐI CHIẾU NGUỒN)';
     headers['KE HOACH SAN XUAT']![7] = 'NHÂN CÔNG DỰ KIẾN (GIỜ)';
     headers['KE HOACH SAN XUAT']![8] = 'NHÂN CÔNG THỰC TẾ (GIỜ)';
-    headers['KE HOACH SAN XUAT']![10] = 'MÁY THỰC TẾ (GIỜ)';
+    headers['KE HOACH SAN XUAT']![10] = 'MÁY THỰC TẾ (PHÚT)';
+    headers['DANH SACH MAY']![8] = 'TỔNG PHÚT VẬN HÀNH';
+    headers['NHAT KY VAN HANH']![6] = 'PHÚT NGHỈ';
+    headers['NHAT KY VAN HANH']![7] = 'PHÚT VẬN HÀNH';
     headers['THU HOACH']![8] = 'DOANH THU BÁN LÔ TRONG KỲ';
 
     final rows = <String, List<List<String>>>{
@@ -527,7 +535,7 @@ class Report20 {
           minus(revenue, costs),
           yieldKg,
           s.metadata('parcel', id)['evaluation'] ?? '',
-          'Chênh lệch thu bán – chi phí SX phát sinh kỳ; chưa phân bổ giá thành tồn cuối kỳ. Diện tích lấy một lần từ thửa.',
+          'Chênh lệch thu bán – chi phí SX phát sinh kỳ; chưa phân bổ giá thành tồn cuối kỳ. Diện tích lấy một lần từ thửa. Hợp đồng nguồn/approval đầy đủ: xem GIA THANH THEO LO DAT và DOI CHIEU NGUON; số này chỉ là view snapshot V2 tương thích.',
         ], currency: currency);
       }
     }
@@ -571,7 +579,7 @@ class Report20 {
           meta['purchasedOn'] ?? '',
           m['active'] == 1 ? 'Đang dùng' : 'Ngừng',
           meta['warrantyUntil'] ?? '',
-          hours(minutes),
+          minutes,
           services.isEmpty ? '' : services.first['day'],
           sum(
             services
@@ -614,9 +622,7 @@ class Report20 {
             b['endsAt'] as String,
           ).difference(DateTime.parse(b['startsAt'] as String)).inMinutes -
           (b['idleMinutes'] as int);
-      final first = allocations.isEmpty
-          ? null
-          : plans[allocations.first['planId']];
+      final ownPlans = allocations.map((a) => plans[a['planId']]).toList();
       add(
         'NHAT KY VAN HANH',
         [
@@ -626,11 +632,11 @@ class Report20 {
           name(b['operatorId']),
           localTime(b['startsAt']),
           localTime(b['endsAt']),
-          hours(b['idleMinutes'] as int),
-          hours(minutes),
+          b['idleMinutes'],
+          minutes,
           b['outputUnit'] == 'm2' ? b['outputQuantity'] ?? '' : '',
-          pc(first?['parcel_id']),
-          pn(first?['parcel_id']),
+          ownPlans.map((p) => pc(p?['parcel_id'])).toSet().join('; '),
+          ownPlans.map((p) => pn(p?['parcel_id'])).toSet().join('; '),
           allocations
               .map((a) => s.index('farm_tasks_v2')[a['taskId']]?['title'] ?? '')
               .where((v) => value(v).isNotEmpty)
@@ -911,7 +917,7 @@ class Report20 {
           p['labor_hours'],
           hours(laborMinutes),
           p['machine_shifts'],
-          hours(machineMinutes),
+          machineMinutes,
           p['material_budget'],
           s.materialCost(p['id'], currency),
           p['status'],
@@ -1162,6 +1168,47 @@ class Report20 {
         formula(4, '${col(opening)}$n+C$n-D$n', source[4]);
       }
     }
+    MachineAllocationExport.append(
+      e,
+      runs: runs.values
+          .where((r) => included(r['day']))
+          .map(
+            (r) => MachineRecord(
+              MachineRun.fromJson(json(r['body'])),
+              r['status'] as String,
+              r['revision'] as int,
+              amount: r['amount'] as String?,
+              currency: r['currency'] as String?,
+              rateId: r['rate_id'] as String?,
+            ),
+          ),
+      costs: [
+        for (final c in s.rows('machine_costs_v1'))
+          if (runs[c['source_id']]?['status'] == 'approved')
+            ProductionMachineCost(
+              sourceId: c['source_id'] as String,
+              machineId: runs[c['source_id']]!['machine_id'] as String,
+              planId: c['plan_id'] as String,
+              day: runs[c['source_id']]!['day'] as String,
+              minutes: c['minutes'] as int,
+              amount: c['amount'] as String,
+              currency: c['currency'] as String,
+            ),
+      ],
+      trace: MachineTrace(
+        plans: {for (final p in plans.values) p['id'] as String: p},
+        parcelCodes: {
+          for (final p in s.rows('land_parcels'))
+            p['id'] as String: pc(p['id']),
+        },
+        rates: [
+          for (final r in s.rows('machine_rates_v1'))
+            MachineRate.fromJson(json(r['body'])),
+        ],
+        audit: s.machineAudit,
+      ),
+    );
+    ProductionCostExport.append(e, ProductionCostProjection(s));
     e.delete('Sheet1');
     return e;
   }

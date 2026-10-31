@@ -1,3 +1,9 @@
+import '../core/approval/sqlite_approval_policy_store.dart';
+import '../core/approval/firebase_approval_authority.dart';
+import '../core/approval/native_approval_guard.dart';
+import '../core/approval/native_approval_store.dart';
+import '../features/integration/data/native_approval_repository.dart';
+import '../features/integration/presentation/native_approval_panel.dart';
 import '../features/company_workspace/data/sqlite_workspace_store.dart';
 import '../features/company_workspace/data/firebase_workspace_transport.dart';
 import '../features/company_workspace/application/workspace_service.dart';
@@ -10,6 +16,7 @@ import '../features/integration/data/period_close_repository.dart';
 import '../core/permissions/data/sqlite_operation_directory.dart';
 import '../core/permissions/live_authorization.dart';
 import '../features/integration/data/integration_repository.dart';
+import '../features/integration/data/production_cost_workflow_repository.dart';
 import '../features/integration/application/integration_service.dart';
 import '../features/integration/presentation/integration_workspace_screen.dart';
 import '../features/trade/data/sqlite_trade_repository.dart';
@@ -163,6 +170,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     await SqliteFinanceDocumentRepository.createSchema(database);
     await SqliteTradeRepository.createSchema(database);
     await IntegrationRepository.createSchema(database);
+    await NativeApprovalGuard.install(database);
     await SqliteAdministrativeCatalog.createSchema(database);
     final administrativeCatalog = SqliteAdministrativeCatalog(database);
     await administrativeCatalog.seedInitialLocation();
@@ -244,8 +252,77 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         return const Scaffold(body: Center(child: CircularProgressIndicator()));
       }
       final deps = snapshot.data!;
-      void push(Widget page) =>
-          Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+      final policyStore = SqliteApprovalPolicyStore(
+        deps.database,
+        opened: deps.subject,
+        currentSubject: () => mounted ? widget.subject : null,
+        authority: FirebaseApprovalAuthority(),
+      );
+      final nativeApproval = NativeApprovalRepository(policyStore);
+      void push(Widget page) {
+        page = switch (page) {
+          MachineWorkspaceScreen p => MachineWorkspaceScreen(
+            service: p.service,
+            subject: p.subject,
+            openCatalog: p.openCatalog,
+            initialTab: p.initialTab,
+            controlledApprovals: true,
+          ),
+          PersonnelWorkspaceScreen p => PersonnelWorkspaceScreen(
+            service: p.service,
+            subject: p.subject,
+            catalog: p.catalog,
+            controlledApprovals: true,
+          ),
+          TradeWorkspaceScreen p => TradeWorkspaceScreen(
+            service: p.service,
+            openCatalog: p.openCatalog,
+            openCash: p.openCash,
+            openReports: p.openReports,
+            controlledApprovals: true,
+          ),
+          IntegrationWorkspaceScreen p => IntegrationWorkspaceScreen(
+            service: p.service,
+            periodClosing: p.periodClosing,
+            controlledApprovals: true,
+          ),
+          _ => page,
+        };
+        final Set<NativeApprovalType> types = switch (page) {
+          FinanceDocumentsScreen() => {
+            NativeApprovalType.finance,
+            NativeApprovalType.command,
+          },
+          MachineWorkspaceScreen() => {
+            NativeApprovalType.machineRun,
+            NativeApprovalType.machineExpense,
+            NativeApprovalType.command,
+          },
+          PersonnelWorkspaceScreen() => {
+            NativeApprovalType.fieldWork,
+            NativeApprovalType.payroll,
+            NativeApprovalType.payrollAdjustment,
+            NativeApprovalType.command,
+          },
+          TradeWorkspaceScreen() => {
+            NativeApprovalType.trade,
+            NativeApprovalType.expenseAllocation,
+            NativeApprovalType.command,
+          },
+          InventoryCatalogScreen() => {NativeApprovalType.material},
+          IntegrationWorkspaceScreen() => NativeApprovalType.values.toSet(),
+          _ => {},
+        };
+        final view = types.isEmpty
+            ? page
+            : NativeApprovalHost(
+                child: page,
+                store: nativeApproval,
+                types: types,
+              );
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => view));
+      }
+
       final financeService = FinanceDocumentService(
         repository: deps.finance,
         parcels: deps.controller.parcels,
@@ -410,6 +487,13 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
           detailBuilder: (_, id) => detail(id),
         ),
       );
+      final integrated = IntegrationService(
+        approvalPolicies: policyStore,
+        productionCosts: ProductionCostWorkflowRepository(deps.database),
+        repository: IntegrationRepository(deps.database),
+        subject: deps.subject,
+        currentSubject: () => mounted ? widget.subject : null,
+      );
       final legacy = <String, VoidCallback>{
         'tasks': () => push(
           FarmTaskScreen(
@@ -428,6 +512,13 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         'settings': () => push(
           V2SettingsScreen(
             onSignOut: widget.onSignOut,
+            onOpenApprovalPolicies: integrated.canAdministerApproval
+                ? () {
+                    if (integrated.canAdministerApproval) {
+                      push(IntegrationWorkspaceScreen(service: integrated));
+                    }
+                  }
+                : null,
             onOpenCatalog:
                 const AuthorizationService().can(
                   subject: deps.subject,
@@ -621,11 +712,6 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
           }
         };
       }
-      final integrated = IntegrationService(
-        repository: IntegrationRepository(deps.database),
-        subject: deps.subject,
-        currentSubject: () => mounted ? widget.subject : null,
-      );
       final trade = TradeService(
         SqliteTradeRepository(deps.database),
         subject: deps.subject,
@@ -698,6 +784,17 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         );
         legacy['seasons'] = openProduction;
         legacy['costs'] = openProduction;
+      }
+      if (integrated.canView) {
+        legacy['costs'] = () => push(
+          IntegrationWorkspaceScreen(
+            service: integrated,
+            periodClosing: PeriodCloseService(
+              repository: PeriodCloseRepository(deps.database),
+              access: integrated,
+            ),
+          ),
+        );
       }
       // Unsupported routes stay closed until domain-level scope guards exist.
       if (!const AuthorizationService().can(

@@ -15,8 +15,10 @@ class MachineWorkspaceScreen extends StatefulWidget {
     required this.subject,
     required this.openCatalog,
     this.initialTab = 'machines',
+    this.controlledApprovals = false,
   });
   final String initialTab;
+  final bool controlledApprovals;
   final MachineService service;
   final AuthorizationSubject subject;
   final VoidCallback openCatalog;
@@ -33,6 +35,7 @@ class _MachineData {
     this.plans,
     this.workers,
     this.costs,
+    this.trace,
   );
   final List<MachineCard> machines;
   final List<MachineRate> rates;
@@ -40,6 +43,7 @@ class _MachineData {
   final List<MachineRecord<MachineExpense>> expenses;
   final List<Map<String, Object?>> plans, workers;
   final List<ProductionMachineCost> costs;
+  final MachineTrace trace;
 }
 
 class _MachineWorkspaceState extends State<MachineWorkspaceScreen> {
@@ -50,12 +54,18 @@ class _MachineWorkspaceState extends State<MachineWorkspaceScreen> {
   String? machine;
   bool busy = false;
   String t(String key) => AppLocalizations.of(context).text('machine.$key');
-  bool can(String permission) => widget.service.can(widget.subject, permission);
-  bool machineAccess(String id, String permission) => widget.service.access.can(
-    widget.subject,
-    permission,
-    resource: ResourceContext(farmId: widget.subject.farmId, machineId: id),
-  );
+  bool can(String permission) =>
+      !(widget.controlledApprovals &&
+          permission == PermissionCodes.machineVerify) &&
+      widget.service.can(widget.subject, permission);
+  bool machineAccess(String id, String permission) =>
+      !(widget.controlledApprovals &&
+          permission == PermissionCodes.machineVerify) &&
+      widget.service.access.can(
+        widget.subject,
+        permission,
+        resource: ResourceContext(farmId: widget.subject.farmId, machineId: id),
+      );
   bool get money => can(PermissionCodes.financeView);
   Future<_MachineData> load({bool exporting = false}) async {
     final stamp = widget.service.access.stamp(widget.subject);
@@ -71,6 +81,7 @@ class _MachineWorkspaceState extends State<MachineWorkspaceScreen> {
       await s.plans(u),
       await s.workers(u),
       money ? await s.costs(u) : [],
+      money ? await s.trace(u) : const MachineTrace(),
     );
     widget.service.access.requireStamp(widget.subject, stamp);
     return result;
@@ -128,12 +139,18 @@ class _MachineWorkspaceState extends State<MachineWorkspaceScreen> {
   Future<void> form(
     String title,
     List<_Input> inputs,
-    Future<void> Function(Map<String, String>) save,
-  ) async {
+    Future<void> Function(Map<String, String>) save, {
+    Map<String, String>? visitPlans,
+  }) async {
     final changed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => _MachineForm(title: title, inputs: inputs, save: save),
+      builder: (_) => _MachineForm(
+        title: title,
+        inputs: inputs,
+        save: save,
+        visitPlans: visitPlans,
+      ),
     );
     if (changed == true && mounted) reload();
   }
@@ -218,23 +235,19 @@ class _MachineWorkspaceState extends State<MachineWorkspaceScreen> {
           },
         ),
         input('starts', value: '$day 08:00'),
-        input('ends', value: '$day 17:00'),
+        input('operatingMinutes', value: '480'),
         input('idle', value: '60'),
         input('meterStart'),
         input('meterEnd'),
-        input('plan1', required: false, choices: plans),
-        input('minutes1', required: false),
-        input('plan2', required: false, choices: plans),
-        input('minutes2', required: false),
         input('output', required: false),
         input('unit', required: false),
         input('notes', required: false),
       ],
       (v) {
-        final allocations = <MachineAllocation>[];
-        for (final n in [1, 2]) {
+        final segments = <MachineAllocation>[];
+        for (var n = 1; n <= int.parse(v['_visitCount']!); n++) {
           if (v['plan$n']!.isNotEmpty) {
-            allocations.add(
+            segments.add(
               MachineAllocation(v['plan$n']!, int.parse(v['minutes$n']!)),
             );
           } else if (v['minutes$n']!.isNotEmpty) {
@@ -248,17 +261,24 @@ class _MachineWorkspaceState extends State<MachineWorkspaceScreen> {
             machineId: v['machine']!,
             operatorId: v['operator']!,
             startsAt: instant(v['starts']!),
-            endsAt: instant(v['ends']!),
+            endsAt: instant(v['starts']!).add(
+              Duration(
+                minutes:
+                    int.parse(v['operatingMinutes']!) + int.parse(v['idle']!),
+              ),
+            ),
             idleMinutes: int.parse(v['idle']!),
             meterStart: v['meterStart']!,
             meterEnd: v['meterEnd']!,
-            allocations: allocations,
+            allocations: MachineRun.aggregateSegments(segments),
+            segments: segments,
             outputQuantity: v['output']!.isEmpty ? null : v['output'],
             outputUnit: v['unit']!.isEmpty ? null : v['unit'],
             note: v['notes']!,
           ),
         );
       },
+      visitPlans: plans,
     );
   }
 
@@ -274,6 +294,13 @@ class _MachineWorkspaceState extends State<MachineWorkspaceScreen> {
         input('amount'),
         input('currency', choices: {'VND': 'VND', 'LAK': 'LAK'}),
         input('reference'),
+        _Input('partyId', switch (AppLocalizations.of(
+          context,
+        ).locale.languageCode) {
+          'vi' => 'ID nhà cung cấp/người hưởng (liên kết đã xác minh)',
+          'lo' => 'ID ຜູ້ສະໜອງ/ຜູ້ຮັບ (ຢືນຢັນແລ້ວ)',
+          _ => 'Supplier/beneficiary ID (verified binding)',
+        }),
         input('description'),
         if (kind == 'maintenance') ...[
           input('nextOn', required: false),
@@ -290,6 +317,7 @@ class _MachineWorkspaceState extends State<MachineWorkspaceScreen> {
           amount: v['amount']!,
           currency: v['currency']!,
           reference: v['reference']!,
+          partyId: v['partyId'],
           note: v['description']!,
           litres: v['litres'],
           meter: v['meter']!.isEmpty ? null : v['meter'],
@@ -449,6 +477,7 @@ class _MachineWorkspaceState extends State<MachineWorkspaceScreen> {
                                       runs: fresh.runs,
                                       expenses: fresh.expenses,
                                       costs: fresh.costs,
+                                      trace: fresh.trace,
                                     ).export(),
                                     'AGRICO-machines-${requestedPeriod}-${DateTime.now().millisecondsSinceEpoch}.xlsx',
                                   );
@@ -499,9 +528,23 @@ class _MachineWorkspaceState extends State<MachineWorkspaceScreen> {
                             ),
                             if (r.amount != null)
                               Text('${r.amount} ${r.currency}'),
-                            for (final a in r.value.allocations)
+                            Text(
+                              '${t('unallocatedMinutes')}: ${r.value.minutes - r.value.allocations.fold<int>(0, (s, a) => s + a.minutes)}',
+                            ),
+                            if (r.rateId != null)
+                              Text('${t('rates')}: ${r.rateId}'),
+                            for (final a
+                                in r.value.segments.isEmpty
+                                    ? r.value.allocations
+                                    : r.value.segments)
                               Text(
                                 '${d.plans.where((p) => p['id'] == a.planId).firstOrNull?['code'] ?? a.planId}: ${a.minutes} min',
+                              ),
+                            for (final c in d.costs.where(
+                              (c) => c.sourceId == r.value.id,
+                            ))
+                              Text(
+                                '${d.trace.plans[c.planId]?['code'] ?? c.planId} · ${d.trace.parcelCodes[d.trace.plans[c.planId]?['parcel_id']] ?? ''}: ${c.minutes} min · ${c.amount} ${c.currency}',
                               ),
                             if (machineAccess(
                               r.value.machineId,
@@ -666,8 +709,9 @@ class _MachineWorkspaceState extends State<MachineWorkspaceScreen> {
             MachineRules.day(DateTime.now()).compareTo(last.nextOn!) >= 0) ||
         (last.nextMeter != null &&
             meter != null &&
-            ExactDecimal.parse(meter)
-                    .compareTo(ExactDecimal.parse(last.nextMeter!)) >=
+            ExactDecimal.parse(
+                  meter,
+                ).compareTo(ExactDecimal.parse(last.nextMeter!)) >=
                 0);
     return [
       if (due)
@@ -698,10 +742,12 @@ class _MachineForm extends StatefulWidget {
     required this.title,
     required this.inputs,
     required this.save,
+    this.visitPlans,
   });
   final String title;
   final List<_Input> inputs;
   final Future<void> Function(Map<String, String>) save;
+  final Map<String, String>? visitPlans;
   @override
   State<_MachineForm> createState() => _MachineFormState();
 }
@@ -712,7 +758,34 @@ class _MachineFormState extends State<_MachineForm> {
   late final Map<String, String> values;
   bool busy = false;
   String? error;
+  int visitCount = 2;
+  List<_Input> get inputs => [
+    ...widget.inputs,
+    if (widget.visitPlans != null)
+      for (var n = 1; n <= visitCount; n++) ...[
+        _Input(
+          'plan$n',
+          '${t('visit')} $n · ${t('plan')}',
+          required: false,
+          choices: widget.visitPlans,
+        ),
+        _Input(
+          'minutes$n',
+          '${t('visit')} $n · ${t('minutes')}',
+          required: false,
+        ),
+      ],
+  ];
+  void addVisitControllers(int n) {
+    controllers['minutes$n'] = TextEditingController();
+    values['plan$n'] = '';
+    values['minutes$n'] = '';
+  }
+
   String t(String k) => AppLocalizations.of(context).text('machine.$k');
+  bool minuteInput(String id) =>
+      {'operatingMinutes', 'idle', 'shiftMinutes'}.contains(id) ||
+      RegExp(r'^minutes\d+$').hasMatch(id);
   @override
   void initState() {
     super.initState();
@@ -721,6 +794,11 @@ class _MachineFormState extends State<_MachineForm> {
         if (f.choices == null) f.id: TextEditingController(text: f.value),
     };
     values = {for (final f in widget.inputs) f.id: f.value};
+    if (widget.visitPlans != null) {
+      for (var n = 1; n <= visitCount; n++) {
+        addVisitControllers(n);
+      }
+    }
   }
 
   @override
@@ -739,7 +817,8 @@ class _MachineFormState extends State<_MachineForm> {
     });
     try {
       await widget.save({
-        for (final f in widget.inputs)
+        if (widget.visitPlans != null) '_visitCount': '$visitCount',
+        for (final f in inputs)
           f.id: controllers[f.id]?.text.trim() ?? values[f.id]!,
       });
       if (mounted) Navigator.pop(context, true);
@@ -747,8 +826,9 @@ class _MachineFormState extends State<_MachineForm> {
       if (mounted) {
         setState(() {
           busy = false;
-          error = AppLocalizations.of(context)
-              .failure(failure, 'machine.error');
+          error = AppLocalizations.of(
+            context,
+          ).failure(failure, 'machine.error');
         });
       }
     }
@@ -767,7 +847,7 @@ class _MachineFormState extends State<_MachineForm> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                for (final f in widget.inputs)
+                for (final f in inputs)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 5),
                     child: f.choices == null
@@ -775,11 +855,24 @@ class _MachineFormState extends State<_MachineForm> {
                             key: Key('machine-${f.id}'),
                             controller: controllers[f.id],
                             enabled: !busy,
-                            decoration: InputDecoration(labelText: f.label),
-                            validator: (v) =>
-                                f.required && (v ?? '').trim().isEmpty
-                                ? t('pick')
+                            keyboardType: minuteInput(f.id)
+                                ? TextInputType.number
                                 : null,
+                            decoration: InputDecoration(labelText: f.label),
+                            validator: (v) {
+                              final text = (v ?? '').trim();
+                              if (f.required && text.isEmpty) return t('pick');
+                              if (minuteInput(f.id) && text.isNotEmpty) {
+                                final n = int.tryParse(text);
+                                if (!RegExp(r'^\d+$').hasMatch(text) ||
+                                    n == null ||
+                                    n > 1440 ||
+                                    (f.id != 'idle' && n <= 0)) {
+                                  return t('wholeMinutes');
+                                }
+                              }
+                              return null;
+                            },
                           )
                         : DropdownButtonFormField<String>(
                             key: Key('machine-${f.id}'),
@@ -808,6 +901,39 @@ class _MachineFormState extends State<_MachineForm> {
                                 ? t('pick')
                                 : null,
                           ),
+                  ),
+                if (widget.visitPlans != null)
+                  Wrap(
+                    children: [
+                      TextButton(
+                        key: const Key('machine-add-visit'),
+                        onPressed: busy || visitCount >= MachineRun.maxSegments
+                            ? null
+                            : () {
+                                setState(() {
+                                  visitCount++;
+                                  addVisitControllers(visitCount);
+                                });
+                              },
+                        child: Text(t('addVisit')),
+                      ),
+                      TextButton(
+                        key: const Key('machine-remove-visit'),
+                        onPressed: busy || visitCount <= 1
+                            ? null
+                            : () {
+                                setState(() {
+                                  controllers
+                                      .remove('minutes$visitCount')
+                                      ?.dispose();
+                                  values.remove('plan$visitCount');
+                                  values.remove('minutes$visitCount');
+                                  visitCount--;
+                                });
+                              },
+                        child: Text(t('removeVisit')),
+                      ),
+                    ],
                   ),
                 if (error != null)
                   Text(

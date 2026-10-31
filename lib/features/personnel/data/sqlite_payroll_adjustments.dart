@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../../../core/production/source_governance.dart';
 import 'package:sqflite/sqflite.dart';
 import '../../../core/permissions/authorization.dart';
 import '../../../core/permissions/operation_scope.dart';
@@ -21,6 +22,7 @@ class SqlitePayrollAdjustments implements PayrollAdjustmentRepository {
     [adjustments],
   )).isNotEmpty;
   static Future<void> createSchema(DatabaseExecutor db) async {
+    await SourceGovernance.createSchema(db);
     await db.execute(
       '''CREATE TABLE IF NOT EXISTS $adjustments(id TEXT PRIMARY KEY,farm_id TEXT NOT NULL,payroll_id TEXT NOT NULL REFERENCES personnel_payrolls_v1(id),code TEXT NOT NULL,currency TEXT NOT NULL CHECK(currency IN ('VND','LAK')),day TEXT NOT NULL,delta TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN ('earnings','deduction')),reason TEXT NOT NULL,expected_revision INTEGER NOT NULL CHECK(expected_revision>=0),before_net TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('draft','approved','cancelled')),creator TEXT NOT NULL,created_at TEXT NOT NULL,approver TEXT,approved_at TEXT,approved_revision INTEGER,UNIQUE(farm_id,code),UNIQUE(payroll_id,approved_revision))''',
     );
@@ -482,6 +484,19 @@ class SqlitePayrollAdjustments implements PayrollAdjustmentRepository {
           'amount': ExactDecimal.parse(a.amount).toString(),
         });
       }
+      await SourceGovernance.register(
+        tx,
+        farm: d.farmId,
+        type: 'payrollCorrection',
+        id: d.id,
+        day: d.day,
+        actor: actor,
+        payload: await SourceGovernance.nativePayload(
+          tx,
+          'payrollCorrection',
+          d.id,
+        ),
+      );
       await audit(
         tx,
         d.farmId,
@@ -565,6 +580,19 @@ class SqlitePayrollAdjustments implements PayrollAdjustmentRepository {
         'payroll.adjustment.approve',
         actor,
         d.reason,
+      );
+      await SourceGovernance.approve(
+        tx,
+        farm: farmId,
+        type: 'payrollCorrection',
+        id: id,
+        expectedRevision: 1,
+        actor: actor,
+        payload: await SourceGovernance.nativePayload(
+          tx,
+          'payrollCorrection',
+          id,
+        ),
       );
       if (stamp != null) scope!.live.requireStamp(scope!.opened, stamp);
     });

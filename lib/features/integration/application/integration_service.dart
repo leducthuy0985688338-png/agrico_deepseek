@@ -1,4 +1,7 @@
 import '../domain/integration_store.dart';
+import '../../../core/approval/approval_administration.dart';
+import '../../../core/approval/approval_policy.dart';
+import '../domain/production_cost_workflow.dart';
 import '../../../core/permissions/authorization.dart';
 import '../domain/integration_snapshot.dart';
 import '../../trade/domain/trade.dart' show MoneyRounding;
@@ -9,8 +12,12 @@ class IntegrationService {
     required this.repository,
     required this.subject,
     required this.currentSubject,
+    this.productionCosts,
+    this.approvalPolicies,
   });
   final IntegrationStore repository;
+  final ProductionCostWorkflowStore? productionCosts;
+  final ApprovalAdministration? approvalPolicies;
   final AuthorizationSubject subject;
   final AuthorizationSubject? Function() currentSubject;
   static const readPermissions = {
@@ -45,6 +52,13 @@ class IntegrationService {
     if (!can(p)) throw StateError('Integrated report permission denied.');
   }
 
+  bool get canAdministerApproval =>
+      approvalPolicies != null &&
+      [
+        ApprovalRules.policyManage,
+        ApprovalRules.policyActivate,
+        ApprovalRules.auditView,
+      ].any(can);
   bool get canView => readPermissions.every(can);
   void readAccess() {
     for (final p in readPermissions) require(p);

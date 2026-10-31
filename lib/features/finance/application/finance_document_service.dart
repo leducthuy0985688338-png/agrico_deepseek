@@ -117,6 +117,7 @@ class FinanceDocumentService implements FinanceDocumentStore {
     required String category,
     String? parcelId,
     String? description,
+    String? beneficiaryPartyId,
   }) async {
     _require(canCreate, organizationId);
     if (parcelId != null) {
@@ -132,6 +133,23 @@ class FinanceDocumentService implements FinanceDocumentStore {
           parcel.id != parcelId) {
         throw StateError('Invalid finance parcel link.');
       }
+    }
+    final pending = _repository;
+    if (pending is PendingFinanceDocumentStore) {
+      return (pending as PendingFinanceDocumentStore).createPendingFinance(
+        creator: subject,
+        beneficiaryPartyId: beneficiaryPartyId,
+        currentSubject: currentSubject,
+        id: id,
+        organizationId: organizationId,
+        kind: kind,
+        occurredAt: occurredAt,
+        amountMinor: amountMinor,
+        currency: currency,
+        category: category,
+        parcelId: parcelId,
+        description: description,
+      );
     }
     return _repository.create(
       id: id,

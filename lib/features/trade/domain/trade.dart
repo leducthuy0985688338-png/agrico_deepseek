@@ -162,7 +162,9 @@ class TradeDraft {
       if (dueOn!.compareTo(day) < 0) {
         throw const FormatException('Due date before document.');
       }
-      if (planId != null) {
+      if (planId != null &&
+          !(kind == TradeKind.expense &&
+              expenseTreatment == 'directProduction')) {
         throw const FormatException('Plan comes from harvest lot.');
       }
     }
@@ -170,8 +172,16 @@ class TradeDraft {
       TradeMath.requiredText(reference);
     }
     if (kind == TradeKind.expense &&
-        !{'periodExpense', 'includedInProduction'}.contains(expenseTreatment)) {
+        !{
+          'periodExpense',
+          'includedInProduction',
+          'directProduction',
+          'commonProduction',
+        }.contains(expenseTreatment)) {
       throw const FormatException('Choose expense treatment explicitly.');
+    }
+    if (kind == TradeKind.expense && expenseTreatment == 'directProduction') {
+      TradeMath.requiredText(planId ?? '');
     }
     TradeMath.money(billed);
     if (note.length > 2000 || reference.length > 200) {

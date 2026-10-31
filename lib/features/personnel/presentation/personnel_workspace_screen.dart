@@ -17,10 +17,12 @@ class PersonnelWorkspaceScreen extends StatefulWidget {
     required this.service,
     required this.subject,
     this.catalog,
+    this.controlledApprovals = false,
   });
   final PersonnelService service;
   final AuthorizationSubject subject;
   final CompanyCatalogService? catalog;
+  final bool controlledApprovals;
   @override
   State<PersonnelWorkspaceScreen> createState() => _PersonnelWorkspaceState();
 }
@@ -63,7 +65,16 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
   );
   String? workerId;
   bool busy = false;
-  bool can(String code) => widget.service.can(widget.subject, code);
+  bool legacyActionAllowed(String code) =>
+      !widget.controlledApprovals ||
+      !{
+        PermissionCodes.attendanceVerify,
+        PermissionCodes.payrollApprove,
+        PermissionCodes.cashRecord,
+        PermissionCodes.financeCorrect,
+      }.contains(code);
+  bool can(String code) =>
+      legacyActionAllowed(code) && widget.service.can(widget.subject, code);
   bool get salary => can(PermissionCodes.payrollView);
   @override
   void initState() {
@@ -230,6 +241,7 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
   }
 
   bool employeeAccess(_PersonnelData d, String worker, String permission) =>
+      legacyActionAllowed(permission) &&
       widget.service.access.can(
         widget.subject,
         permission,

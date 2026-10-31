@@ -12,10 +12,20 @@ class IntegrationSnapshot {
     this.closingRevision,
     this.closedAt,
     this.closedBy,
+    this.machineAudit = const [],
+    this.sourceAudit = const {},
+    this.unavailableTables = const {},
+    this.sourceCoverageVerified = false,
   });
   final String farm, period;
   final int? closingRevision;
   final String? closedAt, closedBy;
+
+  /// Supplementary provenance, not part of historical closing digests.
+  final List<Map<String, Object?>> machineAudit;
+  final Map<String, List<Map<String, Object?>>> sourceAudit;
+  final Set<String> unavailableTables;
+  final bool sourceCoverageVerified;
   final Map<String, List<Map<String, Object?>>> tables;
   List<Map<String, Object?>> rows(String table) => tables[table] ?? const [];
   Map<Object?, Map<String, Object?>> index(String table) => {

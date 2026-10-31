@@ -1,4 +1,5 @@
 import 'sqlite_warehouse_stock.dart';
+import '../../../../core/production/source_governance.dart';
 import '../../../../core/permissions/operation_scope.dart';
 import '../../../../core/permissions/authorization.dart';
 import '../../domain/repositories/warehouse_repository.dart';
@@ -185,6 +186,7 @@ class SqliteInventoryRepository
   static const movementsTable = 'inventory_movements_v2';
 
   static Future<void> createSchema(DatabaseExecutor db) async {
+    await SourceGovernance.createSchema(db);
     await SqliteMonthlyDocumentSequence.createSchema(db);
     await db.execute('''CREATE TABLE IF NOT EXISTS $itemsTable (
       id TEXT PRIMARY KEY,
@@ -699,6 +701,21 @@ class SqliteInventoryRepository
         'occurred_at': movement.occurredAt.toUtc().toIso8601String(),
         'amount': amount,
       }, conflictAlgorithm: ConflictAlgorithm.abort);
+    }
+    if (costItem != null) {
+      await SourceGovernance.register(
+        tx,
+        farm: movement.farmId,
+        type: 'material',
+        id: movement.id,
+        day: date.toIso8601String().substring(0, 10),
+        actor: scope?.subject.userId ?? movement.pricedBy!,
+        payload: await SourceGovernance.nativePayload(
+          tx,
+          'material',
+          movement.id,
+        ),
+      );
     }
     if (scopeStamp != null) scope!.live.requireStamp(scope!.opened, scopeStamp);
   }

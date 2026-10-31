@@ -3,6 +3,7 @@ import 'package:excel/excel.dart';
 import '../../../core/reports/excel_report_layout.dart';
 import '../domain/machines.dart';
 import '../../personnel/domain/personnel.dart' show LaborMoney;
+import 'machine_allocation_export.dart';
 
 class MachineReport {
   const MachineReport({
@@ -13,6 +14,7 @@ class MachineReport {
     required this.expenses,
     required this.costs,
     this.machineId,
+    this.trace = const MachineTrace(),
   });
   final String farm, period;
   final String? machineId;
@@ -20,6 +22,7 @@ class MachineReport {
   final List<MachineRecord<MachineRun>> runs;
   final List<MachineRecord<MachineExpense>> expenses;
   final List<ProductionMachineCost> costs;
+  final MachineTrace trace;
   bool selected(String id, String day) =>
       (machineId == null || machineId == id) && day.startsWith('$period-');
   Excel workbook() {
@@ -252,9 +255,9 @@ class MachineReport {
       'Operating minutes',
       'Output unit',
       'Approved output',
-      'Output/hour',
+      'Output/minute',
       'Fuel litres in period',
-      'Litres/operating hour (period ratio)',
+      'Litres/operating minute (period ratio)',
     ]);
     for (final m in machines.where(
       (m) => machineId == null || m.id == machineId,
@@ -296,7 +299,7 @@ class MachineReport {
                 ? ''
                 : LaborMoney.fraction(
                     output,
-                    60,
+                    1,
                     outputMinutes,
                     6,
                     MoneyRounding.halfUp,
@@ -306,7 +309,7 @@ class MachineReport {
                 ? ''
                 : LaborMoney.fraction(
                     litres,
-                    60,
+                    1,
                     minutes,
                     6,
                     MoneyRounding.halfUp,
@@ -367,6 +370,7 @@ class MachineReport {
         numbers: {3, 4},
       );
     }
+    MachineAllocationExport.append(e, runs: rs, costs: costs, trace: trace);
     e.delete('Sheet1');
     for (final sheet in e.tables.values) {
       for (var i = 0; i < sheet.maxColumns; i++) {
