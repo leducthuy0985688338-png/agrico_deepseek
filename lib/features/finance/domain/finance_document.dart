@@ -1,5 +1,6 @@
 import '../../inventory/domain/entities/exact_decimal.dart';
 import '../../../core/identity/domain/business_reference_code.dart';
+import '../../../core/permissions/authorization.dart';
 
 /// A persisted finance document; ID and human-readable code are distinct.
 class FinanceDocument {
@@ -61,4 +62,21 @@ abstract interface class FinanceDocumentStore {
   });
 
   Future<List<FinanceDocument>> listByOrganization(String organizationId);
+}
+
+abstract interface class PendingFinanceDocumentStore {
+  Future<FinanceDocument> createPendingFinance({
+    required AuthorizationSubject creator,
+    required AuthorizationSubject? Function() currentSubject,
+    required String id,
+    required String organizationId,
+    required BusinessDocumentKind kind,
+    required DateTime occurredAt,
+    required int amountMinor,
+    required String currency,
+    required String category,
+    String? parcelId,
+    String? description,
+    String? beneficiaryPartyId,
+  });
 }

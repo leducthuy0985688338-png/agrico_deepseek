@@ -244,4 +244,62 @@ void main() {
       );
     }
   });
+  test(
+    'account and role management cannot grant guarded approval authority',
+    () async {
+      for (final permission in PermissionCodes.guardedApprovalPermissions) {
+        await expectLater(
+          service.save(
+            record: record(
+              extras: {permission},
+              extraScopes: {DataScope.allFarm},
+            ),
+            expectedRevision: null,
+            reason: 'Attempt guarded grant',
+          ),
+          throwsA(failure('denied')),
+        );
+      }
+      expect(repository.writes, 0);
+    },
+  );
+  test(
+    'explicit assignment grant permits another account but never self edits',
+    () async {
+      service = CompanyAccountAdminService(
+        repository: repository,
+        subject: admin(
+          permissions: {
+            PermissionCodes.accountView,
+            PermissionCodes.accountManage,
+            PermissionCodes.roleManage,
+            PermissionCodes.approvalAuthorityAssign,
+          },
+        ),
+        clock: () => now,
+      );
+      await service.save(
+        record: record(
+          extras: {'approval.policy.manage'},
+          extraScopes: {DataScope.allFarm},
+        ),
+        expectedRevision: null,
+        reason: 'Separately authorized policy manager',
+      );
+      expect(repository.writes, 1);
+      await expectLater(
+        service.save(
+          record: record(
+            uid: 'admin',
+            extras: {'approval.self.machineRun'},
+            extraScopes: {DataScope.allFarm},
+          ),
+          expectedRevision: 1,
+          reason: 'Self grant',
+        ),
+        throwsA(failure('identity')),
+      );
+      expect(repository.writes, 1);
+    },
+  );
 }

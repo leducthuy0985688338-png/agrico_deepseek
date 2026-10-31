@@ -31,7 +31,9 @@ abstract final class CompanyRolePolicy {
     if (role != CompanyRole.auditor) PermissionCodes.catalogRequest,
     PermissionCodes.cloudSync,
     ...switch (role) {
-      CompanyRole.systemAdmin => PermissionCodes.values,
+      CompanyRole.systemAdmin => PermissionCodes.values.difference(
+        PermissionCodes.guardedApprovalPermissions,
+      ),
       CompanyRole.director => const {
         PermissionCodes.fieldView,
         PermissionCodes.cropView,

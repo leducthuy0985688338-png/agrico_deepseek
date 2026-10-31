@@ -14,6 +14,18 @@ enum DataScope {
 /// Stable permission codes. UI and domain services share these identifiers,
 /// but authorization decisions must be made below the presentation layer.
 abstract final class PermissionCodes {
+  static const approvalAuthorityAssign = 'approval.authority.assign';
+  static const guardedApprovalPermissions = {
+    approvalAuthorityAssign,
+    'approval.policy.manage',
+    'approval.limits.manage',
+    'approval.policy.activate',
+    'approval.audit.view',
+    'approval.self.materialIssue',
+    'approval.self.machineRun',
+    'approval.self.fieldWork',
+    'approval.self.directExpense',
+  };
   static const fieldView = 'field.view';
   static const householdCreate = 'household.create';
   static const householdEdit = 'household.edit';
@@ -93,6 +105,7 @@ abstract final class PermissionCodes {
   static const dataExport = 'data.export';
 
   static const values = <String>{
+    ...guardedApprovalPermissions,
     officeRequest,
     accountView,
     accountManage,

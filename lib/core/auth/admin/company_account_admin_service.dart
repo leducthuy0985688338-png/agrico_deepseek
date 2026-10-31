@@ -82,6 +82,11 @@ class CompanyAccountAdminService {
     _require(PermissionCodes.accountManage);
     _require(PermissionCodes.roleManage);
     final profile = record.membership.profile;
+    if (profile.extraPermissions.any(
+      PermissionCodes.guardedApprovalPermissions.contains,
+    )) {
+      _require(PermissionCodes.approvalAuthorityAssign);
+    }
     if (profile.farmId != subject.farmId ||
         profile.userId != profile.membershipId ||
         profile.userId == subject.userId) {

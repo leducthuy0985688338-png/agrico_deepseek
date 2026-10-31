@@ -29,6 +29,14 @@ class LiveAuthorization {
     final s = currentSubject();
     if (s == null) return false;
     return [
+      ResourceContext(farmId: s.farmId, ownerUserId: s.userId),
+      for (final id in s.assignedFieldIds)
+        ResourceContext(farmId: s.farmId, fieldId: id),
+      for (final id in s.assignedTaskIds)
+        ResourceContext(farmId: s.farmId, taskId: id),
+      for (final id in s.teamIds) ResourceContext(farmId: s.farmId, teamId: id),
+      for (final id in s.projectIds)
+        ResourceContext(farmId: s.farmId, projectId: id),
       for (final id in s.assignedMachineIds)
         ResourceContext(farmId: s.farmId, machineId: id),
       for (final id in s.assignedWarehouseIds)
@@ -52,6 +60,10 @@ class LiveAuthorization {
       s.validUntil?.toIso8601String(),
       sorted(s.permissionCodes),
       sorted(s.dataScopes),
+      sorted(s.teamIds),
+      sorted(s.assignedFieldIds),
+      sorted(s.assignedTaskIds),
+      sorted(s.projectIds),
       sorted(s.assignedMachineIds),
       sorted(s.assignedWarehouseIds),
       sorted(s.departmentIds),

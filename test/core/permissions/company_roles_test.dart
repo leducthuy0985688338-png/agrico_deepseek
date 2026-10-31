@@ -60,19 +60,43 @@ void main() {
       });
     }
   }
-  test('system admin has every registered permission in its farm', () {
-    final p = profile([CompanyRole.systemAdmin]);
-    expect(CompanyRolePolicy.permissions(CompanyRole.systemAdmin),
-        unorderedEquals(PermissionCodes.values));
-    for (final permission in PermissionCodes.values) {
-      expect(allowed(p, permission, farm), isTrue, reason: permission);
-      expect(allowed(p, permission,
-          const ResourceContext(farmId: 'other')), isFalse, reason: permission);
-    }
-    expect(allowed(profile([CompanyRole.systemAdmin],
-        denied: {PermissionCodes.taskCreate}), PermissionCodes.taskCreate, farm),
-        isFalse);
-  });
+  test(
+    'technical admin excludes separately provisioned approval authority',
+    () {
+      final p = profile([CompanyRole.systemAdmin]);
+      expect(
+        CompanyRolePolicy.permissions(CompanyRole.systemAdmin),
+        unorderedEquals(
+          PermissionCodes.values.difference(
+            PermissionCodes.guardedApprovalPermissions,
+          ),
+        ),
+      );
+      for (final permission in PermissionCodes.values) {
+        expect(
+          allowed(p, permission, farm),
+          !PermissionCodes.guardedApprovalPermissions.contains(permission),
+          reason: permission,
+        );
+        expect(
+          allowed(p, permission, const ResourceContext(farmId: 'other')),
+          isFalse,
+          reason: permission,
+        );
+      }
+      expect(
+        allowed(
+          profile(
+            [CompanyRole.systemAdmin],
+            denied: {PermissionCodes.taskCreate},
+          ),
+          PermissionCodes.taskCreate,
+          farm,
+        ),
+        isFalse,
+      );
+    },
+  );
   test('operator alone keeps assigned task and machine access', () {
     final p = profile([CompanyRole.machineOperator]);
     expect(
