@@ -58,6 +58,12 @@ abstract final class PeriodLock {
   // dated independently and remain allowed. Cached stock is maintained atomically
   // with the guarded movements; consuming an old harvest lot is also allowed.
   static const dated = <String, String>{
+    'production_source_versions_v2': '{r}.day',
+    'production_source_audit_v2':
+        '(SELECT day FROM production_source_versions_v2 WHERE farm_id={r}.farm_id AND source_type={r}.source_type AND source_id={r}.source_id)',
+    'production_expense_policies_v2': '{r}.day',
+    'production_expense_costs_v2':
+        '(SELECT day FROM production_expense_policies_v2 WHERE id={r}.policy_id)',
     'finance_documents_v2': '{r}.occurred_at',
     'inventory_movements_v2': "date({r}.occurred_at,'+7 hours')",
     'inventory_transfers_v1': "date({r}.occurred_at,'+7 hours')",

@@ -1,4 +1,7 @@
 import '../periods/period_lock.dart';
+import '../approval/sqlite_document_approval.dart';
+import '../approval/native_approval_guard.dart';
+import '../../features/integration/data/production_cost_workflow_repository.dart';
 import '../../features/integration/data/period_close_repository.dart';
 import '../../features/personnel/data/sqlite_payroll_adjustments.dart';
 import '../../features/inventory/data/local/sqlite_warehouse_stock.dart';
@@ -136,6 +139,7 @@ class LocalRestorePreflight {
               ...SqliteTradeRepository.tables,
               ...IntegrationRepository.tables,
               ...PeriodLock.tables,
+              NativeApprovalGuard.lease,
               'production_plans_v1',
               'production_plan_tasks_v1',
               'production_plan_sequences_v1',
@@ -347,9 +351,9 @@ class LocalRestorePreflight {
       }
       if (missing.contains('agrico_location_parcel_sequences_v3') &&
           (saved['land_parcels'] as List? ?? const []).any(
-            (row) =>
-                RegExp(r'-L[0-9]{5}$')
-                    .hasMatch((row as Map)['parcel_code']?.toString() ?? ''),
+            (row) => RegExp(
+              r'-L[0-9]{5}$',
+            ).hasMatch((row as Map)['parcel_code']?.toString() ?? ''),
           )) {
         throw RestorePreflightException('tables', database: databaseName);
       }
@@ -500,10 +504,9 @@ class LocalRestorePreflight {
         }
       }
       step = 'integrity';
-      if ((await staged.rawQuery('PRAGMA integrity_check'))
-              .single
-              .values
-              .single !=
+      if ((await staged.rawQuery(
+            'PRAGMA integrity_check',
+          )).single.values.single !=
           'ok') {
         throw RestorePreflightException('integrity', database: databaseName);
       }
@@ -611,6 +614,17 @@ class LocalRestorePreflight {
         }
       }
       if (databaseName == 'agrico.db') {
+        try {
+          await ProductionCostWorkflowRepository.validate(staged);
+          await SqliteDocumentApproval.validate(staged);
+          await NativeApprovalGuard.validate(staged);
+        } catch (_) {
+          throw RestorePreflightException(
+            'integrity',
+            database: databaseName,
+            step: 'production source governance',
+          );
+        }
         try {
           await PeriodCloseRepository.validate(staged);
         } catch (_) {

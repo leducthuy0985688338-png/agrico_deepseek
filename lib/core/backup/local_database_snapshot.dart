@@ -46,6 +46,7 @@ class LocalDatabaseSnapshot {
         for (final table in tables) {
           final name = table['name']! as String;
           if (name.startsWith('company_catalog_sync_') ||
+              name=='native_approval_execution_v2' ||
               name.startsWith('company_workspace_')) {
             continue;
           }

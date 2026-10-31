@@ -1,7 +1,11 @@
 import '../periods/period_lock.dart';
+import '../approval/sqlite_document_approval.dart';
+import '../approval/native_approval_guard.dart';
 import '../../features/integration/data/period_close_repository.dart';
 
 import 'dart:convert';
+import '../production/source_governance.dart';
+import '../../features/integration/data/production_cost_workflow_repository.dart';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -129,9 +133,9 @@ class LocalRestoreActivation {
     try {
       _step = 'main.journal';
       await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
-      if ((await db.rawQuery('PRAGMA journal_mode=DELETE')).single.values.single
-              .toString()
-              .toLowerCase() !=
+      if ((await db.rawQuery(
+            'PRAGMA journal_mode=DELETE',
+          )).single.values.single.toString().toLowerCase() !=
           'delete') {
         throw StateError('Main database cannot use rollback journal.');
       }
@@ -141,18 +145,18 @@ class LocalRestoreActivation {
       await db.execute('ATTACH DATABASE ? AS restore_costs', [costsPath]);
       _step = 'costs.journal';
       await db.rawQuery('PRAGMA restore_costs.wal_checkpoint(TRUNCATE)');
-      if ((await db.rawQuery('PRAGMA restore_costs.journal_mode=DELETE'))
-              .single
-              .values
-              .single
-              .toString()
-              .toLowerCase() !=
+      if ((await db.rawQuery(
+            'PRAGMA restore_costs.journal_mode=DELETE',
+          )).single.values.single.toString().toLowerCase() !=
           'delete') {
         throw StateError('Costs database cannot use rollback journal.');
       }
       await db.execute('PRAGMA restore_costs.synchronous=FULL');
       await db.transaction((tx) async {
+        final requireApprovalB = await NativeApprovalGuard.enabled(tx);
         await PeriodLock.removeGuards(tx);
+        await NativeApprovalGuard.removeForRestore(tx);
+        await SourceGovernance.removeStorageGuardsForRestore(tx);
         for (final entry in <String, String>{
           'agrico.db': 'main',
           'agrico_costs.db': 'restore_costs',
@@ -165,6 +169,7 @@ class LocalRestoreActivation {
             // assignments or warehouse balances from the current database.
             for (final table in [
               ...PeriodLock.tables,
+              NativeApprovalGuard.lease,
               'inventory_warehouses_v1',
               'inventory_warehouse_sequences_v1',
               'inventory_warehouse_stock_v1',
@@ -257,6 +262,24 @@ class LocalRestoreActivation {
         }
         await PeriodCloseRepository.validate(tx);
         await PeriodLock.install(tx);
+        final sourceTables = (await tx.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table'",
+        )).map((r) => r['name']).toSet();
+        if (sourceTables.contains(SourceGovernance.versions)) {
+          await SourceGovernance.createSchema(tx);
+        }
+        if (sourceTables.contains(ProductionCostWorkflowRepository.policies)) {
+          await ProductionCostWorkflowRepository.createSchema(tx);
+        }
+        await ProductionCostWorkflowRepository.validate(tx);
+        await SqliteDocumentApproval.validate(tx);
+        await NativeApprovalGuard.validate(tx);
+        // Current application enforcement cannot be disabled by an older backup.
+        if (requireApprovalB || await NativeApprovalGuard.enabled(tx))
+          await NativeApprovalGuard.install(tx);
+        if (sourceTables.contains(SqliteDocumentApproval.requests)) {
+          await SqliteDocumentApproval.createSchema(tx);
+        }
         _step = 'catalog.quarantine';
         // Device send authority cannot be resurrected by a backup restore.
         final syncTables = await tx.rawQuery(
@@ -279,14 +302,14 @@ class LocalRestoreActivation {
         }
         for (final alias in ['main', 'restore_costs']) {
           _step = '$alias.integrity';
-          if ((await tx.rawQuery('PRAGMA $alias.foreign_key_check'))
-              .isNotEmpty) {
+          if ((await tx.rawQuery(
+            'PRAGMA $alias.foreign_key_check',
+          )).isNotEmpty) {
             throw const FormatException('Restored foreign keys are invalid.');
           }
-          if ((await tx.rawQuery('PRAGMA $alias.integrity_check'))
-                  .single
-                  .values
-                  .single !=
+          if ((await tx.rawQuery(
+                'PRAGMA $alias.integrity_check',
+              )).single.values.single !=
               'ok') {
             throw const FormatException(
               'Restored SQLite integrity check failed.',
