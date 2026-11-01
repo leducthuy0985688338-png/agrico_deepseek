@@ -43,6 +43,7 @@ export const companyApprovalAuthority=onCall({region:'asia-southeast1',maxInstan
       current:async(farm,kind,currency)=>(await tx.get(ref(farm,kind,currency))).data(),
       draft:async(farm,digest)=>(await tx.get(db.doc(`agrico_approval_policies/${farm}/drafts/${digest}`))).data(),
       draftHead:async(farm,kind,currency)=>(await tx.get(db.doc(`agrico_approval_policies/${farm}/draftHeads/${kind}_${currency}`))).data(),
+      audit:async(farm,action,actor,occurredAt,details)=>{tx.create(db.collection(`agrico_approval_policies/${farm}/audit`).doc(),{action,actor,occurredAt,...details});},
       propose:async(farm,kind,currency,record)=>{
         tx.create(db.doc(`agrico_approval_policies/${farm}/drafts/${record.digest}`),record);
         tx.set(db.doc(`agrico_approval_policies/${farm}/draftHeads/${kind}_${currency}`),{version:record.version,digest:record.digest});
@@ -50,7 +51,7 @@ export const companyApprovalAuthority=onCall({region:'asia-southeast1',maxInstan
       activate:async(farm,kind,currency,record,before,actor,now)=>{
         tx.set(ref(farm,kind,currency),record);
         tx.create(db.doc(`agrico_approval_policies/${farm}/versions/${record.digest}`),record);
-        tx.create(db.collection(`agrico_approval_policies/${farm}/audit`).doc(),{actor,occurredAt:now,before:before??null,after:record});
+        tx.create(db.collection(`agrico_approval_policies/${farm}/audit`).doc(),{action:'activate',actor,occurredAt:now,before:before??null,after:record});
       }
     };
     return approvalAuthority(repo,request.auth.uid,request.data,new Date().toISOString());

@@ -25,6 +25,59 @@ class _ApprovalPolicyPanelState extends State<ApprovalPolicyPanel> {
   List<Map<String, Object?>> rows = [];
   String? message;
   bool busy = false;
+  int epoch = 0;
+  Route<dynamic>? policyDialog;
+  int accessStamp = 0;
+  int get accessBits {
+    var result = 0;
+    const permissions = [
+      ApprovalRules.policyManage,
+      ApprovalRules.limitManage,
+      ApprovalRules.policyActivate,
+      ApprovalRules.auditView,
+    ];
+    for (var i = 0; i < permissions.length; i++) {
+      if (widget.can(permissions[i])) result |= 1 << i;
+    }
+    return result;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    accessStamp = accessBits;
+  }
+
+  ApprovalKind remoteKind = ApprovalKind.machineRun;
+  String remoteCurrency = 'VND';
+  bool get readable =>
+      widget.can(ApprovalRules.policyManage) ||
+      widget.can(ApprovalRules.policyActivate);
+  @override
+  void didUpdateWidget(covariant ApprovalPolicyPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final next = accessBits, revoked = (accessStamp & ~next) != 0;
+    accessStamp = next;
+    if (oldWidget.actor != widget.actor ||
+        oldWidget.farm != widget.farm ||
+        oldWidget.store != widget.store ||
+        revoked) {
+      epoch++;
+      final route = policyDialog;
+      policyDialog = null;
+      if (route != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && route.isActive) {
+            Navigator.of(context).removeRoute(route);
+          }
+        });
+      }
+      rows = [];
+      message = null;
+      busy = false;
+    }
+  }
+
   String tr(String vi, String en, String lo) =>
       switch (AppLocalizations.of(context).locale.languageCode) {
         'vi' => vi,
@@ -33,23 +86,31 @@ class _ApprovalPolicyPanelState extends State<ApprovalPolicyPanel> {
       };
   Future<void> perform(Future<void> Function() action) async {
     if (busy) return;
+    final opened = epoch;
     setState(() => busy = true);
     try {
       await action();
-      if (mounted) setState(() => message = null);
+      if (mounted && opened == epoch) setState(() => message = null);
     } catch (e) {
-      if (mounted) setState(() => message = e.toString());
+      if (mounted && opened == epoch) {
+        setState(() {
+          rows = [];
+          message = e.toString();
+        });
+      }
     } finally {
-      if (mounted) setState(() => busy = false);
+      if (mounted && opened == epoch) setState(() => busy = false);
     }
   }
 
   Future<void> load() async {
+    final opened = epoch;
     final result = await widget.store.list();
-    if (mounted) setState(() => rows = result);
+    if (mounted && opened == epoch && readable) setState(() => rows = result);
   }
 
   Future<void> propose() async {
+    final opened = epoch;
     final selfLimit = TextEditingController(),
         independent = TextEditingController(),
         reason = TextEditingController();
@@ -177,9 +238,11 @@ class _ApprovalPolicyPanelState extends State<ApprovalPolicyPanel> {
               ),
             ),
           );
+      policyDialog = route;
       final values = await Navigator.of(context).push(route);
       await route.completed;
-      if (values == null || !mounted) return;
+      if (identical(policyDialog, route)) policyDialog = null;
+      if (values == null || !mounted || opened != epoch) return;
       await load();
       final versions = rows
           .where(
@@ -211,6 +274,7 @@ class _ApprovalPolicyPanelState extends State<ApprovalPolicyPanel> {
   }
 
   Future<void> requestActivation(Map<String, Object?> row) async {
+    final opened = epoch;
     final reason = TextEditingController();
     try {
       final route = DialogRoute<String>(
@@ -259,9 +323,11 @@ class _ApprovalPolicyPanelState extends State<ApprovalPolicyPanel> {
           ],
         ),
       );
+      policyDialog = route;
       final value = await Navigator.of(context).push(route);
       await route.completed;
-      if (value == null || !mounted) return;
+      if (identical(policyDialog, route)) policyDialog = null;
+      if (value == null || !mounted || opened != epoch) return;
       final current = rows.where(
         (r) =>
             r['state'] == 'active' &&
@@ -282,9 +348,12 @@ class _ApprovalPolicyPanelState extends State<ApprovalPolicyPanel> {
   }
 
   Future<void> history() async {
+    final opened = epoch;
     final data = await widget.store.policyHistory();
-    if (!mounted || !widget.can(ApprovalRules.auditView)) return;
-    await showDialog<void>(
+    if (!mounted || opened != epoch || !widget.can(ApprovalRules.auditView)) {
+      return;
+    }
+    final route = DialogRoute<void>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(tr('Lịch sử chính sách', 'Policy audit', 'ປະຫວັດນະໂຍບາຍ')),
@@ -304,6 +373,10 @@ class _ApprovalPolicyPanelState extends State<ApprovalPolicyPanel> {
         ],
       ),
     );
+    policyDialog = route;
+    await Navigator.of(context).push(route);
+    await route.completed;
+    if (identical(policyDialog, route)) policyDialog = null;
   }
 
   @override
@@ -327,6 +400,53 @@ class _ApprovalPolicyPanelState extends State<ApprovalPolicyPanel> {
         Wrap(
           spacing: 8,
           children: [
+            if (read && widget.store is RemoteApprovalAdministration) ...[
+              SizedBox(
+                width: 180,
+                child: DropdownButtonFormField<ApprovalKind>(
+                  isExpanded: true,
+                  initialValue: remoteKind,
+                  items: [
+                    for (final k in ApprovalKind.values)
+                      DropdownMenuItem(value: k, child: Text(k.name)),
+                  ],
+                  onChanged: busy
+                      ? null
+                      : (v) => setState(() => remoteKind = v!),
+                ),
+              ),
+              SizedBox(
+                width: 110,
+                child: DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  initialValue: remoteCurrency,
+                  items: [
+                    for (final c in ['VND', 'LAK'])
+                      DropdownMenuItem(value: c, child: Text(c)),
+                  ],
+                  onChanged: busy
+                      ? null
+                      : (v) => setState(() => remoteCurrency = v!),
+                ),
+              ),
+              OutlinedButton(
+                key: const ValueKey('sync-remote-policy'),
+                onPressed: busy
+                    ? null
+                    : () => perform(() async {
+                        await (widget.store as RemoteApprovalAdministration)
+                            .syncPolicy(remoteKind, remoteCurrency);
+                        await load();
+                      }),
+                child: Text(
+                  tr(
+                    'Đồng bộ policy server',
+                    'Sync server policy',
+                    'ຊິງນະໂຍບາຍເຊີບເວີ',
+                  ),
+                ),
+              ),
+            ],
             if (read)
               OutlinedButton(
                 onPressed: busy ? null : () => perform(load),

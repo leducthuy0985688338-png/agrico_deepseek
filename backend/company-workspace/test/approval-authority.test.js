@@ -11,8 +11,9 @@ class Repo{
     this.members={manager:member('manager',['approval.policy.manage','approval.limits.manage']),
       activator:member('activator',['approval.policy.activate']),reviewer:member('reviewer',['finance.view']),admin:member('admin',[],'systemAdmin')};
     this.grant={active:true,revision:1,managerUids:['manager'],activatorUids:['activator'],partyMemberships:{vendor:[],worker:['reviewer']}};
-    this.currents=new Map();this.drafts=new Map();this.heads=new Map();this.events=[];
+    this.currents=new Map();this.drafts=new Map();this.heads=new Map();this.events=[];this.audits=[];
   }
+  async audit(farm,action,actor,time,details){this.audits.push({farm,action,actor,time,...details});}
   async member(uid){return this.members[uid];}
   async authority(){return this.grant;}
   key(farm,kind,currency){return `${farm}/${kind}/${currency}`;}
@@ -21,16 +22,17 @@ class Repo{
   async draftHead(...args){return this.heads.get(this.key(...args));}
   async propose(farm,kind,currency,record){
     assert(!this.drafts.has(`${farm}/${record.digest}`));this.drafts.set(`${farm}/${record.digest}`,structuredClone(record));
-    this.heads.set(this.key(farm,kind,currency),{version:record.version});
+    this.heads.set(this.key(farm,kind,currency),{version:record.version,digest:record.digest});
   }
   async activate(farm,kind,currency,record,before,actor,time){
     this.currents.set(this.key(farm,kind,currency),structuredClone(record));this.events.push({before,after:structuredClone(record),actor,time});
   }
 }
-const request=(operation,p)=>({operation,policy:p,digest:policyDigest(p)});
+const request=(operation,p)=>({operation,policy:p,digest:policyDigest(p),...(operation==='activate'?{expectedActive:null,expectedDraftHead:{version:p.version,digest:policyDigest(p)},expectedAuthorityRevision:1}:{})});
 async function activate(repo,p=policy()){
+  const current=await repo.current(p.farm,p.kind,p.currency);
   await approvalAuthority(repo,'manager',request('propose',p),now);
-  return approvalAuthority(repo,'activator',request('activate',p),now);
+  return approvalAuthority(repo,'activator',{...request('activate',p),expectedActive:current?{version:current.version,digest:current.digest}:null},now);
 }
 async function verify(repo,p=policy(),overrides={}){
   const current=await repo.current(p.farm,p.kind,p.currency);
@@ -111,4 +113,47 @@ test('verified beneficiary relation distinguishes an external party from an unre
   assert.deepEqual(await approvalRelations(repo,'reviewer',{farm:'farm',partyId:'worker'},now),{verified:true,users:['reviewer']});
   assert.deepEqual(await approvalRelations(repo,'reviewer',{farm:'farm',partyId:'unknown'},now),{verified:false});
   repo.grant.active=false;assert.deepEqual(await approvalRelations(repo,'reviewer',{farm:'farm',partyId:'worker'},now),{verified:false});
+});
+
+const catalogInput=(operation='listDrafts',extra={})=>({operation,farm:'farm',kind:'machineRun',currency:'VND',...extra});
+test('catalog is scoped to explicit managers/activators and preserves authenticated author',async()=>{
+ const repo=new Repo(),p=policy();await approvalAuthority(repo,'manager',request('propose',p),now);
+ const result=await approvalAuthority(repo,'activator',catalogInput(),now);
+ assert.equal(result.drafts.length,1);assert.equal(result.drafts[0].proposedBy,'manager');assert.equal(result.drafts[0].authorityRevision,1);
+ assert.equal((await approvalAuthority(repo,'manager',catalogInput('getDraft',{digest:policyDigest(p)}),now)).drafts[0].digest,policyDigest(p));
+ for(const uid of ['reviewer','admin',null])await assert.rejects(approvalAuthority(repo,uid,catalogInput(),now));
+ await assert.rejects(approvalAuthority(repo,'activator',catalogInput('listDrafts',{farm:'other'}),now));
+ repo.members.activator.active=false;await assert.rejects(approvalAuthority(repo,'activator',catalogInput(),now));
+ assert.equal(repo.audits.filter(a=>a.action==='propose').length,1);
+});
+test('CAS rejects missing, stale active/head and withdrawn authority revision',async()=>{
+ const repo=new Repo(),p=policy();await approvalAuthority(repo,'manager',request('propose',p),now);
+ for(const patch of [{expectedDraftHead:null},{expectedActive:undefined},{expectedAuthorityRevision:2},{expectedActive:{version:3,digest:policyDigest(p)}}])await assert.rejects(approvalAuthority(repo,'activator',{...request('activate',p),...patch},now));
+ const two=policy({version:2});await approvalAuthority(repo,'manager',request('propose',two),now);
+ await assert.rejects(approvalAuthority(repo,'activator',request('activate',p),now));
+ await assert.rejects(approvalAuthority(repo,'activator',catalogInput('getDraft',{digest:policyDigest(p)}),now));
+ assert.equal(repo.events.length,0);
+});
+test('catalog active proof is canonical and old grant revision never becomes active metadata',async()=>{
+ const repo=new Repo();await activate(repo);let result=await approvalAuthority(repo,'activator',catalogInput('getActive'),now);
+ assert.equal(result.active.proposedBy,'manager');assert.equal(result.active.activatedBy,'activator');
+ repo.grant.revision=2;result=await approvalAuthority(repo,'activator',catalogInput('getActive'),now);assert.equal(result.active,null);
+ repo.grant.active=false;await assert.rejects(approvalAuthority(repo,'activator',catalogInput(),now));
+});
+
+test('policy manager read does not silently require limit management or permit authorship',async()=>{
+ const repo=new Repo();await approvalAuthority(repo,'manager',request('propose',policy()),now);
+ repo.members.reader=member('reader',['approval.policy.manage']);repo.grant.managerUids.push('reader');
+ assert.equal((await approvalAuthority(repo,'reader',catalogInput(),now)).drafts.length,1);
+ await assert.rejects(approvalAuthority(repo,'reader',request('propose',policy({changedBy:'reader',version:2})),now));
+});
+
+test('revoked author caps are withheld while a separately authorized new manager can replace policy with CAS',async()=>{
+ const repo=new Repo(),one=policy();await activate(repo,one);repo.members.manager.active=false;
+ repo.members.next=member('next',['approval.policy.manage','approval.limits.manage']);repo.grant.managerUids.push('next');
+ let snapshot=await approvalAuthority(repo,'activator',catalogInput(),now);assert.equal(snapshot.active,null);assert.deepEqual(snapshot.drafts,[]);
+ const two=policy({version:2,changedBy:'next'});await approvalAuthority(repo,'next',request('propose',two),now);
+ snapshot=await approvalAuthority(repo,'activator',catalogInput(),now);assert.equal(snapshot.drafts[0].proposedBy,'next');
+ await approvalAuthority(repo,'activator',{...request('activate',two),expectedActive:snapshot.expectedActive,expectedDraftHead:snapshot.head},now);
+ assert.equal((await repo.current('farm','machineRun','VND')).version,2);
 });

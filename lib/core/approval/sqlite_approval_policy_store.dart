@@ -4,6 +4,7 @@ import '../periods/period_lock.dart';
 import '../permissions/authorization.dart';
 import 'approval_policy.dart';
 import 'approval_administration.dart';
+import 'approval_policy_catalog.dart';
 
 /// Must resolve a separately provisioned authority, never infer it from admin.
 abstract interface class ApprovalAuthority {
@@ -31,7 +32,8 @@ abstract interface class ApprovalDraftAuthority {
   );
 }
 
-class SqliteApprovalPolicyStore implements ApprovalAdministration {
+class SqliteApprovalPolicyStore
+    implements ApprovalAdministration, RemoteApprovalAdministration {
   const SqliteApprovalPolicyStore(
     this.db, {
     required this.opened,
@@ -141,6 +143,127 @@ class SqliteApprovalPolicyStore implements ApprovalAdministration {
     );
   }
 
+  @override
+  Future<void> syncPolicy(ApprovalKind kind, String currency) async {
+    requirePolicyRead();
+    final actor = currentSubject()!, a = authority;
+    if (a is! ApprovalPolicyCatalogAuthority) {
+      throw StateError('Authenticated catalog unavailable.');
+    }
+    final snapshot = await (a as ApprovalPolicyCatalogAuthority).catalog(
+      actor,
+      kind,
+      currency,
+    );
+    requirePolicyRead();
+    final remote = snapshot.active;
+    if (remote != null &&
+        !(await a!.isActivationCurrent(remote.policy, remote.digest))) {
+      throw StateError('Remote activation withdrawn.');
+    }
+    requirePolicyRead();
+    await db.transaction((tx) async {
+      requirePolicyRead();
+      final old = await active(tx, actor.farmId, kind, currency);
+      if (old != null &&
+          old.version > (snapshot.expectedActive?['version'] as int? ?? 0)) {
+        throw StateError('Stale catalog cannot roll back local policy.');
+      }
+      if (old != null &&
+          (remote == null || old.version != remote.policy.version)) {
+        final row = (await tx.query(
+          policies,
+          where: "farm_id=? AND kind=? AND currency=? AND state='active'",
+          whereArgs: [actor.farmId, kind.name, currency],
+        )).single;
+        await tx.update(
+          policies,
+          {'state': 'superseded'},
+          where: "farm_id=? AND kind=? AND currency=? AND state='active'",
+          whereArgs: [actor.farmId, kind.name, currency],
+        );
+        await event(
+          tx,
+          row,
+          'remoteSupersede',
+          actor.userId,
+          'Authenticated server snapshot replaced local metadata',
+          row,
+          {...row, 'state': 'superseded'},
+        );
+      }
+      for (final item in [?remote, ...snapshot.drafts]) {
+        final p = item.policy;
+        final row = <String, Object?>{
+          'farm_id': p.farm,
+          'kind': p.kind.name,
+          'currency': p.currency,
+          'version': p.version,
+          'payload': PeriodLock.encode(p.toJson()),
+          'digest': item.digest,
+          'state': p.active ? 'active' : 'draft',
+          'changed_by': p.changedBy,
+          'changed_at': item.proposedAt,
+          'activated_by': p.activatedBy,
+          'activated_at': p.activatedAt,
+          'authority_reference': p.authorityReference,
+        };
+        final existing = await tx.query(
+          policies,
+          where: 'farm_id=? AND kind=? AND currency=? AND version=?',
+          whereArgs: [p.farm, p.kind.name, p.currency, p.version],
+        );
+        if (existing.isNotEmpty) {
+          final before = existing.single;
+          if (before['digest'] != item.digest ||
+              before['payload'] != row['payload'] ||
+              before['changed_by'] != p.changedBy ||
+              before['state'] == 'superseded') {
+            throw StateError('Local/remote policy identity conflict.');
+          }
+          if (before['state'] == row['state']) {
+            if (p.active &&
+                before['authority_reference'] != p.authorityReference) {
+              throw StateError('Activation identity conflict.');
+            }
+            continue;
+          }
+          if (!p.active || before['state'] != 'draft') {
+            throw StateError('Policy state cannot be rolled back.');
+          }
+          await tx.update(
+            policies,
+            {
+              'state': 'active',
+              'activated_by': p.activatedBy,
+              'activated_at': p.activatedAt,
+              'authority_reference': p.authorityReference,
+            },
+            where: 'farm_id=? AND kind=? AND currency=? AND version=?',
+            whereArgs: [p.farm, p.kind.name, p.currency, p.version],
+          );
+        } else {
+          await tx.insert(policies, row);
+        }
+        await event(
+          tx,
+          row,
+          'remoteImport',
+          actor.userId,
+          'Authenticated metadata import revision ${item.authorityRevision}, server proposal ${item.proposedAt}; author preserved',
+          existing.firstOrNull,
+          (await tx.query(
+            policies,
+            where: 'farm_id=? AND kind=? AND currency=? AND version=?',
+            whereArgs: [p.farm, p.kind.name, p.currency, p.version],
+          )).single,
+        );
+      }
+      requirePolicyRead();
+      await validate(tx);
+    });
+  }
+
   static Future<DocumentApprovalPolicy?> active(
     DatabaseExecutor db,
     String farm,
@@ -172,6 +295,15 @@ class SqliteApprovalPolicyStore implements ApprovalAdministration {
   @override
   Future<List<Map<String, Object?>>> list() async {
     requirePolicyRead();
+    final a = authority;
+    if (a is ApprovalPolicyCatalogAuthority) {
+      await (a as ApprovalPolicyCatalogAuthority).catalog(
+        currentSubject()!,
+        ApprovalKind.machineRun,
+        'VND',
+      );
+      requirePolicyRead();
+    }
     final rows = await db.query(
       policies,
       where: 'farm_id=?',
@@ -197,11 +329,13 @@ class SqliteApprovalPolicyStore implements ApprovalAdministration {
           "farm_id=? AND kind=? AND currency=? AND version=? AND state='draft'",
       whereArgs: [actor.farmId, kind.name, currency, version],
     );
-    if (rows.length != 1 || rows.single['changed_by'] != actor.userId)
+    if (rows.length != 1 || rows.single['changed_by'] != actor.userId) {
       throw StateError('Only the actual policy author may publish its draft.');
+    }
     final a = authority;
-    if (a is! ApprovalDraftAuthority)
+    if (a is! ApprovalDraftAuthority) {
       throw StateError('Trusted policy proposal service is not provisioned.');
+    }
     await (a as ApprovalDraftAuthority).publishDraft(
       actor,
       decode(rows.single),
@@ -310,11 +444,15 @@ class SqliteApprovalPolicyStore implements ApprovalAdministration {
     if ((current?.version ?? 0) != expectedActive) {
       throw StateError('Active policy changed.');
     }
-    final reference = await authority?.activationReference(
-      actor,
-      p,
-      row['digest'] as String,
-    );
+    final a = authority;
+    final reference = a is ApprovalPolicyCatalogAuthority
+        ? await (a as ApprovalPolicyCatalogAuthority).activateCatalog(
+            actor,
+            p,
+            row['digest'] as String,
+            expectedActive,
+          )
+        : await a?.activationReference(actor, p, row['digest'] as String);
     if (reference == null || reference.trim().isEmpty) {
       throw StateError(
         'Trusted policy activation authority is not provisioned.',
