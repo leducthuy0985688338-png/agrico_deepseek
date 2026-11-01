@@ -13,3 +13,8 @@ abstract interface class ApprovalAdministration {
   );
   Future<List<Map<String, Object?>>> policyHistory();
 }
+
+/// Optional remote metadata synchronization; never grants business authority.
+abstract interface class RemoteApprovalAdministration {
+  Future<void> syncPolicy(ApprovalKind kind, String currency);
+}
