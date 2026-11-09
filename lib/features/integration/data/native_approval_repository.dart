@@ -21,6 +21,26 @@ import 'production_cost_workflow_repository.dart';
 import 'integration_repository.dart';
 import '../../trade/domain/trade.dart' as tradeDomain;
 
+/// A single-use permit created by the native approval adapter after review.
+final class NativeWritePermit {
+  NativeWritePermit._(this.transaction, this.farm, this.actor, Set<String> writes,
+    Set<String> financeIds)
+    : writes = Set.unmodifiable(writes),
+      financeIds = Set.unmodifiable(financeIds);
+
+  final Transaction transaction;
+  final String farm, actor;
+  final Set<String> writes, financeIds;
+  bool _used = false;
+
+  void consume(Transaction tx) {
+    if (_used || !identical(transaction, tx)) {
+      throw StateError('Native write permit is invalid for this transaction.');
+    }
+    _used = true;
+  }
+}
+
 class NativeApprovalAccessDenied extends StateError {
   NativeApprovalAccessDenied() : super('Native approval access denied.');
 }
@@ -765,12 +785,10 @@ class NativeApprovalRepository implements NativeApprovalStore {
         };
         await NativeApprovalGuard.authorized(
           tx,
-          farm: farm,
-          actor: actor,
-          writes: writes,
-          financeIds: ref.type == NativeApprovalType.finance
-              ? {ref.id}
-              : const {},
+          permit: NativeWritePermit._(
+            tx, farm, actor, writes,
+            ref.type == NativeApprovalType.finance ? {ref.id} : const {},
+          ),
           apply: () async {
             final bound = TransactionDatabase(tx);
             switch (ref.type) {
@@ -869,12 +887,16 @@ class NativeApprovalRepository implements NativeApprovalStore {
             final s = await read(tx, ref);
             await NativeApprovalGuard.authorized(
               tx,
-              farm: farm,
-              actor: require(
-                ApprovalRules.nativeApprovePermission(s.context.kind),
-                resource: s.context.resource,
-              ).userId,
-              writes: {'${s.table}:${ref.id}'},
+              permit: NativeWritePermit._(
+                tx,
+                farm,
+                require(
+                  ApprovalRules.nativeApprovePermission(s.context.kind),
+                  resource: s.context.resource,
+                ).userId,
+                {'${s.table}:${ref.id}'},
+                const {},
+              ),
               apply: () async {
                 await tx.update(
                   s.table,
@@ -1228,10 +1250,7 @@ class NativeApprovalRepository implements NativeApprovalStore {
     }
     await NativeApprovalGuard.authorized(
       tx,
-      farm: farm,
-      actor: actor,
-      writes: writes,
-      financeIds: finances,
+      permit: NativeWritePermit._(tx, farm, actor, writes, finances),
       apply: () async {
         final bound = TransactionDatabase(tx),
             trade = SqliteTradeRepository(

@@ -47,12 +47,13 @@ Future<void> syntheticPolicy(
   SyntheticApprovalAuthority authority,
   ApprovalKind kind,
   String currency, {
+  String farm = 'f',
   int version = 1,
   String selfLimit = '1000',
   String independentLimit = '1000000000000000000000000000000',
 }) async {
   await SqliteApprovalPolicyStore.createSchema(db);
-  var actor = approvalUser('test-policy-author');
+  var actor = approvalUser('test-policy-author', farm: farm);
   SqliteApprovalPolicyStore store() => SqliteApprovalPolicyStore(
     db,
     opened: actor,
@@ -61,7 +62,7 @@ Future<void> syntheticPolicy(
   );
   await store().propose(
     DocumentApprovalPolicy(
-      farm: 'f',
+      farm: farm,
       kind: kind,
       currency: currency,
       version: version,
@@ -74,7 +75,7 @@ Future<void> syntheticPolicy(
     ),
     'Synthetic native-adapter test configuration',
   );
-  actor = approvalUser('test-policy-activator');
+  actor = approvalUser('test-policy-activator', farm: farm);
   await store().activate(
     kind,
     currency,

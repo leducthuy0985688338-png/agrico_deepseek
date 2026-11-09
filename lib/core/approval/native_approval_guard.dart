@@ -4,6 +4,7 @@ import 'package:sqflite/sqflite.dart';
 import '../periods/period_lock.dart';
 import 'sqlite_document_approval.dart';
 import 'transaction_database.dart';
+import '../../features/integration/data/native_approval_repository.dart' show NativeWritePermit;
 
 /// Installed by the application bootstrap, independently of policy activation.
 /// Module-only SQLite fixtures are not a bootstrapped application database.
@@ -344,12 +345,14 @@ abstract final class NativeApprovalGuard {
 
   static Future<T> authorized<T>(
     Transaction tx, {
-    required String farm,
-    required String actor,
-    required Set<String> writes,
-    Set<String> financeIds = const {},
+    required NativeWritePermit permit,
     required Future<T> Function() apply,
   }) async {
+    permit.consume(tx);
+    final farm = permit.farm;
+    final actor = permit.actor;
+    final writes = permit.writes;
+    final financeIds = permit.financeIds;
     await tx.insert(lease, {
       'singleton': 1,
       'farm_id': farm,

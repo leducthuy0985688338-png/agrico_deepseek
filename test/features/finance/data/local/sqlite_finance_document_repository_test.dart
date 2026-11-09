@@ -1,7 +1,15 @@
+import 'package:agrico_deepseek/core/approval/approval_policy.dart';
+import 'package:agrico_deepseek/core/approval/native_approval_store.dart';
+import 'package:agrico_deepseek/core/approval/sqlite_approval_policy_store.dart';
+import 'package:agrico_deepseek/core/approval/sqlite_document_approval.dart';
+import 'package:agrico_deepseek/core/catalog/sqlite_company_catalog.dart';
+import 'package:agrico_deepseek/features/integration/data/native_approval_repository.dart';
+import '../../../../support/approval_b_test_support.dart';
 import 'package:agrico_deepseek/core/approval/native_approval_guard.dart';
 import 'package:agrico_deepseek/core/approval/transaction_database.dart';
 import 'package:agrico_deepseek/features/finance/domain/finance_document.dart';
 import 'package:agrico_deepseek/core/periods/period_lock.dart';
+import 'package:agrico_deepseek/core/permissions/authorization.dart';
 import 'package:agrico_deepseek/core/identity/domain/business_reference_code.dart';
 import 'package:agrico_deepseek/features/finance/data/local/sqlite_finance_document_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,12 +18,34 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 void main() {
   sqfliteFfiInit();
   late Database db;
+  late SyntheticApprovalAuthority authority;
   late SqliteFinanceDocumentRepository repository;
 
   setUp(() async {
     db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
     await SqliteFinanceDocumentRepository.createSchema(db);
     await PeriodLock.createSchema(db);
+    await SqliteDocumentApproval.createSchema(db);
+    await SqliteCompanyCatalog.createSchema(db);
+    await NativeApprovalGuard.install(db);
+    authority = SyntheticApprovalAuthority();
+    for (final farm in ['farm-a', 'farm-b']) {
+      final party = 'party-$farm';
+      authority.partyUsers[party] = {};
+      await db.insert('company_catalog_entries_v1', {
+        'id': party,
+        'farm_id': farm,
+        'kind': 'supplier',
+        'code': party,
+        'name': party,
+        'name_key': party,
+        'active': 1,
+        'revision': 1,
+      });
+      for (final kind in [ApprovalKind.cashPayment, ApprovalKind.cashReceipt]) {
+        await syntheticPolicy(db, authority, kind, 'LAK', farm: farm);
+      }
+    }
     repository = SqliteFinanceDocumentRepository(db);
   });
   tearDown(() async => db.close());
@@ -29,13 +59,21 @@ void main() {
     required String currency,
     required String category,
     String? description,
-  }) => db.transaction((tx) => NativeApprovalGuard.authorized(
-    tx,
-    farm: organizationId,
-    actor: 'reviewer',
-    writes: const {},
-    financeIds: {id},
-    apply: () => SqliteFinanceDocumentRepository(TransactionDatabase(tx)).create(
+  }) async {
+    final maker = approvalUser('maker', farm: organizationId);
+    final reviewer = approvalUser('reviewer', farm: organizationId);
+    NativeApprovalRepository workflow(AuthorizationSubject actor) => NativeApprovalRepository(
+      SqliteApprovalPolicyStore(
+        db,
+        opened: actor,
+        currentSubject: () => actor,
+        authority: authority,
+      ),
+    );
+    final ref = NativeApprovalRef(NativeApprovalType.finance, id);
+    await repository.createPendingFinance(
+      creator: maker,
+      currentSubject: () => maker,
       id: id,
       organizationId: organizationId,
       kind: kind,
@@ -44,8 +82,17 @@ void main() {
       currency: currency,
       category: category,
       description: description,
-    ),
-  ));
+      beneficiaryPartyId: 'party-$organizationId',
+    );
+    if ((await repository.listByOrganization(organizationId))
+        .every((document) => document.id != id)) {
+      await workflow(maker).submit(ref);
+    }
+    final decision = await workflow(reviewer).approve(ref, 'Independent review');
+    expect(decision.allowed, isTrue);
+    return (await repository.listByOrganization(organizationId))
+        .singleWhere((document) => document.id == id);
+  }
 
   test('denied posting in a borrowed transaction does not reserve a number', () async {
     await db.transaction((tx) async {
@@ -65,6 +112,22 @@ void main() {
     });
     expect(await db.query('monthly_document_sequences'), isEmpty);
     expect(await repository.listByOrganization('farm-a'), isEmpty);
+  });
+
+  test('actor and document IDs alone cannot issue a native lease', () async {
+    await db.transaction((tx) async {
+      expect(
+        () => Function.apply(NativeApprovalGuard.authorized<void>, [tx], {
+          #farm: 'farm-a',
+          #actor: 'reviewer',
+          #writes: <String>{},
+          #financeIds: {'forged'},
+          #apply: () async {},
+        }),
+        throwsA(isA<NoSuchMethodError>()),
+      );
+      expect(await tx.query(NativeApprovalGuard.lease), isEmpty);
+    });
   });
 
   test('a persisted lease alone cannot authorize a direct write', () async {
@@ -157,14 +220,19 @@ void main() {
     expect(await repository.listByOrganization('farm-a'), isEmpty);
   });
 
-  test('duplicate document ID rolls back sequence', () async {
+  test('failed Finance insert rolls back sequence and approval', () async {
     Future<String> create(String id) async => (await post(
       id: id, organizationId: 'farm-a',
       kind: BusinessDocumentKind.receipt, occurredAt: DateTime.utc(2026, 9, 25),
       amountMinor: 100, currency: 'LAK', category: 'Sale',
     )).code;
     expect(await create('finance-1'), 'THU-202609-001');
-    await expectLater(create('finance-1'), throwsA(isA<DatabaseException>()));
+    await db.execute(
+      "CREATE TRIGGER fail_test_post BEFORE INSERT ON finance_documents_v2 "
+      "WHEN NEW.id='rejected-post' BEGIN SELECT RAISE(ABORT,'test insert failure'); END",
+    );
+    await expectLater(create('rejected-post'), throwsA(isA<DatabaseException>()));
+    expect(await repository.listByOrganization('farm-a'), hasLength(1));
     expect(await create('finance-2'), 'THU-202609-002');
   });
 }
