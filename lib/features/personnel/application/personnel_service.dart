@@ -1,3 +1,4 @@
+import '../../../core/approval/native_approval_store.dart';
 import '../../../core/permissions/operation_scope.dart';
 import '../../../core/permissions/live_authorization.dart';
 import '../../../core/permissions/authorization.dart';
@@ -5,7 +6,11 @@ import '../domain/personnel.dart';
 export '../domain/personnel.dart';
 
 class PersonnelService {
-  const PersonnelService(this.repository, {required this.currentSubject});
+  const PersonnelService(this.repository, {
+    required this.currentSubject,
+    this.nativeApproval,
+  });
+  final NativeApprovalStore? nativeApproval;
   final AuthorizationSubject? Function() currentSubject;
   LiveAuthorization get access => LiveAuthorization(currentSubject);
   final PersonnelRepository repository;
@@ -181,6 +186,20 @@ class PersonnelService {
   }) {
     authorize(s, PermissionCodes.payrollApprove);
     authorize(s, PermissionCodes.cashRecord);
+    final approval = nativeApproval;
+    if (approval != null) {
+      LaborMoney.date(day);
+      if (day.compareTo(LaborMoney.day(DateTime.now())) > 0) {
+        throw const FormatException('Invalid financial posting.');
+      }
+      if (approval.actorId != s.userId) throw StateError('Approval actor mismatch.');
+      return approval.proposeCommand(
+        id: id,
+        operation: 'payrollPay',
+        target: NativeApprovalRef(NativeApprovalType.payroll, payrollId),
+        payload: {'amount': amount, 'currency': currency, 'day': day, 'reason': note},
+      );
+    }
     return store(s, [
       PermissionCodes.payrollApprove,
       PermissionCodes.cashRecord,
@@ -328,6 +347,22 @@ class PersonnelService {
       PermissionCodes.cashRecord,
     ]) {
       authorize(s, p);
+    }
+    final approval = nativeApproval;
+    if (approval != null) {
+      if (approval.actorId != s.userId) throw StateError('Approval actor mismatch.');
+      return approval.proposeCommand(
+        id: id,
+        operation: reversesId == null ? 'payrollRefund' : 'payrollRefundReverse',
+        target: NativeApprovalRef(NativeApprovalType.payroll, payrollId),
+        payload: {
+          'amount': amount,
+          'currency': currency,
+          'day': day,
+          'reason': reason,
+          if (reversesId != null) 'refundId': reversesId,
+        },
+      );
     }
     return adjustmentsStore(s, [
       PermissionCodes.payrollView,

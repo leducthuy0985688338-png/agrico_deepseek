@@ -644,6 +644,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
                 ? PersonnelWorkspaceScreen(
                     service: PersonnelService(
                       SqlitePersonnelRepository(deps.database),
+                      nativeApproval: nativeApproval,
                       currentSubject: () => mounted ? widget.subject : null,
                     ),
                     subject: deps.subject,
@@ -714,6 +715,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       }
       final trade = TradeService(
         SqliteTradeRepository(deps.database),
+        nativeApproval: nativeApproval,
         subject: deps.subject,
         currentSubject: () => mounted ? widget.subject : null,
       );

@@ -1072,6 +1072,10 @@ class NativeApprovalRepository implements NativeApprovalStore {
         !(allowed[operation]?.contains(target.type) ?? false))
       throw const FormatException('Unsupported native approval command.');
     final source = await read(tx, target);
+    if (payload['currency'] != null &&
+        payload['currency'] != source.context.currency) {
+      throw const FormatException('Command currency must match its source.');
+    }
     final actor = require(
       PermissionCodes.financeCreate,
       resource: source.context.resource,

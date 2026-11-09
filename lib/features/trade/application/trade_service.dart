@@ -1,3 +1,4 @@
+import '../../../core/approval/native_approval_store.dart';
 import '../../../core/permissions/authorization.dart';
 import '../domain/trade.dart';
 export '../domain/trade.dart';
@@ -7,8 +8,10 @@ class TradeService {
     this.repository, {
     required this.subject,
     required this.currentSubject,
+    this.nativeApproval,
   });
   final TradeRepository repository;
+  final NativeApprovalStore? nativeApproval;
   final AuthorizationSubject subject;
   final AuthorizationSubject? Function() currentSubject;
   bool can(String permission) {
@@ -109,6 +112,16 @@ class TradeService {
     require(PermissionCodes.financeCreate);
     require(PermissionCodes.cashRecord);
     require(PermissionCodes.financeView);
+    final approval = nativeApproval;
+    if (approval != null) {
+      if (approval.actorId != subject.userId) throw StateError('Approval actor mismatch.');
+      return approval.proposeCommand(
+        id: id,
+        operation: 'tradeSettle',
+        target: NativeApprovalRef(NativeApprovalType.trade, documentId),
+        payload: {'amount': amount, 'currency': currency, 'day': day, 'reference': reference},
+      );
+    }
     return repository.settle(
       subject.farmId,
       id,
@@ -130,6 +143,16 @@ class TradeService {
     require(PermissionCodes.financeCorrect);
     require(PermissionCodes.cashRecord);
     require(PermissionCodes.financeView);
+    final approval = nativeApproval;
+    if (approval != null) {
+      if (approval.actorId != subject.userId) throw StateError('Approval actor mismatch.');
+      return approval.proposeCommand(
+        id: id,
+        operation: 'tradeReverse',
+        target: NativeApprovalRef(NativeApprovalType.trade, p.documentId),
+        payload: {'paymentId': p.id, 'currency': p.currency, 'day': day, 'reason': reason},
+      );
+    }
     return repository.reversePayment(
       subject.farmId,
       p.id,

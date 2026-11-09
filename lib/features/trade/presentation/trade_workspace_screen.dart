@@ -44,6 +44,14 @@ class _TradeWorkspaceState extends State<TradeWorkspaceScreen> {
   final period = TextEditingController(text: TradeMath.day().substring(0, 7));
   bool busy = false;
   String t(String k) => AppLocalizations.of(context).text('trade.$k');
+  bool canRequestCash(String permission) =>
+      widget.service.nativeApproval != null
+          ? widget.service.can(permission)
+          : can(permission);
+
+  String cashActionLabel(String key) => widget.service.nativeApproval == null
+      ? t(key)
+      : "${t(key)} · ${AppLocalizations.of(context).text('catalog.status.pending')}";
   bool can(String p) =>
       (!widget.controlledApprovals ||
           !{
@@ -350,11 +358,11 @@ class _TradeWorkspaceState extends State<TradeWorkspaceScreen> {
           if (r.status == 'posted' &&
               d.kind != TradeKind.harvest &&
               r.balance != '0' &&
-              can(PermissionCodes.cashRecord) &&
-              can(PermissionCodes.financeCreate))
+              canRequestCash(PermissionCodes.cashRecord) &&
+              canRequestCash(PermissionCodes.financeCreate))
             TextButton(
               onPressed: busy ? null : () => pay(r),
-              child: Text(t('pay')),
+              child: Text(cashActionLabel('pay')),
             ),
           if (r.status != 'void' && can(PermissionCodes.financeCorrect))
             TextButton(
@@ -523,11 +531,11 @@ class _TradeWorkspaceState extends State<TradeWorkspaceScreen> {
                               '${p.reference} · ${p.reversed ? t('voided') : t('posted')}',
                             ),
                             if (!p.reversed &&
-                                can(PermissionCodes.financeCorrect) &&
-                                can(PermissionCodes.cashRecord))
+                                canRequestCash(PermissionCodes.financeCorrect) &&
+                                canRequestCash(PermissionCodes.cashRecord))
                               TextButton(
                                 onPressed: busy ? null : () => reverse(p),
-                                child: Text(t('reverse')),
+                                child: Text(cashActionLabel('reverse')),
                               ),
                           ]),
                       ]),

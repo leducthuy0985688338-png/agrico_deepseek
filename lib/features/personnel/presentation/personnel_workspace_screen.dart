@@ -240,8 +240,14 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
     }
   }
 
-  bool employeeAccess(_PersonnelData d, String worker, String permission) =>
-      legacyActionAllowed(permission) &&
+  bool employeeAccess(
+    _PersonnelData d,
+    String worker,
+    String permission, {
+    bool financeRequest = false,
+  }) =>
+      ((financeRequest && widget.service.nativeApproval != null) ||
+          legacyActionAllowed(permission)) &&
       widget.service.access.can(
         widget.subject,
         permission,
@@ -1233,13 +1239,19 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
                                                     p.remaining,
                                                   ).coefficient >
                                                   BigInt.zero &&
-                                              can(
-                                                PermissionCodes.payrollApprove,
+                                              employeeAccess(
+                                                d, p.workerId, PermissionCodes.payrollApprove,
+                                                financeRequest: true,
                                               ) &&
-                                              can(PermissionCodes.cashRecord))
+                                              employeeAccess(
+                                                d, p.workerId, PermissionCodes.cashRecord,
+                                                financeRequest: true,
+                                              ))
                                             TextButton(
                                               onPressed: () => pay(p),
-                                              child: Text(l.text('hr.payment')),
+                                              child: Text(widget.service.nativeApproval == null
+                                                  ? l.text('hr.payment')
+                                                  : "${l.text('hr.payment')} · ${l.text('catalog.status.pending')}"),
                                             ),
                                         ],
                                       ),
@@ -1355,11 +1367,13 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
                                             d,
                                             p.workerId,
                                             PermissionCodes.payrollApprove,
+                                            financeRequest: true,
                                           ) &&
                                           employeeAccess(
                                             d,
                                             p.workerId,
                                             PermissionCodes.cashRecord,
+                                            financeRequest: true,
                                           ))
                                         TextButton(
                                           key: Key('hr-payroll-refund-${p.id}'),
@@ -1390,11 +1404,13 @@ class _PersonnelWorkspaceState extends State<PersonnelWorkspaceScreen> {
                                                     p.workerId,
                                                     PermissionCodes
                                                         .payrollApprove,
+                                            financeRequest: true,
                                                   ) &&
                                                   employeeAccess(
                                                     d,
                                                     p.workerId,
                                                     PermissionCodes.cashRecord,
+                                            financeRequest: true,
                                                   )
                                               ? TextButton(
                                                   onPressed: busy

@@ -1,3 +1,5 @@
+import 'package:agrico_deepseek/features/personnel/application/personnel_service.dart' show PersonnelService;
+import 'package:agrico_deepseek/features/trade/application/trade_service.dart' show TradeService;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:agrico_deepseek/core/approval/approval_policy.dart';
@@ -705,16 +707,39 @@ void main() {
       await expense();
       await approve(NativeApprovalType.trade, 'expense');
       live = approvalUser('maker');
-      await flow().proposeCommand(
-        id: 'paid',
-        operation: 'tradeSettle',
-        target: const NativeApprovalRef(NativeApprovalType.trade, 'expense'),
-        payload: {
-          'amount': '100',
-          'day': '2026-10-22',
-          'reference': 'SYNTHETIC-PAYMENT',
-        },
+      final trade = TradeService(
+        SqliteTradeRepository(db),
+        subject: live,
+        currentSubject: () => live,
+        nativeApproval: flow(),
       );
+      final maker = live;
+      live = approvalUser(
+        'maker',
+        permissions: {...PermissionCodes.values}..remove(PermissionCodes.cashRecord),
+      );
+      expect(
+        () => trade.settle(
+          id: 'denied-payment',
+          documentId: 'expense',
+          amount: '100',
+          currency: 'VND',
+          day: '2026-10-22',
+          reference: 'DENIED',
+        ),
+        throwsStateError,
+      );
+      expect(await db.query(NativeApprovalGuard.commands), isEmpty);
+      live = maker;
+      await trade.settle(
+        id: 'paid',
+        documentId: 'expense',
+        amount: '100',
+        currency: 'VND',
+        day: '2026-10-22',
+        reference: 'SYNTHETIC-PAYMENT',
+      );
+      expect(await db.query('finance_documents_v2'), isEmpty);
       await approve(NativeApprovalType.command, 'paid');
       live = approvalUser('maker');
       await flow().proposeCommand(
@@ -902,16 +927,34 @@ void main() {
       await payrollReady();
       live = approvalUser('maker');
       const target = NativeApprovalRef(NativeApprovalType.payroll, 'payroll');
-      await flow().proposeCommand(
-        id: 'salary-for-refund',
-        operation: 'payrollPay',
-        target: target,
-        payload: {
-          'amount': '80015',
-          'day': '2026-10-22',
-          'reason': 'Synthetic salary',
-        },
+      final personnel = PersonnelService(
+        getHr(),
+        currentSubject: () => live,
+        nativeApproval: flow(),
       );
+      expect(
+        () => personnel.recordPayment(
+          approvalUser('maker', farm: 'other'),
+          id: 'cross-farm',
+          payrollId: target.id,
+          amount: '80015',
+          currency: 'VND',
+          day: '2026-10-22',
+          note: 'Denied',
+        ),
+        throwsStateError,
+      );
+      expect(await db.query(NativeApprovalGuard.commands), isEmpty);
+      await personnel.recordPayment(
+        live,
+        id: 'salary-for-refund',
+        payrollId: target.id,
+        amount: '80015',
+        currency: 'VND',
+        day: '2026-10-22',
+        note: 'Synthetic salary',
+      );
+      expect(await db.query('personnel_payments_v1'), isEmpty);
       await approve(NativeApprovalType.command, 'salary-for-refund');
       await getHr().createPayrollAdjustment(
         const hr.PayrollAdjustmentDraft(
