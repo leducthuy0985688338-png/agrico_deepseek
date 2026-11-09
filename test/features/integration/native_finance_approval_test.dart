@@ -187,7 +187,11 @@ void main() {
           currency: 'VND',
           category: 'BYPASS',
         ),
-        throwsA(isA<DatabaseException>()),
+        throwsA(isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          'Finance approval execution scope required.',
+        )),
       );
       await expectLater(
         db.transaction(
@@ -203,7 +207,11 @@ void main() {
             receipt: false,
           ),
         ),
-        throwsA(isA<DatabaseException>()),
+        throwsA(isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          'Finance approval execution scope required.',
+        )),
       );
       await expectLater(
         db.transaction(
@@ -218,7 +226,11 @@ void main() {
             description: 'Direct trade helper',
           ),
         ),
-        throwsA(isA<DatabaseException>()),
+        throwsA(isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          'Finance approval execution scope required.',
+        )),
       );
       expect(await ledgerCount(), 0);
     },

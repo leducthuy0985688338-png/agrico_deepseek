@@ -1,3 +1,4 @@
+import 'package:agrico_deepseek/core/periods/period_lock.dart';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -52,6 +53,7 @@ void main() {
           'revision': 1,
         });
         await SqliteFinanceDocumentRepository.createSchema(db);
+        await PeriodLock.createSchema(db);
         await SqliteDocumentApproval.createSchema(db);
         await syntheticPolicy(db, authority, ApprovalKind.cashPayment, 'VND');
         await NativeApprovalGuard.install(db);

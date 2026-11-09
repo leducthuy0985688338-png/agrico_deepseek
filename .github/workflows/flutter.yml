@@ -94,10 +94,19 @@ jobs:
       # because the SHA-256 differs from the package's pinned checksum.
       # Do not disable checksum verification or accept that binary.
       - run: flutter build apk --debug --target-platform android-arm64
+      - name: Generate and verify APK checksum
+        working-directory: build/app/outputs/flutter-apk
+        run: |
+          test -s app-debug.apk
+          sha256sum app-debug.apk > app-debug.apk.sha256
+          sha256sum --check app-debug.apk.sha256
       - uses: actions/upload-artifact@v4
         with:
           name: agrico-debug-apk
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          path: |
+            build/app/outputs/flutter-apk/app-debug.apk
+            build/app/outputs/flutter-apk/app-debug.apk.sha256
       - name: Remove Firebase config
         if: always()
         run: rm -f android/app/google-services.json
