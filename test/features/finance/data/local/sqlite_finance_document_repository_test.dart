@@ -113,6 +113,30 @@ void main() {
     expect((await create()).code, 'THU-202609-001');
   });
 
+  test('rejects a replaced period state table with the same columns', () async {
+    await db.execute('DROP TABLE ${PeriodLock.states}');
+    await db.execute(
+      'CREATE TABLE ${PeriodLock.states}(farm_id, period, revision, status, event_id)',
+    );
+    await expectLater(
+      post(
+        id: 'replaced-state',
+        organizationId: 'farm-a',
+        kind: BusinessDocumentKind.receipt,
+        occurredAt: DateTime.utc(2026, 9, 25),
+        amountMinor: 100,
+        currency: 'LAK',
+        category: 'Sale',
+      ),
+      throwsA(isA<StateError>().having(
+        (error) => error.message,
+        'message',
+        'Finance period state table failed verification.',
+      )),
+    );
+    expect(await repository.listByOrganization('farm-a'), isEmpty);
+  });
+
   test('duplicate document ID rolls back sequence', () async {
     Future<String> create(String id) async => (await post(
       id: id, organizationId: 'farm-a',

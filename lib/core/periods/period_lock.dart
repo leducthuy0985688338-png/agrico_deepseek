@@ -38,11 +38,15 @@ abstract final class PeriodLock {
     "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
     [states],
   )).isNotEmpty;
-  static Future<void> createSchema(DatabaseExecutor db) async {
-    await db.execute('''CREATE TABLE IF NOT EXISTS $states(
+  static const _stateTableSql = '''CREATE TABLE $states(
       farm_id TEXT NOT NULL,period TEXT NOT NULL,revision INTEGER NOT NULL CHECK(revision>0),
       status TEXT NOT NULL CHECK(status IN ('closed','open')),event_id TEXT NOT NULL,
-      PRIMARY KEY(farm_id,period))''');
+      PRIMARY KEY(farm_id,period))''';
+
+  static Future<void> createSchema(DatabaseExecutor db) async {
+    await db.execute(
+      _stateTableSql.replaceFirst('CREATE TABLE ', 'CREATE TABLE IF NOT EXISTS '),
+    );
     await db.execute(
       '''CREATE TABLE IF NOT EXISTS $events(
       id TEXT PRIMARY KEY,farm_id TEXT NOT NULL,period TEXT NOT NULL,revision INTEGER NOT NULL,
@@ -124,11 +128,18 @@ abstract final class PeriodLock {
 
   /// Verify on the same transaction that will write the posted document.
   static Future<void> requireFinanceGuards(Transaction tx) async {
-    if (!await enabled(tx)) {
+    final stateSchema = await tx.rawQuery(
+      "SELECT sql FROM main.sqlite_master WHERE type='table' AND name=?",
+      [states],
+    );
+    if (stateSchema.isEmpty) {
       throw StateError('Finance period state table is missing.');
     }
+    if (stateSchema.single['sql'] != _stateTableSql) {
+      throw StateError('Finance period state table failed verification.');
+    }
     final rows = await tx.rawQuery(
-      "SELECT name, sql FROM sqlite_master WHERE type='trigger' AND tbl_name=?",
+      "SELECT name, sql FROM main.sqlite_master WHERE type='trigger' AND tbl_name=?",
       [_financeTable],
     );
     final definitions = {for (final row in rows) row['name']: row['sql']};
@@ -142,8 +153,6 @@ abstract final class PeriodLock {
         throw StateError('Finance period $action trigger failed verification.');
       }
     }
-    // Validate that the table referenced by the guards has the required columns.
-    await tx.rawQuery('SELECT farm_id, period, status FROM $states LIMIT 0');
   }
 
   static Future<void> install(DatabaseExecutor db) async {
