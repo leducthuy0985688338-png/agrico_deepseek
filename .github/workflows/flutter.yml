@@ -78,7 +78,11 @@ jobs:
           test -n "$GOOGLE_SERVICES_JSON"
           printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
       - run: flutter pub get
-      - run: flutter build apk --debug
+      # Build the supported 64-bit Android target explicitly. The sqlite3 3.5.2
+      # native-assets hook currently rejects its downloaded 32-bit ARM binary
+      # because the SHA-256 differs from the package's pinned checksum.
+      # Do not disable checksum verification or accept that binary.
+      - run: flutter build apk --debug --target-platform android-arm64
       - uses: actions/upload-artifact@v4
         with:
           name: agrico-debug-apk
