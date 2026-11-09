@@ -1,3 +1,4 @@
+import '../../../support/approved_finance_fixture.dart';
 import 'dart:async';
 import 'package:agrico_deepseek/core/identity/domain/business_reference_code.dart';
 import 'package:agrico_deepseek/features/finance/data/local/sqlite_finance_document_repository.dart';
@@ -75,14 +76,14 @@ void main() {
     () async {
       final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
       try {
-        await SqliteFinanceDocumentRepository.createSchema(db);
-        final repository = SqliteFinanceDocumentRepository(db);
+        final posting = ApprovedFinanceFixture(db);
+        await posting.initialize();
         for (final doc in [
           payment('one'),
           payment('two', currency: 'VND'),
           payment('foreign'),
         ]) {
-          await repository.create(
+          await posting.post(
             id: doc.id,
             organizationId: doc.id == 'foreign' ? 'other' : 'farm',
             kind: doc.kind,
@@ -94,7 +95,7 @@ void main() {
             description: doc.description,
           );
         }
-        await repository.create(
+        await posting.post(
           id: 'receipt',
           organizationId: 'farm',
           kind: BusinessDocumentKind.receipt,

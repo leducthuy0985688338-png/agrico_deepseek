@@ -1,3 +1,4 @@
+import '../../../support/approved_finance_fixture.dart';
 import 'package:agrico_deepseek/core/identity/domain/business_reference_code.dart';
 import 'package:agrico_deepseek/features/finance/application/finance_v2_report.dart';
 import 'package:agrico_deepseek/features/finance/data/local/sqlite_finance_document_repository.dart';
@@ -11,7 +12,8 @@ void main() {
   test('exports scoped v2 documents and separate currency totals', () async {
     final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
     try {
-      await SqliteFinanceDocumentRepository.createSchema(db);
+      final posting = ApprovedFinanceFixture(db);
+      await posting.initialize();
       final store = SqliteFinanceDocumentRepository(db);
       Future<void> add(
         String id,
@@ -20,7 +22,7 @@ void main() {
         BusinessDocumentKind kind,
         int amount,
       ) async {
-        await store.create(
+        await posting.post(
           id: id,
           organizationId: organization,
           kind: kind,
