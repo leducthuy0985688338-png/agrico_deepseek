@@ -1,0 +1,45 @@
+name: P0 Finance Security isolated acceptance
+on:
+  push:
+    branches: [fix/p0-finsec-onepass-20261109]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: p0-finsec-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  static-and-focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Install SQLite native dependencies
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+      - run: flutter pub get
+      - name: Analyzer
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Focused Finance and approval tests
+        run: |
+          flutter test test/features/finance/data/local/sqlite_finance_document_repository_test.dart test/features/finance/application/finance_document_service_test.dart test/features/integration/native_finance_approval_test.dart test/features/integration/period_close_test.dart test/features/integration/native_business_approval_test.dart --reporter expanded
+      - name: Check whitespace
+        run: git diff --check
+  full-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: static-and-focused
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Install SQLite native dependencies
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+      - run: flutter pub get
+      - name: Full Flutter regression
+        run: flutter test --reporter expanded
