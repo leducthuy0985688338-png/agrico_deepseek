@@ -41,7 +41,7 @@ jobs:
 
   full:
     timeout-minutes: 30
-    if: github.event_name == 'pull_request' || inputs.gate == 'full' || inputs.gate == 'release' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/cleanup/'))
+    if: github.event_name == 'pull_request' || inputs.gate == 'full' || inputs.gate == 'release' || (github.event_name == 'push' && (startsWith(github.ref, 'refs/heads/cleanup/') || github.ref == 'refs/heads/fix/cmd039-finance-validation'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -68,13 +68,16 @@ jobs:
           YAML
       - name: Accepted field cleanup regression
         run: flutter test test/providers test/screens test/field_restore_provider_test.dart --reporter expanded
+      - name: Sandbox salary posting regression
+        if: github.ref == 'refs/heads/fix/cmd039-finance-validation'
+        run: flutter test test/features/integration/integrated_ledgers_test.dart --plain-name 'salary posting rejects future date and does not consume records'
       - name: Full regression
         run: flutter test
       - name: Diff whitespace check
         run: git diff --check HEAD^ HEAD
 
   release:
-    if: inputs.gate == 'release' || ((github.event_name == 'push' || github.event_name == 'pull_request') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.base_ref == 'main' || github.base_ref == 'master'))
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/fix/cmd039-finance-validation') || inputs.gate == 'release' || ((github.event_name == 'push' || github.event_name == 'pull_request') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.base_ref == 'main' || github.base_ref == 'master'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -100,6 +103,7 @@ jobs:
           test -s app-debug.apk
           sha256sum app-debug.apk > app-debug.apk.sha256
           sha256sum --check app-debug.apk.sha256
+          cat app-debug.apk.sha256
       - uses: actions/upload-artifact@v4
         with:
           name: agrico-debug-apk

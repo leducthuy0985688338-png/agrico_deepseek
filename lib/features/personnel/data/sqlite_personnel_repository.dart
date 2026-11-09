@@ -1291,6 +1291,7 @@ class SqlitePersonnelRepository
       if (ExactDecimal.parse(paid).compareTo(ExactDecimal.parse(effective)) > 0)
         throw StateError('Payment exceeds outstanding corrected salary.');
       if (await IntegrationCash.enabled(tx)) {
+        IntegrationCash.validatePostingDay(day);
         NativeApprovalGuard.requireFinanceExecution(
           tx,
           farm: farmId,

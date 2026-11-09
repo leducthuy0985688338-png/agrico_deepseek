@@ -46,6 +46,13 @@ abstract final class IntegrationCash {
     currency: row['currency'] as String,
     category: row['category'] as String,
   ).amountText;
+  static void validatePostingDay(String day) {
+    LaborMoney.date(day);
+    if (day.compareTo(LaborMoney.day(DateTime.now())) > 0) {
+      throw const FormatException('Invalid financial posting.');
+    }
+  }
+
   static Future<String> write(
     Transaction tx, {
     required String id,
@@ -57,9 +64,8 @@ abstract final class IntegrationCash {
     required String note,
     required bool receipt,
   }) async {
-    LaborMoney.date(day);
-    if (day.compareTo(LaborMoney.day(DateTime.now())) > 0 ||
-        !{'VND', 'LAK'}.contains(currency) ||
+    validatePostingDay(day);
+    if (!{'VND', 'LAK'}.contains(currency) ||
         note.trim().isEmpty)
       throw const FormatException('Invalid financial posting.');
     final value = ExactDecimal.parse(

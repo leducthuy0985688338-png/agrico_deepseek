@@ -313,11 +313,23 @@ void main() {
     'salary posting rejects future date and does not consume records',
     () async {
       await salaryReady();
+      final sequences = await db.query('monthly_document_sequences');
+      final finance = await db.query('finance_documents_v2');
       await expectLater(
         pay(day: '2099-01-01'),
         throwsA(isA<FormatException>()),
       );
+      await expectLater(
+        pay(),
+        throwsA(isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          'Finance approval execution scope required.',
+        )),
+      );
       expect(await db.query('personnel_payments_v1'), isEmpty);
+      expect(await db.query('finance_documents_v2'), finance);
+      expect(await db.query('monthly_document_sequences'), sequences);
     },
   );
   test(
