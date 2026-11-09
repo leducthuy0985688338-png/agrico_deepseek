@@ -186,6 +186,7 @@ class SqliteFinanceDocumentRepository
         kind: kind,
         documentDate: occurredAt,
         save: (code) async {
+          await PeriodLock.requireFinanceGuards(tx);
           final document = FinanceDocument(
             id: id,
             organizationId: organizationId,

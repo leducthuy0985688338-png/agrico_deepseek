@@ -1,3 +1,4 @@
+import '../../../core/periods/period_lock.dart';
 import '../../integration/data/integration_cash.dart';
 import '../../../core/production/source_governance.dart';
 import '../../integration/data/production_cost_workflow_repository.dart';
@@ -651,6 +652,7 @@ class SqliteTradeRepository implements TradeRepository {
     required String description,
   }) async {
     final money = TradeMath.money(amount, positive: true);
+    await PeriodLock.requireFinanceGuards(tx);
     return SqliteMonthlyDocumentSequence().saveWithCode(
       transaction: tx,
       organizationId: farm,

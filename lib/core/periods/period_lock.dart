@@ -106,6 +106,46 @@ abstract final class PeriodLock {
       : '$row.farm_id';
   static String condition(String table, String row, String date) =>
       "EXISTS(SELECT 1 FROM $states p WHERE p.farm_id=${farm(table, row)} AND p.status='closed' AND substr($date,1,7)<=p.period)";
+  static const _writeActions = ['INSERT', 'UPDATE', 'DELETE'];
+  static const _financeTable = 'finance_documents_v2';
+
+  static String _guardName(String table, String action) =>
+      'period_guard_${table}_${action.toLowerCase()}';
+
+  static String _datedGuardSql(String table, String date, String action) {
+    final refs = action == 'UPDATE'
+        ? ['OLD', 'NEW']
+        : [action == 'DELETE' ? 'OLD' : 'NEW'];
+    final checks = refs
+        .map((row) => condition(table, row, date.replaceAll('{r}', row)))
+        .join(' OR ');
+    return "CREATE TRIGGER ${_guardName(table, action)} BEFORE $action ON $table WHEN $checks BEGIN SELECT RAISE(ABORT,'ACCOUNTING_PERIOD_CLOSED'); END";
+  }
+
+  /// Verify on the same transaction that will write the posted document.
+  static Future<void> requireFinanceGuards(Transaction tx) async {
+    if (!await enabled(tx)) {
+      throw StateError('Finance period state table is missing.');
+    }
+    final rows = await tx.rawQuery(
+      "SELECT name, sql FROM sqlite_master WHERE type='trigger' AND tbl_name=?",
+      [_financeTable],
+    );
+    final definitions = {for (final row in rows) row['name']: row['sql']};
+    for (final action in _writeActions) {
+      final expected = _datedGuardSql(
+        _financeTable,
+        dated[_financeTable]!,
+        action,
+      );
+      if (definitions[_guardName(_financeTable, action)] != expected) {
+        throw StateError('Finance period $action trigger failed verification.');
+      }
+    }
+    // Validate that the table referenced by the guards has the required columns.
+    await tx.rawQuery('SELECT farm_id, period, status FROM $states LIMIT 0');
+  }
+
   static Future<void> install(DatabaseExecutor db) async {
     if (!await enabled(db)) {
       return;
@@ -117,17 +157,12 @@ abstract final class PeriodLock {
       if (!installed.contains(entry.key)) {
         continue;
       }
-      for (final action in ['INSERT', 'UPDATE', 'DELETE']) {
-        final refs = action == 'UPDATE'
-            ? ['OLD', 'NEW']
-            : [action == 'DELETE' ? 'OLD' : 'NEW'];
-        final checks = refs
-            .map(
-              (r) => condition(entry.key, r, entry.value.replaceAll('{r}', r)),
-            )
-            .join(' OR ');
+      for (final action in _writeActions) {
         await db.execute(
-          'CREATE TRIGGER IF NOT EXISTS period_guard_${entry.key}_${action.toLowerCase()} BEFORE $action ON ${entry.key} WHEN $checks BEGIN SELECT RAISE(ABORT,\'ACCOUNTING_PERIOD_CLOSED\'); END',
+          _datedGuardSql(entry.key, entry.value, action).replaceFirst(
+            'CREATE TRIGGER ',
+            'CREATE TRIGGER IF NOT EXISTS ',
+          ),
         );
       }
     }

@@ -1,3 +1,4 @@
+import '../../../core/periods/period_lock.dart';
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import '../../../core/identity/data/sqlite_monthly_document_sequence.dart';
@@ -67,6 +68,7 @@ abstract final class IntegrationCash {
     if (value.coefficient <= BigInt.zero ||
         value.coefficient > BigInt.from(9007199254740991))
       throw const FormatException('Amount exceeds exact storage range.');
+    await PeriodLock.requireFinanceGuards(tx);
     return SqliteMonthlyDocumentSequence().saveWithCode(
       transaction: tx,
       organizationId: farm,

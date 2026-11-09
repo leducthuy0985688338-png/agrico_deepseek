@@ -1,3 +1,5 @@
+import 'package:agrico_deepseek/features/finance/domain/finance_document.dart';
+import 'package:agrico_deepseek/core/periods/period_lock.dart';
 import 'package:agrico_deepseek/core/identity/domain/business_reference_code.dart';
 import 'package:agrico_deepseek/features/finance/data/local/sqlite_finance_document_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +13,7 @@ void main() {
   setUp(() async {
     db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
     await SqliteFinanceDocumentRepository.createSchema(db);
+    await PeriodLock.createSchema(db);
     repository = SqliteFinanceDocumentRepository(db);
   });
   tearDown(() async => db.close());
@@ -37,6 +40,32 @@ void main() {
     expect(saved.map((value) => value.id), containsAll(['finance-1', 'finance-2']));
     expect(saved.firstWhere((value) => value.id == 'finance-1').description, 'ບ້ານຕາໂກ');
     expect(saved.length, 2);
+  });
+
+  test('rejects missing or replaced finance guards without consuming a code', () async {
+    const trigger = 'period_guard_finance_documents_v2_insert';
+    Future<FinanceDocument> create() => repository.create(
+      id: 'guard-test',
+      organizationId: 'farm-a',
+      kind: BusinessDocumentKind.receipt,
+      occurredAt: DateTime.utc(2026, 9, 25),
+      amountMinor: 100,
+      currency: 'LAK',
+      category: 'Sale',
+    );
+
+    await db.execute('DROP TRIGGER $trigger');
+    await expectLater(create(), throwsStateError);
+    await db.execute(
+      'CREATE TRIGGER $trigger BEFORE INSERT ON finance_documents_v2 '
+      'BEGIN SELECT 1; END',
+    );
+    await expectLater(create(), throwsStateError);
+    expect(await repository.listByOrganization('farm-a'), isEmpty);
+
+    await db.execute('DROP TRIGGER $trigger');
+    await PeriodLock.install(db);
+    expect((await create()).code, 'THU-202609-001');
   });
 
   test('duplicate document ID rolls back sequence', () async {
