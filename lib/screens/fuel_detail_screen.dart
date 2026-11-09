@@ -217,37 +217,42 @@ class _FuelDetailScreenState extends State<FuelDetailScreen> {
       builder: (ctx) {
         return AlertDialog(
           title: const Text('NHẬP KHO'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Loại: ${_currentFuel.name}'),
-              const SizedBox(height: 8),
-              TextField(
-                controller: qtyCtrl,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'Số lượng (${_currentFuel.unit}) *',
-                  border: const OutlineInputBorder(),
-                ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Loại: ${_currentFuel.name}'),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: qtyCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: 'Số lượng (${_currentFuel.unit}) *',
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: priceCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Đơn giá nhập *',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: noteCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Ghi chú',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: priceCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Đơn giá nhập *',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: noteCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Ghi chú',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
+            ),
           ),
           actions: [
             TextButton(
@@ -312,77 +317,89 @@ class _FuelDetailScreenState extends State<FuelDetailScreen> {
             return AlertDialog(
               title: const Text('XUẤT CHO MÁY'),
               content: SizedBox(
-                width: 300,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('Loại: ${_currentFuel.name}'),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: qtyCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        labelText: 'Số lượng (${_currentFuel.unit}) *',
-                        border: const OutlineInputBorder(),
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('Loại: ${_currentFuel.name}'),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: qtyCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: 'Số lượng (${_currentFuel.unit}) *',
+                          border: const OutlineInputBorder(),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    // Chọn máy
-                    DropdownButtonFormField<String>(
-                      decoration: const InputDecoration(
-                        labelText: 'Chọn Máy *',
-                        border: OutlineInputBorder(),
+                      const SizedBox(height: 8),
+                      // Chọn máy
+                      DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Chọn Máy *',
+                          border: OutlineInputBorder(),
+                        ),
+                        value: selectedMachineId,
+                        items: machines.map((machine) {
+                          return DropdownMenuItem(
+                            value: machine.id,
+                            child: Text(
+                              '${machine.name} (${machine.type})',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          setStateDialog(() {
+                            selectedMachineId = value;
+                          });
+                        },
                       ),
-                      value: selectedMachineId,
-                      items: machines.map((machine) {
-                        return DropdownMenuItem(
-                          value: machine.id,
-                          child: Text('${machine.name} (${machine.type})'),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        setStateDialog(() {
-                          selectedMachineId = value;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    // Chọn lô đất (tùy chọn)
-                    DropdownButtonFormField<String>(
-                      decoration: const InputDecoration(
-                        labelText: 'Lô đất làm việc (tùy chọn)',
-                        border: OutlineInputBorder(),
+                      const SizedBox(height: 8),
+                      // Chọn lô đất (tùy chọn)
+                      DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Lô đất làm việc (tùy chọn)',
+                          border: OutlineInputBorder(),
+                        ),
+                        value: selectedFieldId,
+                        items: fields.map((field) {
+                          return DropdownMenuItem(
+                            value: field.id,
+                            child: Text(
+                              field.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          setStateDialog(() {
+                            selectedFieldId = value;
+                          });
+                        },
                       ),
-                      value: selectedFieldId,
-                      items: fields.map((field) {
-                        return DropdownMenuItem(
-                          value: field.id,
-                          child: Text(field.name),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        setStateDialog(() {
-                          selectedFieldId = value;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: operatorCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Tên người vận hành',
-                        border: OutlineInputBorder(),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: operatorCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Tên người vận hành',
+                          border: OutlineInputBorder(),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: noteCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Ghi chú',
-                        border: OutlineInputBorder(),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: noteCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Ghi chú',
+                          border: OutlineInputBorder(),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
               actions: [

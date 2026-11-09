@@ -33,6 +33,12 @@ class FieldStorageService {
 
   Future<void> saveField(FieldModel field) => _database.upsert(field);
 
+  Future<FieldMeasurementHistory> saveBoundaryLocally(FieldModel field) =>
+      _database.saveBoundaryAndMeasurement(field);
+
+  Future<FieldMeasurementHistory> createMeasuredFieldLocally(FieldModel field) =>
+      _database.saveBoundaryAndMeasurement(field, requireExisting: false);
+
   Future<bool> recordMeasurement(FieldModel field) async {
     final measurement = await _database.addMeasurementHistory(field);
     try {

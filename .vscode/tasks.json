@@ -1,0 +1,41 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "AGRICO: pub get",
+      "type": "process",
+      "command": "flutter",
+      "args": ["pub", "get"],
+      "problemMatcher": []
+    },
+    {
+      "label": "AGRICO: focused tests",
+      "type": "process",
+      "command": "flutter",
+      "args": ["test", "test/core/spatial", "test/features/farm"],
+      "group": {"kind": "test", "isDefault": true},
+      "problemMatcher": []
+    },
+    {
+      "label": "AGRICO: analyze",
+      "type": "process",
+      "command": "flutter",
+      "args": ["analyze", "--no-fatal-infos", "--no-fatal-warnings"],
+      "problemMatcher": []
+    },
+    {
+      "label": "AGRICO: full tests",
+      "type": "process",
+      "command": "flutter",
+      "args": ["test"],
+      "problemMatcher": []
+    },
+    {
+      "label": "AGRICO: debug APK",
+      "type": "process",
+      "command": "flutter",
+      "args": ["build", "apk", "--debug"],
+      "problemMatcher": []
+    }
+  ]
+}

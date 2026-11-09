@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../providers/machine_provider.dart';
 import '../providers/field_provider.dart';
 import '../models/machine_model.dart';
-import '../models/field_model.dart';
 
 class MachineAssignmentScreen extends StatefulWidget {
   const MachineAssignmentScreen({super.key});
@@ -77,6 +76,7 @@ class _MachineAssignmentScreenState extends State<MachineAssignmentScreen> {
 
                     // Chọn Lô đất
                     DropdownButtonFormField<String>(
+                      isExpanded: true,
                       decoration: const InputDecoration(
                         labelText: 'Chọn Lô đất *',
                         border: OutlineInputBorder(),
@@ -85,7 +85,11 @@ class _MachineAssignmentScreenState extends State<MachineAssignmentScreen> {
                       items: fields.map((field) {
                         return DropdownMenuItem(
                           value: field.id,
-                          child: Text('${field.name} (${field.area}m²)'),
+                          child: Text(
+                            '${field.name} (${field.area}m²)',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         );
                       }).toList(),
                       onChanged: (value) {
@@ -98,6 +102,7 @@ class _MachineAssignmentScreenState extends State<MachineAssignmentScreen> {
 
                     // Chọn Máy
                     DropdownButtonFormField<String>(
+                      isExpanded: true,
                       decoration: const InputDecoration(
                         labelText: 'Chọn Máy *',
                         border: OutlineInputBorder(),
@@ -106,7 +111,11 @@ class _MachineAssignmentScreenState extends State<MachineAssignmentScreen> {
                       items: availableMachines.map((machine) {
                         return DropdownMenuItem(
                           value: machine.id,
-                          child: Text('${machine.name} (${machine.type})'),
+                          child: Text(
+                            '${machine.name} (${machine.type})',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         );
                       }).toList(),
                       onChanged: (value) {

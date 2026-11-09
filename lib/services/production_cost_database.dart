@@ -90,8 +90,19 @@ class ProductionCostDatabase {
 
   Future<void> upsert(ProductionCostModel record) async {
     final db = await database;
-    var id = record.id;
+    if (record.source == 'material' && record.sourceId != null) {
+      // The source identity is unique in SQLite. INSERT OR IGNORE makes
+      // concurrent deliveries first-writer-wins without replacing the
+      // historical issue cost snapshot.
+      await db.insert(
+        _table,
+        _toRow(record),
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+      return;
+    }
 
+    var id = record.id;
     if (record.source != null && record.sourceId != null) {
       final existing = await db.query(
         _table,
@@ -104,7 +115,6 @@ class ProductionCostDatabase {
         id = existing.first['id'] as String;
       }
     }
-
     await db.insert(
       _table,
       _toRow(record, id: id),

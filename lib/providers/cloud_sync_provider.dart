@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/cloud_service.dart';
-import '../models/warehouse_item.dart';
 import '../models/machine_model.dart';
 import '../models/employee_model.dart';
 import '../models/task_model.dart';
@@ -50,7 +49,6 @@ class CloudRestoreData {
   final List<MachineModel> machines;
   final List<TaskModel> tasks;
   final List<DistanceMeasurement> distanceMeasurements;
-  final List<WarehouseItem> warehouseItems;
   final List<FuelModel> fuels;
   final List<FuelTransaction> fuelTransactions;
   final List<FinanceRecord> financeRecords;
@@ -66,7 +64,6 @@ class CloudRestoreData {
     required this.machines,
     required this.tasks,
     required this.distanceMeasurements,
-    required this.warehouseItems,
     required this.fuels,
     required this.fuelTransactions,
     required this.financeRecords,
@@ -83,7 +80,6 @@ class CloudRestoreData {
       machines.isEmpty &&
       tasks.isEmpty &&
       distanceMeasurements.isEmpty &&
-      warehouseItems.isEmpty &&
       fuels.isEmpty &&
       fuelTransactions.isEmpty &&
       financeRecords.isEmpty;
@@ -101,7 +97,6 @@ class CloudSyncProvider extends ChangeNotifier {
   bool _isRestoringHarvestRecords = false;
   bool _isRestoringProductionCosts = false;
   bool _isRestoringWorkforceMachines = false;
-  bool _isRestoringWarehouse = false;
   bool _isRestoringTasks = false;
   bool _isRestoringDistanceMeasurements = false;
   int _restoreAllCompletedSteps = 0;
@@ -120,12 +115,11 @@ class CloudSyncProvider extends ChangeNotifier {
   bool get isRestoringHarvestRecords => _isRestoringHarvestRecords;
   bool get isRestoringProductionCosts => _isRestoringProductionCosts;
   bool get isRestoringWorkforceMachines => _isRestoringWorkforceMachines;
-  bool get isRestoringWarehouse => _isRestoringWarehouse;
   bool get isRestoringTasks => _isRestoringTasks;
   bool get isRestoringDistanceMeasurements =>
       _isRestoringDistanceMeasurements;
   int get restoreAllCompletedSteps => _restoreAllCompletedSteps;
-  int get restoreAllTotalSteps => 12;
+  int get restoreAllTotalSteps => 11;
   String get restoreAllStep => _restoreAllStep;
   double get restoreAllProgress =>
       _restoreAllCompletedSteps / restoreAllTotalSteps;
@@ -141,7 +135,6 @@ class CloudSyncProvider extends ChangeNotifier {
       _isRestoringHarvestRecords ||
       _isRestoringProductionCosts ||
       _isRestoringWorkforceMachines ||
-      _isRestoringWarehouse ||
       _isRestoringTasks ||
       _isRestoringDistanceMeasurements;
   String? get lastSyncTime => _lastSyncTime;
@@ -156,7 +149,6 @@ class CloudSyncProvider extends ChangeNotifier {
 
   // ====== ĐỒNG BỘ DỮ LIỆU ======
   Future<bool> syncAllData({
-    required List<WarehouseItem> warehouseItems,
     required List<MachineModel> machines,
     required List<EmployeeModel> employees,
     required List<TaskModel> tasks,
@@ -177,7 +169,6 @@ class CloudSyncProvider extends ChangeNotifier {
 
     try {
       await CloudService.syncAllData(
-        warehouseItems: warehouseItems,
         machines: machines,
         employees: employees,
         tasks: tasks,
@@ -252,10 +243,6 @@ class CloudSyncProvider extends ChangeNotifier {
         step: 'Lịch sử đo khoảng cách',
         loader: CloudService.loadDistanceMeasurements,
       );
-      final warehouseItems = await _loadRestoreStep(
-        step: 'Kho vật tư',
-        loader: CloudService.loadWarehouseItems,
-      );
       final productionCosts = await _loadRestoreStep(
         step: 'Chi phí sản xuất',
         loader: CloudService.loadProductionCosts,
@@ -282,7 +269,6 @@ class CloudSyncProvider extends ChangeNotifier {
         machines: machines,
         tasks: tasks,
         distanceMeasurements: distanceMeasurements,
-        warehouseItems: warehouseItems,
         fuels: fuels,
         fuelTransactions: fuelTransactions,
         financeRecords: financeRecords,
@@ -515,27 +501,6 @@ class CloudSyncProvider extends ChangeNotifier {
     }
   }
 
-  Future<List<WarehouseItem>> restoreWarehouseData() async {
-    if (isBusy) {
-      throw StateError('Đang có thao tác Cloud khác, vui lòng chờ hoàn tất.');
-    }
-
-    _isRestoringWarehouse = true;
-    notifyListeners();
-
-    try {
-      final items = await CloudService.loadWarehouseItems();
-      _isConnected = true;
-      return items;
-    } catch (_) {
-      _isConnected = false;
-      rethrow;
-    } finally {
-      _isRestoringWarehouse = false;
-      notifyListeners();
-    }
-  }
-
   Future<List<TaskModel>> restoreTaskData() async {
     if (isBusy) {
       throw StateError('Đang có thao tác Cloud khác, vui lòng chờ hoàn tất.');
@@ -580,17 +545,6 @@ class CloudSyncProvider extends ChangeNotifier {
   }
 
   // ====== LẤY DỮ LIỆU TỪ CLOUD ======
-  Stream<List<WarehouseItem>> getWarehouseItems() {
-    return CloudService.getWarehouseItems().map((snapshot) {
-      return snapshot.docs.map((doc) {
-        final data =
-            Map<String, dynamic>.from(doc.data() as Map<String, dynamic>);
-        data['id'] ??= doc.id;
-        return WarehouseItem.fromMap(data);
-      }).toList(growable: false);
-    });
-  }
-
   Stream<List<MachineModel>> getMachines() {
     return CloudService.getMachines().map((snapshot) {
       return snapshot.docs.map((doc) {

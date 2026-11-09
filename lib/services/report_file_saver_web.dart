@@ -10,6 +10,10 @@ Future<void> saveExcelFile(Excel excel, String fileName) async {
     throw Exception('Không thể tạo file Excel');
   }
 
+  await saveExcelBytes(fileBytes, fileName);
+}
+
+Future<void> saveExcelBytes(List<int> fileBytes, String fileName) async {
   final bytes = Uint8List.fromList(fileBytes);
 
   final blob = html.Blob([

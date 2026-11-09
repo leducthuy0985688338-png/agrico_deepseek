@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../providers/task_provider.dart';
 import '../providers/employee_provider.dart';
 import '../providers/field_provider.dart';
@@ -14,7 +15,6 @@ class TaskAddScreen extends StatefulWidget {
 }
 
 class _TaskAddScreenState extends State<TaskAddScreen> {
-  final TaskProvider _taskProvider = TaskProvider();
   final EmployeeProvider _employeeProvider = EmployeeProvider();
   final FieldProvider _fieldProvider = FieldProvider();
   final MachineProvider _machineProvider = MachineProvider();
@@ -188,6 +188,7 @@ class _TaskAddScreenState extends State<TaskAddScreen> {
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
+              isExpanded: true,
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
                 hintText: 'Chọn nhân viên',
@@ -196,7 +197,11 @@ class _TaskAddScreenState extends State<TaskAddScreen> {
               items: _employeeProvider.employees.map((employee) {
                 return DropdownMenuItem(
                   value: employee.id,
-                  child: Text(employee.name),
+                  child: Text(
+                    employee.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 );
               }).toList(),
               onChanged: (value) {
@@ -214,6 +219,7 @@ class _TaskAddScreenState extends State<TaskAddScreen> {
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
+              isExpanded: true,
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
                 hintText: 'Chọn lô đất',
@@ -222,7 +228,11 @@ class _TaskAddScreenState extends State<TaskAddScreen> {
               items: _fieldProvider.fields.map((field) {
                 return DropdownMenuItem(
                   value: field.id,
-                  child: Text(field.name),
+                  child: Text(
+                    field.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 );
               }).toList(),
               onChanged: (value) {
@@ -240,6 +250,7 @@ class _TaskAddScreenState extends State<TaskAddScreen> {
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
+              isExpanded: true,
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
                 hintText: 'Chọn máy móc',
@@ -248,7 +259,11 @@ class _TaskAddScreenState extends State<TaskAddScreen> {
               items: _machineProvider.machines.map((machine) {
                 return DropdownMenuItem(
                   value: machine.id,
-                  child: Text(machine.name),
+                  child: Text(
+                    machine.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 );
               }).toList(),
               onChanged: (value) {
@@ -362,7 +377,7 @@ class _TaskAddScreenState extends State<TaskAddScreen> {
       createdAt: DateTime.now(),
     );
 
-    _taskProvider.addTask(newTask);
+    context.read<TaskProvider>().addTask(newTask);
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(

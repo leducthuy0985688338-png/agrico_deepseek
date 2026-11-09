@@ -39,8 +39,14 @@ class _ProductionCostScreenState extends State<ProductionCostScreen> {
         title: const Text('Xóa khoản chi?'),
         content: Text('${record.itemName}: ${_money(record.amount)}'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Hủy')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Xóa')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Xóa'),
+          ),
         ],
       ),
     );
@@ -59,7 +65,8 @@ class _ProductionCostScreenState extends State<ProductionCostScreen> {
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => ProductionCostDashboardScreen(season: widget.season),
+                builder: (_) =>
+                    ProductionCostDashboardScreen(season: widget.season),
               ),
             ),
           ),
@@ -68,7 +75,8 @@ class _ProductionCostScreenState extends State<ProductionCostScreen> {
       body: AnimatedBuilder(
         animation: _provider,
         builder: (context, _) {
-          if (_provider.isLoading) return const Center(child: CircularProgressIndicator());
+          if (_provider.isLoading)
+            return const Center(child: CircularProgressIndicator());
           final records = _provider.recordsForSeason(widget.season.id);
           final total = _provider.totalCost(widget.season.id);
           final byCategory = _provider.byCategory(widget.season.id);
@@ -79,42 +87,77 @@ class _ProductionCostScreenState extends State<ProductionCostScreen> {
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    const Text('Tổng chi phí sản xuất', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 6),
-                    Text(_money(total), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                    Text('Chi phí/ha: ${_money(ha > 0 ? total / ha : 0)}'),
-                    const SizedBox(height: 14),
-                    ...ProductionCostCategory.values.map((category) {
-                      final amount = byCategory[category] ?? 0;
-                      final ratio = total > 0 ? amount / total : 0.0;
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Row(children: [Expanded(child: Text(category.label)), Text(_money(amount))]),
-                          const SizedBox(height: 4),
-                          LinearProgressIndicator(value: ratio.clamp(0.0, 1.0).toDouble()),
-                        ]),
-                      );
-                    }),
-                  ]),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Tổng chi phí sản xuất',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        _money(total),
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text('Chi phí/ha: ${_money(ha > 0 ? total / ha : 0)}'),
+                      const SizedBox(height: 14),
+                      ...ProductionCostCategory.values.map((category) {
+                        final amount = byCategory[category] ?? 0;
+                        final ratio = total > 0 ? amount / total : 0.0;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(child: Text(category.label)),
+                                  Text(_money(amount)),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              LinearProgressIndicator(
+                                value: ratio.clamp(0.0, 1.0).toDouble(),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
               if (records.isEmpty)
-                const Padding(padding: EdgeInsets.all(32), child: Center(child: Text('Chưa có khoản chi trực tiếp cho vụ này.'))),
-              ...records.map((record) => Card(
-                    child: ListTile(
-                      leading: CircleAvatar(child: Icon(_icon(record.category))),
-                      title: Text(record.itemName),
-                      subtitle: Text(
-                        '${record.category.label} • ${_date(record.date)}\n'
-                        '${record.quantity.toStringAsFixed(2)} ${record.unit} × ${_money(record.unitPrice)} = ${_money(record.amount)}',
-                      ),
-                      isThreeLine: true,
-                      trailing: IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _delete(record)),
+                const Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(
+                    child: Text('Chưa có khoản chi trực tiếp cho vụ này.'),
+                  ),
+                ),
+              ...records.map(
+                (record) => Card(
+                  child: ListTile(
+                    leading: CircleAvatar(child: Icon(_icon(record.category))),
+                    title: Text(record.itemName),
+                    subtitle: Text(
+                      '${record.category.label} • ${_date(record.date)}\n'
+                      '${record.quantity.toStringAsFixed(2)} ${record.unit} × ${_money(record.unitPrice)} = ${_money(record.amount)}',
                     ),
-                  )),
+                    isThreeLine: true,
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: () => _delete(record),
+                    ),
+                  ),
+                ),
+              ),
             ],
           );
         },
@@ -141,7 +184,8 @@ class _ProductionCostScreenState extends State<ProductionCostScreen> {
   }
 
   String _money(double value) => '${value.toStringAsFixed(0)} đ';
-  String _date(DateTime d) => '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+  String _date(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 }
 
 class _CostForm extends StatefulWidget {
@@ -171,39 +215,88 @@ class _CostFormState extends State<_CostForm> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Ghi khoản chi sản xuất'),
-      content: SingleChildScrollView(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          DropdownButtonFormField<ProductionCostCategory>(
-            initialValue: _category,
-            decoration: const InputDecoration(labelText: 'Nhóm chi phí'),
-            items: ProductionCostCategory.values
-                .map((c) => DropdownMenuItem(value: c, child: Text(c.label)))
-                .toList(),
-            onChanged: (v) => setState(() => _category = v ?? _category),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<ProductionCostCategory>(
+                isExpanded: true,
+                initialValue: _category,
+                decoration: const InputDecoration(labelText: 'Nhóm chi phí'),
+                items: ProductionCostCategory.values
+                    .map(
+                      (c) => DropdownMenuItem(
+                        value: c,
+                        child: Text(
+                          c.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (v) => setState(() => _category = v ?? _category),
+              ),
+              TextField(
+                controller: _item,
+                decoration: const InputDecoration(labelText: 'Nội dung *'),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Ngày'),
+                subtitle: Text(_format(_date)),
+                onTap: () async {
+                  final value = await showDatePicker(
+                    context: context,
+                    firstDate: widget.season.startDate,
+                    lastDate: DateTime(2100),
+                    initialDate: _date,
+                  );
+                  if (value != null) setState(() => _date = value);
+                },
+              ),
+              TextField(
+                controller: _quantity,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Số lượng / giờ công',
+                ),
+              ),
+              TextField(
+                controller: _unit,
+                decoration: const InputDecoration(
+                  labelText: 'Đơn vị (kg, ngày, giờ, lít...)',
+                ),
+              ),
+              TextField(
+                controller: _unitPrice,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Đơn giá (VNĐ)'),
+              ),
+              TextField(
+                controller: _notes,
+                decoration: const InputDecoration(labelText: 'Ghi chú'),
+              ),
+            ],
           ),
-          TextField(controller: _item, decoration: const InputDecoration(labelText: 'Nội dung *')),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Ngày'),
-            subtitle: Text(_format(_date)),
-            onTap: () async {
-              final value = await showDatePicker(context: context, firstDate: widget.season.startDate, lastDate: DateTime(2100), initialDate: _date);
-              if (value != null) setState(() => _date = value);
-            },
-          ),
-          TextField(controller: _quantity, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Số lượng / giờ công')),
-          TextField(controller: _unit, decoration: const InputDecoration(labelText: 'Đơn vị (kg, ngày, giờ, lít...)')),
-          TextField(controller: _unitPrice, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Đơn giá (VNĐ)')),
-          TextField(controller: _notes, decoration: const InputDecoration(labelText: 'Ghi chú')),
-        ]),
+        ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Hủy'),
+        ),
         FilledButton(
           onPressed: () {
             final item = _item.text.trim();
-            final quantity = double.tryParse(_quantity.text.replaceAll(',', '.')) ?? 0;
-            final price = double.tryParse(_unitPrice.text.replaceAll(',', '.')) ?? 0;
+            final quantity =
+                double.tryParse(_quantity.text.replaceAll(',', '.')) ?? 0;
+            final price =
+                double.tryParse(_unitPrice.text.replaceAll(',', '.')) ?? 0;
             if (item.isEmpty || quantity <= 0 || price < 0) return;
             Navigator.pop(
               context,
@@ -228,5 +321,6 @@ class _CostFormState extends State<_CostForm> {
     );
   }
 
-  String _format(DateTime d) => '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+  String _format(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 }

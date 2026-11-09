@@ -17,14 +17,14 @@ class ProductionSeasonDatabase {
     _database = await openDatabase(
       path,
       version: _databaseVersion,
-      onCreate: (db, version) async => _createSeasonTable(db),
-      onUpgrade: (db, oldVersion, newVersion) async => _createSeasonTable(db),
-      onOpen: (db) async => _createSeasonTable(db),
+      onCreate: (db, version) async => createSchema(db),
+      onUpgrade: (db, oldVersion, newVersion) async => createSchema(db),
+      onOpen: (db) async => createSchema(db),
     );
     return _database!;
   }
 
-  Future<void> _createSeasonTable(Database db) async {
+  static Future<void> createSchema(DatabaseExecutor db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS $_table (
         id TEXT PRIMARY KEY,
@@ -41,7 +41,9 @@ class ProductionSeasonDatabase {
         FOREIGN KEY(field_id) REFERENCES fields(id) ON DELETE CASCADE
       )
     ''');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_seasons_field ON $_table(field_id)');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_seasons_field ON $_table(field_id)',
+    );
   }
 
   Future<List<ProductionSeasonModel>> getByField(String fieldId) async {
@@ -99,19 +101,18 @@ class ProductionSeasonDatabase {
   }
 
   Map<String, Object?> _toRow(ProductionSeasonModel season) => {
-        'id': season.id,
-        'field_id': season.fieldId,
-        'name': season.name,
-        'crop': season.crop,
-        'variety': season.variety,
-        'start_date': season.startDate.toIso8601String(),
-        'expected_harvest_date':
-            season.expectedHarvestDate?.toIso8601String(),
-        'status': season.status,
-        'planned_area': season.plannedArea,
-        'notes': season.notes,
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
-      };
+    'id': season.id,
+    'field_id': season.fieldId,
+    'name': season.name,
+    'crop': season.crop,
+    'variety': season.variety,
+    'start_date': season.startDate.toIso8601String(),
+    'expected_harvest_date': season.expectedHarvestDate?.toIso8601String(),
+    'status': season.status,
+    'planned_area': season.plannedArea,
+    'notes': season.notes,
+    'updated_at': DateTime.now().toUtc().toIso8601String(),
+  };
 
   ProductionSeasonModel _fromRow(Map<String, Object?> row) =>
       ProductionSeasonModel.fromJson({

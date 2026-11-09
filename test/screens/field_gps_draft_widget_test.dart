@@ -1,0 +1,282 @@
+import 'dart:async';
+
+import 'package:agrico_deepseek/models/field_model.dart';
+import 'package:agrico_deepseek/models/field_measurement_history.dart';
+import 'package:agrico_deepseek/providers/field_provider.dart';
+import 'package:agrico_deepseek/screens/field_gps_measure_screen.dart';
+import 'package:agrico_deepseek/services/gps_field_service.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:geolocator/geolocator.dart';
+
+Position point(double latitude, double longitude) => Position(
+  latitude: latitude, longitude: longitude, timestamp: DateTime.utc(2026, 10, 18),
+  accuracy: 3, altitude: 0, altitudeAccuracy: 0, heading: 0,
+  headingAccuracy: 0, speed: 0, speedAccuracy: 0,
+);
+
+class FakeGps extends GpsFieldService {
+  final positions = StreamController<Position>(sync: true);
+  @override
+  Future<bool> ensureLocationReady() async => true;
+  @override
+  Future<Position?> getCurrentPosition() async => point(16, 105);
+  @override
+  Stream<Position> positionStream() => positions.stream;
+}
+
+Widget fakeMap() => const SizedBox.expand();
+
+Future<void> openMeasurement(WidgetTester tester, Widget screen,
+    void Function(FieldModel?) result, {bool fourthPoint = false}) async {
+  await tester.pumpWidget(MaterialApp(home: Scaffold(body: Builder(
+    builder: (context) => TextButton(
+      onPressed: () async => result(await Navigator.of(context).push<FieldModel>(
+        MaterialPageRoute(builder: (_) => screen),
+      )),
+      child: const Text('Open GPS'),
+    ),
+  ))));
+  await tester.tap(find.text('Open GPS'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('BẮT ĐẦU ĐO GPS'));
+  await tester.pumpAndSettle();
+  final gps = (screen as FieldGpsMeasureScreen).gpsOverride! as FakeGps;
+  addTearDown(gps.positions.close);
+  gps.positions.add(point(16.001, 105));
+  gps.positions.add(point(16.001, 105.001));
+  if (fourthPoint) gps.positions.add(point(16, 105.001));
+  await tester.pump();
+  expect(find.textContaining(fourthPoint ? '4 điểm' : '3 điểm'), findsOneWidget);
+  final stop = tester.widget<FilledButton>(
+    find.widgetWithText(FilledButton, 'DỪNG ĐO'),
+  ).onPressed! as Future<void> Function();
+  await tester.runAsync(stop);
+  await tester.pumpAndSettle();
+  expect(find.text('BẮT ĐẦU ĐO GPS'), findsOneWidget);
+}
+
+Future<void> confirmMeasurement(WidgetTester tester) async {
+  expect(tester.widget<IconButton>(find.byWidgetPredicate((widget) =>
+      widget is IconButton && widget.tooltip == 'Lưu thửa')).onPressed, isNotNull);
+  await tester.tap(find.byWidgetPredicate((widget) =>
+      widget is IconButton && widget.tooltip == 'Lưu thửa'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const Key('gps-confirm-save')));
+  await tester.pump();
+}
+
+void main() {
+  testWidgets('draft returns measured geometry without legacy persistence', (tester) async {
+    FieldModel? result;
+    await openMeasurement(tester, FieldGpsMeasureScreen.draft(
+      gpsOverride: FakeGps(), mapBuilder: fakeMap,
+    ), (value) => result = value);
+    await confirmMeasurement(tester);
+    await tester.pumpAndSettle();
+    expect(result, isNotNull);
+    expect(result!.polygon, hasLength(3));
+    expect(result!.area, greaterThan(1));
+    expect(result!.measurementMethod, 'gps');
+    expect(result!.measuredAt, isNotNull);
+    expect(find.byType(FieldGpsMeasureScreen), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('cancelled draft returns no measurement', (tester) async {
+    FieldModel? result;
+    await openMeasurement(tester, FieldGpsMeasureScreen.draft(
+      gpsOverride: FakeGps(), mapBuilder: fakeMap,
+    ), (value) => result = value);
+    expect(tester.widget<IconButton>(find.byWidgetPredicate((widget) =>
+      widget is IconButton && widget.tooltip == 'Lưu thửa')).onPressed, isNotNull);
+  await tester.tap(find.byWidgetPredicate((widget) =>
+      widget is IconButton && widget.tooltip == 'Lưu thửa'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Hủy'));
+    await tester.pumpAndSettle();
+    expect(result, isNull);
+    expect(find.byType(FieldGpsMeasureScreen), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(result, isNull);
+  });
+
+  testWidgets('legacy GPS still waits for local persistence', (tester) async {
+    final gate = Completer<void>();
+    var calls = 0;
+    FieldModel? result;
+    await openMeasurement(tester, FieldGpsMeasureScreen(
+      gpsOverride: FakeGps(), mapBuilder: fakeMap,
+      saveOverride: (_) { calls++; return gate.future; },
+    ), (value) => result = value);
+    await confirmMeasurement(tester);
+    expect(calls, 1);
+    expect(result, isNull);
+    expect(find.byType(FieldGpsMeasureScreen), findsOneWidget);
+    expect(tester.widget<IconButton>(find.byWidgetPredicate((widget) =>
+      widget is IconButton && widget.tooltip == 'Lưu thửa')).onPressed, isNull);
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(result, isNotNull);
+    expect(find.byType(FieldGpsMeasureScreen), findsNothing);
+  });
+
+  testWidgets('legacy GPS persistence failure keeps measurement open', (tester) async {
+    FieldModel? result;
+    await openMeasurement(tester, FieldGpsMeasureScreen(
+      gpsOverride: FakeGps(), mapBuilder: fakeMap,
+      saveOverride: (_) async => throw StateError('disk full'),
+    ), (value) => result = value);
+    await confirmMeasurement(tester);
+    await tester.pumpAndSettle();
+    expect(result, isNull);
+    expect(find.byType(FieldGpsMeasureScreen), findsOneWidget);
+    expect(find.textContaining('Không thể lưu thửa'), findsOneWidget);
+    expect(tester.widget<IconButton>(find.byWidgetPredicate((widget) =>
+      widget is IconButton && widget.tooltip == 'Lưu thửa')).onPressed, isNotNull);
+  });
+
+  testWidgets('remeasure updates original identity and preserves current metadata', (tester) async {
+    const original = FieldModel(id: 'existing-field', name: 'Original',
+      crop: 'Rice', status: 'Active', area: 100, photoPaths: ['shared.jpg']);
+    FieldModel? persisted;
+    final gate = Completer<void>();
+    final provider = FieldProvider.forTest(
+      loadFields: () async => [original.copyWith(name: 'Latest name', crop: 'Peanut')],
+      saveField: (_) async {}, deleteField: (_) async {},
+      saveBoundary: (field) async {
+        persisted = field;
+        await gate.future;
+        return FieldMeasurementHistory(id: 'measurement', fieldId: field.id,
+          fieldName: field.name, measurementMethod: field.measurementMethod,
+          polygon: field.polygon, area: field.area, perimeter: field.perimeter,
+          measuredAt: field.measuredAt!, createdAt: field.measuredAt!);
+      },
+    );
+    addTearDown(provider.dispose);
+    FieldModel? result;
+    await openMeasurement(tester, FieldGpsMeasureScreen.forField(
+      field: original, gpsOverride: FakeGps(), mapBuilder: fakeMap,
+      saveOverride: provider.saveBoundaryLocally,
+    ), (value) => result = value);
+    await confirmMeasurement(tester);
+    expect(result, isNull);
+    expect(persisted?.id, original.id);
+    expect(persisted?.name, 'Latest name');
+    expect(persisted?.crop, 'Peanut');
+    expect(persisted?.status, original.status);
+    expect(persisted?.photoPaths, original.photoPaths);
+    expect(persisted?.polygon, hasLength(3));
+    expect(provider.fields, hasLength(1));
+    gate.complete();
+    await tester.pumpAndSettle();
+    await provider.cloudIdleForTest;
+    expect(result?.id, original.id);
+    expect(provider.fields.single.id, original.id);
+  });
+
+  testWidgets('remeasure of deleted field fails without creating a replacement', (tester) async {
+    const original = FieldModel(id: 'deleted-field', name: 'Deleted',
+      crop: 'Rice', status: 'Active', area: 100);
+    var writes = 0;
+    final provider = FieldProvider.forTest(
+      loadFields: () async => [], saveField: (_) async { writes++; },
+      deleteField: (_) async {},
+    );
+    addTearDown(provider.dispose);
+    FieldModel? result;
+    await openMeasurement(tester, FieldGpsMeasureScreen.forField(
+      field: original, gpsOverride: FakeGps(), mapBuilder: fakeMap,
+      saveOverride: provider.saveBoundaryLocally,
+    ), (value) => result = value);
+    await confirmMeasurement(tester);
+    await tester.pumpAndSettle();
+    expect(result, isNull);
+    expect(writes, 0);
+    expect(provider.fields, isEmpty);
+    expect(find.textContaining('Không thể lưu thửa'), findsOneWidget);
+    expect(find.byType(FieldGpsMeasureScreen), findsOneWidget);
+  });
+
+
+  for (final existing in [false, true]) {
+    testWidgets('GPS retry retains measurement identity and form values (existing: $existing)', (tester) async {
+      const original = FieldModel(id: 'retry-target', name: 'Existing name',
+        crop: 'Rice', status: 'Active', area: 100);
+      final attempts = <FieldModel>[];
+      Future<void> save(FieldModel field) async {
+        attempts.add(field);
+        if (attempts.length == 1) throw StateError('disk full');
+      }
+      FieldModel? result;
+      final gps = FakeGps();
+      final screen = existing
+          ? FieldGpsMeasureScreen.forField(field: original,
+              gpsOverride: gps, mapBuilder: fakeMap, saveOverride: save)
+          : FieldGpsMeasureScreen(gpsOverride: gps,
+              mapBuilder: fakeMap, saveOverride: save);
+      await openMeasurement(tester, screen, (value) => result = value);
+      await tester.tap(find.byWidgetPredicate((widget) =>
+          widget is IconButton && widget.tooltip == 'Lưu thửa'));
+      await tester.pumpAndSettle();
+      if (!existing) {
+        await tester.enterText(find.byType(TextField).at(0), 'Bản đo đang chờ');
+        await tester.enterText(find.byType(TextField).at(1), 'Lạc');
+      }
+      await tester.tap(find.byKey(const Key('gps-confirm-save')));
+      await tester.pumpAndSettle();
+      expect(result, isNull);
+      expect(attempts, hasLength(1));
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byWidgetPredicate((widget) =>
+          widget is IconButton && widget.tooltip == 'Lưu thửa'));
+      await tester.pumpAndSettle();
+      if (!existing) {
+        expect(tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text,
+          'Bản đo đang chờ');
+        expect(tester.widget<TextField>(find.byType(TextField).at(1)).controller!.text,
+          'Lạc');
+      }
+      await tester.tap(find.byKey(const Key('gps-confirm-save')));
+      await tester.pumpAndSettle();
+      expect(attempts, hasLength(2));
+      expect(attempts.last.id, attempts.first.id);
+      expect(attempts.last.measuredAt, attempts.first.measuredAt);
+      expect(attempts.last.polygon, attempts.first.polygon);
+      expect(attempts.last.name, attempts.first.name);
+      expect(attempts.last.crop, attempts.first.crop);
+      expect(result?.id, attempts.first.id);
+    });
+  }
+
+
+  testWidgets('editing GPS points discards the failed pending snapshot', (tester) async {
+    final attempts = <FieldModel>[];
+    FieldModel? result;
+    await openMeasurement(tester, FieldGpsMeasureScreen(
+      gpsOverride: FakeGps(), mapBuilder: fakeMap,
+      saveOverride: (field) async {
+        attempts.add(field);
+        if (attempts.length == 1) throw StateError('disk full');
+      },
+    ), (value) => result = value, fourthPoint: true);
+    await confirmMeasurement(tester);
+    await tester.pumpAndSettle();
+    expect(result, isNull);
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byWidgetPredicate((widget) =>
+        widget is IconButton && widget.tooltip == 'Xóa điểm cuối'));
+    await tester.pumpAndSettle();
+    await confirmMeasurement(tester);
+    await tester.pumpAndSettle();
+    expect(attempts, hasLength(2));
+    expect(attempts.first.polygon, hasLength(4));
+    expect(attempts.last.polygon, hasLength(3));
+    expect(attempts.last.measuredAt, isNot(attempts.first.measuredAt));
+    expect(result?.polygon, attempts.last.polygon);
+  });
+
+}

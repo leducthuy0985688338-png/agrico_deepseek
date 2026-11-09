@@ -1,0 +1,13 @@
+{
+  "firestore": {
+    "rules": "docs/security/agrico-memberships.rules"
+  },
+  "emulators": {
+    "firestore": {
+      "port": 8088
+    },
+    "ui": {
+      "enabled": false
+    }
+  }
+}

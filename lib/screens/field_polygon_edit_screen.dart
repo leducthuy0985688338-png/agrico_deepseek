@@ -7,7 +7,10 @@ import '../services/gps_field_service.dart';
 
 class FieldPolygonEditScreen extends StatefulWidget {
   final FieldModel field;
-  const FieldPolygonEditScreen({super.key, required this.field});
+  final FieldProvider? providerOverride;
+  final Widget Function(Set<Marker>, Set<Polygon>)? mapBuilder;
+  const FieldPolygonEditScreen({super.key, required this.field,
+    this.providerOverride, this.mapBuilder});
 
   @override
   State<FieldPolygonEditScreen> createState() => _FieldPolygonEditScreenState();
@@ -15,13 +18,15 @@ class FieldPolygonEditScreen extends StatefulWidget {
 
 class _FieldPolygonEditScreenState extends State<FieldPolygonEditScreen> {
   final _gps = GpsFieldService();
-  final _provider = FieldProvider();
+  late final FieldProvider _provider;
+  FieldModel? _pendingSave;
   late List<LatLng> _points;
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
+    _provider = widget.providerOverride ?? FieldProvider();
     _points = List<LatLng>.from(widget.field.polygon);
   }
 
@@ -35,7 +40,10 @@ class _FieldPolygonEditScreenState extends State<FieldPolygonEditScreen> {
             position: _points[i],
             draggable: true,
             infoWindow: InfoWindow(title: 'Điểm ${i + 1}'),
-            onDragEnd: (position) => setState(() => _points[i] = position),
+            onDragEnd: (position) {
+              if (_saving) return;
+              setState(() { _points[i] = position; _pendingSave = null; });
+            },
           ),
       };
 
@@ -52,18 +60,24 @@ class _FieldPolygonEditScreenState extends State<FieldPolygonEditScreen> {
   Future<void> _save() async {
     if (_saving || _points.length < 3) return;
     setState(() => _saving = true);
-    final updated = widget.field.copyWith(
-      polygon: List.unmodifiable(_points),
-      area: _area,
-      perimeter: _perimeter,
+    // Retain the measured snapshot across retries so its history ID is stable.
+    final updated = _pendingSave ??= widget.field.copyWith(
+      polygon: List.unmodifiable(_points), area: _area, perimeter: _perimeter,
       measurementMethod: '${widget.field.measurementMethod}+edited',
       measuredAt: DateTime.now().toUtc(),
     );
-    _provider.updateField(updated);
-    if (!mounted) return;
-    setState(() => _saving = false);
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã cập nhật ranh giới và diện tích thửa.')));
-    Navigator.pop(context, updated);
+    try {
+      await _provider.saveBoundaryLocally(updated);
+      if (!mounted) return;
+      Navigator.pop(context, _provider.getFieldById(updated.id) ?? updated);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.fromLTRB(16, 16, 16, 100), content:
+        Text('Không thể lưu ranh giới và lịch sử đo đạc. Vui lòng thử lại.')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
@@ -77,7 +91,7 @@ class _FieldPolygonEditScreenState extends State<FieldPolygonEditScreen> {
         ],
       ),
       body: Stack(children: [
-        GoogleMap(
+        widget.mapBuilder?.call(_markers, _polygons) ?? GoogleMap(
           initialCameraPosition: CameraPosition(target: center, zoom: 17),
           mapType: MapType.satellite,
           myLocationEnabled: true,

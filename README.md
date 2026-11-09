@@ -1,5 +1,8 @@
 # agrico_deepseek
 
+For the AGRICO VS Code, local test, and PR workflow, see
+[Local development](docs/local-development.md).
+
 A new Flutter project.
 
 ## Getting Started

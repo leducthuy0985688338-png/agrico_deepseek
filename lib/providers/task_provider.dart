@@ -23,84 +23,6 @@ class TaskProvider extends ChangeNotifier {
 
   List<TaskModel> get tasks => _tasks;
 
-  TaskProvider() {
-    _addSampleData();
-  }
-
-  void _addSampleData() {
-    final now = DateTime.now();
-
-    _tasks = [
-      TaskModel(
-        id: 'T001',
-        title: 'Thu hoạch cà phê',
-        description: 'Thu hoạch toàn bộ lô cà phê A1. Cần 5 nhân công.',
-        priority: TaskPriority.HIGH,
-        status: TaskStatus.IN_PROGRESS,
-        dueDate: DateTime(now.year, now.month, now.day + 3),
-        assignedTo: 'NV001',
-        assignedToName: 'Nguyễn Văn An',
-        fieldId: 'LO0001',
-        fieldName: 'Lô cà phê A1',
-        tags: ['thu hoạch', 'cà phê'],
-        createdAt: now,
-      ),
-      TaskModel(
-        id: 'T002',
-        title: 'Bảo trì máy cày',
-        description: 'Kiểm tra và bảo trì định kỳ máy cày Yanmar',
-        priority: TaskPriority.MEDIUM,
-        status: TaskStatus.PENDING,
-        dueDate: DateTime(now.year, now.month, now.day + 5),
-        assignedTo: 'NV005',
-        assignedToName: 'Hoàng Văn Em',
-        machineId: 'M001',
-        machineName: 'Máy cày Yanmar',
-        tags: ['bảo trì', 'máy cày'],
-        createdAt: now,
-      ),
-      TaskModel(
-        id: 'T003',
-        title: 'Bón phân cho tiêu',
-        description: 'Bón phân lót cho lô tiêu B2',
-        priority: TaskPriority.HIGH,
-        status: TaskStatus.PENDING,
-        dueDate: DateTime(now.year, now.month, now.day + 2),
-        assignedTo: 'NV002',
-        assignedToName: 'Trần Thị Bình',
-        fieldId: 'LO0002',
-        fieldName: 'Lô tiêu B2',
-        tags: ['bón phân', 'tiêu'],
-        createdAt: now,
-      ),
-      TaskModel(
-        id: 'T004',
-        title: 'Lập báo cáo tài chính',
-        description: 'Tổng hợp báo cáo tài chính tháng này',
-        priority: TaskPriority.MEDIUM,
-        status: TaskStatus.COMPLETED,
-        dueDate: DateTime(now.year, now.month, now.day - 2),
-        assignedTo: 'NV004',
-        assignedToName: 'Phạm Thị Dung',
-        completedDate: DateTime(now.year, now.month, now.day - 1),
-        tags: ['báo cáo', 'tài chính'],
-        createdAt: now.subtract(const Duration(days: 5)),
-      ),
-      TaskModel(
-        id: 'T005',
-        title: 'Mua phân bón',
-        description: 'Nhập thêm phân Kali và phân Đạm cho kho',
-        priority: TaskPriority.LOW,
-        status: TaskStatus.DELAYED,
-        dueDate: DateTime(now.year, now.month, now.day - 1),
-        assignedTo: 'NV003',
-        assignedToName: 'Lê Văn Cường',
-        tags: ['mua hàng', 'vật tư'],
-        createdAt: now.subtract(const Duration(days: 3)),
-      ),
-    ];
-  }
-
   TaskRestoreResult restoreFromCloud({
     required List<TaskModel> tasks,
     required Map<String, String> employeeNamesById,
@@ -128,9 +50,7 @@ class TaskProvider extends ChangeNotifier {
         fieldName: task.fieldName,
         machineId: task.machineId,
         machineName: task.machineName,
-        tags: task.tags == null
-            ? null
-            : List<String>.unmodifiable(task.tags!),
+        tags: task.tags == null ? null : List<String>.unmodifiable(task.tags!),
         createdAt: task.createdAt,
         updatedAt: task.updatedAt,
       );
@@ -144,15 +64,17 @@ class TaskProvider extends ChangeNotifier {
 
     for (final task in deduplicated.values) {
       final employeeId = _cleanTaskLinkId(task.assignedTo);
-      final employeeName =
-          employeeId == null ? null : employeeNamesById[employeeId];
+      final employeeName = employeeId == null
+          ? null
+          : employeeNamesById[employeeId];
       if (employeeId != null && employeeName == null) {
         clearedEmployeeLinks++;
       }
 
       final machineId = _cleanTaskLinkId(task.machineId);
-      final machineName =
-          machineId == null ? null : machineNamesById[machineId];
+      final machineName = machineId == null
+          ? null
+          : machineNamesById[machineId];
       if (machineId != null && machineName == null) {
         clearedMachineLinks++;
       }

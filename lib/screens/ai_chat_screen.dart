@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/ai_message_model.dart';
 import '../services/ai_service.dart';
-import '../providers/warehouse_provider.dart';
 import '../providers/machine_provider.dart';
 import '../providers/employee_provider.dart';
 import '../providers/finance_provider.dart';
@@ -20,7 +19,6 @@ class _AiChatScreenState extends State<AiChatScreen> {
   final ScrollController _scrollController = ScrollController();
 
   // Khởi tạo các provider
-  final WarehouseProvider _warehouseProvider = WarehouseProvider();
   final MachineProvider _machineProvider = MachineProvider();
   final EmployeeProvider _employeeProvider = EmployeeProvider();
   final FinanceProvider _financeProvider = FinanceProvider();
@@ -211,7 +209,6 @@ class _AiChatScreenState extends State<AiChatScreen> {
     // Gọi AI Service
     final answer = AIService.processQuestion(
       question,
-      _warehouseProvider,
       _machineProvider,
       _employeeProvider,
       _financeProvider,

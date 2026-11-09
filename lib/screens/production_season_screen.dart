@@ -44,10 +44,18 @@ class _ProductionSeasonScreenState extends State<ProductionSeasonScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Xóa vụ sản xuất?'),
-        content: Text('Xóa ${season.name}? Dữ liệu vụ sẽ bị xóa khỏi thiết bị.'),
+        content: Text(
+          'Xóa ${season.name}? Dữ liệu vụ sẽ bị xóa khỏi thiết bị.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Hủy')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Xóa')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Xóa'),
+          ),
         ],
       ),
     );
@@ -79,14 +87,16 @@ class _ProductionSeasonScreenState extends State<ProductionSeasonScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => SeasonComparisonScreen(field: widget.field, seasons: seasons),
+        builder: (_) =>
+            SeasonComparisonScreen(field: widget.field, seasons: seasons),
       ),
     );
   }
 
   void _openCostDriverAnalysis(List<ProductionSeasonModel> seasons) {
     if (seasons.length < 2) return;
-    final sorted = [...seasons]..sort((a, b) => b.startDate.compareTo(a.startDate));
+    final sorted = [...seasons]
+      ..sort((a, b) => b.startDate.compareTo(a.startDate));
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -152,7 +162,8 @@ class _ProductionSeasonScreenState extends State<ProductionSeasonScreen> {
         animation: _provider,
         builder: (context, _) {
           final seasons = _provider.seasonsForField(widget.field.id);
-          if (_provider.isLoading) return const Center(child: CircularProgressIndicator());
+          if (_provider.isLoading)
+            return const Center(child: CircularProgressIndicator());
           if (seasons.isEmpty) {
             return Center(
               child: Padding(
@@ -189,9 +200,17 @@ class _ProductionSeasonScreenState extends State<ProductionSeasonScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('So sánh hiệu quả các vụ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            Text(
+                              'So sánh hiệu quả các vụ',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
                             SizedBox(height: 3),
-                            Text('So sánh sản lượng, năng suất, doanh thu, chi phí và lợi nhuận/ha.'),
+                            Text(
+                              'So sánh sản lượng, năng suất, doanh thu, chi phí và lợi nhuận/ha.',
+                            ),
                           ],
                         ),
                       ),
@@ -208,8 +227,13 @@ class _ProductionSeasonScreenState extends State<ProductionSeasonScreen> {
                 Card(
                   child: ListTile(
                     leading: const Icon(Icons.analytics_outlined),
-                    title: const Text('Phân tích biến động chi phí', style: TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: const Text('Xác định nhóm và khoản chi đang làm chi phí tăng so với vụ trước.'),
+                    title: const Text(
+                      'Phân tích biến động chi phí',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: const Text(
+                      'Xác định nhóm và khoản chi đang làm chi phí tăng so với vụ trước.',
+                    ),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => _openCostDriverAnalysis(seasons),
                   ),
@@ -228,7 +252,9 @@ class _ProductionSeasonScreenState extends State<ProductionSeasonScreen> {
                           contentPadding: EdgeInsets.zero,
                           leading: const CircleAvatar(child: Icon(Icons.grass)),
                           title: Text(season.name),
-                          subtitle: Text('${season.crop} • ${season.variety}\nBắt đầu: ${_date(season.startDate)} • ${season.status}'),
+                          subtitle: Text(
+                            '${season.crop} • ${season.variety}\nBắt đầu: ${_date(season.startDate)} • ${season.status}',
+                          ),
                           isThreeLine: true,
                           onTap: () => _openSeason(season),
                           trailing: PopupMenuButton<String>(
@@ -239,10 +265,22 @@ class _ProductionSeasonScreenState extends State<ProductionSeasonScreen> {
                               if (value == 'delete') _deleteSeason(season);
                             },
                             itemBuilder: (_) => const [
-                              PopupMenuItem(value: 'costs', child: Text('Chi phí sản xuất')),
-                              PopupMenuItem(value: 'logs', child: Text('Nhật ký sản xuất')),
-                              PopupMenuItem(value: 'harvest', child: Text('Thu hoạch')),
-                              PopupMenuItem(value: 'delete', child: Text('Xóa vụ')),
+                              PopupMenuItem(
+                                value: 'costs',
+                                child: Text('Chi phí sản xuất'),
+                              ),
+                              PopupMenuItem(
+                                value: 'logs',
+                                child: Text('Nhật ký sản xuất'),
+                              ),
+                              PopupMenuItem(
+                                value: 'harvest',
+                                child: Text('Thu hoạch'),
+                              ),
+                              PopupMenuItem(
+                                value: 'delete',
+                                child: Text('Xóa vụ'),
+                              ),
                             ],
                           ),
                         ),
@@ -265,7 +303,8 @@ class _ProductionSeasonScreenState extends State<ProductionSeasonScreen> {
     );
   }
 
-  String _date(DateTime date) => '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  String _date(DateTime date) =>
+      '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
 }
 
 class _SeasonFormDialog extends StatefulWidget {
@@ -305,58 +344,96 @@ class _SeasonFormDialogState extends State<_SeasonFormDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Tạo vụ sản xuất'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: _name, decoration: const InputDecoration(labelText: 'Tên vụ *')),
-            TextField(controller: _crop, decoration: const InputDecoration(labelText: 'Cây trồng')),
-            TextField(controller: _variety, decoration: const InputDecoration(labelText: 'Giống')),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Ngày bắt đầu'),
-              subtitle: Text(_date(_startDate)),
-              onTap: () async {
-                final date = await showDatePicker(
-                  context: context,
-                  firstDate: DateTime(2020),
-                  lastDate: DateTime(2100),
-                  initialDate: _startDate,
-                );
-                if (date != null && mounted) setState(() => _startDate = date);
-              },
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Ngày dự kiến thu hoạch'),
-              subtitle: Text(_harvestDate == null ? 'Chưa chọn' : _date(_harvestDate!)),
-              onTap: () async {
-                final date = await showDatePicker(
-                  context: context,
-                  firstDate: _startDate,
-                  lastDate: DateTime(2100),
-                  initialDate: _harvestDate ?? _startDate.add(const Duration(days: 90)),
-                );
-                if (date != null && mounted) setState(() => _harvestDate = date);
-              },
-            ),
-            DropdownButtonFormField<String>(
-              initialValue: _status,
-              decoration: const InputDecoration(labelText: 'Trạng thái'),
-              items: const [
-                'Đang sản xuất',
-                'Chuẩn bị thu hoạch',
-                'Đã thu hoạch',
-                'Tạm dừng',
-              ].map((value) => DropdownMenuItem(value: value, child: Text(value))).toList(),
-              onChanged: (value) => setState(() => _status = value ?? _status),
-            ),
-            TextField(controller: _notes, decoration: const InputDecoration(labelText: 'Ghi chú')),
-          ],
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _name,
+                decoration: const InputDecoration(labelText: 'Tên vụ *'),
+              ),
+              TextField(
+                controller: _crop,
+                decoration: const InputDecoration(labelText: 'Cây trồng'),
+              ),
+              TextField(
+                controller: _variety,
+                decoration: const InputDecoration(labelText: 'Giống'),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Ngày bắt đầu'),
+                subtitle: Text(_date(_startDate)),
+                onTap: () async {
+                  final date = await showDatePicker(
+                    context: context,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2100),
+                    initialDate: _startDate,
+                  );
+                  if (date != null && mounted)
+                    setState(() => _startDate = date);
+                },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Ngày dự kiến thu hoạch'),
+                subtitle: Text(
+                  _harvestDate == null ? 'Chưa chọn' : _date(_harvestDate!),
+                ),
+                onTap: () async {
+                  final date = await showDatePicker(
+                    context: context,
+                    firstDate: _startDate,
+                    lastDate: DateTime(2100),
+                    initialDate:
+                        _harvestDate ??
+                        _startDate.add(const Duration(days: 90)),
+                  );
+                  if (date != null && mounted)
+                    setState(() => _harvestDate = date);
+                },
+              ),
+              DropdownButtonFormField<String>(
+                isExpanded: true,
+                initialValue: _status,
+                decoration: const InputDecoration(labelText: 'Trạng thái'),
+                items:
+                    const [
+                          'Đang sản xuất',
+                          'Chuẩn bị thu hoạch',
+                          'Đã thu hoạch',
+                          'Tạm dừng',
+                        ]
+                        .map(
+                          (value) => DropdownMenuItem(
+                            value: value,
+                            child: Text(
+                              value,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                onChanged: (value) =>
+                    setState(() => _status = value ?? _status),
+              ),
+              TextField(
+                controller: _notes,
+                decoration: const InputDecoration(labelText: 'Ghi chú'),
+              ),
+            ],
+          ),
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Hủy'),
+        ),
         FilledButton(
           onPressed: () {
             if (_name.text.trim().isEmpty) return;
@@ -382,5 +459,6 @@ class _SeasonFormDialogState extends State<_SeasonFormDialog> {
     );
   }
 
-  String _date(DateTime date) => '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  String _date(DateTime date) =>
+      '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
 }

@@ -11,8 +11,8 @@ class MaterialProductionCostSyncService {
   MaterialProductionCostSyncService({
     ProductionCostDatabase? costDatabase,
     ProductionSeasonDatabase? seasonDatabase,
-  })  : _costDatabase = costDatabase ?? ProductionCostDatabase(),
-        _seasonDatabase = seasonDatabase ?? ProductionSeasonDatabase();
+  }) : _costDatabase = costDatabase ?? ProductionCostDatabase(),
+       _seasonDatabase = seasonDatabase ?? ProductionSeasonDatabase();
 
   Future<ProductionCostModel?> syncExport({
     required String transactionId,
@@ -26,16 +26,36 @@ class MaterialProductionCostSyncService {
     DateTime? date,
     String? notes,
   }) async {
-    if (fieldId.isEmpty || quantity <= 0) return null;
+    if (fieldId.trim().isEmpty || quantity <= 0) return null;
+    if (!quantity.isFinite ||
+        !unitPrice.isFinite ||
+        unitPrice < 0 ||
+        !(quantity * unitPrice).isFinite) {
+      throw const FormatException(
+        'Invalid material cost quantity or unit price.',
+      );
+    }
+    if (transactionId.trim().isEmpty ||
+        itemId.trim().isEmpty ||
+        itemName.trim().isEmpty ||
+        unit.trim().isEmpty) {
+      throw const FormatException(
+        'Material cost source and item are required.',
+      );
+    }
+
+    // A delivered movement is immutable for cost purposes. A retry must not
+    // overwrite the original price, destination, date or quantity.
+    final existing = await _costDatabase.getBySource('material', transactionId);
+    if (existing != null) return existing;
 
     final resolvedSeasonId = (seasonId == null || seasonId.isEmpty)
         ? (await _seasonDatabase.getLatestByField(fieldId))?.id
         : seasonId;
     if (resolvedSeasonId == null || resolvedSeasonId.isEmpty) return null;
 
-    final existing = await _costDatabase.getBySource('material', transactionId);
     final record = ProductionCostModel(
-      id: existing?.id ?? 'MATERIAL-COST-$transactionId',
+      id: 'MATERIAL-COST-$transactionId',
       fieldId: fieldId,
       seasonId: resolvedSeasonId,
       category: ProductionCostCategory.material,
@@ -51,6 +71,8 @@ class MaterialProductionCostSyncService {
     );
 
     await _costDatabase.upsert(record);
-    return record;
+    // Another delivery can win the unique source constraint while this one
+    // waits for SQLite. Always return the persisted winner.
+    return await _costDatabase.getBySource('material', transactionId) ?? record;
   }
 }
