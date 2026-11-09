@@ -753,7 +753,7 @@ class NativeApprovalRepository implements NativeApprovalStore {
               resource: s.context.resource,
             ).userId;
         if (ref.type == NativeApprovalType.command) {
-          await applyCommand(tx, ref, s, actor);
+          await _applyCommand(tx, ref, s, actor);
           return;
         }
         final writes = <String>{
@@ -1152,7 +1152,7 @@ class NativeApprovalRepository implements NativeApprovalStore {
     require(PermissionCodes.financeCreate, resource: source.context.resource);
   });
 
-  Future<void> applyCommand(
+  Future<void> _applyCommand(
     Transaction tx,
     NativeApprovalRef ref,
     _Source s,
@@ -1218,6 +1218,13 @@ class NativeApprovalRepository implements NativeApprovalStore {
           throw StateError('Payment belongs to another payroll.');
         writes.add('integration_cash_links_v1:${payment['id']}');
         finances.add('integrated:salary:${payment['id']}');
+    }
+    // Source and permission reads can await SQLite. Recheck the live reviewer
+    // immediately before issuing the lease for the specific business command.
+    for (final permission in s.context.requiredPermissions) {
+      if (require(permission, resource: s.context.resource).userId != actor) {
+        throw NativeApprovalAccessDenied();
+      }
     }
     await NativeApprovalGuard.authorized(
       tx,

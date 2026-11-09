@@ -1,3 +1,4 @@
+import '../../../core/approval/native_approval_guard.dart';
 import 'sqlite_payroll_adjustments.dart';
 import '../../../core/production/source_governance.dart';
 import '../../../core/permissions/operation_scope.dart';
@@ -1289,6 +1290,13 @@ class SqlitePersonnelRepository
       ]);
       if (ExactDecimal.parse(paid).compareTo(ExactDecimal.parse(effective)) > 0)
         throw StateError('Payment exceeds outstanding corrected salary.');
+      if (await IntegrationCash.enabled(tx)) {
+        NativeApprovalGuard.requireFinanceExecution(
+          tx,
+          farm: farmId,
+          financeId: 'integrated:salary:$id',
+        );
+      }
       await tx.insert('personnel_payments_v1', {
         'id': id,
         'farm_id': farmId,
