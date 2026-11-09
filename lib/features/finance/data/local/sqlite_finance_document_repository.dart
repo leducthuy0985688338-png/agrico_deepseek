@@ -179,15 +179,19 @@ class SqliteFinanceDocumentRepository
         (parcelId != null && parcelId.trim().isEmpty)) {
       throw const FormatException('Invalid finance document.');
     }
-    return database.transaction(
-      (tx) => _sequence.saveWithCode(
+    return database.transaction((tx) async {
+      NativeApprovalGuard.requireFinanceExecution(
+        tx,
+        farm: organizationId,
+        financeId: id,
+      );
+      await PeriodLock.requireFinanceGuards(tx);
+      return _sequence.saveWithCode(
         transaction: tx,
         organizationId: organizationId,
         kind: kind,
         documentDate: occurredAt,
         save: (code) async {
-          NativeApprovalGuard.requireFinanceExecution(tx, farm: organizationId, financeId: id);
-          await PeriodLock.requireFinanceGuards(tx);
           final document = FinanceDocument(
             id: id,
             organizationId: organizationId,
@@ -215,8 +219,8 @@ class SqliteFinanceDocumentRepository
           }, conflictAlgorithm: ConflictAlgorithm.abort);
           return document;
         },
-      ),
-    );
+      );
+    });
   }
 
   @override

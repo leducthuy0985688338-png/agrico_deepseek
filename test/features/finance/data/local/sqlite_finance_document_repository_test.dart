@@ -47,6 +47,26 @@ void main() {
     ),
   ));
 
+  test('denied posting in a borrowed transaction does not reserve a number', () async {
+    await db.transaction((tx) async {
+      final bound = SqliteFinanceDocumentRepository(TransactionDatabase(tx));
+      await expectLater(
+        bound.create(
+          id: 'denied',
+          organizationId: 'farm-a',
+          kind: BusinessDocumentKind.receipt,
+          occurredAt: DateTime.utc(2026, 9, 25),
+          amountMinor: 100,
+          currency: 'LAK',
+          category: 'Sale',
+        ),
+        throwsStateError,
+      );
+    });
+    expect(await db.query('monthly_document_sequences'), isEmpty);
+    expect(await repository.listByOrganization('farm-a'), isEmpty);
+  });
+
   test('a persisted lease alone cannot authorize a direct write', () async {
     await db.insert(NativeApprovalGuard.lease, {
       'singleton': 1,
