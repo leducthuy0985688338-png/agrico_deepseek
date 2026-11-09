@@ -19,7 +19,18 @@ jobs:
           channel: stable
           cache: true
       - name: Install SQLite native dependencies
-        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsqlite3-dev
+          # Use the SQLite library verified by Ubuntu's signed APT repository
+          # only in Linux test jobs. Android keeps the pinned native assets.
+          cat >> pubspec.yaml <<'YAML'
+
+          hooks:
+            user_defines:
+              sqlite3:
+                source: system
+          YAML
       - run: flutter pub get
       - name: Analyzer
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
@@ -39,7 +50,18 @@ jobs:
           channel: stable
           cache: true
       - name: Install SQLite native dependencies
-        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsqlite3-dev
+          # Use the SQLite library verified by Ubuntu's signed APT repository
+          # only in Linux test jobs. Android keeps the pinned native assets.
+          cat >> pubspec.yaml <<'YAML'
+
+          hooks:
+            user_defines:
+              sqlite3:
+                source: system
+          YAML
       - run: flutter pub get
       - name: Full Flutter regression
         run: flutter test --reporter expanded

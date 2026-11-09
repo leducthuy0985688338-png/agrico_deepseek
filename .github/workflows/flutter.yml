@@ -54,7 +54,18 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - name: SQLite native test dependency
-        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsqlite3-dev
+          # Use the SQLite library verified by Ubuntu's signed APT repository
+          # only in Linux test jobs. Android keeps the pinned native assets.
+          cat >> pubspec.yaml <<'YAML'
+
+          hooks:
+            user_defines:
+              sqlite3:
+                source: system
+          YAML
       - name: Accepted field cleanup regression
         run: flutter test test/providers test/screens test/field_restore_provider_test.dart --reporter expanded
       - name: Full regression
