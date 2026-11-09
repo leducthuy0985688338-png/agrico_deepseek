@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import '../periods/period_lock.dart';
 import 'sqlite_document_approval.dart';
+import 'transaction_database.dart';
 
 /// Installed by the application bootstrap, independently of policy activation.
 /// Module-only SQLite fixtures are not a bootstrapped application database.
@@ -318,6 +320,28 @@ abstract final class NativeApprovalGuard {
     }, conflictAlgorithm: ConflictAlgorithm.ignore);
   }
 
+  static final _executionKey = Object();
+
+  static Transaction _underlyingTransaction(Transaction transaction) =>
+      transaction is TransactionDatabase
+      ? _underlyingTransaction(transaction.tx)
+      : transaction;
+
+  static void requireFinanceExecution(
+    Transaction tx, {
+    required String farm,
+    required String financeId,
+  }) {
+    final scope = Zone.current[_executionKey];
+    if (scope is! _FinanceExecution ||
+        !scope.active ||
+        !identical(scope.transaction, _underlyingTransaction(tx)) ||
+        scope.farm != farm ||
+        !scope.financeIds.contains(financeId)) {
+      throw StateError('Finance approval execution scope required.');
+    }
+  }
+
   static Future<T> authorized<T>(
     Transaction tx, {
     required String farm,
@@ -333,10 +357,26 @@ abstract final class NativeApprovalGuard {
       'writes_json': jsonEncode(writes.toList()..sort()),
       'finance_json': jsonEncode(financeIds.toList()..sort()),
     });
+    final scope = _FinanceExecution(
+      _underlyingTransaction(tx),
+      farm,
+      Set.unmodifiable(financeIds),
+    );
     try {
-      return await apply();
+      return await runZoned(apply, zoneValues: {_executionKey: scope});
     } finally {
+      scope.active = false;
       await tx.delete(lease, where: 'singleton=1');
     }
   }
+}
+
+
+final class _FinanceExecution {
+  _FinanceExecution(this.transaction, this.farm, this.financeIds);
+
+  final Transaction transaction;
+  final String farm;
+  final Set<String> financeIds;
+  bool active = true;
 }

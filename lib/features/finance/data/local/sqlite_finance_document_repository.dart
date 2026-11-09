@@ -186,6 +186,7 @@ class SqliteFinanceDocumentRepository
         kind: kind,
         documentDate: occurredAt,
         save: (code) async {
+          NativeApprovalGuard.requireFinanceExecution(tx, farm: organizationId, financeId: id);
           await PeriodLock.requireFinanceGuards(tx);
           final document = FinanceDocument(
             id: id,
