@@ -215,7 +215,10 @@ void main() {
   });
   tearDown(() => db.close());
 
-  Future<void> salaryReady({bool controlled = false}) async {
+  Future<void> salaryReady({
+    bool controlled = false,
+    List<String> currencies = const ['VND'],
+  }) async {
     await service.createRate(admin, rate(amount: '1', ot: '1', scale: 2));
     final work = entry('a', hours: 8, overtime: 0);
     final fixture = controlled ? ApprovedPayrollFixture(db) : null;
@@ -223,7 +226,7 @@ void main() {
     if (fixture == null) {
       await approve(work);
     } else {
-      await fixture.initialize();
+      await fixture.initialize(currencies: currencies);
       await service.createEntry(admin, work);
       await fixture.approve(NativeApprovalType.fieldWork, work.id);
     }
@@ -1106,7 +1109,7 @@ void main() {
   test(
     'VND employee receivable and LAK salary payable never offset each other',
     () async {
-      await salaryReady();
+      await salaryReady(controlled: true, currencies: const ['VND', 'LAK']);
       await pay(amount: '1');
       await adjust(
         adjustment('vnd', delta: '-0.2', kind: PayrollAdjustmentKind.deduction),
@@ -1121,9 +1124,9 @@ void main() {
           scale: 2,
         ),
       );
-      await approve(
-        entry('lak-work', day: 24, hours: 8, overtime: 0, allocate: false),
-      );
+      final work = entry('lak-work', day: 24, hours: 8, overtime: 0, allocate: false);
+      await service.createEntry(admin, work);
+      await approval!.approve(NativeApprovalType.fieldWork, work.id);
       await service.createPayroll(
         admin,
         const PayrollDraft(
@@ -1134,7 +1137,7 @@ void main() {
           currency: 'LAK',
         ),
       );
-      await service.approvePayroll(admin, 'lak');
+      await approval!.approve(NativeApprovalType.payroll, 'lak');
       await adjust(
         adjustment(
           'lak-correction',

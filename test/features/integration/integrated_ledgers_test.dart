@@ -676,8 +676,9 @@ void main() {
   test(
     'backup preflight verifies exact salary links and rejects changed coefficient',
     () async {
-      await salaryReady();
-      await pay();
+      final approval = ApprovedPayrollFixture(db);
+      await salaryReady(approval: approval);
+      await approval.pay('pay', '0.25', '2026-10-25', 'Bank transfer');
       final dir = await Directory.systemTemp.createTemp(
         'agrico-integration-backup-',
       );

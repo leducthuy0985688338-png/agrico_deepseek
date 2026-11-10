@@ -24,7 +24,7 @@ final class ApprovedPayrollFixture {
     ));
   }
 
-  Future<void> initialize() async {
+  Future<void> initialize({List<String> currencies = const ['VND']}) async {
     _authority.partyUsers['w'] = {};
     await SqliteDocumentApproval.createSchema(db);
     for (final kind in [
@@ -34,7 +34,9 @@ final class ApprovedPayrollFixture {
       ApprovalKind.settlement,
       ApprovalKind.correction,
     ]) {
-      await syntheticPolicy(db, _authority, kind, 'VND');
+      for (final currency in currencies) {
+        await syntheticPolicy(db, _authority, kind, currency);
+      }
     }
     await NativeApprovalGuard.install(db);
   }
