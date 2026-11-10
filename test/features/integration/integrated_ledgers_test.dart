@@ -1227,8 +1227,9 @@ void main() {
       await fuelStock();
       await machineSource();
       await measuredRun(visits: true);
-      await salaryReady();
-      await pay();
+      final payroll = ApprovedPayrollFixture(db);
+      await salaryReady(approval: payroll);
+      await payroll.pay('pay', '0.25', '2026-10-25', 'Bank transfer');
       await bridge().metadata('f', 'stock', 'diesel', 0, {
         'minimumQuantity': '8',
       }, 'admin');
