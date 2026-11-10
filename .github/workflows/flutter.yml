@@ -83,6 +83,9 @@ jobs:
       - name: Trade and backup regression
         if: github.ref == 'refs/heads/fix/cmd045-remaining-regression-closure'
         run: flutter test test/features/trade/trade_repository_test.dart test/core/backup/inventory_backup_preflight_test.dart
+      - name: Payroll adjustment and period regression
+        if: github.ref == 'refs/heads/fix/cmd045-remaining-regression-closure'
+        run: flutter test test/features/personnel/payroll_adjustment_test.dart test/features/integration/integrated_ledgers_test.dart test/features/integration/period_close_test.dart
       - name: Full regression
         if: ${{ !cancelled() && (success() || github.ref == 'refs/heads/fix/cmd045-remaining-regression-closure') }}
         run: flutter test

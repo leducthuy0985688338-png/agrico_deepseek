@@ -30,6 +30,7 @@ final class ApprovedPayrollFixture {
     for (final kind in [
       ApprovalKind.fieldWork,
       ApprovalKind.payroll,
+      ApprovalKind.payrollAdjustment,
       ApprovalKind.settlement,
       ApprovalKind.correction,
     ]) {
@@ -66,6 +67,14 @@ final class ApprovedPayrollFixture {
     'day': day,
     'reason': reason,
   });
+
+  Future<void> refund(String id, String amount, String? reversesId) =>
+      _command(id, reversesId == null ? 'payrollRefund' : 'payrollRefundReverse', {
+        'amount': amount,
+        'day': '2026-10-26',
+        'reason': 'Refund reference',
+        if (reversesId != null) 'refundId': reversesId,
+      });
 
   Future<void> _command(
     String id,

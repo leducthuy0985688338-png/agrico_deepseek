@@ -1,3 +1,5 @@
+import 'package:agrico_deepseek/core/approval/native_approval_store.dart';
+import '../../support/approved_payroll_fixture.dart';
 import 'dart:convert';
 import 'package:agrico_deepseek/core/production/source_governance.dart';
 import 'dart:io';
@@ -32,6 +34,7 @@ void main() {
   late AuthorizationSubject live;
   sqfliteFfiInit();
   late Database db;
+  ApprovedPayrollFixture? approval;
   late SqlitePersonnelRepository repo;
   late PersonnelService service;
   late SqliteInventoryRepository inventory;
@@ -137,6 +140,7 @@ void main() {
 
   setUp(() async {
     live = admin;
+    approval = null;
     db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
     await db.execute('PRAGMA foreign_keys=ON');
     await db.execute(
@@ -211,9 +215,18 @@ void main() {
   });
   tearDown(() => db.close());
 
-  Future<void> salaryReady() async {
+  Future<void> salaryReady({bool controlled = false}) async {
     await service.createRate(admin, rate(amount: '1', ot: '1', scale: 2));
-    await approve(entry('a', hours: 8, overtime: 0));
+    final work = entry('a', hours: 8, overtime: 0);
+    final fixture = controlled ? ApprovedPayrollFixture(db) : null;
+    approval = fixture;
+    if (fixture == null) {
+      await approve(work);
+    } else {
+      await fixture.initialize();
+      await service.createEntry(admin, work);
+      await fixture.approve(NativeApprovalType.fieldWork, work.id);
+    }
     await service.createPayroll(
       admin,
       const PayrollDraft(
@@ -224,14 +237,18 @@ void main() {
         currency: 'VND',
       ),
     );
-    await service.approvePayroll(admin, 'salary');
+    if (fixture == null) {
+      await service.approvePayroll(admin, 'salary');
+    } else {
+      await fixture.approve(NativeApprovalType.payroll, 'salary');
+    }
   }
 
   Future<void> pay({
     String id = 'pay',
     String amount = '0.25',
     String day = '2026-10-25',
-  }) => service.recordPayment(
+  }) => approval?.pay(id, amount, day, 'Bank transfer') ?? service.recordPayment(
     admin,
     id: id,
     payrollId: 'salary',
@@ -267,14 +284,19 @@ void main() {
       (await service.payrolls(admin)).single;
   Future<void> adjust(PayrollAdjustmentDraft d) async {
     await service.createPayrollAdjustment(admin, d);
-    await service.approvePayrollAdjustment(admin, d.id);
+    final fixture = approval;
+    if (fixture == null) {
+      await service.approvePayrollAdjustment(admin, d.id);
+    } else {
+      await fixture.approve(NativeApprovalType.payrollAdjustment, d.id);
+    }
   }
 
   Future<void> refund({
     String id = 'refund',
     String amount = '0.1',
     String? reversesId,
-  }) => service.refundPayroll(
+  }) => approval?.refund(id, amount, reversesId) ?? service.refundPayroll(
     admin,
     id: id,
     payrollId: 'salary',
@@ -406,7 +428,7 @@ void main() {
   test(
     'partial overpayment refund creates exact THU and leaves salary, earnings and costs immutable',
     () async {
-      await salaryReady();
+      await salaryReady(controlled: true);
       await pay(amount: '1');
       await adjust(
         adjustment('a', delta: '-0.4', kind: PayrollAdjustmentKind.deduction),
@@ -432,7 +454,7 @@ void main() {
   test(
     'refund reversal appends CHI and restores the receivable without editing either source',
     () async {
-      await salaryReady();
+      await salaryReady(controlled: true);
       await pay(amount: '1');
       await adjust(
         adjustment('a', delta: '-0.4', kind: PayrollAdjustmentKind.deduction),
@@ -461,7 +483,7 @@ void main() {
   test(
     'new payments honor the corrected balance and do not double count refunded money',
     () async {
-      await salaryReady();
+      await salaryReady(controlled: true);
       await pay(amount: '1');
       await adjust(
         adjustment('a', delta: '-0.4', kind: PayrollAdjustmentKind.deduction),
@@ -765,7 +787,7 @@ void main() {
   test(
     'failed refund cash insert rolls back every refund and monthly sequence change',
     () async {
-      await salaryReady();
+      await salaryReady(controlled: true);
       await pay(amount: '1');
       await adjust(
         adjustment('a', delta: '-0.4', kind: PayrollAdjustmentKind.deduction),
@@ -853,7 +875,7 @@ void main() {
   test(
     'reports keep original salary, correction postings, refund cash and VND LAK separate',
     () async {
-      await salaryReady();
+      await salaryReady(controlled: true);
       await pay(amount: '1');
       await adjust(
         adjustment(
@@ -891,7 +913,7 @@ void main() {
   test(
     'backup preflight accepts corrections and refunds but rejects altered delta or missing tables',
     () async {
-      await salaryReady();
+      await salaryReady(controlled: true);
       await pay(amount: '1');
       await adjust(
         adjustment('a', delta: '-0.4', kind: PayrollAdjustmentKind.deduction),
@@ -1024,7 +1046,7 @@ void main() {
   test(
     'micro-unit corrections and refunds retain exact decimal amounts',
     () async {
-      await salaryReady();
+      await salaryReady(controlled: true);
       await pay(amount: '1');
       await adjust(
         adjustment(
@@ -1179,7 +1201,7 @@ void main() {
   test(
     'a failed refund reversal leaves original refund, cash and employee debt unchanged',
     () async {
-      await salaryReady();
+      await salaryReady(controlled: true);
       await pay(amount: '1');
       await adjust(
         adjustment('a', delta: '-0.2', kind: PayrollAdjustmentKind.deduction),
@@ -1221,7 +1243,7 @@ void main() {
   test(
     'pre-adjustment backups with approved salary remain compatible when all correction tables are absent',
     () async {
-      await salaryReady();
+      await salaryReady(controlled: true);
       await pay();
       final directory = await Directory.systemTemp.createTemp(
         'payroll-old-backup-',
@@ -1304,7 +1326,7 @@ void main() {
   test(
     'two concurrent refund requests cannot collect the same employee receivable twice',
     () async {
-      await salaryReady();
+      await salaryReady(controlled: true);
       await pay(amount: '1');
       await adjust(
         adjustment('a', delta: '-0.2', kind: PayrollAdjustmentKind.deduction),
