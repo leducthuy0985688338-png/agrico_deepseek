@@ -1,3 +1,5 @@
+import 'package:agrico_deepseek/core/approval/native_approval_store.dart';
+import '../../support/approved_payroll_fixture.dart';
 import '../../support/approved_finance_fixture.dart';
 import 'package:agrico_deepseek/features/trade/domain/trade.dart'
     show TradeDraft, TradeKind, TradeLine;
@@ -217,9 +219,16 @@ void main() {
   });
   tearDown(() => db.close());
 
-  Future<void> salaryReady() async {
+  Future<void> salaryReady({ApprovedPayrollFixture? approval}) async {
     await service.createRate(admin, rate(amount: '1', ot: '1', scale: 2));
-    await approve(entry('a', hours: 8, overtime: 0));
+    final work = entry('a', hours: 8, overtime: 0);
+    if (approval == null) {
+      await approve(work);
+    } else {
+      await approval.initialize();
+      await service.createEntry(admin, work);
+      await approval.approve(NativeApprovalType.fieldWork, work.id);
+    }
     await service.createPayroll(
       admin,
       const PayrollDraft(
@@ -230,7 +239,11 @@ void main() {
         currency: 'VND',
       ),
     );
-    await service.approvePayroll(admin, 'salary');
+    if (approval == null) {
+      await service.approvePayroll(admin, 'salary');
+    } else {
+      await approval.approve(NativeApprovalType.payroll, 'salary');
+    }
   }
 
   Future<void> pay({
@@ -250,9 +263,12 @@ void main() {
   test(
     'salary exact cash and append-only refund are atomic and idempotent',
     () async {
-      await salaryReady();
-      await pay();
-      await pay();
+      final approval = ApprovedPayrollFixture(db);
+      await salaryReady(approval: approval);
+      Future<void> postPay({String id = 'pay', String amount = '0.25'}) =>
+          approval.pay(id, amount, '2026-10-25', 'Bank transfer');
+      await postPay();
+      await postPay();
       expect(await db.query('integration_cash_links_v1'), hasLength(1));
       var cash = await db.query('finance_documents_v2');
       expect(cash, hasLength(1));
@@ -260,22 +276,8 @@ void main() {
       expect(cash.single['amount_scale'], 2);
       expect((await service.payrolls(admin)).single.remaining, '0.75');
       final cost = await repo.productionLaborCosts('f');
-      await bridge().reverseSalary(
-        'f',
-        'pay',
-        'refund',
-        '2026-10-26',
-        'Cancelled transfer',
-        'admin',
-      );
-      await bridge().reverseSalary(
-        'f',
-        'pay',
-        'refund',
-        '2026-10-26',
-        'Cancelled transfer',
-        'admin',
-      );
+      await approval.reverseSalary('refund', 'pay', '2026-10-26', 'Cancelled transfer');
+      await approval.reverseSalary('refund', 'pay', '2026-10-26', 'Cancelled transfer');
       expect((await service.payrolls(admin)).single.remaining, '1');
       expect((await service.payments(admin)).single.reversed, isTrue);
       expect(await repo.productionLaborCosts('f'), hasLength(cost.length));
@@ -287,23 +289,26 @@ void main() {
       expect(summary.single.balanceText, '0');
       await PersonnelIntegrity.validate(db);
       await IntegrationIntegrity.validate(db);
-      await pay(id: 'replacement', amount: '1');
+      await postPay(id: 'replacement', amount: '1');
       expect((await service.payrolls(admin)).single.remaining, '0');
-      await expectLater(pay(id: 'over', amount: '0.01'), throwsStateError);
+      await expectLater(postPay(id: 'over', amount: '0.01'), throwsStateError);
     },
   );
   test(
     'failed finance insert rolls back HR payment and both sequences',
     () async {
-      await salaryReady();
+      final approval = ApprovedPayrollFixture(db);
+      await salaryReady(approval: approval);
+      Future<void> postPay({String id = 'pay', String amount = '0.25'}) =>
+          approval.pay(id, amount, '2026-10-25', 'Bank transfer');
       await db.execute(
         "CREATE TRIGGER fail_cash BEFORE INSERT ON finance_documents_v2 BEGIN SELECT RAISE(ABORT,'test'); END",
       );
-      await expectLater(pay(), throwsA(isA<DatabaseException>()));
+      await expectLater(postPay(), throwsA(isA<DatabaseException>()));
       expect(await db.query('personnel_payments_v1'), isEmpty);
       expect(await db.query('integration_cash_links_v1'), isEmpty);
       await db.execute('DROP TRIGGER fail_cash');
-      await pay();
+      await postPay();
       expect(
         (await db.query('finance_documents_v2')).single['code'],
         'CHI-202610-001',
@@ -360,8 +365,11 @@ void main() {
   test(
     'full 20-sheet report preserves identity text, exact cash, currency and formulas',
     () async {
-      await salaryReady();
-      await pay();
+      final approval = ApprovedPayrollFixture(db);
+      await salaryReady(approval: approval);
+      Future<void> postPay({String id = 'pay', String amount = '0.25'}) =>
+          approval.pay(id, amount, '2026-10-25', 'Bank transfer');
+      await postPay();
       await service.saveProfile(
         admin,
         EmployeeProfile(

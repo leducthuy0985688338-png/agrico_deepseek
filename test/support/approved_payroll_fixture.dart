@@ -31,6 +31,7 @@ final class ApprovedPayrollFixture {
       ApprovalKind.fieldWork,
       ApprovalKind.payroll,
       ApprovalKind.settlement,
+      ApprovalKind.correction,
     ]) {
       await syntheticPolicy(db, _authority, kind, 'VND');
     }
@@ -39,7 +40,12 @@ final class ApprovedPayrollFixture {
 
   Future<void> approve(NativeApprovalType type, String id) async {
     final ref = NativeApprovalRef(type, id);
-    await _workflow('admin').submit(ref);
+    final requests = await db.query(
+      SqliteDocumentApproval.requests,
+      where: 'farm_id=? AND source_id=?',
+      whereArgs: ['f', ref.key],
+    );
+    if (requests.isEmpty) await _workflow('admin').submit(ref);
     final result = await _workflow('payroll-reviewer').approve(
       ref,
       'Independent payroll fixture review',
@@ -47,12 +53,30 @@ final class ApprovedPayrollFixture {
     if (!result.allowed) throw StateError(result.reason);
   }
 
-  Future<void> pay(String id, String amount, String day, String note) async {
+  Future<void> pay(String id, String amount, String day, String note) =>
+      _command(id, 'payrollPay', {'amount': amount, 'day': day, 'reason': note});
+
+  Future<void> reverseSalary(
+    String id,
+    String paymentId,
+    String day,
+    String reason,
+  ) => _command(id, 'salaryReverse', {
+    'paymentId': paymentId,
+    'day': day,
+    'reason': reason,
+  });
+
+  Future<void> _command(
+    String id,
+    String operation,
+    Map<String, Object?> payload,
+  ) async {
     await _workflow('admin').proposeCommand(
       id: id,
-      operation: 'payrollPay',
+      operation: operation,
       target: const NativeApprovalRef(NativeApprovalType.payroll, 'salary'),
-      payload: {'amount': amount, 'day': day, 'reason': note},
+      payload: payload,
     );
     await approve(NativeApprovalType.command, id);
   }
