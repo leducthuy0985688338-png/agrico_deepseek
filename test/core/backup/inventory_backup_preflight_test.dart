@@ -1,3 +1,4 @@
+import '../../support/approved_trade_fixture.dart';
 import 'package:agrico_deepseek/core/permissions/live_authorization.dart';
 import 'package:agrico_deepseek/core/permissions/operation_scope.dart';
 import 'package:agrico_deepseek/features/trade/data/sqlite_trade_repository.dart';
@@ -215,17 +216,15 @@ void main() {
       );
       await repo.create('farm-1', h, 'admin');
       await repo.post('farm-1', 'h', 0, 'admin');
-      await repo.create('farm-1', sale, 'admin');
-      await repo.post('farm-1', 'sale', 0, 'admin');
-      await repo.settle(
-        'farm-1',
-        'pay',
-        'sale',
-        '15',
-        'VND',
-        '2026-10-22',
-        'Bank reference',
-        'admin',
+      final approved = ApprovedTradeFixture(primary, farm: 'farm-1');
+      await approved.initialize();
+      await approved.post(sale);
+      await approved.command(
+        id: 'pay',
+        source: 'sale',
+        currency: 'VND',
+        operation: 'tradeSettle',
+        payload: {'amount': '15', 'day': '2026-10-22', 'reference': 'Bank reference'},
       );
       final original = await snapshot();
       final counts = await validate(original);

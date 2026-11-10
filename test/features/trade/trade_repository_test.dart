@@ -1,3 +1,4 @@
+import '../../support/approved_trade_fixture.dart';
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:excel/excel.dart';
@@ -21,6 +22,7 @@ void main() {
   late SqliteTradeRepository repo;
   late SqliteInventoryRepository stock;
   late TradeService service;
+  late ApprovedTradeFixture approved;
   final admin = AuthorizationSubject(
     userId: 'admin',
     membershipId: 'm',
@@ -124,6 +126,31 @@ void main() {
     'Bank reference $id',
     'admin',
   );
+  Future<void> payApproved({
+    String id = 'pay',
+    String doc = 's',
+    String amount = '15',
+    String currency = 'VND',
+    String reference = 'Bank reference pay',
+  }) => approved.command(
+    id: id,
+    source: doc,
+    currency: currency,
+    operation: 'tradeSettle',
+    payload: {'amount': amount, 'day': '2026-10-22', 'reference': reference},
+  );
+
+  Future<void> reverseApproved() => approved.command(
+    id: 'reverse',
+    source: 's',
+    currency: 'VND',
+    operation: 'tradeReverse',
+    payload: {
+      'paymentId': 'pay',
+      'day': '2026-10-23',
+      'reason': 'Wrong receipt',
+    },
+  );
   setUp(() async {
     db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
     await db.execute('PRAGMA foreign_keys=ON');
@@ -142,6 +169,7 @@ void main() {
     await SqliteTradeRepository.createSchema(db);
     stock = SqliteInventoryRepository(db);
     repo = SqliteTradeRepository(db);
+    approved = ApprovedTradeFixture(db);
     service = TradeService(repo, subject: admin, currentSubject: () => admin);
     final catalog = CompanyCatalogService(
       repository: SqliteCompanyCatalog(db),
@@ -259,9 +287,10 @@ void main() {
     'partial settlement posts exactly one shared THU and remaining balance',
     () async {
       await post(harvest());
-      await post(sale());
-      await pay();
-      await pay();
+      await approved.initialize();
+      await approved.post(sale());
+      await payApproved();
+      await payApproved();
       expect((await saved('s')).paid, '15');
       expect((await saved('s')).balance, '25');
       final cash = await repo.cashBook('f');
@@ -287,9 +316,10 @@ void main() {
   );
   test('same payment ID with changed content is rejected', () async {
     await post(harvest());
-    await post(sale());
-    await pay();
-    await expectLater(pay(amount: '16'), throwsStateError);
+    await approved.initialize();
+      await approved.post(sale());
+    await payApproved();
+    await expectLater(payApproved(amount: '16'), throwsStateError);
     expect((await repo.payments('f')).length, 1);
     expect((await saved('s')).balance, '25');
   });
@@ -297,24 +327,11 @@ void main() {
     'reverse payment appends CHI and restores debt without deleting THU',
     () async {
       await post(harvest());
-      await post(sale());
-      await pay();
-      await repo.reversePayment(
-        'f',
-        'pay',
-        'reverse',
-        '2026-10-23',
-        'Wrong receipt',
-        'admin',
-      );
-      await repo.reversePayment(
-        'f',
-        'pay',
-        'reverse',
-        '2026-10-23',
-        'Wrong receipt',
-        'admin',
-      );
+      await approved.initialize();
+      await approved.post(sale());
+      await payApproved();
+      await reverseApproved();
+      await reverseApproved();
       expect((await saved('s')).balance, '40');
       expect((await repo.cashBook('f')).length, 2);
       expect((await repo.payments('f')).single.reversed, isTrue);
@@ -325,21 +342,18 @@ void main() {
     'sale reversal restores stock only after all payments reversed',
     () async {
       await post(harvest());
-      await post(sale());
-      await pay();
+      await approved.initialize();
+      await approved.post(sale());
+      await payApproved();
       await expectLater(
         repo.voidDocument('f', 's', 1, '2026-10-23', 'Cancel', 'admin'),
         throwsStateError,
       );
-      await repo.reversePayment(
-        'f',
-        'pay',
-        'reverse',
-        '2026-10-23',
-        'Wrong receipt',
-        'admin',
+      await reverseApproved();
+      await approved.command(
+        id: 'void-sale', source: 's', currency: 'VND', operation: 'tradeVoid',
+        payload: {'day': '2026-10-23', 'reason': 'Cancel'},
       );
-      await repo.voidDocument('f', 's', 1, '2026-10-23', 'Cancel', 'admin');
       expect((await repo.lots('f')).single.quantity, '10');
       expect((await saved('s')).balance, '0');
       expect((await stock.movementsByFarm('f')).length, 3);
@@ -414,7 +428,8 @@ void main() {
   test(
     'purchase creates stock and AP, CHI settlement does not create another cost',
     () async {
-      await post(purchase());
+      await approved.initialize();
+      await approved.post(purchase());
       expect((await saved('buy')).balance, '21');
       expect(
         (await stock.listByFarm(
@@ -422,7 +437,7 @@ void main() {
         )).firstWhere((i) => i.id == 'material').stock,
         3,
       );
-      await pay(doc: 'buy', amount: '7');
+      await payApproved(doc: 'buy', amount: '7');
       expect((await saved('buy')).balance, '14');
       expect((await repo.cashBook('f')).single['kind'], 'CHI');
       expect(await stock.productionCosts('f'), isEmpty);
@@ -462,9 +477,10 @@ void main() {
   test(
     'expense payable distinguishes period costs and included production components',
     () async {
-      await post(expense(treatment: 'includedInProduction'));
+      await approved.initialize();
+      await approved.post(expense(treatment: 'includedInProduction'));
       expect((await saved('expense')).balance, '12');
-      await pay(doc: 'expense', amount: '12');
+      await payApproved(doc: 'expense', amount: '12');
       expect((await saved('expense')).balance, '0');
       final book = TradeReport(
         farm: 'f',
@@ -578,10 +594,11 @@ void main() {
     'report separates revenue from receipts and stock purchases from expenses',
     () async {
       await post(harvest());
-      await post(sale());
-      await post(purchase());
-      await post(expense());
-      await pay();
+      await approved.initialize();
+      await approved.post(sale());
+      await approved.post(purchase());
+      await approved.post(expense());
+      await payApproved();
       final report = TradeReport(
         farm: 'f',
         period: '2026-10',
@@ -714,8 +731,9 @@ void main() {
     );
     final h = harvest(currency: 'LAK').toJson()..['planId'] = 'lak';
     await post(TradeDraft.fromJson(h));
-    await post(sale(currency: 'LAK'));
-    await pay(currency: 'LAK');
+    await approved.initialize();
+      await approved.post(sale(currency: 'LAK'));
+    await payApproved(currency: 'LAK');
     expect((await saved('s')).balance, '25');
     expect((await repo.cashBook('f')).single['currency'], 'LAK');
     await TradeIntegrity.validate(db);
@@ -792,19 +810,11 @@ void main() {
     'same active bank reference cannot be entered twice with different request IDs',
     () async {
       await post(harvest());
-      await post(sale());
-      await pay();
+      await approved.initialize();
+      await approved.post(sale());
+      await payApproved();
       await expectLater(
-        repo.settle(
-          'f',
-          'other',
-          's',
-          '10',
-          'VND',
-          '2026-10-22',
-          'Bank reference pay',
-          'admin',
-        ),
+        payApproved(id: 'other', amount: '10'),
         throwsStateError,
       );
       expect((await saved('s')).balance, '25');

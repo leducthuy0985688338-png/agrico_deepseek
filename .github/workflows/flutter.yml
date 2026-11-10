@@ -41,7 +41,7 @@ jobs:
 
   full:
     timeout-minutes: 30
-    if: github.event_name == 'pull_request' || inputs.gate == 'full' || inputs.gate == 'release' || (github.event_name == 'push' && (startsWith(github.ref, 'refs/heads/cleanup/') || github.ref == 'refs/heads/fix/cmd044-regression-root-cause-closure'))
+    if: github.event_name == 'pull_request' || inputs.gate == 'full' || inputs.gate == 'release' || (github.event_name == 'push' && (startsWith(github.ref, 'refs/heads/cleanup/') || github.ref == 'refs/heads/fix/cmd045-remaining-regression-closure'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -69,25 +69,28 @@ jobs:
       - name: Accepted field cleanup regression
         run: flutter test test/providers test/screens test/field_restore_provider_test.dart --reporter expanded
       - name: Sandbox salary posting regression
-        if: github.ref == 'refs/heads/fix/cmd044-regression-root-cause-closure'
+        if: github.ref == 'refs/heads/fix/cmd045-remaining-regression-closure'
         run: flutter test test/features/integration/integrated_ledgers_test.dart --plain-name 'salary posting rejects future date and does not consume records'
       - name: Finance repository transaction regression
-        if: github.ref == 'refs/heads/fix/cmd044-regression-root-cause-closure'
+        if: github.ref == 'refs/heads/fix/cmd045-remaining-regression-closure'
         run: flutter test test/features/finance/data/local/sqlite_finance_document_repository_test.dart
       - name: Approved Payroll and Trade regression
-        if: github.ref == 'refs/heads/fix/cmd044-regression-root-cause-closure'
+        if: github.ref == 'refs/heads/fix/cmd045-remaining-regression-closure'
         run: flutter test test/features/integration/native_business_approval_test.dart test/features/integration/native_finance_approval_test.dart
       - name: Approved Finance report fixtures
-        if: github.ref == 'refs/heads/fix/cmd044-regression-root-cause-closure'
+        if: github.ref == 'refs/heads/fix/cmd045-remaining-regression-closure'
         run: flutter test test/features/finance/application/finance_document_summary_test.dart test/features/finance/application/finance_v2_report_test.dart test/features/finance/presentation/production_costs_complete_test.dart
+      - name: Trade and backup regression
+        if: github.ref == 'refs/heads/fix/cmd045-remaining-regression-closure'
+        run: flutter test test/features/trade/trade_repository_test.dart test/core/backup/inventory_backup_preflight_test.dart
       - name: Full regression
-        if: ${{ !cancelled() && (success() || github.ref == 'refs/heads/fix/cmd044-regression-root-cause-closure') }}
+        if: ${{ !cancelled() && (success() || github.ref == 'refs/heads/fix/cmd045-remaining-regression-closure') }}
         run: flutter test
       - name: Diff whitespace check
         run: git diff --check HEAD^ HEAD
 
   release:
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/fix/cmd044-regression-root-cause-closure') || inputs.gate == 'release' || ((github.event_name == 'push' || github.event_name == 'pull_request') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.base_ref == 'main' || github.base_ref == 'master'))
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/fix/cmd045-remaining-regression-closure') || inputs.gate == 'release' || ((github.event_name == 'push' || github.event_name == 'pull_request') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.base_ref == 'main' || github.base_ref == 'master'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
