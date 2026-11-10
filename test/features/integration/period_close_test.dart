@@ -1,3 +1,5 @@
+import 'package:agrico_deepseek/core/approval/native_approval_store.dart';
+import '../../support/approved_payroll_fixture.dart';
 import 'package:agrico_deepseek/features/trade/domain/trade.dart'
     show TradeDraft, TradeKind, TradeLine;
 import 'package:agrico_deepseek/features/inventory/domain/entities/inventory_item.dart';
@@ -221,9 +223,16 @@ void main() {
     await directory.delete(recursive: true);
   });
 
-  Future<void> salaryReady() async {
+  Future<void> salaryReady({ApprovedPayrollFixture? approval}) async {
     await service.createRate(admin, rate(amount: '1', ot: '1', scale: 2));
-    await approve(entry('a', hours: 8, overtime: 0));
+    final work = entry('a', hours: 8, overtime: 0);
+    if (approval == null) {
+      await approve(work);
+    } else {
+      await approval.initialize();
+      await service.createEntry(admin, work);
+      await approval.approve(NativeApprovalType.fieldWork, work.id);
+    }
     await service.createPayroll(
       admin,
       const PayrollDraft(
@@ -234,7 +243,11 @@ void main() {
         currency: 'VND',
       ),
     );
-    await service.approvePayroll(admin, 'salary');
+    if (approval == null) {
+      await service.approvePayroll(admin, 'salary');
+    } else {
+      await approval.approve(NativeApprovalType.payroll, 'salary');
+    }
   }
 
   IntegrationRepository bridge() => IntegrationRepository(db);
@@ -431,17 +444,10 @@ void main() {
   test(
     'outstanding payroll carries forward and next-month settlement is allowed',
     () async {
-      await salaryReady();
+      final approval = ApprovedPayrollFixture(db);
+      await salaryReady(approval: approval);
       await closeSeptember();
-      await service.recordPayment(
-        admin,
-        id: 'later',
-        payrollId: 'salary',
-        amount: '0.2',
-        currency: 'VND',
-        day: '2026-10-01',
-        note: 'Later',
-      );
+      await approval.pay('later', '0.2', '2026-10-01', 'Later');
       expect((await service.payrolls(admin)).single.paid, '0.2');
       expect(
         (await bridge().snapshot('f', '2026-09')).rows('personnel_payments_v1'),
@@ -644,16 +650,9 @@ void main() {
   test(
     'late month settlement already present is excluded from an earlier closing balance',
     () async {
-      await salaryReady();
-      await service.recordPayment(
-        admin,
-        id: 'oct-pay',
-        payrollId: 'salary',
-        amount: '0.4',
-        currency: 'VND',
-        day: '2026-10-01',
-        note: 'October settlement',
-      );
+      final approval = ApprovedPayrollFixture(db);
+      await salaryReady(approval: approval);
+      await approval.pay('oct-pay', '0.4', '2026-10-01', 'October settlement');
       await closeSeptember();
       final frozen = await bridge().snapshot('f', '2026-09');
       expect(frozen.salaryPaid('salary'), '0');

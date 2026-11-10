@@ -1,3 +1,4 @@
+import '../../support/approved_finance_fixture.dart';
 import 'package:agrico_deepseek/features/trade/domain/trade.dart'
     show TradeDraft, TradeKind, TradeLine;
 import 'package:archive/archive.dart';
@@ -989,11 +990,31 @@ void main() {
   test(
     'owner contributions and returns classify existing cash once, separate currencies and period opening',
     () async {
-      await cash('opening-capital', 1000, day: '2026-09-30');
-      await cash('in', 100);
-      await cash('out', 20, receipt: false);
-      await cash('lak', 500, currency: 'LAK');
-      await cash('ordinary', 99);
+      final posting = ApprovedFinanceFixture(db);
+      await posting.initialize();
+      Future<void> postCapital(
+        String id,
+        int amount, {
+        bool receipt = true,
+        String currency = 'VND',
+        String day = '2026-10-24',
+      }) => posting.post(
+        id: id,
+        organizationId: 'f',
+        kind: receipt
+            ? BusinessDocumentKind.receipt
+            : BusinessDocumentKind.payment,
+        occurredAt: DateTime.parse(day),
+        amountMinor: amount,
+        currency: currency,
+        category: 'Standalone',
+        description: id,
+      );
+      await postCapital('opening-capital', 1000, day: '2026-09-30');
+      await postCapital('in', 100);
+      await postCapital('out', 20, receipt: false);
+      await postCapital('lak', 500, currency: 'LAK');
+      await postCapital('ordinary', 99);
       for (final id in ['opening-capital', 'in', 'lak'])
         await bridge().metadata('f', 'capital', id, 0, {
           'capitalKind': 'contribution',
