@@ -503,22 +503,15 @@ void main() {
   test(
     'over-refund and original-payment reversal after a partial refund are rejected',
     () async {
-      await salaryReady();
+      await salaryReady(controlled: true);
       await pay(amount: '1');
       await adjust(
         adjustment('a', delta: '-0.4', kind: PayrollAdjustmentKind.deduction),
       );
-      await expectLater(refund(amount: '0.41'), throwsStateError);
+      await expectLater(refund(id: 'excess-refund', amount: '0.41'), throwsStateError);
       await refund(amount: '0.2');
       await expectLater(
-        bridge().reverseSalary(
-          'f',
-          'pay',
-          'reverse',
-          '2026-10-26',
-          'Mistake',
-          'admin',
-        ),
+        approval!.reverseSalary('reverse', 'pay', '2026-10-26', 'Mistake'),
         throwsStateError,
       );
       expect((await current()).paid, '0.8');
@@ -528,7 +521,7 @@ void main() {
   test(
     'dependent payment must be reversed before undoing an already-used refund',
     () async {
-      await salaryReady();
+      await salaryReady(controlled: true);
       await pay(amount: '1');
       await adjust(
         adjustment('a', delta: '-0.4', kind: PayrollAdjustmentKind.deduction),
@@ -540,14 +533,7 @@ void main() {
         refund(id: 'undo', amount: '0.4', reversesId: 'refund'),
         throwsStateError,
       );
-      await bridge().reverseSalary(
-        'f',
-        'extra',
-        'undo-extra',
-        '2026-10-26',
-        'Dependent reversal',
-        'admin',
-      );
+      await approval!.reverseSalary('undo-extra', 'extra', '2026-10-26', 'Dependent reversal');
       await refund(id: 'undo', amount: '0.4', reversesId: 'refund');
       await validate();
     },

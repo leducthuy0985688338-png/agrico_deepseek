@@ -1057,7 +1057,18 @@ void main() {
   test(
     'capital classification rejects wrong direction, missing reason and controlled salary cash',
     () async {
-      await cash('in', 10);
+      final finance = ApprovedFinanceFixture(db);
+      await finance.initialize();
+      await finance.post(
+        id: 'in',
+        organizationId: 'f',
+        kind: BusinessDocumentKind.receipt,
+        occurredAt: DateTime(2026, 10, 24),
+        amountMinor: 10,
+        currency: 'VND',
+        category: 'Standalone',
+        description: 'in',
+      );
       await expectLater(
         bridge().metadata('f', 'capital', 'in', 0, {
           'capitalKind': 'return',
@@ -1078,8 +1089,9 @@ void main() {
         }, 'admin'),
         throwsStateError,
       );
-      await salaryReady();
-      await pay();
+      final approval = ApprovedPayrollFixture(db);
+      await salaryReady(approval: approval);
+      await approval.pay('pay', '0.25', '2026-10-25', 'Bank transfer');
       final id =
           (await db.query('integration_cash_links_v1')).single['finance_id']
               as String;
