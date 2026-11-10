@@ -1,3 +1,4 @@
+import 'package:agrico_deepseek/features/integration/application/integration_service.dart' show IntegrationService;
 import 'package:agrico_deepseek/features/personnel/application/personnel_service.dart' show PersonnelService;
 import 'package:agrico_deepseek/features/trade/application/trade_service.dart' show TradeService;
 import 'package:flutter_test/flutter_test.dart';
@@ -1163,19 +1164,34 @@ void main() {
       );
       await approve(NativeApprovalType.command, 'audit-pay');
       live = approvalUser('maker');
-      await flow().proposeCommand(
-        id: 'audit-link',
-        operation: 'salaryLink',
-        target: target,
-        payload: {
-          'paymentId': 'audit-pay',
-          'day': '2026-10-23',
-          'reason': 'Verify existing salary linkage',
-        },
+      final originalCash = await db.query('finance_documents_v2');
+      final originalLinks = await db.query('integration_cash_links_v1');
+      final service = IntegrationService(
+        repository: IntegrationRepository(db),
+        subject: live,
+        currentSubject: () => live,
+        nativeApproval: flow(),
       );
+      await service.proposeSalaryLink(
+        commandId: 'audit-link',
+        payrollId: target.id,
+        paymentId: 'audit-pay',
+        day: '2026-10-23',
+        cashId: originalCash.single['id'] as String,
+      );
+      expect(await db.query('finance_documents_v2'), originalCash);
+      expect(await db.query('integration_cash_links_v1'), originalLinks);
       await approve(NativeApprovalType.command, 'audit-link');
       expect(await db.query('finance_documents_v2'), hasLength(1));
       expect(await db.query('integration_cash_links_v1'), hasLength(1));
+      expect(await db.query('finance_documents_v2'), originalCash);
+      expect(await db.query('integration_cash_links_v1'), originalLinks);
+      expect(
+        await flow().history(
+          const NativeApprovalRef(NativeApprovalType.command, 'audit-link'),
+        ),
+        isNotEmpty,
+      );
       await NativeApprovalGuard.validate(db);
     },
   );

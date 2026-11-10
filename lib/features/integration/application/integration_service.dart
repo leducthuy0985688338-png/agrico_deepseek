@@ -107,7 +107,7 @@ class IntegrationService {
       payload: {
         'paymentId': paymentId,
         'day': day,
-        if (cashId != null) 'financeId': cashId,
+        'financeId': ?cashId,
       },
     );
   }
