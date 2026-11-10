@@ -1158,7 +1158,7 @@ void main() {
   test(
     'refund cash cannot also be owner capital and tampered cash amounts fail reconciliation',
     () async {
-      await salaryReady();
+      await salaryReady(controlled: true);
       await pay(amount: '1');
       await adjust(
         adjustment('a', delta: '-0.2', kind: PayrollAdjustmentKind.deduction),
@@ -1178,13 +1178,51 @@ void main() {
         ),
         throwsStateError,
       );
-      await db.update(
-        'finance_documents_v2',
-        {'amount_minor': 9},
-        where: 'id=?',
-        whereArgs: ['integrated:salary-refund:refund'],
+      await validate();
+      final directory = await Directory.systemTemp.createTemp(
+        'payroll-refund-integrity-',
       );
-      await expectLater(validate(), throwsStateError);
+      final costs = await databaseFactoryFfi.openDatabase(
+        '${directory.path}/costs.db',
+      );
+      try {
+        await costs.execute(
+          'CREATE TABLE production_costs(id TEXT PRIMARY KEY)',
+        );
+        final bytes = await LocalDatabaseSnapshot.create(
+          db,
+          costsDatabase: costs,
+        );
+        Future<Map<String, int>> check(Uint8List backup) =>
+            LocalRestorePreflight.validate(
+              bytes: backup,
+              primary: db,
+              costs: costs,
+              factory: databaseFactoryFfi,
+              temporaryDirectory: directory.path,
+            );
+        await check(bytes);
+        final envelope = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+        final payload = jsonDecode(envelope['payload'] as String)
+            as Map<String, dynamic>;
+        final cash = payload['databases']['agrico.db']['tables']
+            ['finance_documents_v2'] as List<dynamic>;
+        final refundCash = cash.cast<Map<String, dynamic>>().singleWhere(
+          (row) => row['id'] == 'integrated:salary-refund:refund',
+        );
+        refundCash['amount_minor'] = 9;
+        final body = jsonEncode(payload);
+        envelope['payload'] = body;
+        envelope['sha256'] = sha256.convert(utf8.encode(body)).toString();
+        await expectLater(
+          check(Uint8List.fromList(utf8.encode(jsonEncode(envelope)))),
+          throwsA(isA<RestorePreflightException>()),
+        );
+        await validate();
+      } finally {
+        await costs.close();
+        await directory.delete(recursive: true);
+      }
     },
   );
   test(
