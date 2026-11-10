@@ -246,7 +246,10 @@ class _IntegrationState extends State<IntegrationWorkspaceScreen> {
     }
   }
 
-  Future<void> run(Future<void> Function() operation) async {
+  Future<void> run(
+    Future<void> Function() operation, {
+    String? successMessage,
+  }) async {
     if (!mounted || busy) return;
     setState(() => busy = true);
     try {
@@ -254,7 +257,9 @@ class _IntegrationState extends State<IntegrationWorkspaceScreen> {
       if (mounted) {
         reload();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(tr('Đã hoàn tất', 'Completed', 'ສຳເລັດ'))),
+          SnackBar(
+            content: Text(successMessage ?? tr('Đã hoàn tất', 'Completed', 'ສຳເລັດ')),
+          ),
         );
       }
     } catch (_) {
@@ -456,10 +461,18 @@ class _IntegrationState extends State<IntegrationWorkspaceScreen> {
               values['day']!,
               values['reason']!,
             )
-          : widget.service.linkSalary(
-              p['id'] as String,
+          : widget.service.proposeSalaryLink(
+              commandId: reversalId,
+              payrollId: p['payroll_id'] as String,
+              paymentId: p['id'] as String,
+              day: p['business_day'] as String,
               cashId: values['cash']!.isEmpty ? null : values['cash'],
             ),
+      successMessage: linked ? null : tr(
+        'Đã lập yêu cầu đối soát. Chờ phê duyệt.',
+        'Reconciliation request created. Pending approval.',
+        'ສ້າງຄຳຂໍກວດສອບແລ້ວ. ລໍຖ້າອະນຸມັດ.',
+      ),
     );
   }
 

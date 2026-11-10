@@ -488,6 +488,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         ),
       );
       final integrated = IntegrationService(
+        nativeApproval: nativeApproval,
         approvalPolicies: policyStore,
         productionCosts: ProductionCostWorkflowRepository(deps.database),
         repository: IntegrationRepository(deps.database),

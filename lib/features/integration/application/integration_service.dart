@@ -1,3 +1,4 @@
+import '../../../core/approval/native_approval_store.dart';
 import '../domain/integration_store.dart';
 import '../../../core/approval/approval_administration.dart';
 import '../../../core/approval/approval_policy.dart';
@@ -14,8 +15,10 @@ class IntegrationService {
     required this.currentSubject,
     this.productionCosts,
     this.approvalPolicies,
+    this.nativeApproval,
   });
   final IntegrationStore repository;
+  final NativeApprovalStore? nativeApproval;
   final ProductionCostWorkflowStore? productionCosts;
   final ApprovalAdministration? approvalPolicies;
   final AuthorizationSubject subject;
@@ -83,15 +86,29 @@ class IntegrationService {
     return result;
   }
 
-  Future<void> linkSalary(String id, {String? cashId}) {
+  Future<void> proposeSalaryLink({
+    required String commandId,
+    required String payrollId,
+    required String paymentId,
+    required String day,
+    String? cashId,
+  }) {
     require(PermissionCodes.cashRecord);
     require(PermissionCodes.payrollApprove);
     readAccess();
-    return repository.linkSalary(
-      subject.farmId,
-      id,
-      subject.userId,
-      existingFinanceId: cashId,
+    final approval = nativeApproval;
+    if (approval == null) {
+      throw StateError('Native approval is unavailable.');
+    }
+    return approval.proposeCommand(
+      id: commandId,
+      operation: 'salaryLink',
+      target: NativeApprovalRef(NativeApprovalType.payroll, payrollId),
+      payload: {
+        'paymentId': paymentId,
+        'day': day,
+        if (cashId != null) 'financeId': cashId,
+      },
     );
   }
 
