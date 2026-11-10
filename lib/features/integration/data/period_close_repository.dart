@@ -1,3 +1,4 @@
+import '../../../core/approval/native_approval_guard.dart';
 import '../../trade/domain/trade.dart' show TradeLine;
 import '../../../core/production/source_governance.dart';
 import '../../personnel/domain/personnel.dart' show LaborMoney, ExactDecimal;
@@ -497,6 +498,17 @@ class PeriodCloseRepository implements PeriodCloseStore {
           for (final entry in tables.entries) {
             if (entry.value is! List) {
               throw StateError('Invalid closing rows.');
+            }
+            if (entry.key == NativeApprovalGuard.marker) {
+              final marker = entry.value as List;
+              if (marker.isNotEmpty &&
+                  (marker.length != 1 ||
+                      marker.single is! Map ||
+                      (marker.single as Map).length != 1 ||
+                      (marker.single as Map)['version'] != 1)) {
+                throw StateError('Invalid native approval marker.');
+              }
+              continue;
             }
             for (final row in entry.value as List) {
               if (row is! Map ||
