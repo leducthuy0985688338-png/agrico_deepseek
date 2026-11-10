@@ -22,6 +22,8 @@ import 'package:agrico_deepseek/features/trade/data/sqlite_trade_repository.dart
 import 'package:agrico_deepseek/features/machines/data/sqlite_machine_repository.dart';
 import 'dart:io';
 import 'dart:convert';
+import 'dart:typed_data';
+import 'package:crypto/crypto.dart';
 import 'package:excel/excel.dart';
 import 'package:agrico_deepseek/core/backup/local_database_snapshot.dart';
 import 'package:agrico_deepseek/core/backup/local_restore_preflight.dart';
@@ -628,7 +630,9 @@ void main() {
         'business_day': '2026-10-25',
         'note': 'Previously paid',
       });
-      final cash = await SqliteFinanceDocumentRepository(db).create(
+      final finance = ApprovedFinanceFixture(db);
+      await finance.initialize();
+      await finance.post(
         id: 'old-cash',
         organizationId: 'f',
         kind: BusinessDocumentKind.payment,
@@ -647,13 +651,13 @@ void main() {
         'f',
         'old',
         'admin',
-        existingFinanceId: cash.id,
+        existingFinanceId: 'old-cash',
       );
       await bridge().linkSalary(
         'f',
         'old',
         'admin',
-        existingFinanceId: cash.id,
+        existingFinanceId: 'old-cash',
       );
       expect(await db.query('finance_documents_v2'), hasLength(1));
       expect(
@@ -698,11 +702,16 @@ void main() {
           factory: databaseFactoryFfi,
           temporaryDirectory: dir.path,
         );
-        await db.update('finance_documents_v2', {'amount_minor': 26});
-        final bad = await LocalDatabaseSnapshot.create(
-          db,
-          costsDatabase: costs,
-        );
+        final envelope = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+        final payload = jsonDecode(envelope['payload'] as String)
+            as Map<String, dynamic>;
+        final rows = payload['databases']['agrico.db']['tables']
+            ['finance_documents_v2'] as List<dynamic>;
+        (rows.single as Map<String, dynamic>)['amount_minor'] = 26;
+        final body = jsonEncode(payload);
+        envelope['payload'] = body;
+        envelope['sha256'] = sha256.convert(utf8.encode(body)).toString();
+        final bad = Uint8List.fromList(utf8.encode(jsonEncode(envelope)));
         await expectLater(
           LocalRestorePreflight.validate(
             bytes: bad,
@@ -1110,7 +1119,17 @@ void main() {
     'capital payment cannot become payroll cash until its classification is explicitly cleared',
     () async {
       await salaryReady();
-      await cash('cash', 1, receipt: false, day: '2026-10-25');
+      final finance = ApprovedFinanceFixture(db);
+      await finance.initialize();
+      await finance.post(
+        id: 'cash',
+        organizationId: 'f',
+        kind: BusinessDocumentKind.payment,
+        occurredAt: DateTime(2026, 10, 25),
+        amountMinor: 1,
+        currency: 'VND',
+        category: 'Standalone',
+      );
       await db.insert('personnel_payments_v1', {
         'id': 'historic',
         'farm_id': 'f',
