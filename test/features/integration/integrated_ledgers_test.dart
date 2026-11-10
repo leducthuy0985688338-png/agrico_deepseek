@@ -1,3 +1,7 @@
+import 'package:agrico_deepseek/core/approval/approval_policy.dart';
+import 'package:agrico_deepseek/core/approval/sqlite_approval_policy_store.dart';
+import 'package:agrico_deepseek/features/integration/data/native_approval_repository.dart';
+import '../../support/approval_b_test_support.dart';
 import 'package:agrico_deepseek/core/approval/native_approval_store.dart';
 import '../../support/approved_payroll_fixture.dart';
 import '../../support/approved_finance_fixture.dart';
@@ -1225,11 +1229,56 @@ void main() {
     'one production cycle reconciles capital stock labor machine trade cash and backup without duplicate costs',
     () async {
       await fuelStock();
-      await machineSource();
+      await supplier();
+      final authority = SyntheticApprovalAuthority();
+      authority.partyUsers.addAll({'supplier': {}, 'buyer': {}});
+      NativeApprovalRepository workflow(String userId) {
+        final subject = approvalUser(userId);
+        return NativeApprovalRepository(SqliteApprovalPolicyStore(
+          db,
+          opened: subject,
+          currentSubject: () => subject,
+          authority: authority,
+        ));
+      }
+
+      Future<void> approveNative(NativeApprovalRef ref) async {
+        await workflow('admin').submit(ref);
+        final decision = await workflow('cycle-reviewer').approve(
+          ref,
+          'Independent production cycle review',
+        );
+        expect(decision.allowed, isTrue, reason: decision.reason);
+      }
+
+      Future<void> command(
+        String id,
+        String operation,
+        NativeApprovalRef target,
+        Map<String, Object?> payload,
+      ) async {
+        await workflow('admin').proposeCommand(
+          id: id,
+          operation: operation,
+          target: target,
+          payload: payload,
+        );
+        await approveNative(NativeApprovalRef(NativeApprovalType.command, id));
+      }
+
+      final machines = SqliteMachineRepository(db);
+      await machines.profile('f', 'machine', 0, {'meterUnit': 'hour'}, 'admin');
       await measuredRun(visits: true);
       final payroll = ApprovedPayrollFixture(db);
       await salaryReady(approval: payroll);
       await payroll.pay('pay', '0.25', '2026-10-25', 'Bank transfer');
+      for (final kind in [
+        ApprovalKind.directExpense,
+        ApprovalKind.materialIssue,
+        ApprovalKind.tradePosting,
+      ]) {
+        await syntheticPolicy(db, authority, kind, 'VND');
+      }
       await bridge().metadata('f', 'stock', 'diesel', 0, {
         'minimumQuantity': '8',
       }, 'admin');
@@ -1255,9 +1304,30 @@ void main() {
         seasonId: 's',
         planId: 'plan',
       );
-      await bridge().fuelIssue('f', 'fuel', 'diesel', '10', false, 'admin');
-      await supplier();
-      final machines = SqliteMachineRepository(db);
+      await machines.addExpense(
+        'f',
+        const MachineExpense(
+          id: 'fuel',
+          machineId: 'machine',
+          kind: 'fuel',
+          day: '2026-10-25',
+          amount: '25.5',
+          currency: 'VND',
+          reference: 'fuel',
+          note: 'Approved machine component',
+          litres: '2.5',
+          partyId: 'supplier',
+        ),
+        'admin',
+      );
+      const fuel = NativeApprovalRef(NativeApprovalType.machineExpense, 'fuel');
+      await approveNative(fuel);
+      await command('cycle-fuel', 'fuelIssue', fuel, {
+        'day': '2026-10-25',
+        'itemId': 'diesel',
+        'price': '10',
+        'reason': 'Internal fuel',
+      });
       await machines.addExpense(
         'f',
         const MachineExpense(
@@ -1269,31 +1339,49 @@ void main() {
           currency: 'VND',
           reference: 'maintenance',
           note: 'Included component',
+          partyId: 'supplier',
         ),
         'admin',
       );
-      await machines.approveExpense('f', 'maintenance', 0, 'admin');
-      await bridge().machinePayable(
-        'f',
+      const maintenance = NativeApprovalRef(
+        NativeApprovalType.machineExpense,
         'maintenance',
-        'supplier',
-        'invoice',
-        MoneyRounding.halfUp,
-        'admin',
       );
+      await approveNative(maintenance);
+      await command('cycle-payable', 'machinePayable', maintenance, {
+        'day': '2026-10-25',
+        'reference': 'invoice',
+        'rounding': 'halfUp',
+      });
       final trade = SqliteTradeRepository(db);
-      await trade.settle(
-        'f',
+      await command(
         'machine-payment',
-        'machine-payable:maintenance',
-        '10',
-        'VND',
-        '2026-10-26',
-        'Bank transfer',
-        'admin',
+        'tradeSettle',
+        const NativeApprovalRef(NativeApprovalType.trade, 'machine-payable:maintenance'),
+        {'amount': '10', 'day': '2026-10-26', 'reference': 'Bank transfer'},
       );
-      await cash('capital', 1000);
-      await cash('return', 50, receipt: false);
+      final finance = ApprovedFinanceFixture(db);
+      await finance.initialize();
+      await finance.post(
+        id: 'capital',
+        organizationId: 'f',
+        kind: BusinessDocumentKind.receipt,
+        occurredAt: DateTime(2026, 10, 24),
+        amountMinor: 1000,
+        currency: 'VND',
+        category: 'Standalone',
+        description: 'capital',
+      );
+      await finance.post(
+        id: 'return',
+        organizationId: 'f',
+        kind: BusinessDocumentKind.payment,
+        occurredAt: DateTime(2026, 10, 24),
+        amountMinor: 50,
+        currency: 'VND',
+        category: 'Standalone',
+        description: 'return',
+      );
       await bridge().metadata('f', 'capital', 'capital', 0, {
         'capitalKind': 'contribution',
         'reason': 'Initial capital',
@@ -1350,7 +1438,7 @@ void main() {
         ),
         'admin',
       );
-      await trade.post('f', 'crop', 0, 'admin');
+      await approveNative(const NativeApprovalRef(NativeApprovalType.trade, 'crop'));
       await trade.create(
         'f',
         const TradeDraft(
@@ -1372,16 +1460,12 @@ void main() {
         ),
         'admin',
       );
-      await trade.post('f', 'sold', 0, 'admin');
-      await trade.settle(
-        'f',
+      await approveNative(const NativeApprovalRef(NativeApprovalType.trade, 'sold'));
+      await command(
         'buyer-payment',
-        'sold',
-        '20',
-        'VND',
-        '2026-10-26',
-        'Buyer transfer',
-        'admin',
+        'tradeSettle',
+        const NativeApprovalRef(NativeApprovalType.trade, 'sold'),
+        {'amount': '20', 'day': '2026-10-26', 'reference': 'Buyer transfer'},
       );
       final snapshot = await bridge().snapshot('f', '2026-10');
       expect(snapshot.materialCost('plan', 'VND'), '10');
