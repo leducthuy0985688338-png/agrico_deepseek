@@ -876,27 +876,6 @@ void main() {
     },
   );
 
-  Future<void> cash(
-    String id,
-    int amount, {
-    bool receipt = true,
-    String currency = 'VND',
-    String day = '2026-10-24',
-  }) async {
-    await SqliteFinanceDocumentRepository(db).create(
-      id: id,
-      organizationId: 'f',
-      kind: receipt
-          ? BusinessDocumentKind.receipt
-          : BusinessDocumentKind.payment,
-      occurredAt: DateTime.parse(day),
-      amountMinor: amount,
-      currency: currency,
-      category: 'Standalone',
-      description: id,
-    );
-  }
-
   Future<void> measuredRun({bool visits = false}) async {
     final c = CompanyCatalogService(
       repository: SqliteCompanyCatalog(db),
