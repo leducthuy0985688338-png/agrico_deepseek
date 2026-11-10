@@ -658,16 +658,52 @@ void main() {
   });
   test('backup rejects lot stock and cash amount tampering', () async {
     await post(harvest());
-    await post(sale());
-    await pay();
+    await approved.initialize();
+    await approved.post(sale());
+    await payApproved();
     await TradeIntegrity.validate(db);
-    await db.update('trade_lots_v1', {'stock_units': 1}, where: "id='h:0'");
-    await expectLater(TradeIntegrity.validate(db), throwsStateError);
-    await db.update('trade_lots_v1', {
-      'stock_units': 6000000,
-    }, where: "id='h:0'");
-    await db.update('finance_documents_v2', {'amount_minor': 16});
-    await expectLater(TradeIntegrity.validate(db), throwsStateError);
+
+    // Validate backup rows in isolation. The live source remains protected by
+    // its immutable finance triggers throughout both corruption cases.
+    final backup = await databaseFactoryFfi.openDatabase(
+      inMemoryDatabasePath,
+      options: OpenDatabaseOptions(singleInstance: false),
+    );
+    try {
+      for (final table in [
+        'trade_documents_v1',
+        'trade_lots_v1',
+        'trade_stock_links_v1',
+        'trade_settlements_v1',
+        'trade_reversals_v1',
+        'finance_documents_v2',
+        'inventory_movements_v2',
+        'inventory_items_v2',
+        'trade_sequences_v1',
+        'company_catalog_entries_v1',
+        'production_plans_v1',
+      ]) {
+        final schema = await db.rawQuery(
+          "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+          [table],
+        );
+        await backup.execute(schema.single['sql'] as String);
+        for (final row in await db.query(table)) {
+          await backup.insert(table, row);
+        }
+      }
+      await TradeIntegrity.validate(backup);
+      await backup.update('trade_lots_v1', {'stock_units': 1}, where: "id='h:0'");
+      await expectLater(TradeIntegrity.validate(backup), throwsStateError);
+      await backup.update('trade_lots_v1', {
+        'stock_units': 6000000,
+      }, where: "id='h:0'");
+      await backup.update('finance_documents_v2', {'amount_minor': 16});
+      await expectLater(TradeIntegrity.validate(backup), throwsStateError);
+      await TradeIntegrity.validate(db);
+    } finally {
+      await backup.close();
+    }
   });
   test(
     'backup rejects orphan trade movement and altered body mirror',
