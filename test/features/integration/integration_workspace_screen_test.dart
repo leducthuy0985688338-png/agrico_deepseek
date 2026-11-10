@@ -1,3 +1,4 @@
+import 'package:agrico_deepseek/core/approval/native_approval_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -38,6 +39,7 @@ class MemoryIntegration implements IntegrationStore {
         'personnel_payments_v1': [
           {
             'id': 'old',
+            'payroll_id': 'salary',
             'amount': '1',
             'currency': 'VND',
             'business_day': '2026-10-25',
@@ -74,10 +76,32 @@ class MemoryIntegration implements IntegrationStore {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+class RecordingApproval implements NativeApprovalStore {
+  final commands = <Map<String, Object?>>[];
+
+  @override
+  Future<void> proposeCommand({
+    required String id,
+    required String operation,
+    required NativeApprovalRef target,
+    required Map<String, Object?> payload,
+  }) async {
+    commands.add({
+      'operation': operation,
+      'target': target.key,
+      ...payload,
+    });
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 void main() {
   Future<void> open(
     WidgetTester tester,
     MemoryIntegration repository, {
+    NativeApprovalStore? approval,
     bool full = true,
     bool export = false,
     bool editDetails = false,
@@ -112,6 +136,7 @@ void main() {
         home: IntegrationWorkspaceScreen(
           service: IntegrationService(
             repository: repository,
+            nativeApproval: approval,
             subject: user,
             currentSubject: () => user,
           ),
@@ -139,15 +164,18 @@ void main() {
     'historical cash adoption is selected by readable code and requires confirmation',
     (tester) async {
       final repo = MemoryIntegration();
-      await open(tester, repo);
+      final approval = RecordingApproval();
+      await open(tester, repo, approval: approval);
       await tester.tap(find.text('Lương / sổ tiền'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Nối sổ tiền'));
       await tester.pumpAndSettle();
       expect(repo.links, 0);
+      expect(approval.commands, isEmpty);
       await tester.tap(find.text('Hủy'));
       await tester.pumpAndSettle();
       expect(repo.links, 0);
+      expect(approval.commands, isEmpty);
       await tester.tap(find.text('Nối sổ tiền'));
       await tester.pumpAndSettle();
       await tester.tap(find.byType(DropdownButtonFormField<String>));
@@ -158,8 +186,14 @@ void main() {
       await tester.pumpAndSettle();
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pumpAndSettle();
-      expect(repo.links, 1);
-      expect(repo.adopted, 'cash');
+      expect(repo.links, 0);
+      expect(approval.commands.single, {
+        'operation': 'salaryLink',
+        'target': const NativeApprovalRef(NativeApprovalType.payroll, 'salary').key,
+        'paymentId': 'old',
+        'day': '2026-10-25',
+        'financeId': 'cash',
+      });
     },
   );
 
