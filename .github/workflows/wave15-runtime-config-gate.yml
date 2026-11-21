@@ -1,0 +1,84 @@
+name: AGRICO WAVE15 Runtime Config Gate
+on:
+  push:
+    branches:
+      - ci/wave15-validation-20261121
+    paths:
+      - '.github/workflows/wave15-runtime-config-gate.yml'
+      - 'lib/main.dart'
+      - 'lib/services/cloud_service.dart'
+      - 'lib/core/auth/firebase_company_identity_gateway.dart'
+      - 'lib/app_v2/agrico_v2_composition.dart'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  static-runtime-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Static safety inspection (no Flutter runtime)
+        shell: python
+        run: |
+          from pathlib import Path
+          import os, re
+          paths = [
+              "lib/main.dart",
+              "lib/services/cloud_service.dart",
+              "lib/core/auth/firebase_company_identity_gateway.dart",
+              "lib/app_v2/agrico_v2_composition.dart",
+          ]
+          contents = {}
+          for path in paths:
+              p = Path(path)
+              if not p.is_file():
+                  raise SystemExit("BLOCKED: required source missing: " + path)
+              contents[path] = p.read_text(encoding="utf-8")
+          main = contents[paths[0]]
+          cloud = contents[paths[1]]
+          gateway = contents[paths[2]]
+          composition = contents[paths[3]]
+          findings = []
+          if "CloudService.initialize()" in main:
+              findings.append("Startup invokes CloudService.initialize")
+          if re.search(r"Firebase\.initializeApp\s*\(", cloud):
+              findings.append("CloudService initializes Firebase at startup")
+          if "FirebaseFirestore.instance" in cloud:
+              findings.append("CloudService obtains default Firestore instance")
+          if "FirebaseAuth.instance" in gateway:
+              findings.append("Identity gateway can use default Firebase Auth")
+          if "Source.server" in gateway or "getIdToken(true)" in gateway:
+              findings.append("Identity gateway has server-dependent reads")
+          if "ProductionV2TestCleanup.run" in composition:
+              findings.append("V2 bootstrap contains test cleanup invocation")
+          if "WorkspaceCloudService.recover" in composition:
+              findings.append("V2 bootstrap invokes workspace cloud recovery")
+          emulator_wiring = all(re.search(r"\b"+x+r"\s*\(", cloud+main+gateway) for x in
+                                ("useAuthEmulator", "useFirestoreEmulator"))
+          findings.append("Auth+Firestore emulator wiring in reviewed startup files: " +
+                          ("present (requires manual verification)" if emulator_wiring else "not established"))
+          safe = False  # Static inspection alone cannot authorize Windows executable runtime.
+          lines = [
+              "CMD=WAVE15-RUNTIME-CONFIG-GATE",
+              "MODE=STATIC_READ_ONLY",
+              "SOURCE_REF="+os.environ.get("GITHUB_SHA","UNKNOWN"),
+              "FILES_REVIEWED=4",
+              "FIREBASE_EMULATOR_ROUTING_VERIFIED=FALSE",
+              "WINDOWS_RUNTIME_NOT_RUN=TRUE",
+              "PRODUCTION_DEPLOY=NO",
+              "RESULT=RUNTIME_REQUIRES_SANDBOX_CONFIG",
+          ] + ["FINDING="+x for x in findings]
+          Path("wave15-runtime-report").mkdir(exist_ok=True)
+          Path("wave15-runtime-report/FINAL-REPORT.txt").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          print("\n".join(lines))
+          # Gate status is intentionally blocking, not a CI infrastructure failure.
+      - name: Upload redacted static report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wave15-runtime-config-gate
+          path: wave15-runtime-report/
+          if-no-files-found: error
