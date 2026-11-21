@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/permissions/authorization.dart';
 import '../../application/parcel_work_service.dart';
+import '../../application/parcel_work_time_productivity.dart';
+import '../../application/parcel_work_time_evidence_service.dart';
+import '../../application/parcel_work_productivity_xlsx.dart';
+import '../../../../services/report_file_saver.dart';
 import '../../application/task_work_service.dart';
 import '../../domain/entities/farm_task.dart';
 import '../../domain/entities/parcel_work.dart';
@@ -18,6 +22,7 @@ class ParcelWorkScreen extends StatefulWidget {
     this.openEventOnLoad = false,
     this.readOnly = false,
     this.canView,
+    this.timeEvidence,
   });
 
   final String parcelId;
@@ -28,6 +33,7 @@ class ParcelWorkScreen extends StatefulWidget {
   final bool openEventOnLoad;
   final bool readOnly;
   final bool Function()? canView;
+  final ParcelWorkTimeEvidenceService? timeEvidence;
 
   @override
   State<ParcelWorkScreen> createState() => _ParcelWorkScreenState();
@@ -339,6 +345,168 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
     area.dispose();
   }
 
+  /// Read-only export. Time-based rates stay blank until verified evidence
+  /// can be retrieved from a durable, authorized source.
+  Future<void> exportRecordedProductivity() async {
+    final phase = phaseFilter;
+    if (phase == null || !(widget.canView?.call() ?? true)) return;
+    try {
+      // Re-fetch through the existing authorized service before exporting.
+      final (_, freshEvents) = await load();
+      final summary = const ParcelWorkTimeProductivityCalculator().summarize(
+        farmId: widget.subject.farmId,
+        parcelId: widget.parcelId,
+        phase: phase,
+        events: freshEvents,
+        timeEvidence: widget.timeEvidence == null || widget.initialTask != null
+            ? const <WorkTimeEvidence>[]
+            : (await widget.timeEvidence!.read(
+                widget.subject,
+                parcelId: widget.parcelId,
+              )).where(
+                (item) => freshEvents.any(
+                  (event) => event.id == item.eventId && event.phase == phase,
+                ),
+              ),
+      );
+      final bytes = const ParcelWorkProductivityXlsx().encode(summary);
+      final safeParcel = widget.parcelId.replaceAll(
+        RegExp(r'[^a-zA-Z0-9_-]'),
+        '_',
+      );
+      await saveExcelBytes(
+        bytes,
+        'agrico_recorded_work_${safeParcel}_${phase.name}.xlsx',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Recorded work XLSX exported (verified time evidence where available).',
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to export work report.')),
+      );
+    }
+  }
+
+  Future<void> addTimeEvidence(
+    ParcelWorkEvent event,
+    Map<String, WorkResource> byId,
+  ) async {
+    if (!canRecord ||
+        widget.timeEvidence == null ||
+        widget.initialTask != null) {
+      return;
+    }
+    final entries = <(String, WorkTimeResourceKind)>[
+      for (final id in event.workerIds) (id, WorkTimeResourceKind.worker),
+      for (final id in event.machineIds) (id, WorkTimeResourceKind.machine),
+    ];
+    if (entries.isEmpty) {
+      return;
+    }
+    var selected = entries.first;
+    final minutes = TextEditingController();
+    final reference = TextEditingController();
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
+            title: const Text('Record verified work time'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  key: const Key('work-time-resource'),
+                  initialValue: '${selected.$2.name}:${selected.$1}',
+                  items: [
+                    for (final entry in entries)
+                      DropdownMenuItem(
+                        value: '${entry.$2.name}:${entry.$1}',
+                        child: Text(
+                          '${entry.$2.name}: ${byId[entry.$1]?.name ?? entry.$1}',
+                        ),
+                      ),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setDialogState(
+                      () => selected = entries.firstWhere(
+                        (entry) => '${entry.$2.name}:${entry.$1}' == value,
+                      ),
+                    );
+                  },
+                ),
+                TextField(
+                  key: const Key('work-time-minutes'),
+                  controller: minutes,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Verified minutes',
+                  ),
+                ),
+                TextField(
+                  key: const Key('work-time-reference'),
+                  controller: reference,
+                  decoration: const InputDecoration(
+                    labelText: 'Evidence reference',
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                key: const Key('work-time-save'),
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (confirmed != true) return;
+      final value = int.tryParse(minutes.text.trim());
+      if (value == null ||
+          value <= 0 ||
+          value > 2147483647 ||
+          reference.text.trim().isEmpty) {
+        throw const FormatException('Invalid time evidence');
+      }
+      await widget.timeEvidence!.record(
+        widget.subject,
+        parcelId: widget.parcelId,
+        evidence: WorkTimeEvidence(
+          eventId: event.id,
+          resourceId: selected.$1,
+          kind: selected.$2,
+          minutes: value,
+          evidenceReference: reference.text.trim(),
+        ),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Verified time evidence saved.')),
+        );
+        reload();
+      }
+    } catch (_) {
+      if (mounted) _error();
+    } finally {
+      minutes.dispose();
+      reference.dispose();
+    }
+  }
+
   void _error() => ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
       content: Text(AppLocalizations.of(context).text('work.saveFailed')),
@@ -525,6 +693,16 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
                   ),
                 ),
               ),
+              if (phaseFilter != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: OutlinedButton.icon(
+                    key: const Key('work-export-recorded-xlsx'),
+                    onPressed: exportRecordedProductivity,
+                    icon: const Icon(Icons.file_download_outlined),
+                    label: const Text('Export recorded work XLSX'),
+                  ),
+                ),
               if (visibleEvents.isEmpty)
                 Text(
                   l10n.text(
@@ -536,7 +714,19 @@ class _ParcelWorkScreenState extends State<ParcelWorkScreen> {
                   child: ListTile(
                     key: Key('work-event-${event.id}'),
                     onTap: () => showEventDetails(event, byId),
-                    trailing: const Icon(Icons.chevron_right),
+                    trailing:
+                        canEdit &&
+                            widget.initialTask == null &&
+                            widget.timeEvidence != null &&
+                            (event.workerIds.isNotEmpty ||
+                                event.machineIds.isNotEmpty)
+                        ? IconButton(
+                            key: Key('work-time-add-${event.id}'),
+                            tooltip: 'Record verified work time',
+                            icon: const Icon(Icons.timer_outlined),
+                            onPressed: () => addTimeEvidence(event, byId),
+                          )
+                        : const Icon(Icons.chevron_right),
                     title: Text(
                       '${l10n.text('work.${event.phase.name}')} · '
                       '${event.description}',

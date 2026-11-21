@@ -1,0 +1,43 @@
+name: AGRICO WAVE15 isolated CI
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ci/wave15-validation-20261121
+permissions:
+  contents: read
+jobs:
+  parcel-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.2'
+          cache: true
+      - name: Flutter dependencies
+        run: flutter pub get
+      - name: Parcel Work targeted tests
+        run: |
+          flutter test \
+            test/features/farm/application/parcel_work_productivity_test.dart \
+            test/features/farm/application/parcel_work_productivity_export_test.dart \
+            test/features/farm/application/parcel_work_productivity_xlsx_test.dart \
+            test/features/farm/application/parcel_work_time_productivity_test.dart \
+            test/features/farm/application/parcel_work_time_report_test.dart \
+            test/features/farm/data/local/sqlite_parcel_work_time_evidence_repository_test.dart
+      - name: Report
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p wave15-report
+          printf 'CMD=WAVE15-GITHUB-CI\nRUNTIME_NOT_RUN=TRUE\nPRODUCTION_DEPLOY=NO\nSOURCE_REF=%s\n' "$GITHUB_SHA" > wave15-report/FINAL-REPORT.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wave15-ci-report
+          path: wave15-report/

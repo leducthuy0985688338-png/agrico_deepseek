@@ -27,6 +27,8 @@ import '../features/inventory/presentation/production_workspace_screen.dart';
 import 'v2_resource_module_routes.dart';
 import '../features/farm/presentation/screens/work_resource_catalog_screen.dart';
 import '../features/farm/domain/entities/parcel_work.dart';
+import '../features/farm/application/parcel_work_time_evidence_service.dart';
+import '../features/farm/data/local/sqlite_parcel_work_time_evidence_repository.dart';
 import '../features/inventory/application/inventory_service.dart';
 import '../features/inventory/presentation/inventory_catalog_screen.dart';
 import '../core/backup/local_backup_access.dart';
@@ -149,6 +151,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
     await SqliteParcelNumberSequence.createSchema(database);
     await SqliteProductionParcelNumberAllocator.createSchema(database);
     await SqliteParcelWorkRepository.createSchema(database);
+    await SqliteParcelWorkTimeEvidenceRepository.createSchema(database);
     await SqliteFarmTaskRepository.createSchema(database);
     await SqliteInventoryRepository.createSchema(database);
     await SqliteWorkspaceStore.createSchema(database);
@@ -273,8 +276,9 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
                 (costService.canView && financeService.canViewParcels)
             ? () {
                 final parcel = deps.controller.detail?.parcel;
-                if (parcel?.id != id || parcel?.farmId != deps.subject.farmId)
+                if (parcel?.id != id || parcel?.farmId != deps.subject.farmId) {
                   return;
+                }
                 if (canViewProduction) {
                   push(
                     ProductionWorkspaceScreen(
@@ -384,6 +388,16 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
                 repository: SqliteCompanyCatalog(deps.database),
                 subject: deps.subject,
               ),
+            ),
+            timeEvidence: ParcelWorkTimeEvidenceService(
+              ParcelWorkService(
+                SqliteParcelWorkRepository(deps.database),
+                catalog: CompanyCatalogService(
+                  repository: SqliteCompanyCatalog(deps.database),
+                  subject: deps.subject,
+                ),
+              ),
+              SqliteParcelWorkTimeEvidenceRepository(deps.database),
             ),
           ),
         ),
@@ -666,12 +680,13 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
                       ),
                       openCash: financeService.canView
                           ? () {
-                              if (financeService.canView)
+                              if (financeService.canView) {
                                 push(
                                   FinanceDocumentsScreen(
                                     service: financeService,
                                   ),
                                 );
+                              }
                             }
                           : null,
                     )
@@ -682,8 +697,9 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       }
       if (costService.canView) {
         legacy['costs'] = () {
-          if (costService.canView)
+          if (costService.canView) {
             push(ProductionCostsScreen(service: costService));
+          }
         };
       }
       if (canViewProduction) {
@@ -718,33 +734,37 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
       );
       if (workspace.canOpen) {
         void openCompany(int tab) {
-          if (workspace.canOpen)
+          if (workspace.canOpen) {
             push(CompanyWorkspaceScreen(service: workspace, initialTab: tab));
+          }
         }
 
-        if (legacy['tasks'] != null)
+        if (legacy['tasks'] != null) {
           legacy['productionTasks'] = legacy['tasks']!;
+        }
         legacy['tasks'] = () => openCompany(0);
         legacy['office'] = () => openCompany(1);
         legacy['chat'] = () => openCompany(2);
         legacy['cloud'] = () {
-          if (workspace.canOpen)
+          if (workspace.canOpen) {
             push(
               WorkspaceCloudScreen(
                 service: WorkspaceCloudService(workspace, deps.database),
                 openCatalog: null,
               ),
             );
+          }
         };
         legacy['ai'] = () {
-          if (workspace.canOpen)
+          if (workspace.canOpen) {
             push(WorkspaceAssistantScreen(service: workspace));
+          }
         };
       }
       if (trade.can(PermissionCodes.financeView) &&
           deps.subject.dataScopes.contains(DataScope.allFarm)) {
         legacy['harvest'] = () {
-          if (trade.can(PermissionCodes.financeView))
+          if (trade.can(PermissionCodes.financeView)) {
             push(
               TradeWorkspaceScreen(
                 service: trade,
@@ -760,6 +780,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
                 openCash: null,
               ),
             );
+          }
         };
       }
       if (LiveAuthorization(
@@ -771,7 +792,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
         legacy['fuel'] = () {
           if (LiveAuthorization(
             () => mounted ? widget.subject : null,
-          ).can(deps.subject, PermissionCodes.financeView))
+          ).can(deps.subject, PermissionCodes.financeView)) {
             push(
               MachineWorkspaceScreen(
                 initialTab: 'fuel',
@@ -789,6 +810,7 @@ class _AgricoV2RootState extends State<AgricoV2Root> {
                 ),
               ),
             );
+          }
         };
       }
       return AnimatedBuilder(
