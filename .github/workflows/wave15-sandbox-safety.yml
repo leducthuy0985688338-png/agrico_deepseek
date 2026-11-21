@@ -1,0 +1,67 @@
+name: AGRICO WAVE15 Sandbox Safety Evidence
+on:
+  push:
+    branches: [ci/wave15-validation-20261121]
+    paths: ['.github/workflows/wave15-sandbox-safety.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  sandbox-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Analyze startup and sandbox controls without executing app
+        shell: python
+        run: |
+          from pathlib import Path
+          import re, os
+          required = {
+              "startup": "lib/main.dart",
+              "cloud": "lib/services/cloud_service.dart",
+              "identity": "lib/core/auth/firebase_company_identity_gateway.dart",
+              "composition": "lib/app_v2/agrico_v2_composition.dart",
+          }
+          src = {k: Path(v).read_text(encoding="utf-8") for k,v in required.items()}
+          findings = []
+          def flag(code, present, detail):
+              findings.append((code, "PRESENT" if present else "NOT_ESTABLISHED", detail))
+          flag("STARTUP_FIREBASE", bool(re.search(r"CloudService\.initialize\s*\(",src["startup"])), "Startup invokes CloudService")
+          flag("FIREBASE_DEFAULT_APP", bool(re.search(r"Firebase\.initializeApp\s*\(",src["cloud"])), "Firebase default initialization")
+          flag("FIRESTORE_DEFAULT_INSTANCE", "FirebaseFirestore.instance" in src["cloud"], "Default Firestore")
+          flag("AUTH_DEFAULT_INSTANCE", "FirebaseAuth.instance" in src["identity"], "Default Auth")
+          flag("AUTH_EMULATOR_WIRING", bool(re.search(r"\buseAuthEmulator\s*\(",src["startup"]+src["cloud"]+src["identity"])), "Reviewed startup files only")
+          flag("FIRESTORE_EMULATOR_WIRING", bool(re.search(r"\buseFirestoreEmulator\s*\(",src["startup"]+src["cloud"]+src["identity"])), "Reviewed startup files only")
+          flag("SERVER_MEMBERSHIP_READ", "Source.server" in src["identity"], "Remote membership path")
+          flag("SQLITE_BOOTSTRAP", "FieldDatabase()" in src["composition"], "Local database initialization")
+          flag("TEST_CLEANUP", "ProductionV2TestCleanup.run" in src["composition"], "Potential destructive test cleanup")
+          flag("WORKSPACE_RECOVERY", "WorkspaceCloudService.recover" in src["composition"], "Cloud recovery path")
+          # This is deliberately conservative: no static pattern can certify runtime network isolation.
+          result = "RUNTIME_BLOCKED_PENDING_ISOLATED_SANDBOX"
+          report = [
+              "CMD=WAVE15-SANDBOX-SAFETY",
+              "SOURCE_SHA="+os.getenv("GITHUB_SHA","UNKNOWN"),
+              "MODE=STATIC_ONLY",
+              "RUNTIME_EXECUTED=FALSE",
+              "PRODUCTION_ACCESS=NOT_ATTEMPTED",
+              "NETWORK_ISOLATION_VERIFIED=FALSE",
+              "EMULATOR_AUTH_VERIFIED=FALSE",
+              "EMULATOR_FIRESTORE_VERIFIED=FALSE",
+              "SQLITE_TEST_DB_ISOLATION_VERIFIED=FALSE",
+              "RESULT="+result,
+          ] + [f"{code}={status} | {detail}" for code,status,detail in findings]
+          out = Path("wave15-sandbox-evidence")
+          out.mkdir(exist_ok=True)
+          (out/"FINAL-REPORT.txt").write_text("\n".join(report)+"\n",encoding="utf-8")
+          print("\n".join(report))
+          # Job success means evidence generated; NOT authorization to run the executable.
+      - name: Upload safety evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wave15-sandbox-safety-evidence
+          path: wave15-sandbox-evidence/
+          if-no-files-found: error
